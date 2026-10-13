@@ -31,6 +31,16 @@ jobs:
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 5s --health-retries 12
+      postgres-races:
+        image: pgvector/pgvector:0.8.1-pg16-trixie@sha256:1e4956185a7fd9306a41ee759a7b4329c4faf9a2bb91a1d01437310c97002433
+        env:
+          POSTGRES_DB: syd
+          POSTGRES_USER: syd
+          POSTGRES_PASSWORD: syd-test
+        ports: ['55432:5432']
+        options: >-
+          --health-cmd "pg_isready -U syd -d syd"
+          --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -71,6 +81,7 @@ jobs:
           bun x vitest run --config packages/server/utils/vitest.config.ts packages/server/utils/test/agent-ai-utils.test.ts packages/server/utils/test/ai-provider-signal.test.ts
       - name: Check Syd API and MCP authorization regressions
         env:
+          SYD_TEST_POSTGRES: 'true'
           AP_ENVIRONMENT: test
           AP_DB_TYPE: POSTGRES
           AP_POSTGRES_HOST: 127.0.0.1
