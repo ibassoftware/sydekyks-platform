@@ -1,0 +1,126 @@
+Sydekyks Sustainable Use License
+Version 1.0 — 13 October 2026
+Identifier: LicenseRef-Sydekyks-Sustainable-Use-1.0
+
+1. Scope and existing rights
+
+This license applies only to original contributions for which iBAS Software FR,
+iBAS Software Inc., or a contributing copyright holder has authority to grant
+these rights (the Licensor), first published under this license after the MIT
+baseline identified in LICENSE_SCOPE.md (the Covered Software).
+
+Upstream components, third-party materials, and contributions already available
+under MIT or another license retain their existing licenses. This license does
+not withdraw or restrict rights previously granted for those versions or
+materials. A mixed file remains subject to the applicable licenses for its
+respective portions. The same is true of compiled distributions.
+
+2. Free use and modification
+
+Subject to these terms, the Licensor grants you a non-exclusive, worldwide,
+royalty-free copyright license to use, reproduce, modify, and prepare derivative
+works of the Covered Software for personal, non-commercial, and internal
+business purposes. All available features are included. No license key,
+activation, trial period, expiry, seat fee, or paid feature unlock is required.
+
+You may use the Covered Software within your business to deliver your own goods
+or services, including running workflows whose customers receive their outputs,
+provided that you do not offer the Covered Software's substantial functionality
+to third parties as a platform, product, or hosted or managed service.
+
+3. Free redistribution
+
+You may share source code, copies, and modifications free of charge for uses
+permitted by this license. Recipients must receive this license and all applicable
+copyright, attribution, and third-party notices. You must prominently identify
+your modifications. Redistribution does not give recipients any rights beyond
+the applicable licenses or a separate written authorization from the Licensor.
+
+4. Competing hosting
+
+Except as authorized in section 6, you may not provide the Covered Software or
+derivative works to third parties as a hosted, managed, white-label, embedded,
+or other service that gives them access to a substantial set of its workflow,
+agent, integration, or platform functionality. This restriction applies whether
+access is provided through the original interface, a replacement interface,
+an API, an MCP endpoint, an agent, or another technical means, and whether the
+service is charged separately, bundled with another offering, or offered free.
+
+Ordinary infrastructure rental where the customer independently operates its
+installation, and delivery of workflow outputs without platform access, do not
+by themselves constitute competing hosting.
+
+5. Resale and permitted professional services
+
+Except as authorized in section 6, you may not sell, sublicense for a fee, rent,
+or commercially redistribute the Covered Software or derivative works as a
+software product, paid download, paid software license, or substantially
+equivalent white-label offering.
+
+You may charge for installation, configuration, customization, training,
+consulting, maintenance, and support for an installation owned and controlled
+by your customer and used for purposes permitted by this license. Incidental
+delivery of the software as part of that work is permitted, provided that the
+software itself is supplied without a license or copy fee and the customer
+remains responsible for operating its installation. You may use remote access
+to provide these services on the customer's infrastructure. Merely naming a
+competing hosted service or software resale a support or consulting service
+does not make it permitted.
+
+6. Authorized partners
+
+A partner may offer hosting, managed services, support, or resale to the extent
+expressly authorized by a separate written partner or reseller agreement with
+the Licensor holding the relevant rights. That agreement specifies the permitted
+activities, customers, duration, branding, commercial arrangements, and any
+other conditions. The authorizing Licensor must hold the rights necessary to
+authorize the relevant contributions. A claim of partner status without such
+an agreement does not grant an exception. Partner authorization does not add
+feature gates or activation requirements to the software.
+
+The Licensor may offer hosting and support for software it owns or is authorized
+to license. Infrastructure, connected applications, and AI providers may charge
+their own fees independently of this license.
+
+7. Notices and trademarks
+
+You must preserve applicable license, copyright, and attribution notices and
+identify changes without implying that they are endorsed by the Licensor. This
+license grants no trademark rights or right to misrepresent an affiliation,
+endorsement, or authorized partner status. Lawful descriptive references remain
+subject to applicable trademark law.
+
+8. Patents
+
+The Licensor grants a royalty-free patent license for claims it controls that
+are necessarily infringed by its Covered Software as supplied. This grant does
+not cover claims introduced solely by your modifications or combinations. If
+you initiate a patent claim alleging that the Covered Software infringes a
+patent, this patent grant to you ends when that claim is filed.
+
+9. Termination and remedy
+
+Rights under this license terminate if you violate its terms. If you cure a
+first violation within 30 days after receiving written notice from the Licensor,
+your rights are reinstated retroactively. Subsequent violations may result in
+permanent termination of this license. Termination under this license does not
+terminate independent rights you hold under MIT, another third-party license,
+or a separate agreement.
+
+10. No warranty or liability
+
+To the extent permitted by applicable law, the Covered Software is provided
+"as is", without warranties, including merchantability, fitness for a particular
+purpose, and non-infringement. The Licensor is not liable for claims or damages
+arising from the Covered Software or its use. Nothing in this license excludes
+liability or rights that applicable law does not permit to be excluded. A
+separate hosting or support agreement may provide its own service commitments.
+
+11. Other rights and contact
+
+Rights not expressly granted are reserved. Derivative works containing Covered
+Software remain subject to these terms for the Covered Software; you retain
+ownership of your original additions. Changing this license file or removing
+notices does not grant permission for competing hosting or resale.
+
+Requests for partner authorization or questions: info@sydekyks.com.
