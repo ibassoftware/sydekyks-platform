@@ -8,6 +8,7 @@
 .idea
 *.log
 *.md
+!LICENSE_SCOPE.md
 .vscode
 builds
 deploy

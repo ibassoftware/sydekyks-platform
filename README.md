@@ -2,6 +2,8 @@
 
 Build visual workflows, connect your tools, and automate routine work with help from Syd.
 
+Sydekyks is source available. New original project contributions use the Sydekyks Sustainable Use License; upstream components and the previously published MIT version retain their existing licenses.
+
 All available features are free. No license key, activation, trial period, or expiry is required.
 
 ## What you can do
@@ -33,7 +35,9 @@ Visit [docs.sydekyks.com](https://docs.sydekyks.com) for setup instructions and 
 
 ## Hosting and support
 
-Self-hosting is free. Optional managed hosting, support, and workflow implementation are available through [Sydekyks](https://www.sydekyks.com).
+Self-hosting is free. Optional managed hosting and support, including workflow implementation, are available through [Sydekyks](https://www.sydekyks.com).
+
+Authorized partners may provide hosting and support under their written partner agreements. Installation, customization, training, and support on customer-owned infrastructure are permitted. Competing hosting and software resale of code covered by the Sustainable Use License require written authorization.
 
 Connected services and AI providers may charge their own fees.
 
@@ -45,4 +49,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and validation comm
 
 Sydekyks builds on Activepieces and other third-party components. Upstream copyright and license notices are retained.
 
-See [LICENSE](LICENSE) and [NOTICE.sydekyks.txt](NOTICE.sydekyks.txt) for licensing and attribution details.
+The [Sydekyks Sustainable Use License](LICENSE.sydekyks.txt) keeps every available feature free for personal use and internal business self-hosting, with restrictions on competing hosting and software resale. There is no separate paid feature edition or activation requirement.
+
+The existing MIT source baseline and published `1.0.6` image retain their original permissions, including commercial hosting and redistribution. The new restrictions apply to future covered contributions; this change adds no new functional application code. Read [license scope and transition](LICENSE_SCOPE.md) before relying on those restrictions.
+
+See [LICENSE](LICENSE), [LICENSE.activepieces.txt](LICENSE.activepieces.txt), and [NOTICE.sydekyks.txt](NOTICE.sydekyks.txt) for all applicable licensing and attribution notices.

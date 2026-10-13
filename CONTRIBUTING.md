@@ -34,3 +34,9 @@ docker buildx build --platform linux/amd64,linux/arm64 --build-arg SYDEKYKS_SOUR
 Submit a pull request describing the behavior changed, validation performed, and any upgrade impact. Preserve authentication, workspace isolation, retained notices, and unrestricted access to implemented features. Never introduce imports from the excluded upstream enterprise directories.
 
 Report security issues privately using [SECURITY.md](SECURITY.md).
+
+## Contribution licensing
+
+Read [LICENSE_SCOPE.md](LICENSE_SCOPE.md) before contributing. New original contributions are offered under the [Sydekyks Sustainable Use License](LICENSE.sydekyks.txt), unless an explicit license or written contribution agreement states otherwise. Existing MIT code and third-party components retain their licenses and notices.
+
+When submitting an original contribution under these terms, you confirm that you have authority to license it and grant the project maintainers a perpetual, worldwide, non-exclusive, royalty-free right to use, modify, distribute, and sublicense that contribution under the Sustainable Use License and written authorizations for partner hosting, support, and resale. You retain your copyright. Identify any third-party material and its license in your pull request; this grant does not apply to rights you do not own or control. Unclear ownership or incompatible third-party terms must be resolved before a contribution is accepted.
