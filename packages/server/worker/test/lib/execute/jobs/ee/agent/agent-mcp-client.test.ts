@@ -1,7 +1,7 @@
 import { AgentMcpTool, AgentToolType, McpAuthType, McpProtocol } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { agentMcpClient } from '../../../../../../src/lib/execute/jobs/ee/agent/agent-mcp-client'
+import { agentMcpClient, McpConnection } from '../../../../../../src/lib/execute/jobs/ee/agent/agent-mcp-client'
 
 const { mockCreateMCPClient } = vi.hoisted(() => ({
     mockCreateMCPClient: vi.fn(),
@@ -16,6 +16,33 @@ afterEach(() => {
 })
 
 const ATTIO_TOOL = 'mcp__b1eec075-afc3-40da-b630-ab0693d3027d__list-records'
+
+describe('agentMcpClient.connect conversation scope', () => {
+    it('sends the conversation header required by the platform MCP endpoint', async () => {
+        const client = fakeMcpClient({ ap_flow_structure: {}, ap_set_project_context: {} })
+        mockCreateMCPClient.mockResolvedValueOnce(client)
+        const { log } = createTestLogger()
+
+        const connection = await agentMcpClient.connect({
+            mcpCredentials: { mcpServerUrl: 'http://localhost:4200/mcp/platform', mcpToken: 'internal-chat-token' },
+            conversationId: 'selected-project-conversation',
+            log,
+        })
+
+        expect(mockCreateMCPClient).toHaveBeenCalledWith({
+            transport: {
+                type: 'http',
+                url: 'http://localhost:4200/mcp/platform',
+                headers: {
+                    Authorization: 'Bearer internal-chat-token',
+                    'x-conversation-id': 'selected-project-conversation',
+                },
+            },
+        })
+        expect(connection.mcpToolSet).toHaveProperty('ap_flow_structure')
+        expect(connection.mcpToolSet).not.toHaveProperty('ap_set_project_context')
+    })
+})
 
 describe('agentMcpClient.classifyMcpAuthError', () => {
     describe('thrown errors', () => {
@@ -219,11 +246,11 @@ function agentMcpTool(overrides: Partial<AgentMcpTool> = {}): AgentMcpTool {
     }
 }
 
-function fakeMcpClient(toolSet: Record<string, unknown> = {}): { tools: () => Promise<Record<string, unknown>>, close: () => Promise<void> } {
+function fakeMcpClient(toolSet: Record<string, unknown> = {}): NonNullable<McpConnection['mcpClient']> {
     return {
         tools: async () => toolSet,
         close: async () => undefined,
-    }
+    } as unknown as NonNullable<McpConnection['mcpClient']>
 }
 
 describe('agentMcpClient.withStepMcpTools — this IS the finally execute-agent-run.ts relies on', () => {

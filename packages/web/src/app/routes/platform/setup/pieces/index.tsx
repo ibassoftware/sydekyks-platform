@@ -6,14 +6,7 @@ import {
 import { OAuth2GrantType, PieceScope, PieceType } from '@activepieces/shared';
 import { ColumnDef } from '@tanstack/react-table';
 import { t } from 'i18next';
-import {
-  CheckIcon,
-  Package,
-  Hash,
-  GitBranch,
-  Puzzle,
-  Trash,
-} from 'lucide-react';
+import { CheckIcon, Package, GitBranch, Puzzle, Trash } from 'lucide-react';
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -22,6 +15,7 @@ import { DashboardPageHeader } from '@/app/components/dashboard-page-header';
 import { CustomizeSelectorDialog } from '@/app/routes/platform/setup/pieces/customize-selector-dialog';
 import { DownloadPiecesReportButton } from '@/app/routes/platform/setup/pieces/download-pieces-report';
 import { PieceActions } from '@/app/routes/platform/setup/pieces/piece-actions';
+import { PieceTechnicalDetails } from '@/app/routes/platform/setup/pieces/piece-technical-details';
 import { SyncPiecesButton } from '@/app/routes/platform/setup/pieces/sync-pieces';
 import { ConfigurePieceOAuth2Dialog } from '@/app/routes/platform/setup/pieces/update-oauth2-dialog';
 import { DataTable, RowDataWithActions } from '@/components/custom/data-table';
@@ -89,20 +83,6 @@ export const PiecesListTab = () => {
           },
         },
         {
-          accessorKey: 'packageName',
-          size: 250,
-          header: ({ column }) => (
-            <DataTableColumnHeader
-              column={column}
-              title={t('Package Name')}
-              icon={Hash}
-            />
-          ),
-          cell: ({ row }) => {
-            return <div className="text-left">{row.original.name}</div>;
-          },
-        },
-        {
           accessorKey: 'version',
           size: 80,
           header: ({ column }) => (
@@ -120,10 +100,10 @@ export const PiecesListTab = () => {
           id: 'actions',
           size: 190,
           cell: ({ row }) => {
-            if (!isEnabled) return null;
             return (
               <div className="flex justify-end">
-                {shouldShowOauth2SettingForPiece(row.original) && (
+                <PieceTechnicalDetails piece={row.original} />
+                {isEnabled && shouldShowOauth2SettingForPiece(row.original) && (
                   <ConfigurePieceOAuth2Dialog
                     pieceName={row.original.name}
                     onConfigurationDone={() => {
@@ -133,11 +113,13 @@ export const PiecesListTab = () => {
                     isEnabled={isEnabled}
                   />
                 )}
-                <PieceActions
-                  pieceName={row.original.name}
-                  isEnabled={isEnabled}
-                />
-                {row.original.pieceType === PieceType.CUSTOM && (
+                {isEnabled && (
+                  <PieceActions
+                    pieceName={row.original.name}
+                    isEnabled={isEnabled}
+                  />
+                )}
+                {isEnabled && row.original.pieceType === PieceType.CUSTOM && (
                   <ConfirmationDeleteDialog
                     title={t('Delete {name}', { name: row.original.name })}
                     entityName={t('Piece')}

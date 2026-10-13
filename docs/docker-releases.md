@@ -7,18 +7,18 @@ Docker Hub repository, `ibassoftware/sydekyks`. Source remains private.
 To publish a release, push a stable version tag on a commit from `main`:
 
 ```sh
-git tag v1.0.7
-git push origin v1.0.7
+git tag v1.0.8
+git push origin v1.0.8
 ```
 
 Alternatively, run **Release Docker image** from the GitHub Actions interface,
-select `main`, and enter a stable version such as `1.0.7`. Published version tags
+select `main`, and enter a stable version such as `1.0.8`. Published version tags
 are not overwritten. Future releases should increment the platform version in
 `package.json` as well as selecting a new public image version.
 
 The workflow runs the complete platform validation, then builds independently on
 native AMD64 and ARM64 runners. Each image must pass disposable PostgreSQL/Redis
-tests for a fresh installation and an upgrade from the pinned 1.0.6 release.
+tests for a fresh installation and an upgrade from the pinned 1.0.7 release.
 Checks cover community edition, owner bootstrap and login, a saved Mission,
 closed registration, image provenance and license notices, and the branded
 Gadget registry request. No provider keys or live business data are used.

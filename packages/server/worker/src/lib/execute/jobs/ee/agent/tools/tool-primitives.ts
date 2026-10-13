@@ -1,7 +1,7 @@
 import { isNil, isObject, spreadIfDefined } from '@activepieces/core-utils'
 import { largeResultUtils, MAX_TOOL_RESULT_BYTES } from '@activepieces/server-utils'
 import { ActionPreviewEvent, ActionReceiptEvent, agentToolClassification, agentToolPhases, BuildPlanEvent, FileProducedEvent, ImageGeneratedEvent, PersistedAgentMessageSchema, PersistedAgentRole, ToolProgressEvent } from '@activepieces/shared'
-import { ToolExecutionOptions, ToolSet } from 'ai'
+import { Schema, ToolExecutionOptions, ToolSet } from 'ai'
 import { z } from 'zod'
 
 export const TOOL_EXECUTION_TIMEOUT_MS = 5 * 60 * 1_000
@@ -86,6 +86,11 @@ export function normalizePieceName(piece: string): string {
 
 export function gateNoResponseMessage(step: string): string {
     return `⏳ The user hasn't responded to the ${step} yet (it timed out) — they did NOT decline, they're just away. Decide based on how essential this step is: if the task can continue without it, skip only this step, keep going, and briefly tell the user what you skipped and why. If it is required to proceed, stop here and tell the user this step needs their approval — ask them to approve it to continue. Never assume approval or perform the gated action on your own.`
+}
+
+export function plainJsonSchema<T = Awaited<Schema<unknown>['jsonSchema']>>(schema: unknown): T {
+    const plain: T = JSON.parse(JSON.stringify(schema))
+    return plain
 }
 
 export function stableStringify(value: unknown): string {

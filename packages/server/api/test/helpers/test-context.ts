@@ -71,6 +71,22 @@ export async function createMemberContext(
     })
 }
 
+export async function createWorkspaceUserContext({ app, parentCtx, platformRole }: {
+    app: FastifyInstance
+    parentCtx: TestContext
+    platformRole: PlatformRole
+}): Promise<TestContext> {
+    const { mockUser, mockUserIdentity } = await mockBasicUser({
+        user: { platformId: parentCtx.platform.id, platformRole },
+    })
+    const token = await generateMockToken({
+        id: mockUser.id,
+        type: PrincipalType.USER,
+        platform: { id: parentCtx.platform.id },
+    })
+    return buildContext(app, { userIdentity: mockUserIdentity, user: mockUser, platform: parentCtx.platform, project: parentCtx.project, token })
+}
+
 export async function createServiceContext(
     app: FastifyInstance,
     parentCtx: TestContext,

@@ -1,7 +1,8 @@
 import { AIProviderName } from '@activepieces/core-utils'
 import { MAX_CORE_TOOLS, PersistedAgentPartType } from '@activepieces/shared'
+import { LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import { tool, ToolSet } from 'ai'
-import { convertArrayToReadableStream, MockLanguageModelV3 } from 'ai/test'
+import { convertArrayToReadableStream, MockLanguageModelV4 } from 'ai/test'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { runAgentTurn } from '../../../../../../src/lib/execute/jobs/ee/agent/run-agent-turn'
@@ -35,6 +36,29 @@ describe('a turn in skills mode', () => {
         expect(creditsLeft.mock.calls[0]).toEqual([2])
         const toolParts = turn.uiParts.filter((part) => part.type === PersistedAgentPartType.TOOL_CALL)
         expect(toolParts.map((part) => part.type === PersistedAgentPartType.TOOL_CALL ? part.toolName : '')).toEqual(['ap_web_search'])
+    })
+})
+
+describe('custom model outputs in skills mode', () => {
+    it.each(['ap_lazy_tool', 'mcp_image'])('preserves MCP image content when called as %s', async (toolName) => {
+        const output = { image: 'Zm9v' }
+        const serialize = vi.fn(async () => ({ type: 'content' as const, value: [{ type: 'file' as const, mediaType: 'image/png', data: { type: 'data' as const, data: output.image } }] }))
+        const input = toolName === 'ap_lazy_tool' ? '{"tool":"mcp_image","input":{"query":"chart"}}' : '{"query":"chart"}'
+        const model = scriptedModel({ toolCalls: [{ id: 'image-1', toolName, input }] })
+        await runAgentTurn({
+            models: [{ model, provider: AIProviderName.ANTHROPIC, modelId: TIER.modelId, thinkingBudget: TIER.thinkingBudget }],
+            systemPrompt: 'Read the chart.', messages: [{ role: 'user', content: 'Read the chart.' }],
+            tools: { ...fillerTools(), mcp_image: tool({ inputSchema: z.object({ query: z.string() }), execute: async () => output, toModelOutput: serialize }) },
+            allToolNames: [...Object.keys(fillerTools()), 'mcp_image'], tier: TIER, phaseState: { phase: 'discovery' },
+            abortSignal: new AbortController().signal, log: SILENT_LOG,
+            skills: { surface: 'CHAT', guides: {} },
+        })
+
+        expect(serialize).toHaveBeenCalledWith({ toolCallId: 'image-1', input: { query: 'chart' }, output })
+        const prompt = JSON.stringify(model.doStreamCalls[1]?.prompt)
+        expect(prompt).toContain('"type":"content"')
+        expect(prompt).toContain('"mediaType":"image/png"')
+        if (toolName === 'mcp_image') expect(prompt).toContain('next time call ap_lazy_tool')
     })
 })
 
@@ -176,7 +200,7 @@ describe('the build phase in skills mode', () => {
     })
 })
 
-async function runSkillsTurn({ model, search }: { model: MockLanguageModelV3, search: () => Promise<typeof SEARCH_RESULT> }): Promise<void> {
+async function runSkillsTurn({ model, search }: { model: MockLanguageModelV4, search: () => Promise<typeof SEARCH_RESULT> }): Promise<void> {
     await runAgentTurn({
         models: [{ model, provider: AIProviderName.ANTHROPIC, modelId: TIER.modelId, thinkingBudget: TIER.thinkingBudget }],
         systemPrompt: 'You are a test agent.',
@@ -196,25 +220,25 @@ async function runSkillsTurn({ model, search }: { model: MockLanguageModelV3, se
     })
 }
 
-function scriptedModel({ toolCalls, repairText = '' }: { toolCalls: ScriptedToolCall[], repairText?: string }): MockLanguageModelV3 {
+function scriptedModel({ toolCalls, repairText = '' }: { toolCalls: ScriptedToolCall[], repairText?: string }): MockLanguageModelV4 {
     let calls = 0
-    return new MockLanguageModelV3({
+    return new MockLanguageModelV4({
         doStream: async () => {
             const toolCall = toolCalls[calls]
             calls++
             return {
-                stream: convertArrayToReadableStream(toolCall === undefined
+                stream: convertArrayToReadableStream<LanguageModelV4StreamPart>(toolCall === undefined
                     ? [
                         { type: 'stream-start' as const, warnings: [] },
                         { type: 'text-start' as const, id: 'answer' },
                         { type: 'text-delta' as const, id: 'answer', delta: 'Done.' },
                         { type: 'text-end' as const, id: 'answer' },
-                        { type: 'finish' as const, finishReason: 'stop' as const, usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } },
+                        { type: 'finish' as const, finishReason: { unified: 'stop' as const, raw: 'stop' }, usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } } },
                     ]
                     : [
                         { type: 'stream-start' as const, warnings: [] },
                         { type: 'tool-call' as const, toolCallId: toolCall.id, toolName: toolCall.toolName, input: toolCall.input },
-                        { type: 'finish' as const, finishReason: 'tool-calls' as const, usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } },
+                        { type: 'finish' as const, finishReason: { unified: 'tool-calls' as const, raw: 'tool-calls' }, usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } } },
                     ]),
             }
         },
@@ -231,24 +255,24 @@ function fillerTools(): ToolSet {
     return Object.fromEntries(FILLER_TOOL_NAMES.map((name) => [name, tool({ description: `${name}.`, inputSchema: z.object({}), execute: async () => SEARCH_RESULT })]))
 }
 
-function wrappedSearchThenAnswer(): MockLanguageModelV3 {
+function wrappedSearchThenAnswer(): MockLanguageModelV4 {
     let calls = 0
-    return new MockLanguageModelV3({
+    return new MockLanguageModelV4({
         doStream: async () => {
             calls++
             return {
-                stream: convertArrayToReadableStream(calls === 1
+                stream: convertArrayToReadableStream<LanguageModelV4StreamPart>(calls === 1
                     ? [
                         { type: 'stream-start' as const, warnings: [] },
                         { type: 'tool-call' as const, toolCallId: 'call-1', toolName: 'ap_lazy_tool', input: '{"tool":"ap_web_search","input":{"query":"more"}}' },
-                        { type: 'finish' as const, finishReason: 'tool-calls' as const, usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } },
+                        { type: 'finish' as const, finishReason: { unified: 'tool-calls' as const, raw: 'tool-calls' }, usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } } },
                     ]
                     : [
                         { type: 'stream-start' as const, warnings: [] },
                         { type: 'text-start' as const, id: 'answer' },
                         { type: 'text-delta' as const, id: 'answer', delta: 'Done.' },
                         { type: 'text-end' as const, id: 'answer' },
-                        { type: 'finish' as const, finishReason: 'stop' as const, usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } },
+                        { type: 'finish' as const, finishReason: { unified: 'stop' as const, raw: 'stop' }, usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } } },
                     ]),
             }
         },

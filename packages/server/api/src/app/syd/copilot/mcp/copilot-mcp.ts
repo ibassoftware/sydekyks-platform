@@ -13,6 +13,6 @@ async function getMcpCredentials({ platformId, userId, log }: { platformId: stri
     return { mcpServerUrl: `${system.getOrThrow(AppSystemProp.FRONTEND_URL)}/mcp/platform`, mcpToken: result.data }
 }
 
-export const sydCopilotMcp = { getMcpCredentials, getCredentials: getMcpCredentials, CONVERSATION_ID_HEADER: 'x-ap-conversation-id' }
+export const sydCopilotMcp = { getMcpCredentials, getCredentials: getMcpCredentials, CONVERSATION_ID_HEADER: 'x-conversation-id' }
 
 export type McpCredentials = { mcpServerUrl: string | null, mcpToken: string | null }

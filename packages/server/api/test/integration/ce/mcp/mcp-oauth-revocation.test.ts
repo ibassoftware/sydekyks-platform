@@ -1,12 +1,12 @@
 import { createHash, randomBytes } from 'crypto'
-import { DefaultProjectRole, McpOAuthToken } from '@activepieces/shared'
+import { McpOAuthToken, PlatformRole } from '@activepieces/shared'
 import { FastifyInstance, LightMyRequestResponse } from 'fastify'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mcpOAuthClientService } from '../../../../src/app/mcp/oauth/client/mcp-oauth-client.service'
 import { mcpOAuthRevocationList } from '../../../../src/app/mcp/oauth/token/mcp-oauth-revocation-list'
 import { mcpOAuthTokenService } from '../../../../src/app/mcp/oauth/token/mcp-oauth-token.service'
 import { db } from '../../../helpers/db'
-import { createMemberContext, createTestContext, TestContext } from '../../../helpers/test-context'
+import { createTestContext, createWorkspaceUserContext, TestContext } from '../../../helpers/test-context'
 import { setupTestEnvironment } from '../../../helpers/test-setup'
 
 let app: FastifyInstance
@@ -92,7 +92,7 @@ describe('MCP OAuth revocation list', () => {
     })
 
     it('leaves another members live token alone when one grant is revoked', async () => {
-        const member = await createMemberContext(app, ctx, { projectRole: DefaultProjectRole.ADMIN })
+        const member = await createWorkspaceUserContext({ app, parentCtx: ctx, platformRole: PlatformRole.ADMIN })
         const mine = await connectClient({ userId: ctx.user.id, projectId: ctx.project.id, platformId: ctx.platform.id })
         const theirs = await connectClient({ userId: member.user.id, projectId: ctx.project.id, platformId: ctx.platform.id })
 

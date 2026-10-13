@@ -1,0 +1,23 @@
+[
+  "packages/server/api/test/unit/sydekyks-community-authorization.test.ts",
+  "packages/server/api/test/unit/sydekyks-community-invitations.test.ts",
+  "packages/server/api/test/unit/sydekyks-community-metadata.test.ts",
+  "packages/server/api/test/unit/sydekyks-community-piece-sync.test.ts",
+  "packages/server/api/test/unit/sydekyks-community-project-access.test.ts",
+  "packages/server/api/test/unit/sydekyks-community-project-management.test.ts",
+  "packages/server/api/test/unit/sydekyks-community-session.test.ts",
+  "packages/server/api/test/unit/sydekyks-community-socket.test.ts",
+  "packages/server/api/test/integration/ce/mcp/mcp-access-ce.test.ts",
+  "packages/server/api/test/integration/ce/mcp/mcp-activity-recording.test.ts",
+  "packages/server/api/test/integration/ce/mcp/mcp-oauth-revocation.test.ts",
+  "packages/server/api/test/integration/ce/mcp/mcp-platform-project-selection.test.ts",
+  "packages/server/api/test/integration/ce/syd/agents-ce-api.test.ts",
+  "packages/server/api/test/integration/ce/syd/copilot-actions.test.ts",
+  "packages/server/api/test/integration/ce/syd/copilot-editor-context.test.ts",
+  "packages/server/api/test/integration/ce/syd/copilot-gates.test.ts",
+  "packages/server/api/test/integration/ce/syd/copilot-lifecycle.test.ts",
+  "packages/server/api/test/integration/ce/syd/copilot-races.test.ts",
+  "packages/server/api/test/integration/ce/syd/copilot-storage.test.ts",
+  "packages/server/api/test/unit/syd/configured-piece.test.ts",
+  "packages/server/api/test/unit/syd/copilot-contracts.test.ts"
+]

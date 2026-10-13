@@ -1,7 +1,8 @@
 import { AIProviderName, isObject } from '@activepieces/core-utils'
-import { SharedV3ProviderOptions } from '@ai-sdk/provider'
+import { PersistedAgentPartType } from '@activepieces/shared'
+import { SharedV4ProviderOptions } from '@ai-sdk/provider'
 import { APICallError, streamText, tool, toUIMessageStream } from 'ai'
-import { convertArrayToReadableStream, MockLanguageModelV3 } from 'ai/test'
+import { convertArrayToReadableStream, MockLanguageModelV4 } from 'ai/test'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { drainOf, NO_STEP_CONTENT, runAgentTurn, StepContentState, StreamDrain, trackStepContent, TurnModel } from '../../../../../../src/lib/execute/jobs/ee/agent/run-agent-turn'
@@ -33,6 +34,23 @@ describe('a platform tier chat turn', () => {
         expect(search).toHaveBeenCalledTimes(1)
         expect(textOf(turn)).toBe('Looking.done')
         expect(JSON.stringify(backup.doStreamCalls[0].prompt)).toContain('found')
+    })
+
+    it('carries paid tool credits and completed-step tokens into the fallback attempt', async () => {
+        const search = vi.fn(async () => ({ content: [{ type: 'text', text: 'found' }] }))
+        const creditsLeft = vi.fn<(pendingCredits: number) => Promise<number>>().mockResolvedValueOnce(100).mockResolvedValue(-1)
+        const turn = await runTurn({
+            models: [tierModel({ modelId: 'main', model: failingModel({ statusCode: 503 }) }), tierModel({ modelId: 'backup', model: searchingModel() })],
+            fastModel: tierModel({ modelId: 'fast', model: searchingModel() }),
+            search, creditsLeft,
+        })
+
+        expect(turn.streamError).toBeNull()
+        expect(turn.creditsExhausted).toBe(true)
+        expect(search).toHaveBeenCalledTimes(2)
+        expect(creditsLeft.mock.calls).toEqual([[2], [3]])
+        expect(turn.totalInputTokens).toBe(2)
+        expect(turn.totalOutputTokens).toBe(2)
     })
 
     it('does not fall back once the failing step already sent text to the user', async () => {
@@ -116,7 +134,7 @@ describe('a platform tier chat turn', () => {
     })
 
     it('builds the provider options for the model that runs, not the one that failed', async () => {
-        const sent: SharedV3ProviderOptions[] = []
+        const sent: SharedV4ProviderOptions[] = []
         const backup = answeringModel('from backup', sent)
 
         await runTurn({
@@ -159,12 +177,13 @@ describe('what counts as content sent in the step that failed', () => {
     })
 })
 
-async function runTurn({ models, fastModel, search, onStepModel, onModelOutcome }: {
+async function runTurn({ models, fastModel, search, onStepModel, onModelOutcome, creditsLeft }: {
     models: [TurnModel, ...TurnModel[]]
     fastModel?: TurnModel
     search?: () => Promise<unknown>
     onStepModel?: (turnModel: TurnModel) => void
     onModelOutcome?: (outcome: unknown) => void
+    creditsLeft?: (pendingCredits: number) => Promise<number | null>
 }): ReturnType<typeof runAgentTurn> {
     return runAgentTurn({
         models,
@@ -182,6 +201,7 @@ async function runTurn({ models, fastModel, search, onStepModel, onModelOutcome 
         sinks: { drainStream: drainLikeTheWorker },
         ...(onStepModel ? { onStepModel } : {}),
         ...(onModelOutcome ? { onModelOutcome } : {}),
+        ...(creditsLeft ? { creditsLeft } : {}),
     })
 }
 
@@ -199,20 +219,20 @@ function sentContentAfter(chunkTypes: string[]): boolean {
     return drainOf({ state: chunkTypes.reduce((state, chunkType) => trackStepContent({ state, chunkType }), NO_STEP_CONTENT) }).lastStepSentContent
 }
 
-function tierModel({ modelId, model, provider = AIProviderName.OPENAI }: { modelId: string, model: MockLanguageModelV3, provider?: AIProviderName }): TurnModel {
+function tierModel({ modelId, model, provider = AIProviderName.OPENAI }: { modelId: string, model: MockLanguageModelV4, provider?: AIProviderName }): TurnModel {
     return { model, provider, modelId, thinkingBudget: 0, key: { providerConfigId: `key-${modelId}`, status: 'active' } }
 }
 
-function failingModel({ statusCode }: { statusCode: number }): MockLanguageModelV3 {
-    return new MockLanguageModelV3({
+function failingModel({ statusCode }: { statusCode: number }): MockLanguageModelV4 {
+    return new MockLanguageModelV4({
         doStream: async () => {
             throw new APICallError({ message: `HTTP ${statusCode}`, url: 'https://llm.example/v1', requestBodyValues: {}, statusCode, isRetryable: false })
         },
     })
 }
 
-function answeringModel(text: string, sentOptions?: SharedV3ProviderOptions[]): MockLanguageModelV3 {
-    return new MockLanguageModelV3({
+function answeringModel(text: string, sentOptions?: SharedV4ProviderOptions[]): MockLanguageModelV4 {
+    return new MockLanguageModelV4({
         doStream: async ({ providerOptions }) => {
             sentOptions?.push(providerOptions ?? {})
             return {
@@ -221,15 +241,15 @@ function answeringModel(text: string, sentOptions?: SharedV3ProviderOptions[]): 
                     { type: 'text-start' as const, id: 't' },
                     { type: 'text-delta' as const, id: 't', delta: text },
                     { type: 'text-end' as const, id: 't' },
-                    { type: 'finish' as const, finishReason: 'stop' as const, usage: USAGE },
+                    { type: 'finish' as const, finishReason: { unified: 'stop' as const, raw: 'stop' }, usage: USAGE },
                 ]),
             }
         },
     })
 }
 
-function searchingModel(): MockLanguageModelV3 {
-    return new MockLanguageModelV3({
+function searchingModel(): MockLanguageModelV4 {
+    return new MockLanguageModelV4({
         doStream: async () => ({
             stream: convertArrayToReadableStream([
                 { type: 'stream-start' as const, warnings: [] },
@@ -237,14 +257,14 @@ function searchingModel(): MockLanguageModelV3 {
                 { type: 'text-delta' as const, id: 't', delta: 'Looking.' },
                 { type: 'text-end' as const, id: 't' },
                 { type: 'tool-call' as const, toolCallId: 'call-1', toolName: 'ap_web_search', input: '{"query":"x"}' },
-                { type: 'finish' as const, finishReason: 'tool-calls' as const, usage: USAGE },
+                { type: 'finish' as const, finishReason: { unified: 'tool-calls' as const, raw: 'tool-calls' }, usage: USAGE },
             ]),
         }),
     })
 }
 
-function textThenFailingModel(): MockLanguageModelV3 {
-    return new MockLanguageModelV3({
+function textThenFailingModel(): MockLanguageModelV4 {
+    return new MockLanguageModelV4({
         doStream: async () => ({
             stream: convertArrayToReadableStream([
                 { type: 'stream-start' as const, warnings: [] },
@@ -257,9 +277,9 @@ function textThenFailingModel(): MockLanguageModelV3 {
 }
 
 function textOf(turn: Awaited<ReturnType<typeof runAgentTurn>>): string {
-    return turn.uiParts.map((part) => isObject(part) && typeof part['text'] === 'string' ? part['text'] : '').join('')
+    return turn.uiParts.map((part) => part.type === PersistedAgentPartType.TEXT ? part.text : '').join('')
 }
 
 const TIER = { id: 'fast', thinkingBudget: 0, modelId: 'main' }
-const USAGE = { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+const USAGE = { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } }
 const SILENT_LOG = { debug: () => undefined, info: () => undefined, warn: () => undefined, error: () => undefined }

@@ -1,5 +1,5 @@
 import { LAZY_TOOL_NAME, MAX_CORE_TOOLS } from '@activepieces/shared'
-import { asSchema, jsonSchema, Schema, tool, ToolSet } from 'ai'
+import { asSchema, jsonSchema, Schema, tool, ToolResultPart, ToolSet } from 'ai'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { buildSkillSurface, unwrapLazyToolChunk } from '../../../../../../src/lib/execute/jobs/ee/agent/tools/skill-tools'
@@ -240,6 +240,26 @@ describe('ap_lazy_tool input schema', () => {
         const schema = await asSchema(chatSurface().tools[LAZY_TOOL_NAME]?.inputSchema).jsonSchema
         expect(JSON.parse(JSON.stringify(schema))).toEqual(schema)
         expect(schema).toMatchObject({ type: 'object', properties: { tool: { type: 'string' }, input: { type: 'object' } } })
+    })
+})
+
+describe('custom lazy tool output variants', () => {
+    const outputs: ToolResultPart['output'][] = [
+        { type: 'error-text', value: 'Access refused' },
+        { type: 'error-json', value: { code: 'DENIED' } },
+        { type: 'execution-denied', reason: 'User declined' },
+    ]
+    it.each(outputs)('retains $type while adding the reroute instruction', async (output) => {
+        const serialize = vi.fn(async () => output)
+        const surface = buildSkillSurface({
+            tools: { target: tool({ inputSchema: z.object({}), execute: async () => 'raw', toModelOutput: serialize }) },
+            surface: 'CHAT', guides: {}, onSkillLoaded: vi.fn(), canAffordPaidTool: () => true, wasRerouted: () => true,
+        })
+        const result = await surface.tools[LAZY_TOOL_NAME]?.toModelOutput?.({ toolCallId: 'call-1', input: { tool: 'target', input: {} }, output: 'raw' })
+
+        expect(serialize).toHaveBeenCalledWith({ toolCallId: 'call-1', input: {}, output: 'raw' })
+        expect(result?.type).toBe(output.type)
+        expect(JSON.stringify(result)).toContain('next time call ap_lazy_tool')
     })
 })
 

@@ -1,12 +1,12 @@
-import { apId, Permission, RoleType } from '@activepieces/core-utils'
-import { DefaultProjectRole, ProjectMember } from '@activepieces/shared'
+import { Permission } from '@activepieces/core-utils'
+import { PlatformRole, ProjectType } from '@activepieces/shared'
 import { FastifyInstance } from 'fastify'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { mcpAccess } from '../../../../src/app/mcp/mcp-access'
 import { db } from '../../../helpers/db'
 import { McpClient, mcpClientHelpers } from '../../../helpers/mcp-client'
-import { createMockProjectRole } from '../../../helpers/mocks'
-import { createMemberContext, createTestContext, TestContext } from '../../../helpers/test-context'
+import { createMockProject } from '../../../helpers/mocks'
+import { createTestContext, createWorkspaceUserContext, TestContext } from '../../../helpers/test-context'
 import { setupTestEnvironment, teardownTestEnvironment } from '../../../helpers/test-setup'
 
 let app: FastifyInstance
@@ -22,17 +22,6 @@ afterAll(async () => {
     await teardownTestEnvironment()
 })
 
-async function createCustomRoleMember({ ctx, permissions }: { ctx: TestContext, permissions: Permission[] }): Promise<TestContext> {
-    const role = createMockProjectRole({
-        platformId: ctx.platform.id,
-        name: `role-${apId()}`,
-        permissions,
-        type: RoleType.CUSTOM,
-    })
-    await db.save('project_role', role)
-    return createMemberContext(app, ctx, { projectRole: role.name })
-}
-
 function connectAs({ ctx }: { ctx: TestContext }): Promise<McpClient> {
     return mcpClientHelpers.connect({
         app,
@@ -45,18 +34,18 @@ function call({ mcpClient, name, args }: { mcpClient: McpClient, name: string, a
 }
 
 describe('MCP access on community edition', () => {
-    it('keeps a project accessible although the role lacks READ_MCP, because community edition has no RBAC', async () => {
+    it('lets a read-only operator discover accessible team workspaces', async () => {
         const ctx = await createTestContext(app)
-        const member = await createCustomRoleMember({ ctx, permissions: [Permission.READ_FLOW] })
+        const member = await createWorkspaceUserContext({ app, parentCtx: ctx, platformRole: PlatformRole.OPERATOR })
 
         const projects = await mcpAccess.listAccessibleProjects({ platformId: ctx.platform.id, userId: member.user.id, log: app.log })
 
         expect(projects.map(p => p.id)).toEqual([ctx.project.id])
     })
 
-    it('lets a member whose role lacks READ_MCP connect and run a read tool', async () => {
+    it('lets a read-only operator connect and inspect flows', async () => {
         const ctx = await createTestContext(app)
-        const member = await createCustomRoleMember({ ctx, permissions: [Permission.READ_FLOW] })
+        const member = await createWorkspaceUserContext({ app, parentCtx: ctx, platformRole: PlatformRole.OPERATOR })
         const mcpClient = await connectAs({ ctx: member })
 
         await call({ mcpClient, name: 'ap_set_project_context', args: { projectId: ctx.project.id } })
@@ -65,9 +54,9 @@ describe('MCP access on community edition', () => {
         expect(listed).not.toContain('Permission denied')
     })
 
-    it('lets a member whose role lacks READ_MCP run a piece-catalog tool', async () => {
+    it('lets a read-only operator research integrations', async () => {
         const ctx = await createTestContext(app)
-        const member = await createCustomRoleMember({ ctx, permissions: [Permission.READ_FLOW] })
+        const member = await createWorkspaceUserContext({ app, parentCtx: ctx, platformRole: PlatformRole.OPERATOR })
         const mcpClient = await connectAs({ ctx: member })
 
         const researched = await call({ mcpClient, name: PIECE_CATALOG_TOOL, args: { query: 'slack' } })
@@ -75,34 +64,66 @@ describe('MCP access on community edition', () => {
         expect(researched).not.toContain('Permission denied')
     })
 
-    it('refuses a piece-catalog tool on an issued token once the member leaves every project', async () => {
+    it('refuses flow creation by a read-only operator', async () => {
         const ctx = await createTestContext(app)
-        const member = await createMemberContext(app, ctx, { projectRole: DefaultProjectRole.EDITOR })
+        const operator = await createWorkspaceUserContext({ app, parentCtx: ctx, platformRole: PlatformRole.OPERATOR })
+        const mcpClient = await connectAs({ ctx: operator })
+        await call({ mcpClient, name: 'ap_set_project_context', args: { projectId: ctx.project.id } })
+
+        const result = await call({ mcpClient, name: 'ap_create_flow', args: { flowName: 'Forbidden write' } })
+
+        expect(result).toContain('Permission denied')
+        expect(await db.findBy('flow', { projectId: ctx.project.id })).toEqual([])
+    })
+
+    it('does not grant a nonowning MEMBER workspace discovery or OAuth access', async () => {
+        const ctx = await createTestContext(app)
+        const member = await createWorkspaceUserContext({ app, parentCtx: ctx, platformRole: PlatformRole.MEMBER })
+
+        const projects = await mcpAccess.listAccessibleProjects({ platformId: ctx.platform.id, userId: member.user.id, log: app.log })
+
+        expect(projects).toEqual([])
+        expect((await member.post('/v1/mcp-oauth/approve', { authRequestId: 'unused' })).statusCode).toBe(403)
+    })
+
+    it('keeps another user\'s personal workspace hidden from operators and admins', async () => {
+        const ctx = await createTestContext(app)
+        const personal = createMockProject({ platformId: ctx.platform.id, ownerId: ctx.user.id, type: ProjectType.PERSONAL })
+        await db.save('project', personal)
+
+        for (const platformRole of [PlatformRole.OPERATOR, PlatformRole.ADMIN]) {
+            const user = await createWorkspaceUserContext({ app, parentCtx: ctx, platformRole })
+            const projects = await mcpAccess.listAccessibleProjects({ platformId: ctx.platform.id, userId: user.user.id, log: app.log })
+            expect(projects.map(project => project.id)).toContain(ctx.project.id)
+            expect(projects.map(project => project.id)).not.toContain(personal.id)
+        }
+    })
+
+    it('refuses a piece-catalog tool on an issued token once workspace access is revoked', async () => {
+        const ctx = await createTestContext(app)
+        const member = await createWorkspaceUserContext({ app, parentCtx: ctx, platformRole: PlatformRole.OPERATOR })
         const mcpClient = await connectAs({ ctx: member })
         expect(await call({ mcpClient, name: PIECE_CATALOG_TOOL, args: { query: 'slack' } })).not.toContain('Permission denied')
 
-        const membership = await db.findOneByOrFail<ProjectMember>('project_member', { userId: member.user.id })
-        await db.delete('project_member', membership.id)
+        await db.update('user', member.user.id, { platformRole: PlatformRole.MEMBER })
 
         expect(await call({ mcpClient, name: PIECE_CATALOG_TOOL, args: { query: 'slack' } })).toContain(Permission.READ_MCP)
     })
 
-    it('refuses project selection on an issued token once the member leaves every project', async () => {
+    it('refuses project selection on an issued token once workspace access is revoked', async () => {
         const ctx = await createTestContext(app)
-        const member = await createMemberContext(app, ctx, { projectRole: DefaultProjectRole.EDITOR })
+        const member = await createWorkspaceUserContext({ app, parentCtx: ctx, platformRole: PlatformRole.OPERATOR })
         const mcpClient = await connectAs({ ctx: member })
 
-        const membership = await db.findOneByOrFail<ProjectMember>('project_member', { userId: member.user.id })
-        await db.delete('project_member', membership.id)
+        await db.update('user', member.user.id, { platformRole: PlatformRole.MEMBER })
 
         expect(await call({ mcpClient, name: 'ap_set_project_context', args: { projectId: ctx.project.id } })).toContain(Permission.READ_MCP)
     })
 
-    it('refuses platform-wide authorization to a member who belongs to no project', async () => {
+    it('refuses platform-wide authorization to a member without workspace access', async () => {
         const ctx = await createTestContext(app)
-        const member = await createMemberContext(app, ctx, { projectRole: DefaultProjectRole.EDITOR })
-        const membership = await db.findOneByOrFail<ProjectMember>('project_member', { userId: member.user.id })
-        await db.delete('project_member', membership.id)
+        const member = await createWorkspaceUserContext({ app, parentCtx: ctx, platformRole: PlatformRole.OPERATOR })
+        await db.update('user', member.user.id, { platformRole: PlatformRole.MEMBER })
 
         const response = await member.post('/v1/mcp-oauth/approve', { authRequestId: 'unused' })
 

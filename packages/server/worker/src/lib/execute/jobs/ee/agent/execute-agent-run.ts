@@ -1,6 +1,6 @@
 import { ActivepiecesAiBilling, ActivepiecesAiConsumerSource, AIProviderName, ErrorCode, formatPieceError, isNil, isObject, spreadIfDefined, tryCatch, tryCatchSync } from '@activepieces/core-utils'
 import { agentAiUtils, aiUtils } from '@activepieces/server-utils'
-import { AgentEvent, AgentEventType, AgentKnowledgeBaseTool, AgentMcpTool, AgentOutputField, AgentPhase, AgentPieceTool, AgentResult, AgentRunSource, AgentTool, AgentToolType, AiProviderCredentials, apErrorOf, EngineResponseStatus, ExecuteAgentRunJobData, MAX_AGENT_TURN_WALL_CLOCK_MS, PersistedAgentMessage, PersistedAgentMessageSchema, PersistedAgentPart, PersistedAgentPartType, PersistedAgentRole, ResolvedAgentFlowTool, WorkerJobType } from '@activepieces/shared'
+import { AgentEvent, AgentEventType, AgentKnowledgeBaseTool, AgentMcpTool, AgentOutputField, AgentPhase, AgentPieceTool, AgentResult, AgentRunSource, AgentTool, agentToolSkills, AgentToolType, AiProviderCredentials, apErrorOf, EngineResponseStatus, ExecuteAgentRunJobData, MAX_AGENT_TURN_WALL_CLOCK_MS, PersistedAgentMessage, PersistedAgentMessageSchema, PersistedAgentPart, PersistedAgentPartType, PersistedAgentRole, ResolvedAgentFlowTool, SkillSurface, WorkerJobType } from '@activepieces/shared'
 import { createUIMessageStream, generateText, ModelMessage, streamText, ToolSet, toUIMessageStream } from 'ai'
 import { FireAndForgetJobResult, JobContext, JobHandler, JobResultKind } from '../../../types'
 import { toResolvedAiFile } from '../../ai/ai-files'
@@ -8,7 +8,8 @@ import { agentMcpClient, McpConnection } from './agent-mcp-client'
 import { stepResultFrom } from './agent-step-result'
 import { agentToolPolicy } from './agent-tool-policy'
 import { agentWorkerTools, GateDecision, TaintState } from './agent-worker-tools'
-import { classifyAgentRunError, delayWithJitter, firstStepUsesFastModel, isTransientFailureText, runAgentTurn } from './run-agent-turn'
+import { classifyAgentRunError, delayWithJitter, drainOf, firstStepUsesFastModel, isTransientFailureText, NO_STEP_CONTENT, runAgentTurn, StreamDrain, trackStepContent } from './run-agent-turn'
+import { unwrapLazyToolChunk } from './tools/skill-tools'
 
 const BATCH_SIZE = 10
 const BATCH_FLUSH_MS = 50
@@ -261,6 +262,7 @@ export const executeAgentRunJob: JobHandler<ExecuteAgentRunJobData, FireAndForge
                         systemPrompt: config.systemPrompt,
                         messages: config.messages as ModelMessage[],
                         tools: mergedTools,
+                        ...spreadIfDefined('skills', skillsFor({ source, guides: config.guides })),
                         allToolNames,
                         tier: config.tier,
                         modelId: config.modelId,
@@ -497,6 +499,11 @@ async function releaseFlowStep({ ctx, conversationId, flowRunId, waitpointId, ou
     })
 }
 
+
+function skillsFor({ source, guides }: { source: AgentRunSource, guides: Record<string, string> }): { surface: SkillSurface, guides: Record<string, string> } | undefined {
+    const surface = agentToolSkills.surfaceFor({ source })
+    return isNil(surface) ? undefined : { surface, guides }
+}
 
 function isPieceTool(tool: AgentTool): tool is AgentPieceTool {
     return tool.type === AgentToolType.PIECE
@@ -795,7 +802,9 @@ async function streamChunksToClient({ result, ctx, userId, conversationId, runId
     log: JobContext['log']
     abortSignal: AbortSignal
     onStreamIdle: (reason: 'idle' | 'tool' | 'reasoning') => void
-}): Promise<void> {
+}): Promise<StreamDrain> {
+    let stepContent = NO_STEP_CONTENT
+    const heldLazyToolStarts = new Map<string, Record<string, unknown>>()
     let chunkBuffer: unknown[] = []
     let flushTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -848,7 +857,15 @@ async function streamChunksToClient({ result, ctx, userId, conversationId, runId
             const { done, value: chunk } = next
             if (done) break
             armIdleReporter()
+            const unwrapped = unwrapLazyToolChunk({ chunk, heldStarts: heldLazyToolStarts })
+            if (unwrapped.hold) {
+                heldLazyToolStarts.set(unwrapped.hold.callId, unwrapped.hold.chunk)
+            }
+            if (unwrapped.release) {
+                heldLazyToolStarts.delete(unwrapped.release)
+            }
             const chunkType = isObject(chunk) && typeof chunk['type'] === 'string' ? chunk['type'] : undefined
+            stepContent = trackStepContent({ state: stepContent, chunkType })
             if (chunkType === 'tool-input-available') {
                 pendingToolCalls++
             }
@@ -861,7 +878,7 @@ async function streamChunksToClient({ result, ctx, userId, conversationId, runId
             else if (chunkType === 'reasoning-end') {
                 reasoningInFlight = false
             }
-            chunkBuffer.push(chunk)
+            chunkBuffer.push(...unwrapped.emit)
             if (chunkBuffer.length >= BATCH_SIZE) {
                 if (flushTimer) {
                     clearTimeout(flushTimer)
@@ -888,6 +905,7 @@ async function streamChunksToClient({ result, ctx, userId, conversationId, runId
     }
     if (flushTimer) clearTimeout(flushTimer)
     await flushChunks()
+    return drainOf({ state: stepContent })
 }
 
 async function generateTitleIfFirstTurn({ model, userMessage, previousUiMessages, log, conversationId, abortSignal }: {

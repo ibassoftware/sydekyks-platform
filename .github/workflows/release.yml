@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Stable release version, for example 1.0.7 (run from main)'
+        description: 'Stable release version, for example 1.0.8 (run from main)'
         required: true
         type: string
 
