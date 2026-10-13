@@ -1,10 +1,10 @@
-import { apId, DefaultProjectRole, FlowStatus, FlowVersionState, McpServerType, Project } from '@activepieces/shared'
+import { apId, FlowStatus, FlowVersionState, McpServerType, PlatformRole, Project } from '@activepieces/shared'
 import { FastifyInstance } from 'fastify'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { db } from '../../../helpers/db'
 import { MCP_OAUTH_REDIRECT_URI, mcpOAuthTestHelpers } from '../../../helpers/mcp-oauth'
 import { createMockFlow, createMockFlowVersion, createMockProject } from '../../../helpers/mocks'
-import { createMemberContext, createTestContext, TestContext } from '../../../helpers/test-context'
+import { createTestContext, createWorkspaceUserContext, TestContext } from '../../../helpers/test-context'
 import { setupTestEnvironment } from '../../../helpers/test-setup'
 
 let app: FastifyInstance
@@ -146,8 +146,9 @@ describe('platform MCP project selection', () => {
         expect(listedBySecond).not.toContain(FLOW_IN_FIRST_PROJECT)
     })
 
-    it('lets a platform MEMBER authorize platform-wide MCP', async () => {
-        const member = await createMemberContext(app, ctx, { projectRole: DefaultProjectRole.EDITOR })
+    it('lets a platform MEMBER authorize MCP for a workspace they own', async () => {
+        const member = await createWorkspaceUserContext({ app, parentCtx: ctx, platformRole: PlatformRole.MEMBER })
+        await db.update('project', ctx.project.id, { ownerId: member.user.id })
         const client = await mcpOAuthTestHelpers.registerClient({ app, tokenEndpointAuthMethod: 'none' })
         const { challenge } = mcpOAuthTestHelpers.generatePkce()
 

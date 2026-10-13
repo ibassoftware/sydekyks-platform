@@ -7,7 +7,7 @@ import { FastifyBaseLogger } from 'fastify'
 import { agentWorkerTools } from './agent-worker-tools'
 import { TaintState } from './tools/tool-primitives'
 
-const CONVERSATION_ID_HEADER = 'x-ap-conversation-id'
+const CONVERSATION_ID_HEADER = 'x-conversation-id'
 const MCP_OFFLOAD_BYTES = 64 * 1024
 
 const MCP_CONNECTOR_NAME_PATTERN = /^mcp__([^_]+)__/

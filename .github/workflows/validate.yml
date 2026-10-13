@@ -14,6 +14,23 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.1-pg16-trixie@sha256:1e4956185a7fd9306a41ee759a7b4329c4faf9a2bb91a1d01437310c97002433
+        env:
+          POSTGRES_DB: sydekyks_ci
+          POSTGRES_USER: sydekyks_ci
+          POSTGRES_PASSWORD: disposable-ci-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U sydekyks_ci -d sydekyks_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -40,3 +57,36 @@ jobs:
       - run: bun x turbo run build --concurrency=2 --filter=web --filter=@activepieces/engine --filter=api --filter=worker
         env:
           NODE_OPTIONS: --max-old-space-size=4096
+      - name: Check Syd worker and supporting agent regressions
+        run: >-
+          bun x vitest run --config packages/server/worker/vitest.config.ts
+          packages/server/worker/test/lib/execute/jobs/ee/agent
+          packages/server/worker/test/lib/agent-eval/agent-tool-call-repair.test.ts
+          packages/server/worker/test/lib/agent-eval/agent-turn-credits.test.ts
+          packages/server/worker/test/lib/agent-eval/agent-turn-provider-options.test.ts
+          --maxWorkers=2
+      - name: Check shared skill and provider utility contracts
+        run: |
+          (cd packages/core/shared && bun x vitest run test/ee/agent-tool-skills.test.ts)
+          bun x vitest run --config packages/server/utils/vitest.config.ts packages/server/utils/test/agent-ai-utils.test.ts packages/server/utils/test/ai-provider-signal.test.ts
+      - name: Check Syd API and MCP authorization regressions
+        env:
+          AP_ENVIRONMENT: test
+          AP_DB_TYPE: POSTGRES
+          AP_POSTGRES_HOST: 127.0.0.1
+          AP_POSTGRES_PORT: '5432'
+          AP_POSTGRES_DATABASE: sydekyks_ci
+          AP_POSTGRES_USERNAME: sydekyks_ci
+          AP_POSTGRES_PASSWORD: disposable-ci-only
+          AP_REDIS_TYPE: STANDALONE
+          AP_REDIS_HOST: 127.0.0.1
+          AP_REDIS_PORT: '6379'
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: |
+          node tools/prepare-release-test-db.cjs
+          bun x vitest run --config packages/server/api/vitest.config.ts \
+            packages/server/api/test/integration/ce/mcp \
+            packages/server/api/test/integration/ce/syd \
+            packages/server/api/test/unit/syd \
+            packages/server/api/test/unit/sydekyks-community-*.test.ts \
+            --no-file-parallelism --maxWorkers=1
