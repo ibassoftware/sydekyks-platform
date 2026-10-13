@@ -1,4 +1,5 @@
 import { ApMultipartFile, OptionalArrayFromQuery, OptionalBooleanFromQuery } from '@activepieces/core-utils'
+import semVer from 'semver'
 import { z } from 'zod'
 import { ApEdition } from '../../../core/flag/flag'
 import { PackageType, PieceCategory } from '../piece'
@@ -8,6 +9,13 @@ export const EXACT_VERSION_REGEX = new RegExp(EXACT_VERSION_PATTERN)
 const VERSION_PATTERN = '^([~^])?[0-9]+\\.[0-9]+\\.[0-9]+$'
 
 export const ExactVersionType = z.string().regex(new RegExp(EXACT_VERSION_PATTERN))
+
+// Platform releases may contain prerelease/build identifiers. Connector package
+// versions keep their separate exact-version constraints.
+export const ReleaseVersionType = z.string().refine(
+    (release) => semVer.valid(release) !== null,
+    { message: 'Invalid platform release version' },
+)
 
 export const VersionType = z.string().regex(new RegExp(VERSION_PATTERN))
 
@@ -50,7 +58,7 @@ export type GetPieceRequestParams = z.infer<typeof GetPieceRequestParams>
 
 export const ListPiecesRequestQuery = z.object({
     projectId: z.string().optional(),
-    release: ExactVersionType.optional(),
+    release: ReleaseVersionType.optional(),
     includeHidden: OptionalBooleanFromQuery,
     audience: z.nativeEnum(PieceAudienceFilter).optional(),
     edition: z.nativeEnum(ApEdition).optional(),
@@ -66,7 +74,7 @@ export type ListPiecesRequestQuery = z.infer<typeof ListPiecesRequestQuery>
 
 
 export const RegistryPiecesRequestQuery = z.object({
-    release: ExactVersionType,
+    release: ReleaseVersionType,
     edition: z.nativeEnum(ApEdition),
 })
 
