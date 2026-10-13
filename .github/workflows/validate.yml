@@ -82,6 +82,7 @@ jobs:
       - name: Check Syd API and MCP authorization regressions
         env:
           SYD_TEST_POSTGRES: 'true'
+          SYD_TEST_REDIS: 'true'
           AP_ENVIRONMENT: test
           AP_DB_TYPE: POSTGRES
           AP_POSTGRES_HOST: 127.0.0.1
