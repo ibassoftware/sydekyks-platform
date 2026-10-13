@@ -1,6 +1,6 @@
 {
   "name": "activepieces",
-  "version": "0.93.0-sydekyks.6",
+  "version": "0.93.0-sydekyks.7",
   "packageManager": "bun@1.4.0",
   "trustedDependencies": [
     "sqlite3",

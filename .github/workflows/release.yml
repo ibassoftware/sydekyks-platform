@@ -1,0 +1,157 @@
+name: Release Docker image
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Stable release version, for example 1.0.7 (run from main)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Validate release input and source
+        id: release
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            [[ "$GITHUB_REF" == refs/heads/main ]] || { echo 'Dispatch releases from main.' >&2; exit 1; }
+            version="$REQUESTED_VERSION"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo 'A stable semantic version is required.' >&2; exit 1; }
+          git merge-base --is-ancestor HEAD origin/main || { echo 'Release commit must belong to main.' >&2; exit 1; }
+          # Published version tags are immutable. A failed build may be rerun until promotion.
+          python3 scripts/check-release-version.py "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  validate:
+    needs: prepare
+    uses: ./.github/workflows/validate.yml
+
+  build:
+    needs: [prepare, validate]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Free runner disk for the full runtime build
+        run: sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - name: Build candidate locally
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          file: Dockerfile.release
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          tags: sydekyks-release:tested
+          build-args: |
+            SYDEKYKS_RELEASE_VERSION=${{ needs.prepare.outputs.version }}
+            SYDEKYKS_SOURCE_REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=release-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.arch }}
+      - name: Test fresh install and upgrade on this architecture
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_REVISION: ${{ github.sha }}
+        run: python3 scripts/smoke-release.py sydekyks-release:tested
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Push tested candidate
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          candidate="ibassoftware/sydekyks:ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${ARCH}"
+          docker tag sydekyks-release:tested "$candidate"
+          docker push "$candidate"
+          docker buildx imagetools inspect "$candidate" --format '{{json .Manifest}}' > manifest.json
+          mkdir -p release-digests
+          python3 - <<'PY'
+          import json, os, pathlib, re
+          digest = json.load(open('manifest.json'))['digest']
+          assert re.fullmatch(r'sha256:[0-9a-f]{64}', digest)
+          pathlib.Path('release-digests', os.environ['ARCH']).write_text(digest)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-${{ matrix.arch }}
+          path: release-digests/*
+          retention-days: 30
+          if-no-files-found: error
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release-digests
+      - name: Publish both tested architectures
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          image=ibassoftware/sydekyks
+          for arch in amd64 arm64; do
+            grep -Eq '^sha256:[0-9a-f]{64}$' "release-digests/$arch"
+          done
+          # Recheck at promotion, including after a rerun of a completed workflow.
+          python3 scripts/check-release-version.py "$RELEASE_VERSION"
+          docker buildx imagetools create -t "$image:$RELEASE_VERSION" \
+            "$image@$(cat release-digests/amd64)" "$image@$(cat release-digests/arm64)"
+          docker buildx imagetools inspect "$image:$RELEASE_VERSION" --raw > release-index.json
+          python3 - <<'PY'
+          import json
+          platforms = {(m['platform']['os'], m['platform']['architecture']) for m in json.load(open('release-index.json'))['manifests']}
+          assert platforms == {('linux', 'amd64'), ('linux', 'arm64')}, platforms
+          PY
+          docker buildx imagetools inspect "$image:$RELEASE_VERSION" --format '{{json .Manifest}}' > release-manifest.json
+          digest="$(python3 -c "import json; print(json.load(open('release-manifest.json'))['digest'])")"
+          docker buildx imagetools create -t "$image:latest" "$image@$digest"
+          printf 'Published `%s:%s@%s` (AMD64 and ARM64).\n' "$image" "$RELEASE_VERSION" "$digest" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: published-release
+          path: |
+            release-index.json
+            release-manifest.json
+          retention-days: 90

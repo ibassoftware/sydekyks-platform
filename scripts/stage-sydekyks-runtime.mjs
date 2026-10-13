@@ -5,6 +5,10 @@ const destination = path.resolve('runtime');
 fs.rmSync(destination, {recursive:true, force:true});
 fs.mkdirSync(destination, {recursive:true});
 const sourcePackage = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const publicVersion = process.env.SYDEKYKS_RELEASE_VERSION;
+if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(publicVersion ?? '')) {
+    throw new Error('SYDEKYKS_RELEASE_VERSION must be a stable semantic version');
+}
 const workspaces = [];
 function copy(source, target) {
     if (!fs.existsSync(source)) return;
@@ -44,6 +48,6 @@ for (const file of ['LICENSE','LICENSE.activepieces.txt','LICENSE.sydekyks.txt',
     if (!fs.existsSync(file)) throw new Error(`Required distribution file missing: ${file}`);
     copy(file,path.join(destination,file));
 }
-const manifest={publicVersion:'1.0.6',version:sourcePackage.version,permittedWorkspaces:workspaces.sort(),upstreamNotice:'LICENSE.activepieces.txt',projectLicense:'LICENSE.sydekyks.txt',licenseScope:'LICENSE_SCOPE.md',mitBaseline:'f2e657c9c18447efc7167440b9481503f23dfc8a',applicationEdition:'ce',distributionPolicy:'source available; all available features free for permitted self-hosted use; no activation key or trial; preserve existing MIT rights',databaseSupport:['fresh PostgreSQL installations','released Sydekyks 1.0.x upgrades after backup'],restrictedRootsRemoved:['packages/ee','packages/server/api/src/app/ee']};
+const manifest={publicVersion,version:sourcePackage.version,permittedWorkspaces:workspaces.sort(),upstreamNotice:'LICENSE.activepieces.txt',projectLicense:'LICENSE.sydekyks.txt',licenseScope:'LICENSE_SCOPE.md',mitBaseline:'f2e657c9c18447efc7167440b9481503f23dfc8a',applicationEdition:'ce',distributionPolicy:'source available; all available features free for permitted self-hosted use; no activation key or trial; preserve existing MIT rights',databaseSupport:['fresh PostgreSQL installations','released Sydekyks 1.0.x upgrades after backup'],restrictedRootsRemoved:['packages/ee','packages/server/api/src/app/ee']};
 fs.writeFileSync(path.join(destination,'release-manifest.json'),JSON.stringify(manifest,null,2)+'\n');
 console.log(JSON.stringify({stagedWorkspaces:workspaces.length}));
