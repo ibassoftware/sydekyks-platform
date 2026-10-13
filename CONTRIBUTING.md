@@ -23,6 +23,8 @@ npm run check:distribution:build
 node --test scripts/audit-distribution-boundaries.test.mjs
 ```
 
+The supported release installation uses the root `docker-compose.yml` and the [Docker Compose guide](https://docs.sydekyks.com/install/options/docker-compose). Generate a private deployment environment with `bash tools/deploy.sh`; the helper preserves an existing `.env`. Kubernetes and Pulumi deployment templates are outside the supported installation path.
+
 Build the application with the pinned release recipe:
 
 ```sh

@@ -18,7 +18,7 @@ COPY --from=build /usr/src/app/packages/server/api/src/assets/default.cf /usr/lo
 RUN --mount=type=cache,target=/root/.bun/install/cache bun install --production --frozen-lockfile
 ENV NODE_ENV=production AP_EDITION=ce AP_DB_TYPE=POSTGRES AP_REDIS_TYPE=STANDALONE
 ARG SYDEKYKS_SOURCE_REVISION
-LABEL org.opencontainers.image.title="Sydekyks" org.opencontainers.image.version="1.0.6" org.opencontainers.image.revision=$SYDEKYKS_SOURCE_REVISION org.opencontainers.image.source="https://github.com/leroborat/sydekyks-platform" service="sydekyks"
+LABEL org.opencontainers.image.title="Sydekyks" org.opencontainers.image.version="1.0.6" org.opencontainers.image.revision=$SYDEKYKS_SOURCE_REVISION org.opencontainers.image.source="https://github.com/ibassoftware/sydekyks-platform" service="sydekyks"
 HEALTHCHECK --interval=10s --timeout=5s --start-period=90s --retries=6 CMD [ "$AP_CONTAINER_TYPE" = "WORKER" ] && exit 0 || curl -fsS "http://localhost:${AP_PORT:-80}/api/v1/health" || exit 1
 ENTRYPOINT ["./docker-entrypoint.sh"]
 EXPOSE 80
