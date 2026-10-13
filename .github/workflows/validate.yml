@@ -29,7 +29,9 @@ jobs:
       - run: npm run lint-dev
       - run: git diff --exit-code
       - run: cp packages/server/api/.env.tests.example packages/server/api/.env.tests
-      - run: bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/integration/ce/sydekyks-free/free-access.test.ts
+      - run: bun x vitest run test/automation/piece-requests.test.ts
+        working-directory: packages/core/shared
+      - run: bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/integration/ce/sydekyks-free/free-access.test.ts packages/server/api/test/unit/app/pieces/piece-release-compatibility.test.ts
       - run: bun x turbo run build --concurrency=2 --filter=web --filter=@activepieces/engine --filter=api --filter=worker
         env:
           NODE_OPTIONS: --max-old-space-size=4096
