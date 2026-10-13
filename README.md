@@ -35,7 +35,7 @@ Visit [docs.sydekyks.com](https://docs.sydekyks.com) for setup instructions and 
 
 ## Hosting and support
 
-Self-hosting is free. Optional managed hosting, support, and workflow implementation are available through [Sydekyks](https://www.sydekyks.com).
+Self-hosting is free. Optional managed hosting and support, including workflow implementation, are available through [Sydekyks](https://www.sydekyks.com).
 
 Authorized partners may provide hosting and support under their written partner agreements. Installation, customization, training, and support on customer-owned infrastructure are permitted. Competing hosting and software resale of code covered by the Sustainable Use License require written authorization.
 
