@@ -17,7 +17,7 @@ All available features are free. No license key, activation, trial period, or ex
 
 Follow the [Docker Compose installation guide](https://docs.sydekyks.com/install/options/docker-compose).
 
-The published image is `ibassoftware/sydekyks:1.0.6`, available for Linux AMD64 and ARM64. Installation requires PostgreSQL with pgvector and Redis.
+The release image is `ibassoftware/sydekyks:1.0.7`, available for Linux AMD64 and ARM64. Installation requires PostgreSQL with pgvector and Redis.
 
 The root Compose file matches the reviewed installation guide. For a fresh local installation:
 
@@ -44,6 +44,8 @@ Connected services and AI providers may charge their own fees.
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and validation commands. Build the application image with `Dockerfile.release`; this rebuilds the API, worker, engine and web application and checks the distribution boundary.
+
+See [Docker release automation](docs/docker-releases.md) for the GitHub Actions publishing workflow, release triggers, and required registry secrets.
 
 ## Licensing and attribution
 
