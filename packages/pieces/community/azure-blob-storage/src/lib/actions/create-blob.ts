@@ -1,0 +1,45 @@
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { streamUtils } from '@activepieces/pieces-common';
+import { azureBlobStorageAuth } from '../auth';
+import { BlobServiceClient, Tags } from '@azure/storage-blob';
+import { containerProp } from '../common';
+
+export const createBlob = createAction({
+  auth: azureBlobStorageAuth,
+  name: 'createBlob',
+  classification: 'WRITE',
+  displayName: 'Create Blob',
+  description: 'Creates a new Blob in the specified location',
+  audience: 'both',
+  aiMetadata: { description: 'Uploads file data as a blob to the given container under the specified blob name, optionally attaching tags. Use to store or update a file in Azure Blob Storage. Idempotent on the blob name: re-uploading to the same name overwrites the existing blob rather than creating duplicates.', idempotent: true },
+  props: {
+      container: containerProp,
+      blobName: Property.ShortText({
+        displayName: 'Blob Name',
+        description: 'The name of the blob to create',
+        required: true,
+      }),
+      file: Property.File({
+        displayName: 'File',
+        description: 'The file to upload as a blob',
+        required: true,
+        streaming: true,
+      }),
+      tags: Property.Object({
+        displayName: 'Tags',
+        description: 'Optional tags to associate with the blob',
+        required: false,
+      }),
+    },
+    async run(context) {
+      const { container, blobName, file, tags } = context.propsValue;
+      const { body } = streamUtils.toStreamingBody(file);
+      const auth = context.auth.props;
+  
+      const blobServiceClient = BlobServiceClient.fromConnectionString(auth.connectionString);
+      const containerClient = blobServiceClient.getContainerClient(container);
+      const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+
+      return await blockBlobClient.uploadStream(body, undefined, undefined, { tags: tags as Tags });
+    },
+});

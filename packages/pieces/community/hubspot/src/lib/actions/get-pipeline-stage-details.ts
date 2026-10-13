@@ -1,0 +1,59 @@
+import { getHubspotAccessToken, hubspotAuth } from '../auth';
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { Client } from '@hubspot/api-client';
+import { pipelineStageDetailsOutputSchema } from '../output-schemas';
+
+export const getPipelineStageDetailsAction = createAction({
+	auth: hubspotAuth,
+	name: 'get-pipeline-stage-details',
+	classification: 'READ',
+	displayName: 'Get Pipeline Stage Details',
+	description: 'Gets the details of a deal or ticket pipeline stage.',
+	audience: 'both',
+	aiMetadata: { description: 'Retrieves the configuration of a single pipeline stage (label, order, metadata) for a ticket or deal pipeline, given the object type, pipeline ID, and stage ID. Use to resolve or validate a stage ID before setting a deal or ticket stage. Read-only and idempotent.', idempotent: true },
+	outputSchema: pipelineStageDetailsOutputSchema,
+	props: {
+		objectType: Property.StaticDropdown({
+			displayName: 'Object Type',
+			required: true,
+			options: {
+				disabled: false,
+				options: [
+					{
+						label: 'Ticket',
+						value: 'ticket',
+					},
+					{
+						label: 'Deal',
+						value: 'deal',
+					},
+				],
+			},
+		}),
+		pipelineId: Property.ShortText({
+			displayName: 'Pipeline ID',
+			description: 'The pipeline\'s ID, found in a deal or ticket\'s pipeline property.',
+			required: true,
+		}),
+		stageId: Property.ShortText({
+			displayName: 'Stage ID',
+			description: 'The stage\'s ID, found in a deal or ticket\'s stage property.',
+			required: true,
+		}),
+	},
+	async run(context) {
+		const objectType = context.propsValue.objectType;
+		const pipelineId = context.propsValue.pipelineId;
+		const stageId = context.propsValue.stageId;
+
+		const client = new Client({ accessToken: getHubspotAccessToken(context.auth) });
+
+		const response = await client.crm.pipelines.pipelineStagesApi.getById(
+			objectType,
+			pipelineId,
+			stageId,
+		);
+
+		return response;
+	},
+});

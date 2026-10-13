@@ -1,0 +1,124 @@
+import { createAction } from '@activepieces/pieces-framework';
+import { HttpMethod, HttpRequest } from '@activepieces/pieces-common';
+import { Sequence } from '../common/types';
+import { convertkitAuth } from '../auth';
+import { kitHttp } from '../common/http';
+import { sequenceIdDropdown } from '../common/sequences';
+import { subscriberEmail, subscriberFirstName } from '../common/subscribers';
+import { allFields } from '../common/custom-fields';
+import { tags } from '../common/tags';
+import { SEQUENCES_API_ENDPOINT } from '../common/constants';
+import { buildQueryParams, fetchSequences } from '../common/service';
+import {
+  kitSequenceListOutputSchema,
+  kitSubscriptionListOutputSchema,
+  kitSubscriptionOutputSchema,
+} from '../output-schemas';
+
+export const listSequences = createAction({
+  auth: convertkitAuth,
+  name: 'sequences_list_sequences',
+  classification: 'SEARCH',
+  outputSchema: kitSequenceListOutputSchema,
+  displayName: 'List Sequences',
+  description: 'Returns a list of all sequences',
+  audience: 'human',
+  aiMetadata: {
+    description:
+      'Lists all sequences (automated email courses) in the account with their IDs and names. Use it to find a sequence ID before enrolling subscribers or listing enrollments. Takes no inputs; read-only and idempotent.',
+    idempotent: true,
+  },
+  props: {},
+  run(context) {
+    return fetchSequences(context.auth.secret_text);
+  },
+});
+
+export const addSubscriberToSequence = createAction({
+  auth: convertkitAuth,
+  name: 'sequences_add_subscriber_to_sequence',
+  classification: 'WRITE',
+  outputSchema: kitSubscriptionOutputSchema,
+  displayName: 'Add Subscriber To Sequence',
+  description: 'Add a subscriber to a sequence',
+  audience: 'human',
+  aiMetadata: {
+    description:
+      'Enrolls an email address in a sequence so it starts receiving that automated email course, optionally setting first name, tags, and custom field values. Effectively idempotent — re-subscribing the same email to the same sequence upserts instead of duplicating the enrollment.',
+    idempotent: true,
+  },
+  props: {
+    sequenceId: sequenceIdDropdown,
+    email: subscriberEmail,
+    firstName: subscriberFirstName,
+    tags,
+    fields: allFields,
+  },
+  async run(context) {
+    const { sequenceId, email, firstName, tags, fields } = context.propsValue;
+    const url = `${SEQUENCES_API_ENDPOINT}/${sequenceId}/subscribe`;
+
+    const body = {
+      api_secret: context.auth.secret_text,
+      email,
+      first_name: firstName,
+      tags,
+      fields,
+    };
+
+    const request: HttpRequest = {
+      url,
+      method: HttpMethod.POST,
+      body,
+    };
+
+    const response = await kitHttp.sendRequest<{
+      subscription: Sequence;
+    }>(request);
+
+    if (response.status !== 200) {
+      throw new Error(
+        `Error adding subscriber to sequence: ${response.status}`
+      );
+    }
+    return response.body.subscription;
+  },
+});
+
+export const listSubscriptionsToSequence = createAction({
+  auth: convertkitAuth,
+  name: 'sequences_list_subscriptions_to_sequence',
+  classification: 'SEARCH',
+  outputSchema: kitSubscriptionListOutputSchema,
+  displayName: 'List Subscriptions To Sequence',
+  description: 'List all subscriptions to a sequence',
+  audience: 'human',
+  aiMetadata: {
+    description:
+      'Lists all subscriber enrollments for one sequence by sequence ID. Use List Sequences first to find the ID. Read-only and idempotent.',
+    idempotent: true,
+  },
+  props: {
+    sequenceId: sequenceIdDropdown,
+  },
+  async run(context) {
+    const url = `${SEQUENCES_API_ENDPOINT}/${context.propsValue.sequenceId}/subscriptions`;
+
+    const request: HttpRequest = {
+      url,
+      method: HttpMethod.GET,
+      queryParams: buildQueryParams(context.auth.secret_text),
+    };
+
+    const response = await kitHttp.sendRequest<{
+      subscriptions: Sequence[];
+    }>(request);
+
+    if (response.status !== 200) {
+      throw new Error(
+        `Error listing subscriptions to sequence: ${response.status}`
+      );
+    }
+    return response.body.subscriptions;
+  },
+});

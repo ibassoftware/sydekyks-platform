@@ -1,0 +1,81 @@
+import {
+  AppConnectionScope,
+  AppConnectionWithoutSensitiveData,
+} from '@activepieces/shared';
+import { t } from 'i18next';
+import { Cable } from 'lucide-react';
+import { useState } from 'react';
+
+import { CreateOrEditConnectionDialog } from '@/app/connections/create-edit-connection-dialog';
+import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { piecesHooks } from '@/features/pieces';
+import { AdminControl, adminControl } from '@/lib/admin-control';
+
+type ReconnectButtonDialogProps = {
+  connection: AppConnectionWithoutSensitiveData;
+  onConnectionCreated: () => void;
+  hasPermission: boolean;
+};
+
+const ReconnectButtonDialog = ({
+  connection,
+  onConnectionCreated,
+  hasPermission,
+}: ReconnectButtonDialogProps) => {
+  const [open, setOpen] = useState(false);
+  const { pieceModel, isLoading } = piecesHooks.usePiece({
+    name: connection.pieceName,
+    version: connection.pieceVersion,
+    enabled: open,
+  });
+
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <Button
+              onClick={() => setOpen(true)}
+              disabled={!hasPermission}
+              variant={'ghost'}
+              {...adminControl(
+                AdminControl.CONNECTIONS_CONNECTION_RECONNECT_OPEN,
+              )}
+            >
+              <Cable className="h-4 w-4" />
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {!hasPermission ? (
+            <p>{t('Permission needed')}</p>
+          ) : (
+            <p>{t('Reconnect')}</p>
+          )}
+        </TooltipContent>
+      </Tooltip>
+      {open && !isLoading && pieceModel && (
+        <CreateOrEditConnectionDialog
+          reconnectConnection={connection}
+          isGlobalConnection={connection.scope === AppConnectionScope.PLATFORM}
+          piece={pieceModel}
+          open={open}
+          key={`CreateOrEditConnectionDialog-open-${open}`}
+          setOpen={(open, connection) => {
+            setOpen(open);
+            if (connection) {
+              onConnectionCreated();
+            }
+          }}
+        />
+      )}
+    </>
+  );
+};
+
+export { ReconnectButtonDialog };

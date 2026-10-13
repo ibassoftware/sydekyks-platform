@@ -1,0 +1,92 @@
+import { Property, createAction } from '@activepieces/pieces-framework';
+import {
+  optionalTimeFormats,
+  timeFormat,
+  outputFormatDescription,
+  timeInputDescription,
+  timeInputPlaceholder,
+  useCurrentTimeDescription,
+  timeZoneOptions,
+  getCorrectedFormat,
+  apDayjs,
+} from '../common';
+import * as z from 'zod/mini'
+import { propsValidation } from '@activepieces/pieces-common';
+import { lastDayOfPreviousMonthActionOutputSchema } from '../output-schemas';
+
+export const lastDayOfPreviousMonthAction = createAction({
+  audience: 'both',
+  name: 'last_day_of_previous_month',
+  classification: 'READ',
+  displayName: 'Last Day of Previous Month',
+  description: 'Get the date and time of the last day of the previous month',
+  aiMetadata: { description: 'Returns the last calendar day of the month before the current month, stamped with midnight, a supplied 24h time, or the current time - the time is overwritten rather than set to end of day, so 23:59 must be asked for explicitly. Use it as the closing bound of a last-month reporting window whose start comes from First Day of Previous Month. Time zone and output format are required and the time must be HH:mm; not idempotent - derived from the current clock, changing once the month rolls over.', idempotent: false },
+  props: {
+    timeFormat: Property.StaticDropdown({
+      displayName: 'Output Format',
+      description: outputFormatDescription,
+      options: {
+        options: optionalTimeFormats,
+      },
+      required: true,
+      defaultValue: timeFormat.format00,
+    }),
+    timeZone: Property.StaticDropdown<string>({
+      displayName: 'Time Zone',
+      description:
+        'Time zone used to work out the date and to report the result.',
+      options: {
+        options: timeZoneOptions,
+      },
+      required: true,
+      defaultValue: 'UTC',
+    }),
+    time: Property.ShortText({
+      displayName: 'Time',
+      description: timeInputDescription,
+      placeholder: timeInputPlaceholder,
+      required: false,
+      defaultValue: '00:00',
+    }),
+    currentTime: Property.Checkbox({
+      displayName: 'Use Current Time',
+      description: useCurrentTimeDescription,
+      required: false,
+      defaultValue: false,
+      advanced: true,
+    }),
+  },
+  outputSchema: lastDayOfPreviousMonthActionOutputSchema,
+  async run(context) {
+    await propsValidation.validateZod(context.propsValue, {
+      time: z.string().check(z.regex(/^\d\d:\d\d$/)),
+    });
+
+    const outputTimeFormat = getCorrectedFormat(context.propsValue.timeFormat);
+    const selectedTimeZone = context.propsValue.timeZone as string;
+    const useCurrentTime = context.propsValue.currentTime as boolean;
+    let providedTime = context.propsValue.time as string;
+
+    const baseDateTime = apDayjs().tz(selectedTimeZone);
+
+    if (useCurrentTime === true) {
+      providedTime = `${baseDateTime.hour()}:${baseDateTime.minute()}`;
+    }
+    const [hours, minutes] = providedTime.split(':').map(Number);
+
+    // Validate inputs
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+      throw new Error(`Invalid input \nhours: ${hours} \nminutes: ${minutes}`);
+    }
+
+    const lastDayOfPreviousMonth = baseDateTime
+      .subtract(1, 'month')
+      .endOf('month')
+      .hour(hours)
+      .minute(minutes)
+      .second(0)
+      .millisecond(0);
+
+    return { result: lastDayOfPreviousMonth.format(outputTimeFormat) };
+  },
+});

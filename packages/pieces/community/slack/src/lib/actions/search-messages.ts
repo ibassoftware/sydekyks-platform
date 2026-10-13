@@ -1,0 +1,46 @@
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { slackAuth } from '../auth';
+import { WebClient } from '@slack/web-api';
+import { requireUserToken, SlackAuthValue } from '../common/auth-helpers';
+import { searchMessagesActionOutputSchema } from '../output-schemas';
+
+export const searchMessages = createAction({
+  name: 'searchMessages',
+  classification: 'SEARCH',
+  displayName: 'Search Messages',
+  description: 'Searches messages. Needs a user token.',
+  audience: 'human',
+  aiMetadata: { description: 'Search across the workspace for messages matching a query string and return all matching messages, paging through every result; read-only and repeatable. Requires a user token (search is not available to bot tokens). Use this to find messages anywhere by content; use Get channel history or Get Message by Timestamp when you already know the channel.', idempotent: true },
+  auth: slackAuth,
+  outputSchema: searchMessagesActionOutputSchema,
+  props: {
+    query: Property.ShortText({
+      displayName: 'Search Query',
+      description: 'Slack search syntax works, e.g. from:@jane in:#general.',
+      placeholder: 'invoice in:#finance',
+      required: true,
+    }),
+  },
+  async run({ auth, propsValue }) {
+    const userToken = requireUserToken(auth as SlackAuthValue);
+    const client = new WebClient(userToken);
+    const matches = [];
+
+    let cursor = '*';
+    do {
+      const page = await client.search.messages({
+        query: propsValue.query,
+        count: 100,
+        // @ts-expect-error TS2353 - SDK is not aware cursor is actually supported
+        cursor,
+      });
+      if (page.messages?.matches) {
+        matches.push(...page.messages.matches);
+      }
+      // @ts-expect-error TS2353 - SDK is not aware next_cursor is actually returned
+      cursor = page.messages?.pagination?.next_cursor;
+    } while (cursor);
+
+    return matches;
+  },
+});

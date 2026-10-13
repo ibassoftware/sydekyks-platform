@@ -1,0 +1,261 @@
+import { ActivepiecesError, assertNotNullOrUndefined, ErrorCode, isNil, Permission, ProjectRole, SeekPage } from '@activepieces/core-utils'
+import { InvitationStatus, InvitationType, ListUserInvitationsRequest, Principal, PrincipalType, SendUserInvitationRequest, SERVICE_KEY_SECURITY_OPENAPI, TelemetryEvent, TelemetryEventName, UserInvitation, UserInvitationWithLink } from '@activepieces/shared'
+import { FastifyBaseLogger, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { StatusCodes } from 'http-status-codes'
+import { z } from 'zod'
+import { userIdentityService } from '../authentication/user-identity/user-identity-service'
+import { transaction } from '../core/db/transaction'
+import { ProjectResourceType } from '../core/security/authorization/common'
+import { securityAccess } from '../core/security/authorization/fastify-security'
+import { rejectedPromiseHandler } from '../helper/promise-handler'
+import { telemetry } from '../helper/telemetry.utils'
+import { projectService } from '../project/project-service'
+import { platformMustBeOwnedByCurrentUser } from '../sydekyks-community/feature-access'
+import { userService } from '../user/user-service'
+import { INVITATION_EXPIRY_SECONDS, userInvitationsService } from './user-invitation.service'
+
+export const invitationModule: FastifyPluginAsyncZod = async (app) => {
+    await app.register(invitationController, { prefix: '/v1/user-invitations' })
+}
+
+const invitationController: FastifyPluginAsyncZod = async (app) => {
+
+    app.post('/', UpsertUserInvitationRequestParams, async (request, reply) => {
+        const { email, type } = request.body
+        switch (type) {
+            case InvitationType.PROJECT:
+                throw new ActivepiecesError({ code: ErrorCode.FEATURE_DISABLED, params: { message: 'Project role invitations are not supported' } })
+                break
+            case InvitationType.PLATFORM:
+                await platformMustBeOwnedByCurrentUser.call(app, request, reply)
+                break
+        }
+        const platformId = request.principal.platform.id
+        const status = await shouldAutoAcceptInvitation(request.principal, request.body, platformId, request.log) ? InvitationStatus.ACCEPTED : InvitationStatus.PENDING
+        const projectRole = await getProjectRoleAndAssertIfFound(platformId, request.body)
+
+        const invitationRecordParams = {
+            email,
+            type,
+            platformId,
+            platformRole: request.body.platformRole,
+            projectId: null,
+            projectRoleId: type === InvitationType.PLATFORM ? null : projectRole?.id ?? null,
+            status,
+        }
+
+        const wouldAddNewUser = await userInvitationsService(request.log).wouldAddNewUser({ email, platformId })
+        const userInvitationRecord = wouldAddNewUser
+            ? await transaction(async (entityManager) => {
+                return userInvitationsService(request.log).createInvitationRecord({ ...invitationRecordParams, entityManager })
+            })
+            : await userInvitationsService(request.log).createInvitationRecord(invitationRecordParams)
+
+        const invitation = await userInvitationsService(request.log).finalizeInvitation({
+            userInvitation: userInvitationRecord,
+            invitationExpirySeconds: INVITATION_EXPIRY_SECONDS,
+        })
+        rejectedPromiseHandler(trackInviteSent({
+            principal: request.principal,
+            platformId,
+            event: {
+                name: TelemetryEventName.INVITE_SENT,
+                payload: {
+                    platformId,
+                    type: type === InvitationType.PLATFORM ? 'platform' : 'project',
+                    role: type === InvitationType.PLATFORM ? request.body.platformRole ?? undefined : projectRole?.name,
+                },
+            },
+            log: request.log,
+        }), request.log)
+        await reply.status(StatusCodes.CREATED).send(invitation)
+    })
+
+    app.get('/', ListUserInvitationsRequestParams, async (request, reply) => {
+        await platformMustBeOwnedByCurrentUser(request, reply)
+        if (!isNil(request.query.projectId) && request.query.type === InvitationType.PROJECT) {
+            throw new ActivepiecesError({ code: ErrorCode.FEATURE_DISABLED, params: { message: 'Project role invitations are not supported' } })
+        }
+        const projectId = await getProjectIdAndAssertPermission(app, request, reply, request.principal, request.query)
+        const invitations = await userInvitationsService(request.log).list({
+            platformId: request.principal.platform.id,
+            projectId: request.query.type === InvitationType.PROJECT ? projectId : null,
+            type: request.query.type,
+            status: request.query.status,
+            cursor: request.query.cursor ?? null,
+            limit: request.query.limit ?? 10,
+        })
+        await reply.status(StatusCodes.OK).send(invitations)
+    })
+
+    app.post('/accept', AcceptUserInvitationRequestParams, async (request, reply) => {
+        const invitation = await userInvitationsService(request.log).getOneByInvitationTokenOrThrow(request.body.invitationToken)
+        const { registered } = await userInvitationsService(request.log).accept({
+            invitationId: invitation.id,
+            platformId: invitation.platformId,
+        })
+        await reply.status(StatusCodes.OK).send({ ...invitation, registered })
+    })
+
+    app.delete('/:id', DeleteInvitationRequestParams, async (request, reply) => {
+        const invitation = await userInvitationsService(request.log).getOneOrThrow({
+            id: request.params.id,
+            platformId: request.principal.platform.id,
+        })
+        switch (invitation.type) {
+            case InvitationType.PROJECT: {
+                assertNotNullOrUndefined(invitation.projectId, 'projectId')
+                await assertPrincipalHasPermissionToProject(app, request, reply, request.principal, invitation.projectId, Permission.WRITE_INVITATION)
+                break
+            }
+            case InvitationType.PLATFORM:
+                await platformMustBeOwnedByCurrentUser.call(app, request, reply)
+                break
+        }
+        await userInvitationsService(request.log).delete({
+            id: request.params.id,
+            platformId: request.principal.platform.id,
+        })
+        await reply.status(StatusCodes.NO_CONTENT).send()
+    })
+}
+
+
+const getProjectRoleAndAssertIfFound = async (platformId: string, request: SendUserInvitationRequest): Promise<ProjectRole | null> => {
+    const { type } = request
+    if (type === InvitationType.PLATFORM) {
+        return null
+    }
+    throw new ActivepiecesError({ code: ErrorCode.FEATURE_DISABLED, params: { message: 'Project roles are not supported' } })
+}
+async function getProjectIdAndAssertPermission<R extends Principal>(
+    app: FastifyInstance,
+    request: FastifyRequest,
+    reply: FastifyReply,
+    principal: R,
+    requestQuery: ListUserInvitationsRequest,
+): Promise<string | null> {
+    if (principal.type === PrincipalType.SERVICE) {
+        if (isNil(requestQuery.projectId)) {
+            return null
+        }
+        await assertPrincipalHasPermissionToProject(app, request, reply, principal, requestQuery.projectId, Permission.READ_INVITATION)
+        return requestQuery.projectId
+    }
+    return requestQuery.projectId ?? null
+}
+
+async function shouldAutoAcceptInvitation(principal: Principal, request: SendUserInvitationRequest, platformId: string, log: FastifyBaseLogger): Promise<boolean> {
+    if (principal.type === PrincipalType.SERVICE) {
+        return true
+    }
+
+    if (request.type === InvitationType.PLATFORM) {
+        return false
+    }
+
+    const identity = await userIdentityService(log).getIdentityByEmail(request.email)
+    if (isNil(identity)) {
+        return false
+    }
+
+    const user = await userService(log).getOneByIdentityAndPlatform({
+        identityId: identity.id,
+        platformId,
+    })
+    return !isNil(user)
+}
+
+async function assertPrincipalHasPermissionToProject<R extends Principal & { platform: { id: string } }>(
+    fastify: FastifyInstance,
+    request: FastifyRequest, reply: FastifyReply, principal: R,
+    projectId: string, _permission: Permission): Promise<void> {
+    const project = await projectService(request.log).getOneOrThrow(projectId)
+    if (isNil(project) || project.platformId !== principal.platform.id) {
+        throw new ActivepiecesError({
+            code: ErrorCode.AUTHORIZATION,
+            params: {
+                message: 'user does not have access to the project',
+            },
+        })
+    }
+    throw new ActivepiecesError({ code: ErrorCode.FEATURE_DISABLED, params: { message: 'Project role invitations are not supported' } })
+}
+
+
+async function trackInviteSent({ principal, platformId, event, log }: TrackInviteSentParams): Promise<void> {
+    if (principal.type === PrincipalType.USER) {
+        await telemetry(log).trackUser({ userId: principal.id, platformId, event })
+        return
+    }
+    await telemetry(log).trackPlatform({ platformId, event })
+}
+
+const ListUserInvitationsRequestParams = {
+    config: {
+        security: securityAccess.publicPlatform([PrincipalType.USER, PrincipalType.SERVICE], {
+            type: ProjectResourceType.QUERY,
+            queryKey: 'projectId',
+        }),
+    },
+    schema: {
+        tags: ['user-invitations'],
+        security: [SERVICE_KEY_SECURITY_OPENAPI],
+        querystring: ListUserInvitationsRequest,
+        response: {
+            [StatusCodes.OK]: SeekPage(UserInvitation),
+        },
+    },
+}
+
+const AcceptUserInvitationRequestParams = {
+    config: {
+        security: securityAccess.public(),
+    },
+    schema: {
+        body: z.object({
+            invitationToken: z.string(),
+        }),
+    },
+}
+
+const DeleteInvitationRequestParams = {
+    config: {
+        security: securityAccess.unscoped([PrincipalType.USER, PrincipalType.SERVICE]),
+    },
+    schema: {
+        tags: ['user-invitations'],
+        security: [SERVICE_KEY_SECURITY_OPENAPI],
+        params: z.object({
+            id: z.string(),
+        }),
+        response: {
+            [StatusCodes.NO_CONTENT]: z.never(),
+        },
+    },
+}
+
+const UpsertUserInvitationRequestParams = {
+    config: {
+        security: securityAccess.publicPlatform([PrincipalType.USER, PrincipalType.SERVICE], {
+            type: ProjectResourceType.BODY,
+        }),
+    },
+    schema: {
+        body: SendUserInvitationRequest,
+        description: 'Send a user invitation to a user. If the user already has an invitation, the invitation will be updated.',
+        tags: ['user-invitations'],
+        security: [SERVICE_KEY_SECURITY_OPENAPI],
+        response: {
+            [StatusCodes.CREATED]: UserInvitationWithLink,
+        },
+    },
+}
+
+type TrackInviteSentParams = {
+    principal: Principal
+    platformId: string
+    event: TelemetryEvent
+    log: FastifyBaseLogger
+}

@@ -1,0 +1,137 @@
+import { HttpMethod, getAccessTokenOrThrow } from '@activepieces/pieces-common';
+import {
+  MarkdownVariant,
+  Property,
+  createAction,
+} from '@activepieces/pieces-framework';
+import dayjs from 'dayjs';
+import qs from 'qs';
+import { clickupAuth } from '../../auth';
+import { callClickUpApi, clickupCommon } from '../../common';
+import { ClickupTask } from '../../common/models';
+import { filterTimeEntriesOutputSchema } from '../../output-schemas';
+
+export const filterClickupWorkspaceTimeEntries = createAction({
+  auth: clickupAuth,
+  name: 'list_workspace_time_entries',
+  classification: 'SEARCH',
+  displayName: 'List Time Entries',
+  description: 'List time tracked in a workspace, by date, place and person.',
+  audience: 'human',
+  aiMetadata: { description: 'List tracked time entries across a ClickUp workspace, optionally narrowed by date range, assignee, and a single scope (task, list, folder, or space). Pick this to report on or audit logged time; it is read-only and idempotent. Scope filters are mutually exclusive, with task taking precedence over list, folder, then space.', idempotent: true },
+  propertyGroups: [
+    {
+      key: 'scope',
+      display: 'section',
+      label: 'Search In',
+      icon: 'inbox',
+      props: [
+        'workspace_id',
+        'scope_info',
+        'space_id',
+        'folder_id',
+        'list_id',
+        'task_id',
+      ],
+    },
+    {
+      key: 'time',
+      display: 'section',
+      label: 'Time Window',
+      icon: 'calendar',
+      props: ['start_date', 'end_date'],
+    },
+    {
+      key: 'people',
+      display: 'section',
+      label: 'People',
+      icon: 'users',
+      props: ['assignee'],
+    },
+  ],
+  props: {
+    workspace_id: clickupCommon.workspace_id(true),
+    scope_info: Property.MarkDown({
+      value:
+        'Leave these empty to cover the whole workspace. The most specific one you pick is used.',
+      variant: MarkdownVariant.INFO,
+    }),
+    space_id: clickupCommon.space_id(false),
+    folder_id: clickupCommon.folder_id(false),
+    list_id: clickupCommon.list_id(false),
+    task_id: clickupCommon.task_id(false, 'Task'),
+    start_date: Property.DateTime({
+      displayName: 'Start Date',
+      description: 'Entries from this moment on. Empty: the last 30 days.',
+      required: false,
+      width: 'half',
+    }),
+    end_date: Property.DateTime({
+      displayName: 'End Date',
+      description: 'Entries up to this moment. Empty: now.',
+      required: false,
+      width: 'half',
+    }),
+    assignee: clickupCommon.assignee_id(
+      false,
+      'Assignees',
+      'Whose entries to include. Empty: only yours.'
+    ),
+    include_task_tags: Property.Checkbox({
+      displayName: 'Include Task Tags',
+      description: "Add each task's tags to the results.",
+      required: false,
+      advanced: true,
+      defaultValue: false,
+    }),
+    include_location_names: Property.Checkbox({
+      displayName: 'Include Location Names',
+      description: 'Add list, folder and space names to the results.',
+      required: false,
+      advanced: true,
+      defaultValue: false,
+    }),
+  },
+  outputSchema: filterTimeEntriesOutputSchema,
+  async run(context) {
+    const { task_id, list_id, folder_id, space_id, workspace_id, ...params } =
+      context.propsValue;
+    const auth = getAccessTokenOrThrow(context.auth);
+
+    const query: Record<string, unknown> = {
+      assignee: params.assignee?.join(','),
+      include_task_tags: params.include_task_tags,
+      include_location_names: params.include_location_names,
+    };
+
+    if (params.start_date)
+      query['start_date'] = dayjs(params.start_date).valueOf();
+
+    if (params.end_date) query['end_date'] = dayjs(params.end_date).valueOf();
+
+    if (task_id) {
+      query['task_id'] = task_id;
+    } else if (list_id) {
+      query['list_id'] = list_id;
+    } else if (folder_id) {
+      query['project_id'] = folder_id;
+    } else if (space_id) {
+      query['space_id'] = space_id;
+    }
+
+    return (
+      await callClickUpApi<ClickupTask>(
+        HttpMethod.GET,
+        `team/${workspace_id}/time_entries?${decodeURIComponent(
+          qs.stringify(query)
+        )}`,
+        auth,
+        undefined,
+        undefined,
+        {
+          'Content-Type': 'application/json',
+        }
+      )
+    ).body;
+  },
+});

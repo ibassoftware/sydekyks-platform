@@ -1,0 +1,50 @@
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { UsersListResponse, WebClient } from '@slack/web-api';
+import { slackAuth } from '../auth';
+import { Member } from '@slack/web-api/dist/types/response/UsersListResponse';
+import { getBotToken, SlackAuthValue } from '../common/auth-helpers';
+import { listUsersActionOutputSchema } from '../output-schemas';
+
+export const listUsers = createAction({
+  name: 'listUsers',
+  classification: 'SEARCH',
+  displayName: 'List Users',
+  description: 'List all users of the workspace',
+  audience: 'human',
+  aiMetadata: { description: 'List every member of the workspace, paging through all results, with toggles to include bots and disabled/deactivated users; read-only and repeatable. Use this to enumerate or scan all users; use Find User by ID or Find User by Handle when you already know which single user you want.', idempotent: true },
+  outputSchema: listUsersActionOutputSchema,
+  props: {
+    includeBots: Property.Checkbox({
+      displayName: 'Include Bots',
+      description: 'Also return bot users.',
+      required: false,
+      defaultValue: false,
+    }),
+    includeDisabled: Property.Checkbox({
+      displayName: 'Include Deactivated Users',
+      description: 'Also return deactivated accounts.',
+      required: false,
+      defaultValue: false,
+    }),
+  },
+  auth: slackAuth,
+  async run({ auth, propsValue }) {
+    const client = new WebClient(getBotToken(auth as SlackAuthValue));
+    const results: Member[] = [];
+    for await (const page of client.paginate('users.list', {
+      limit: 1000, // Only limits page size, not total number of results
+    })) {
+      const response = page as UsersListResponse;
+      if (response.members) {
+        results.push(
+          ...response.members.filter(
+            (member) =>
+              (propsValue.includeDisabled || !member.deleted) &&
+              (propsValue.includeBots || !member.is_bot)
+          )
+        );
+      }
+    }
+    return results;
+  },
+});

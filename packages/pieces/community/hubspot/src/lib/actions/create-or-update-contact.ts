@@ -1,0 +1,65 @@
+import { getHubspotAccessToken, hubspotAuth } from '../auth';
+import { createAction, Property } from '@activepieces/pieces-framework';
+
+import { Client } from '@hubspot/api-client';
+import { standardObjectDynamicProperties } from '../common/props';
+import { OBJECT_TYPE } from '../common/constants';
+import { FilterOperatorEnum } from '../common/types';
+import { crmObjectOutputSchema } from '../output-schemas';
+
+
+export const createOrUpdateContactAction = createAction({
+	auth: hubspotAuth,
+	name: 'create-or-update-contact',
+	classification: 'WRITE',
+	displayName: 'Create or Update Contact',
+	description: 'Updates the contact with this email, or creates it if none exists.',
+	audience: 'both',
+	aiMetadata: { description: 'Upserts a contact keyed on email: searches for a contact with the given email and updates it if found, otherwise creates a new one with the provided properties. Use this safe-to-retry path when you want to set a contact by email without risking duplicates; use Create Contact when you specifically need a new record. Idempotent on the email key.', idempotent: true },
+	outputSchema: crmObjectOutputSchema,
+	props: {
+		email: Property.ShortText({
+			displayName: 'Contact Email',
+			description: 'Used to find the contact; a new one is created if none matches.',
+			placeholder: 'jane@example.com',
+			required: true,
+		}),
+		objectProperties: standardObjectDynamicProperties(OBJECT_TYPE.CONTACT, ['email']),
+	},
+	async run(context) {
+		const email = context.propsValue.email;
+		const objectProperties = context.propsValue.objectProperties ?? {};
+
+		const contactProperties: Record<string, string> = {};
+
+		// Add additional properties to the contactProperties object
+		Object.entries(objectProperties).forEach(([key, value]) => {
+			// Format values if they are arrays
+			contactProperties[key] = Array.isArray(value) ? value.join(';') : value;
+		});
+
+		const client = new Client({ accessToken: getHubspotAccessToken(context.auth) });
+
+		const searchResponse = await client.crm.contacts.searchApi.doSearch({
+			limit: 1,
+			filterGroups: [
+				{ filters: [{ propertyName: 'email', operator: FilterOperatorEnum.Eq, value: email }] },
+			],
+		});
+
+		if (searchResponse.results.length > 0) {
+			const updatedContact = await client.crm.contacts.basicApi.update(
+				searchResponse.results[0].id,
+				{
+					properties: contactProperties,
+				},
+			);
+			return updatedContact;
+		} else {
+			const createdContact = await client.crm.contacts.basicApi.create({
+				properties: { ...contactProperties, email },
+			});
+			return createdContact;
+		}
+	},
+});

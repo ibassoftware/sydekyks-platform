@@ -1,0 +1,231 @@
+import { isNil, Permission } from '@activepieces/core-utils';
+import {
+  FlowRun,
+  FlowVersion,
+  FlowVersionState,
+  PopulatedFlow,
+} from '@activepieces/shared';
+import { useMutation } from '@tanstack/react-query';
+import { t } from 'i18next';
+import { Info } from 'lucide-react';
+import { useState } from 'react';
+
+import { RightSideBarType } from '@/app/builder/types';
+import { LoadingSpinner } from '@/components/custom/spinner';
+import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { flowHooks, flowsApi } from '@/features/flows';
+import { projectCollectionUtils } from '@/features/projects';
+import { useAuthorization } from '@/hooks/authorization-hooks';
+import { platformHooks } from '@/hooks/platform-hooks';
+
+import { useBuilderStateContext } from '../../builder-hooks';
+
+import { runDiscard } from './discard-draft';
+import LargeWidgetWrapper from './large-widget-wrapper';
+import {
+  FailedRequiredActionsCheck,
+  RequiredActionsDialog,
+  useRequiredActionsCheck,
+} from './required-actions-dialog';
+
+const PublishFlowReminderWidget = () => {
+  const [
+    isSaving,
+    isPublishing,
+    setIsPublishing,
+    isValid,
+    flow,
+    setFlow,
+    setVersion,
+    setRightSidebar,
+    flowVersion,
+    run,
+  ] = useBuilderStateContext((state) => [
+    state.saving,
+    state.isPublishing,
+    state.setIsPublishing,
+    state.flowVersion.valid,
+    state.flow,
+    state.setFlow,
+    state.setVersion,
+    state.setRightSidebar,
+    state.flowVersion,
+    state.run,
+  ]);
+  const showShouldPublishButton = useShouldShowPublishButton({
+    flowVersion,
+    isPublishing,
+    run,
+    isSaving,
+  });
+  const { platform } = platformHooks.useCurrentPlatform();
+  const { project } = projectCollectionUtils.useCurrentProject();
+  const { checkAccess } = useAuthorization();
+  const canBypassApproval = checkAccess(
+    Permission.PUBLISH_SENSITIVE_FLOW_ACCESS,
+  );
+  const requiresApproval =
+    platform.plan.environmentsEnabled &&
+    project.sensitive &&
+    !canBypassApproval;
+  const { mutate: discardChange, isPending: isDiscardingChanges } = useMutation(
+    {
+      mutationFn: () =>
+        runDiscard({
+          flow,
+          overWriteDraftWithVersion,
+          fetchFlow: flowsApi.get,
+          setFlow,
+          setVersion,
+        }),
+    },
+  );
+  const { checkRequiredActions, explainServerRejection } =
+    useRequiredActionsCheck();
+  const [failedRequiredActionsCheck, setFailedRequiredActionsCheck] =
+    useState<FailedRequiredActionsCheck | null>(null);
+  const { mutateAsync: publish } = flowHooks.useChangeFlowStatus({
+    flowId: flow.id,
+    change: 'publish',
+    onSuccess: (updatedFlow: PopulatedFlow) => {
+      setFlow(updatedFlow);
+      setVersion(updatedFlow.version);
+    },
+    setIsPublishing: setIsPublishing,
+    onRequiredActionsMissing: (params) => {
+      explainServerRejection(params)
+        .then(setFailedRequiredActionsCheck)
+        .catch(() => undefined);
+    },
+  });
+  const handlePublish = async () => {
+    setIsPublishing(true);
+    const failedCheck = await checkRequiredActions(flowVersion);
+    if (failedCheck) {
+      setIsPublishing(false);
+      setFailedRequiredActionsCheck(failedCheck);
+      return;
+    }
+    await publish();
+  };
+  const { mutateAsync: overWriteDraftWithVersion } =
+    flowHooks.useOverWriteDraftWithVersion({
+      onSuccess: (updatedFlow) => {
+        setVersion(updatedFlow.version);
+        setRightSidebar(RightSideBarType.NONE);
+      },
+    });
+
+  if (!showShouldPublishButton) {
+    return null;
+  }
+  const showLoading = isPublishing || isDiscardingChanges || isSaving;
+  const loadingText = pickLoadingText({
+    isDiscardingChanges,
+    isPublishing,
+    isSaving,
+  });
+  return (
+    <LargeWidgetWrapper>
+      <div className="flex items-center gap-2">
+        <Info className="size-5" />
+        {showLoading ? loadingText : t('You have unpublished changes')}
+      </div>
+      {showLoading ? (
+        <LoadingSpinner className="size-5 stroke-gray-12" />
+      ) : (
+        <div className="flex items-center gap-2">
+          {!isNil(flow.publishedVersionId) && !isSaving && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="hover:bg-gray-4 text-gray-12"
+              onClick={() => discardChange()}
+            >
+              {t('Discard changes')}
+            </Button>
+          )}
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="z-50"
+                  loading={isSaving}
+                  //for e2e tests
+                  name="Publish"
+                  onClick={handlePublish}
+                  disabled={!isValid}
+                >
+                  {requiresApproval ? t('Request approval') : t('Publish')}
+                </Button>
+              </div>
+            </TooltipTrigger>
+            {isSaving && <TooltipContent>{t('Saving...')}</TooltipContent>}
+            {!isValid && (
+              <TooltipContent>{t('You have incomplete steps')}</TooltipContent>
+            )}
+          </Tooltip>
+        </div>
+      )}
+      <RequiredActionsDialog
+        failedCheck={failedRequiredActionsCheck}
+        onClose={() => setFailedRequiredActionsCheck(null)}
+      />
+    </LargeWidgetWrapper>
+  );
+};
+
+PublishFlowReminderWidget.displayName = 'PublishFlowReminderWidget';
+export { PublishFlowReminderWidget };
+
+const useShouldShowPublishButton = ({
+  flowVersion,
+  isPublishing,
+  run,
+  isSaving,
+}: {
+  flowVersion: FlowVersion;
+  isPublishing: boolean;
+  run: FlowRun | null;
+  isSaving: boolean;
+}) => {
+  const { checkAccess } = useAuthorization();
+  const permissionToEditFlow = checkAccess(Permission.WRITE_FLOW);
+  const isViewingPublishableVersion =
+    flowVersion.state === FlowVersionState.DRAFT;
+  return (
+    ((permissionToEditFlow && isViewingPublishableVersion) ||
+      isPublishing ||
+      isSaving) &&
+    isNil(run)
+  );
+};
+
+function pickLoadingText({
+  isDiscardingChanges,
+  isPublishing,
+  isSaving,
+}: {
+  isDiscardingChanges: boolean;
+  isPublishing: boolean;
+  isSaving: boolean;
+}) {
+  if (isSaving) {
+    return t('Saving...');
+  }
+  if (isDiscardingChanges) {
+    return t('Discarding changes...');
+  }
+  if (isPublishing) {
+    return t('Publishing...');
+  }
+  return '';
+}

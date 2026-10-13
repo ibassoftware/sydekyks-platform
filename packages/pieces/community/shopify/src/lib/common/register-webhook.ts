@@ -1,0 +1,72 @@
+import { httpClient, HttpMethod } from '@activepieces/pieces-common';
+import {
+  createTrigger,
+  Trigger,
+  TriggerStrategy,
+} from '@activepieces/pieces-framework';
+import { SHOPIFY_API_VERSION, shopifyAuth, shopifyAuthHelpers } from './auth';
+
+export const createShopifyWebhookTrigger = ({
+  name,
+  description,
+  aiMetadata,
+  displayName,
+  sampleData,
+  topic,
+}: {
+  name: string;
+  description: string;
+  aiMetadata?: { description: string };
+  displayName: string;
+  topic: string;
+  sampleData: Record<string, unknown>;
+}) =>
+  createTrigger({
+    auth: shopifyAuth,
+    name,
+    classification: 'READ',
+    description,
+    aiMetadata,
+    displayName,
+    props: {},
+    sampleData: sampleData,
+    type: TriggerStrategy.WEBHOOK,
+    async onEnable(context) {
+      const shopName = shopifyAuthHelpers.getShopName(context.auth);
+      const response = await httpClient.sendRequest<{
+        webhook: {
+          id: string;
+        };
+      }>({
+        method: HttpMethod.POST,
+        url: `https://${shopName}.myshopify.com/admin/api/${SHOPIFY_API_VERSION}/webhooks.json`,
+        headers: shopifyAuthHelpers.getAuthHeaders(context.auth),
+        body: {
+          webhook: {
+            topic: topic,
+            address: context.webhookUrl,
+            format: 'json',
+          },
+        },
+      });
+      await context.store?.put(`shopify_webhook_id`, response.body.webhook.id);
+      console.log('webhook created', response.body.webhook.id);
+    },
+    async onDisable(context) {
+      const webhookId = await context.store.get<string>(`shopify_webhook_id`);
+      const shopName = shopifyAuthHelpers.getShopName(context.auth);
+      await httpClient.sendRequest<{
+        webhook: {
+          id: string;
+        };
+      }>({
+        method: HttpMethod.DELETE,
+        url: `https://${shopName}.myshopify.com/admin/api/${SHOPIFY_API_VERSION}/webhooks/${webhookId}.json`,
+        headers: shopifyAuthHelpers.getAuthHeaders(context.auth),
+      });
+      await context.store?.put(`shopify_webhook_id`, null);
+    },
+    async run(context) {
+      return [context.payload.body];
+    },
+  });

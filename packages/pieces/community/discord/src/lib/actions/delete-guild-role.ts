@@ -1,0 +1,72 @@
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { discordCommon } from '../common';
+import { discordAuth } from '../auth';
+import {
+  httpClient,
+  HttpMethod,
+  HttpRequest,
+} from '@activepieces/pieces-common';
+import { discordSuccessWithAlreadyAbsentActionOutputSchema } from '../output-schemas';
+
+export const discordDeleteGuildRole = createAction({
+  auth: discordAuth,
+  name: 'deleteGuildRole',
+  classification: 'DESTRUCTIVE',
+  displayName: 'Delete Role',
+  description: 'Delete a role from a server.',
+  audience: 'human',
+  aiMetadata: { description: 'Permanently deletes a role from a guild, identified by guild ID and role ID, with an optional audit-log reason; the role is removed from all members. Use to remove an unwanted role. Requires the bot to have Manage Roles permission; idempotent in end state, since deleting an already-removed role leaves it gone.', idempotent: true },
+  outputSchema: discordSuccessWithAlreadyAbsentActionOutputSchema,
+  props: {
+    guild_id: discordCommon.guilds,
+    role_id: discordCommon.roles,
+    deletion_reason: Property.ShortText({
+      displayName: 'Reason',
+      description: 'Recorded in the server audit log.',
+      required: false,
+      advanced: true,
+    }),
+  },
+  async run(configValue) {
+    const reason = configValue.propsValue.deletion_reason;
+
+    const request: HttpRequest = {
+      url: `https://discord.com/api/v9/guilds/${configValue.propsValue.guild_id}/roles/${configValue.propsValue.role_id}`,
+      method: HttpMethod.DELETE,
+      headers: {
+        Authorization: `Bot ${configValue.auth.secret_text}`,
+        'Content-Type': 'application/json',
+        ...(reason ? { 'X-Audit-Log-Reason': reason } : {}),
+      },
+    };
+
+    try {
+      const res = await httpClient.sendRequest(request);
+      return {
+        success: res.status === 204,
+      };
+    } catch (error) {
+      if (isResponseWithStatus(error) && error.response.status === 404) {
+        return { success: true, alreadyAbsent: true };
+      }
+      throw error;
+    }
+  },
+});
+
+function isResponseWithStatus(error: unknown): error is ResponseWithStatus {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'response' in error &&
+    typeof error.response === 'object' &&
+    error.response !== null &&
+    'status' in error.response
+  );
+}
+
+interface ResponseWithStatus {
+  response: {
+    status: number;
+  };
+}

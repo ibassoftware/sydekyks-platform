@@ -1,0 +1,108 @@
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { BodyType } from '@microsoft/microsoft-graph-types';
+import { assertNotNullOrUndefined } from '@activepieces/pieces-framework';
+import { ExecutionType } from '@activepieces/pieces-framework';
+import { microsoftOutlookAuth } from '../common/auth';
+import { outlookCommon } from '../common/client';
+import { requestApprovalActionOutputSchema } from '../output-schemas';
+
+export const requestApprovalInMail = createAction({
+  auth: microsoftOutlookAuth,
+  name: 'request_approval_in_mail',
+  classification: 'WRITE',
+  displayName: 'Request Approval in Email',
+  description:
+    'Send an email with an approval link and pause until it is answered.',
+  audience: 'both',
+  aiMetadata: { description: 'Sends an email with a single link to a confirmation page where the recipient chooses Approve or Disapprove, then pauses the flow until they respond, resuming with the decision. Use this as a human-in-the-loop approval gate before proceeding. Not idempotent: each call sends a new email and creates a new pending waitpoint.', idempotent: false },
+  outputSchema: requestApprovalActionOutputSchema,
+  props: {
+    recipients: Property.ShortText({
+      displayName: 'To',
+      description: 'Address that receives the approval request.',
+      placeholder: 'manager@example.com',
+      required: true,
+    }),
+    subject: Property.ShortText({
+      displayName: 'Subject',
+      placeholder: 'Approval needed: purchase order 1042',
+      required: true,
+    }),
+    body: Property.LongText({
+      displayName: 'Body',
+      description:
+        'Shown above the Review & Respond button. HTML tags are rendered.',
+      required: true,
+    }),
+  },
+  async run(context) {
+    if (context.executionType === ExecutionType.BEGIN) {
+      try {
+        const token = context.auth.access_token;
+
+        const recipients = context.propsValue.recipients as string;
+        const { subject, body } = context.propsValue;
+
+        assertNotNullOrUndefined(token, 'token');
+        assertNotNullOrUndefined(recipients, 'recipients');
+        assertNotNullOrUndefined(subject, 'subject');
+        assertNotNullOrUndefined(body, 'body');
+
+        const waitpoint = await context.run.createWaitpoint({
+          type: 'WEBHOOK',
+        });
+        const confirmationLink = `${waitpoint.resumeUrl}/confirm`;
+
+        const htmlBody = `
+        <div>
+          <p>${body}</p>
+          <br />
+          <p>
+            <a href="${confirmationLink}" style="display: inline-block; padding: 10px 20px; background-color: #6e41e2; color: white; text-decoration: none; border-radius: 4px;">Review &amp; Respond</a>
+          </p>
+        </div>
+      `;
+
+        const client = outlookCommon.createClient(context.auth);
+
+        const mailPayload = {
+          subject,
+          body: {
+            content: htmlBody,
+            contentType: 'html' as BodyType,
+          },
+          toRecipients: [
+            {
+              emailAddress: {
+                address: recipients,
+              },
+            },
+          ],
+        };
+
+        await client.api(`${outlookCommon.mailboxPrefix(context.auth)}/sendMail`).post({
+          message: mailPayload,
+          saveToSentItems: true,
+        });
+        context.run.waitForWaitpoint(waitpoint.id);
+
+        return {
+          approved: false, // default approval is false
+        };
+      } catch (error) {
+        console.error(
+          '[RequestApprovalEmail] Error during BEGIN execution:',
+          error
+        );
+        throw error;
+      }
+    } else {
+      const action = context.resumePayload.queryParams['action'];
+      const approved = action === 'approve';
+
+      return {
+        approved,
+      };
+    }
+  },
+});

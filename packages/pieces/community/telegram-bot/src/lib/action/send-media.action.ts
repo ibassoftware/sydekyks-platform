@@ -1,0 +1,220 @@
+import {
+  ApFile,
+  createAction,
+  DynamicPropsValue,
+  Property,
+} from '@activepieces/pieces-framework';
+import {
+  HttpMessageBody,
+  HttpMethod,
+  QueryParams,
+  httpClient,
+} from '@activepieces/pieces-common';
+import { telegramCommons } from '../common';
+import { telegramBotAuth } from '../..';
+import FormData from 'form-data';
+import { sendMediaActionOutputSchema } from '../output-schemas';
+
+export const telegramSendMediaAction = createAction({
+  auth: telegramBotAuth,
+  name: 'send_media',
+  classification: 'WRITE',
+  description: 'Send a photo, video, sticker or GIF to a chat.',
+  audience: 'human',
+  aiMetadata: { description: 'Sends a single photo, video, sticker, or animated GIF to a Telegram chat, supplied either as an uploaded file or a previously uploaded Telegram file_id. Use when delivering one rich-media item with an optional caption; for multiple items in one album use Send Media Group. Not idempotent: each call posts a new message.', idempotent: false },
+  displayName: 'Send Media',
+  propertyGroups: [
+    { key: 'send_to', display: 'section', label: 'Send to', icon: 'send', props: ['instructions', 'chat_id'] },
+    { key: 'media_card', display: 'section', label: 'Media', icon: 'file', props: ['media_type', 'media'] },
+    { key: 'caption', display: 'section', label: 'Caption', icon: 'text', props: ['format', 'message', 'instructions_format'] },
+  ],
+  props: {
+    instructions: telegramCommons.form.chatIdInstructions(),
+    chat_id: telegramCommons.form.chatIdProp(),
+    media_type: Property.StaticDropdown({
+      displayName: 'Media Type',
+      required: true,
+      display: 'cards',
+      options: {
+        disabled: false,
+        placeholder: 'Select media type',
+        options: [
+          { label: 'Image', value: 'photo' },
+          { label: 'Video', value: 'video' },
+          { label: 'Sticker', value: 'sticker' },
+          { label: 'GIF', value: 'animation' },
+        ],
+      },
+    }),
+    media: Property.DynamicProperties({
+      auth: telegramBotAuth,
+      displayName: 'File',
+      required: false,
+      refreshers: ['media_type'],
+      async props({ media_type }) {
+        const propsBuilders: Record<string, () => DynamicPropsValue> = {
+          photo: () => ({
+            photo: Property.File({
+              displayName: 'Image',
+              description: 'Upload an image, or use Image ID instead.',
+              required: false,
+            }),
+            photoId: Property.ShortText({
+              displayName: 'Image ID',
+              description: 'file_id of an image already on Telegram.',
+              required: false,
+            }),
+          }),
+          video: () => ({
+            video: Property.File({
+              displayName: 'Video',
+              description: 'Upload a video, or use Video ID instead.',
+              required: false,
+            }),
+            videoId: Property.ShortText({
+              displayName: 'Video ID',
+              description: 'file_id of a video already on Telegram.',
+              required: false,
+            }),
+          }),
+          sticker: () => ({
+            sticker: Property.File({
+              displayName: 'Sticker',
+              description: 'Upload a WEBP, TGS or WEBM sticker, or use Sticker ID.',
+              required: false,
+            }),
+            emoji: Property.ShortText({
+              displayName: 'Emoji',
+              description: 'Emoji for an uploaded sticker.',
+              required: false,
+            }),
+            stickerId: Property.ShortText({
+              displayName: 'Sticker ID',
+              description: 'file_id of a sticker already on Telegram.',
+              required: false,
+            }),
+          }),
+          animation: () => ({
+            animation: Property.File({
+              displayName: 'GIF',
+              description: 'Upload a GIF or silent MP4, or use GIF ID instead.',
+              required: false,
+            }),
+            animationId: Property.ShortText({
+              displayName: 'GIF ID',
+              description: 'file_id of a GIF already on Telegram.',
+              required: false,
+            }),
+            duration: Property.Number({
+              displayName: 'Duration',
+              description: 'Length in seconds.',
+              required: false,
+            }),
+          }),
+        };
+        const builder = propsBuilders[media_type as unknown as string];
+        if (!builder) {
+          return {};
+        }
+        return builder();
+      },
+    }),
+    format: telegramCommons.form.parseModeProp(),
+    message: Property.LongText({
+      displayName: 'Caption',
+      description: 'Up to 1024 characters. Not shown on stickers.',
+      required: false,
+    }),
+    instructions_format: telegramCommons.form.formatLinkInstructions(),
+    message_thread_id: telegramCommons.form.messageThreadIdProp(),
+    disable_notification: telegramCommons.form.disableNotificationProp(),
+    protect_content: telegramCommons.form.protectContentProp(),
+    reply_markup: telegramCommons.form.replyMarkupProp(),
+  },
+  outputSchema: sendMediaActionOutputSchema,
+  async run(ctx) {
+    const mediaType = ctx.propsValue['media_type'];
+    if (!mediaType) {
+      throw new Error('media_type is required');
+    }
+
+    const methods: Partial<Record<string, string>> = {
+      photo: 'sendPhoto',
+      video: 'sendVideo',
+      sticker: 'sendSticker',
+      animation: 'sendAnimation',
+    };
+
+    const method = methods[mediaType];
+    if (!method) {
+      throw new Error('Unknown media type method (' + mediaType + ')');
+    }
+
+    const headers: Record<string, string> = {};
+    const queryParams: QueryParams = {};
+    let body: HttpMessageBody | undefined = undefined;
+
+    const file = ctx.propsValue.media?.[mediaType] as ApFile | undefined;
+    const id = ctx.propsValue.media?.[mediaType + 'Id'] as string | undefined;
+    const parseMode = telegramCommons.resolveParseMode(ctx.propsValue['format']);
+    const emoji = ctx.propsValue.media?.['emoji'];
+    const duration = ctx.propsValue.media?.['duration'];
+    const animationDuration =
+      mediaType === 'animation' && typeof duration === 'number' ? duration : undefined;
+
+    if (file && file.data && file.filename) {
+      const form = new FormData();
+      form.append(mediaType, file.data, file.filename);
+      form.append('chat_id', ctx.propsValue['chat_id']);
+      if (ctx.propsValue['message']) {
+        form.append('caption', ctx.propsValue['message']);
+      }
+      if (ctx.propsValue['message_thread_id']) {
+        form.append('message_thread_id', ctx.propsValue['message_thread_id']);
+      }
+      if (parseMode) {
+        form.append('parse_mode', parseMode);
+      }
+      if (ctx.propsValue['disable_notification']) {
+        form.append('disable_notification', 'true');
+      }
+      if (ctx.propsValue['protect_content']) {
+        form.append('protect_content', 'true');
+      }
+      if (ctx.propsValue['reply_markup']) {
+        form.append('reply_markup', JSON.stringify(ctx.propsValue['reply_markup']));
+      }
+      if (mediaType === 'sticker' && typeof emoji === 'string' && emoji !== '') {
+        form.append('emoji', emoji);
+      }
+      if (animationDuration !== undefined) {
+        form.append('duration', String(animationDuration));
+      }
+
+      body = form;
+      Object.assign(headers, form.getHeaders());
+    } else if (typeof id !== 'undefined' && id !== '') {
+      body = {
+        [mediaType]: id,
+        chat_id: ctx.propsValue['chat_id'],
+        caption: ctx.propsValue['message'] ?? undefined,
+        message_thread_id: ctx.propsValue['message_thread_id'] ?? undefined,
+        parse_mode: parseMode,
+        disable_notification: ctx.propsValue['disable_notification'] ?? false,
+        protect_content: ctx.propsValue['protect_content'] ?? false,
+        reply_markup: ctx.propsValue['reply_markup'] ?? undefined,
+        duration: animationDuration,
+      };
+    } else {
+      throw new Error('No media defined. Provide either a file or an id.');
+    }
+
+    return await httpClient.sendRequest<never>({
+      method: HttpMethod.POST,
+      url: telegramCommons.getApiUrl(ctx.auth, method),
+      headers,
+      body,
+      queryParams,
+    });
+  },
+});

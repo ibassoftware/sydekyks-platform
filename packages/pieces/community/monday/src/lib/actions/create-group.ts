@@ -1,0 +1,32 @@
+import { Property, createAction } from '@activepieces/pieces-framework';
+import { mondayAuth } from '../auth';
+import { makeClient, mondayCommon } from '../common';
+import { createGroupActionOutputSchema } from '../output-schemas';
+
+export const createGroupAction = createAction({
+  auth: mondayAuth,
+  name: 'monday_create_group',
+  classification: 'WRITE',
+  displayName: 'Create Group',
+  description: 'Creates a new group in board.',
+  audience: 'human',
+  aiMetadata: { description: 'Creates a new group (section that holds items) on a monday.com board. Use to organize items under a named section before adding them. Not idempotent: each call creates a separate group even with the same name.', idempotent: false },
+  outputSchema: createGroupActionOutputSchema,
+  props: {
+    workspace_id: mondayCommon.workspace_id(true),
+    board_id: mondayCommon.board_id(true),
+    group_name: Property.ShortText({
+      displayName: 'Group Name',
+      required: true,
+    }),
+  },
+  async run(context) {
+    const { board_id, group_name } = context.propsValue;
+
+    const client = makeClient(context.auth);
+    return await client.createGroup({
+      boardId: board_id as string,
+      groupName: group_name as string,
+    });
+  },
+});

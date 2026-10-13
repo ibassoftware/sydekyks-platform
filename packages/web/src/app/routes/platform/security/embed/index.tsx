@@ -1,0 +1,170 @@
+import {
+  ApEdition,
+  ApFlagId,
+  EmbedSubdomainStatus,
+  SigningKey,
+} from '@activepieces/shared';
+import { t } from 'i18next';
+import { Globe, Key, ListChecks, ShieldCheck } from 'lucide-react';
+import { useState } from 'react';
+
+import { DataFetchErrorState } from '@/components/custom/data-fetch-error-state';
+import { Separator } from '@/components/ui/separator';
+import { SkeletonList } from '@/components/ui/skeleton';
+import {
+  embedSubdomainQueries,
+  signingKeyQueries,
+} from '@/features/platform-admin';
+import { flagsHooks } from '@/hooks/flags-hooks';
+import { platformHooks } from '@/hooks/platform-hooks';
+
+import { sampleData } from '../../sample-data';
+
+import { Stepper, StepKind, StepDef } from './stepper';
+import { AllowedDomainsStep } from './steps/allowed-domains-step';
+import { DnsStep } from './steps/dns-step';
+import { HostnameStep } from './steps/hostname-step';
+import { SigningKeysStep } from './steps/signing-keys-step';
+
+const EmbedPage = () => {
+  const { platform } = platformHooks.useCurrentPlatform();
+  const { data: edition } = flagsHooks.useFlag<ApEdition>(ApFlagId.EDITION);
+  const isCloud = edition === ApEdition.CLOUD;
+
+  const {
+    subdomain,
+    isLoading: isSubdomainLoading,
+    isError: isSubdomainError,
+    refetch: refetchSubdomain,
+  } = embedSubdomainQueries.useCurrentEmbedSubdomain();
+  const {
+    data,
+    isLoading: isKeysLoading,
+    refetch,
+  } = signingKeyQueries.useSigningKeys();
+  const isSample = !platform.plan.embeddingEnabled;
+  const signingKeys: SigningKey[] = isSample
+    ? sampleData.signingKeys()
+    : data?.data ?? [];
+
+  const isLoading = (isCloud && isSubdomainLoading) || isKeysLoading;
+
+  const allowedEmbedOrigins = platform.allowedEmbedOrigins ?? [];
+
+  const allSteps: Record<StepKind, StepDef> = {
+    hostname: {
+      kind: 'hostname',
+      title: t('Enter the embed URL'),
+      icon: Globe,
+    },
+    dns: {
+      kind: 'dns',
+      title: t('Verify the DNS records'),
+      icon: ShieldCheck,
+    },
+    'allowed-domains': {
+      kind: 'allowed-domains',
+      title: t('Add allowed domains'),
+      icon: ListChecks,
+    },
+    'signing-keys': {
+      kind: 'signing-keys',
+      title: t('Add signing keys'),
+      icon: Key,
+    },
+  };
+
+  const steps: StepDef[] = isCloud
+    ? [
+        allSteps.hostname,
+        allSteps.dns,
+        allSteps['allowed-domains'],
+        allSteps['signing-keys'],
+      ]
+    : [allSteps['allowed-domains'], allSteps['signing-keys']];
+
+  const completionByKind: Record<StepKind, boolean> = {
+    hostname: !!subdomain,
+    dns: subdomain?.status === EmbedSubdomainStatus.ACTIVE,
+    'allowed-domains': allowedEmbedOrigins.length > 0,
+    'signing-keys': signingKeys.length > 0,
+  };
+
+  const stepCompletion = steps.map((step) => completionByKind[step.kind]);
+
+  const firstIncompleteIndex = stepCompletion.findIndex((done) => !done);
+  const activeStepIndex =
+    firstIncompleteIndex === -1
+      ? stepCompletion.length - 1
+      : firstIncompleteIndex;
+
+  const [viewingIndex, setViewingIndex] = useState<number | null>(null);
+  const displayedIndex =
+    viewingIndex !== null && viewingIndex < activeStepIndex
+      ? viewingIndex
+      : activeStepIndex;
+
+  const handleStepClick = (index: number) => {
+    if (index > activeStepIndex) return;
+    setViewingIndex(index === activeStepIndex ? null : index);
+  };
+
+  const description = isCloud
+    ? t(
+        'Run embedded workflows under your own domain — four quick steps to get set up.',
+      )
+    : t(
+        'Configure who can embed your workflows and create the signing keys to authenticate sessions.',
+      );
+
+  const displayedStep = steps[displayedIndex];
+  const subdomainStepFailed =
+    isSubdomainError &&
+    (displayedStep?.kind === 'hostname' || displayedStep?.kind === 'dns');
+
+  return (
+    <div className="w-full max-w-4/5 2xl:max-w-6xl mx-auto py-6">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-xl font-medium">{t('Embed Onboarding')}</h1>
+        <div className="text-sm text-gray-11">{description}</div>
+      </div>
+      <Separator className="mt-4 mb-12" />
+
+      <div className="grid grid-cols-[16rem_1fr] gap-16">
+        <Stepper
+          steps={steps}
+          completion={stepCompletion}
+          activeStepIndex={activeStepIndex}
+          displayedIndex={displayedIndex}
+          onStepClick={handleStepClick}
+        />
+
+        <div className="min-w-0">
+          {isLoading ? (
+            <SkeletonList numberOfItems={3} className="w-full h-[72px]" />
+          ) : subdomainStepFailed ? (
+            <DataFetchErrorState
+              entity={t('the embed subdomain')}
+              onRetry={refetchSubdomain}
+            />
+          ) : displayedStep?.kind === 'hostname' ? (
+            <HostnameStep subdomain={subdomain} />
+          ) : displayedStep?.kind === 'dns' ? (
+            <DnsStep subdomain={subdomain} />
+          ) : displayedStep?.kind === 'allowed-domains' ? (
+            <AllowedDomainsStep allowedEmbedOrigins={allowedEmbedOrigins} />
+          ) : displayedStep?.kind === 'signing-keys' ? (
+            <SigningKeysStep
+              signingKeys={signingKeys}
+              isLoading={isKeysLoading}
+              refetch={refetch}
+            />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+EmbedPage.displayName = 'EmbedPage';
+export { EmbedPage };

@@ -1,0 +1,173 @@
+import {
+  createAction,
+  Property,
+  PieceAuth,
+  ArraySubProps,
+  ExecutionType,
+} from '@activepieces/pieces-framework';
+import { httpClient, HttpMethod, AuthenticationType } from '@activepieces/pieces-common';
+import { isNil } from '@activepieces/pieces-framework';
+import { AGENT_STEP_TEST_TIMEOUT_MS, AGENT_STEP_TIMEOUT_MS, AgentPieceProps, AgentProviderModel, AgentResult, spreadIfDefined } from '@activepieces/pieces-framework';
+
+const agentToolArrayItems: ArraySubProps<boolean> = {
+  type: Property.ShortText({
+    displayName: 'Tool Type',
+    required: true,
+  }),
+
+  toolName: Property.ShortText({
+    displayName: 'Tool Name',
+    required: true,
+  }),
+
+  pieceMetadata: Property.Json({
+    displayName: 'Piece Metadata',
+    required: false,
+  }),
+
+  externalFlowId: Property.ShortText({
+    displayName: 'Flow External ID',
+    required: false,
+  }),
+
+  serverUrl: Property.ShortText({
+    displayName: 'MCP Server URL',
+    required: false,
+  }),
+  protocol: Property.ShortText({
+    displayName: 'Protocol',
+    required: false,
+  }),
+  auth: Property.Json({
+    displayName: 'Auth Configuration',
+    required: false,
+  }),
+
+  sourceType: Property.ShortText({
+    displayName: 'Source Type',
+    required: false,
+  }),
+  sourceId: Property.ShortText({
+    displayName: 'Source ID',
+    required: false,
+  }),
+  sourceName: Property.ShortText({
+    displayName: 'Source Name',
+    required: false,
+  }),
+}
+
+export const runAgent = createAction({
+  audience: 'both',
+  name: 'run_agent',
+  classification: 'WRITE',
+  displayName: 'Run Agent',
+  description: 'Let an agent use tools and work step by step until the task is done.',
+  aiMetadata: { description: 'Runs an agent that reasons over your prompt and calls the piece actions you attach to this step, iterating until the task is done. Pick it when the work needs tool use or an unknown number of steps; prefer askAi for a single prompt-in/answer-out call, or classifyText and extractStructuredData for one narrow analysis. Sub-flow, MCP and knowledge-base tools are not supported on this step. Requires a prompt and an AI Model; not idempotent, as the agent performs side effects through its tools.', idempotent: false },
+  auth: PieceAuth.None(),
+  props: {
+    [AgentPieceProps.AGENT_ID]: Property.ShortText({
+      displayName: 'Agent',
+      description: 'Run a saved agent. Its instructions, tools and model come from the agent itself, so improving it improves every flow that uses it.',
+      required: false,
+    }),
+    [AgentPieceProps.PROMPT]: Property.LongText({
+      displayName: 'Prompt',
+      description: 'Describe what you want the agent to do.',
+      required: true,
+    }),
+    [AgentPieceProps.AI_PROVIDER_MODEL]: Property.Object({
+      displayName: 'AI Model',
+      description: 'Leave empty when the step runs a saved agent: the model comes from the agent.',
+      required: false,
+    }),
+    [AgentPieceProps.AGENT_TOOLS]: Property.Array({
+      displayName: 'Agent Tools',
+      required: false,
+      properties: agentToolArrayItems,
+    }),
+    [AgentPieceProps.MAX_STEPS]: Property.Number({
+      displayName: 'Max Steps',
+      description: 'Maximum number of steps before the agent stops.',
+      required: false,
+      defaultValue: 20,
+    }),
+    [AgentPieceProps.STRUCTURED_OUTPUT]: Property.Array({
+      displayName: 'Structured Output',
+      defaultValue: undefined,
+      required: false,
+      properties: {
+        displayName: Property.ShortText({
+          displayName: 'Display Name',
+          required: true,
+        }),
+        description: Property.ShortText({
+          displayName: 'Description',
+          required: false,
+        }),
+        type: Property.ShortText({
+          displayName: 'Type',
+          required: true,
+        }),
+      },
+    }),
+  },
+  async run(context) {
+    if (context.executionType === ExecutionType.RESUME) {
+      const result = context.resumePayload?.body as AgentResult | undefined;
+      if (isNil(result)) {
+        throw new Error('The agent did not report a result before this step timed out');
+      }
+      if (!isNil(result.failure)) {
+        throw new Error(result.failure);
+      }
+      return result;
+    }
+
+    const { agentId } = context.propsValue;
+
+    const waitpoint = await context.run.createWaitpoint({
+      type: 'WEBHOOK',
+      resumeDateTime: new Date(Date.now() + AGENT_STEP_TIMEOUT_MS).toUTCString(),
+      maxTestWaitMs: AGENT_STEP_TEST_TIMEOUT_MS,
+    });
+
+    await httpClient.sendRequest({
+      method: HttpMethod.POST,
+      url: `${context.server.apiUrl}v1/agents/runs`,
+      authentication: { type: AuthenticationType.BEARER_TOKEN, token: context.server.token },
+      body: {
+        instruction: context.propsValue.prompt,
+        flowRunId: context.run.id,
+        waitpointId: waitpoint.id,
+        ...(agentId ? { agentId } : {
+          ...spreadIfDefined('modelName', (context.propsValue.aiProviderModel as AgentProviderModel | undefined)?.model),
+          ...spreadIfDefined('provider', (context.propsValue.aiProviderModel as AgentProviderModel | undefined)?.provider),
+          ...spreadIfDefined('providerConfigId', (context.propsValue.aiProviderModel as AgentProviderModel | undefined)?.configId),
+          tools: toolsWithoutResolvedAuth(context.propsValue.agentTools ?? []),
+          structuredOutput: context.propsValue.structuredOutput ?? [],
+          ...spreadIfDefined('maxSteps', context.propsValue.maxSteps),
+        }),
+      },
+    });
+
+    context.run.waitForWaitpoint(waitpoint.id);
+    return {};
+  },
+});
+
+// The engine resolves {{connections[...]}} in every step input, so a connection pinned on a tool
+// arrives here as the decrypted credential rather than its id. The server wants the id and rebuilds
+// the reference itself, so anything that is not an id is dropped rather than sent.
+function toolsWithoutResolvedAuth(tools: unknown[]): unknown[] {
+  return tools.map((tool) => {
+    const piece = (tool as { pieceMetadata?: { predefinedInput?: { auth?: unknown } } }).pieceMetadata;
+    const auth = piece?.predefinedInput?.auth;
+    if (isNil(auth) || typeof auth === 'string') {
+      return tool;
+    }
+    throw new Error(
+      'This agent step pins a connection in a form the server cannot accept yet. Remove the pinned connection from the tool, or wait for the update that stores it by reference.',
+    );
+  });
+}

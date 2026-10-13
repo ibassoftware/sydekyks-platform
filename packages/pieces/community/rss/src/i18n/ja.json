@@ -1,0 +1,11 @@
+{
+  "Stay updated with RSS feeds": "RSSフィードを更新してください",
+  "New Item in Feed": "フィード内の新しいアイテム",
+  "New Items in Multiple Feeds": "複数のフィードに新しい項目",
+  "Runs when a new item is published in an RSS feed.": "RSS フィードに新しいアイテムが公開されたときに実行されます。",
+  "Runs when a new item is published in any of the feeds you list.": "指定したフィードのいずれかに新しいアイテムが公開されたときに実行されます。",
+  "RSS Feed URL": "RSSフィードのURL",
+  "RSS Feed URLs": "RSSフィードのURL",
+  "Link to the feed itself, not the site homepage; Atom works too.": "サイトのトップページではなく、フィード自体へのリンクです。Atom にも対応しています。",
+  "One feed address per row; a feed that fails to load is skipped.": "1 行に 1 つのフィードアドレスを入力します。読み込めないフィードはスキップされます。"
+}

@@ -1,0 +1,281 @@
+import { Permission } from '@activepieces/core-utils';
+import {
+  AppConnectionWithoutSensitiveData,
+  UpdateProjectPlatformRequest,
+  PlatformRole,
+} from '@activepieces/shared';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useQueryClient } from '@tanstack/react-query';
+import { t } from 'i18next';
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
+
+import { GlobalConnectionWarning } from '@/components/custom/global-connection-utils';
+import { MultiSelectPieceProperty } from '@/components/custom/multi-select-piece-property';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+} from '@/components/ui/dialog';
+import {
+  Form,
+  FormField,
+  FormItem,
+  FormMessage,
+  FormDescription,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { SkeletonList } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
+import { globalConnectionsQueries } from '@/features/connections/hooks/global-connections-hooks';
+import { projectCollectionUtils } from '@/features/projects/stores/project-collection';
+import { useAuthorization } from '@/hooks/authorization-hooks';
+import { platformHooks } from '@/hooks/platform-hooks';
+import { userHooks } from '@/hooks/user-hooks';
+import { AdminControl, adminControl } from '@/lib/admin-control';
+import { api } from '@/lib/api';
+
+import { projectNameSchema } from '../lib/project-name-schema';
+
+interface EditProjectDialogProps {
+  open: boolean;
+  onClose: () => void;
+  projectId: string;
+  initialValues?: {
+    projectName?: string;
+    externalId?: string;
+    sensitive?: boolean;
+  };
+}
+
+export function EditProjectDialog({
+  open,
+  onClose,
+  projectId,
+  initialValues,
+}: EditProjectDialogProps) {
+  const { platform } = platformHooks.useCurrentPlatform();
+  const globalConnectionsEnabled = platform.plan.globalConnectionsEnabled;
+
+  const { data: globalConnectionsPage, isLoading: isLoadingConnections } =
+    globalConnectionsQueries.useGlobalConnections({
+      request: { limit: 9999 },
+      extraKeys: [],
+    });
+
+  const globalConnections = globalConnectionsPage?.data ?? [];
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-md w-full">
+        <DialogHeader>
+          {' '}
+          <DialogTitle>
+            {t('Edit')} {initialValues?.projectName}
+          </DialogTitle>
+        </DialogHeader>
+
+        {!globalConnectionsEnabled || !isLoadingConnections ? (
+          <EditProjectForm
+            onClose={onClose}
+            projectId={projectId}
+            initialValues={initialValues}
+            globalConnections={globalConnections}
+            globalConnectionsEnabled={globalConnectionsEnabled}
+          />
+        ) : (
+          <SkeletonList numberOfItems={3} className="h-10" />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const EditProjectForm = ({
+  onClose,
+  projectId,
+  initialValues,
+  globalConnections,
+  globalConnectionsEnabled,
+}: {
+  onClose: () => void;
+  projectId: string;
+  initialValues?: EditProjectDialogProps['initialValues'];
+  globalConnections: AppConnectionWithoutSensitiveData[];
+  globalConnectionsEnabled: boolean;
+}) => {
+  const { checkAccess } = useAuthorization();
+  const { platform } = platformHooks.useCurrentPlatform();
+  const platformRole = userHooks.getCurrentUserPlatformRole();
+  const queryClient = useQueryClient();
+
+  const currentConnectionExternalIds = globalConnections
+    .filter((connection) => connection.projectIds.includes(projectId))
+    .map((connection) => connection.externalId);
+
+  const { mutate, isPending } = projectCollectionUtils.useUpdateProject(
+    () => {
+      queryClient.invalidateQueries({
+        queryKey: globalConnectionsQueries.getGlobalConnectionsQueryKey([]),
+      });
+      toast.success(t('Your changes have been saved.'), {
+        duration: 3000,
+      });
+      onClose();
+    },
+    (error) => {
+      form.setError('root.serverError', {
+        type: 'server',
+        message: api.extractServerErrorMessage(
+          error,
+          t('Failed to save changes. Please try again.'),
+        ),
+      });
+    },
+  );
+
+  const form = useForm<UpdateProjectPlatformRequest>({
+    resolver: zodResolver(
+      UpdateProjectPlatformRequest.extend({
+        displayName: projectNameSchema.optional(),
+      }),
+    ),
+    mode: 'onChange',
+    defaultValues: {
+      displayName: initialValues?.projectName,
+      externalId: initialValues?.externalId,
+      sensitive: initialValues?.sensitive ?? false,
+      globalConnectionExternalIds: currentConnectionExternalIds,
+    },
+    disabled: checkAccess(Permission.WRITE_PROJECT) === false,
+  });
+
+  return (
+    <Form {...form}>
+      <form
+        className="space-y-4"
+        onSubmit={form.handleSubmit((values) => {
+          mutate({
+            projectId,
+            request: {
+              displayName: values.displayName,
+            },
+          });
+        })}
+      >
+        {globalConnectionsEnabled && <GlobalConnectionWarning />}
+        <FormField
+          name="displayName"
+          render={({ field }) => (
+            <FormItem>
+              <Label htmlFor="displayName">{t('Project Name')}</Label>
+              <Input
+                {...field}
+                id="displayName"
+                placeholder={t('Project Name')}
+                className="rounded-sm"
+              />
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {platform.plan.embeddingEnabled &&
+          platformRole === PlatformRole.ADMIN && (
+            <FormField
+              name="externalId"
+              render={({ field }) => (
+                <FormItem>
+                  <Label htmlFor="externalId">{t('External ID')}</Label>
+                  <FormDescription>
+                    {t('Used to identify the project based on your SaaS ID')}
+                  </FormDescription>
+                  <Input
+                    {...field}
+                    id="externalId"
+                    placeholder={t('org-3412321')}
+                    className="rounded-sm"
+                  />
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
+
+        {platform.plan.environmentsEnabled &&
+          platformRole === PlatformRole.ADMIN && (
+            <FormField
+              name="sensitive"
+              render={({ field }) => (
+                <FormItem className="flex items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="sensitive">{t('Sensitive Project')}</Label>
+                    <FormDescription>
+                      {t(
+                        'When enabled, publishing flows in this project requires approval.',
+                      )}
+                    </FormDescription>
+                  </div>
+                  <Switch
+                    id="sensitive"
+                    checked={!!field.value}
+                    onCheckedChange={field.onChange}
+                    {...adminControl(AdminControl.PROJECTS_SENSITIVE_TOGGLE)}
+                  />
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
+
+        {globalConnectionsEnabled && (
+          <FormField
+            name="globalConnectionExternalIds"
+            render={({ field }) => (
+              <FormItem>
+                <Label>{t('Global Connections')}</Label>
+                <MultiSelectPieceProperty
+                  placeholder={t('Select global connections')}
+                  options={globalConnections.map((connection) => ({
+                    value: connection.externalId,
+                    label: connection.displayName,
+                  }))}
+                  loading={false}
+                  onChange={(value) => {
+                    field.onChange(value ?? []);
+                  }}
+                  initialValues={field.value ?? []}
+                  showDeselect={(field.value ?? []).length > 0}
+                />
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+
+        {form.formState.errors.root?.serverError && (
+          <FormMessage>
+            {form.formState.errors.root.serverError.message}
+          </FormMessage>
+        )}
+        <DialogFooter className="justify-end mt-6">
+          <Button type="button" variant="outline" onClick={onClose}>
+            {t('Cancel')}
+          </Button>
+          <Button
+            type="submit"
+            disabled={isPending}
+            loading={isPending}
+            {...adminControl(AdminControl.PROJECTS_EDIT_SUBMIT)}
+          >
+            {t('Save')}
+          </Button>
+        </DialogFooter>
+      </form>
+    </Form>
+  );
+};

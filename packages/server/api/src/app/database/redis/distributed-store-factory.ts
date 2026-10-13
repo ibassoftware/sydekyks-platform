@@ -1,0 +1,153 @@
+import { isNil } from '@activepieces/core-utils'
+import Redis from 'ioredis'
+
+export const distributedStoreFactory = (getRedisClient: () => Promise<Redis>) => ({
+    async put(key: string, value: unknown, ttlInSeconds?: number): Promise<void> {
+        const serializedValue = JSON.stringify(value)
+        const redisClient = await getRedisClient()
+        if (ttlInSeconds) {
+            await redisClient.setex(key, ttlInSeconds, serializedValue)
+        }
+        else {
+            await redisClient.set(key, serializedValue)
+        }
+    },
+
+    async putBatch(keyValuePairs: Array<{ key: string, value: unknown }>, ttlInSeconds: number): Promise<void> {
+        if (keyValuePairs.length === 0) return
+
+        const redisClient = await getRedisClient()
+        const multi = redisClient.multi()
+
+        for (const { key, value } of keyValuePairs) {
+            multi.setex(key, ttlInSeconds, JSON.stringify(value))
+        }
+
+        assertEveryCommandApplied(await multi.exec())
+    },
+
+    async get<T>(key: string): Promise<T | null> {
+        const redisClient = await getRedisClient()
+        const value = await redisClient.get(key)
+        if (!value) return null
+
+        return JSON.parse(value) as T
+    },
+
+    async putIfAbsent(key: string, value: unknown, ttlInSeconds: number): Promise<boolean> {
+        const serializedValue = JSON.stringify(value)
+        const redisClient = await getRedisClient()
+        const result = await redisClient.set(key, serializedValue, 'EX', ttlInSeconds, 'NX')
+        return result === 'OK'
+    },
+
+    async runOnceWithin(key: string, ttlInSeconds: number, fn: () => Promise<unknown>): Promise<boolean> {
+        const claimed = await this.putIfAbsent(key, '1', ttlInSeconds)
+        if (!claimed) {
+            return false
+        }
+        await fn()
+        return true
+    },
+
+    async delete(keys: string | string[]): Promise<void> {
+        const keysArray = Array.isArray(keys) ? keys : [keys]
+        if (keysArray.length === 0) return
+        const redisClient = await getRedisClient()
+        await redisClient.del(...keysArray)
+    },
+
+    async putBoolean(key: string, value: boolean): Promise<void> {
+        const redisClient = await getRedisClient()
+        await redisClient.set(key, value ? '1' : '0')
+    },
+
+    async getBoolean(key: string): Promise<boolean | null> {
+        const redisClient = await getRedisClient()
+        const value = await redisClient.get(key)
+        if (isNil(value)) return null
+        return value === '1'
+    },
+
+    async putBooleanBatch(keyValuePairs: Array<{ key: string, value: boolean }>): Promise<void> {
+        if (keyValuePairs.length === 0) return
+
+        const redisClient = await getRedisClient()
+        const multi = redisClient.multi()
+
+        for (const { key, value } of keyValuePairs) {
+            multi.set(key, value ? '1' : '0')
+        }
+
+        assertEveryCommandApplied(await multi.exec())
+    },
+
+    async hgetJson<T extends Record<string, unknown>>(key: string): Promise<T | null> {
+        const redisClient = await getRedisClient()
+        const hashData = await redisClient.hgetall(key)
+        if (!hashData || Object.keys(hashData).length === 0) return null
+        const result: Record<string, unknown> = {}
+        for (const [field, value] of Object.entries(hashData)) {
+            const hasValue = !isNil(value) && value.trim().length > 0
+            if (!hasValue) {
+                continue
+            }
+            try {
+                result[field] = JSON.parse(value)
+            }
+            catch (error) {
+                result[field] = value
+            }
+        }
+        return result as T
+    },
+
+    async merge<T extends Record<string, unknown>>(key: string, value: T, ttlInSeconds?: number): Promise<void> {
+        const redisClient = await getRedisClient()
+        const serializedFields: Record<string, string> = {}
+
+        for (const [field, fieldValue] of Object.entries(value)) {
+            if (isNil(fieldValue)) {
+                continue
+            }
+            serializedFields[field] = JSON.stringify(fieldValue)
+        }
+
+        await redisClient.hset(key, serializedFields)
+
+        if (ttlInSeconds) {
+            await redisClient.expire(key, ttlInSeconds)
+        }
+    },
+
+    async removeField(key: string, field: string): Promise<void> {
+        const redisClient = await getRedisClient()
+        await redisClient.hdel(key, field)
+    },
+
+    async deleteKeyIfFieldValueMatches(key: string, field: string, expectedValue: unknown): Promise<void> {
+        const redisClient = await getRedisClient()
+        const lua = `
+            local currentValue = redis.call('HGET', KEYS[1], ARGV[1])
+            if currentValue and currentValue == ARGV[2] then
+                redis.call('DEL', KEYS[1])
+            end
+        `
+        const serializedValue = JSON.stringify(expectedValue)
+        await redisClient.eval(lua, 1, key, field, serializedValue)
+    },
+})
+
+function assertEveryCommandApplied(results: RedisTransactionResults): void {
+    if (isNil(results)) {
+        throw new Error('Redis transaction was discarded, no command was applied')
+    }
+    const failed = results.find(([error]) => !isNil(error))
+    if (!isNil(failed)) {
+        throw failed[0]
+    }
+}
+
+type RedisTransactionResults = [error: Error | null, result: unknown][] | null
+
+export type DistributedStore = ReturnType<typeof distributedStoreFactory>

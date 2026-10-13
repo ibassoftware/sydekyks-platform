@@ -1,0 +1,113 @@
+import { getHubspotAccessToken, hubspotAuth } from '../auth';
+
+import {
+	Property,
+	createAction,
+} from '@activepieces/pieces-framework';
+
+import { MarkdownVariant } from '@activepieces/pieces-framework';
+import { OBJECT_TYPE } from '../common/constants';
+import {
+	getDefaultPropertiesForObject,
+	pipelineDropdown,
+	pipelineStageDropdown,
+	standardObjectDynamicProperties,
+	standardObjectPropertiesDropdown,
+} from '../common/props';
+
+import { Client } from '@hubspot/api-client';
+import { crmObjectOutputSchema } from '../output-schemas';
+
+export const updateDealAction = createAction({
+	auth: hubspotAuth,
+	name: 'update-deal',
+	classification: 'WRITE',
+	displayName: 'Update Deal',
+	description: 'Updates a deal in HubSpot.',
+	audience: 'both',
+	aiMetadata: { description: 'Updates properties on an existing deal identified by its deal ID, such as name, pipeline, stage, or custom fields, then returns the refreshed deal. Use to modify a known deal; use Create Deal to make a new one. Idempotent: applying the same property values converges to the same deal state.', idempotent: true },
+	outputSchema: crmObjectOutputSchema,
+	props: {
+		dealId: Property.ShortText({
+			displayName: 'Deal ID',
+			description: 'Map it from an earlier step like Find Deal.',
+			required: true,
+		}),
+		dealname: Property.ShortText({
+			displayName: 'Deal Name',
+			description: 'Leave empty to keep the current name.',
+			required: false,
+		}),
+		pipelineId: pipelineDropdown({
+			objectType: OBJECT_TYPE.DEAL,
+			displayName: 'Deal Pipeline',
+			description: 'Leave empty to keep the current pipeline.',
+			required: false,
+		}),
+		pipelineStageId: pipelineStageDropdown({
+			objectType: OBJECT_TYPE.DEAL,
+			displayName: 'Deal Stage',
+			description: 'Leave empty to keep the current stage.',
+			required: false,
+		}),
+		objectProperties: standardObjectDynamicProperties(OBJECT_TYPE.DEAL, [
+			'dealname',
+			'pipeline',
+			'dealstage',
+		]),
+		markdown: Property.MarkDown({
+			variant: MarkdownVariant.INFO,
+			value: `Returned by default: dealtype, dealname, amount, description, closedate, createdate, num_associated_contacts, hs_forecast_amount, hs_forecast_probability, hs_manual_forecast_category, hs_next_step, hs_object_id, hs_lastmodifieddate, hubspot_owner_id, hubspot_team_id.
+
+Pick more under **Advanced**.`,
+		}),
+		additionalPropertiesToRetrieve: standardObjectPropertiesDropdown({
+			objectType: OBJECT_TYPE.DEAL,
+			displayName: 'Additional Properties to Retrieve',
+			required: false,
+			advanced: true,
+		}),
+	},
+	async run(context) {
+		const { dealId, dealname, pipelineId, pipelineStageId } = context.propsValue;
+		const objectProperties = context.propsValue.objectProperties ?? {};
+		const additionalPropertiesToRetrieve = context.propsValue.additionalPropertiesToRetrieve ?? [];
+
+		const dealProperties: Record<string, string> = {};
+
+		if (dealname) {
+			dealProperties['dealname'] = dealname;
+		}
+		if (pipelineId) {
+			dealProperties['pipeline'] = pipelineId;
+		}
+		if (pipelineStageId) {
+			dealProperties['dealstage'] = pipelineStageId;
+		}
+
+		// Add additional properties to the dealProperties object
+		Object.entries(objectProperties).forEach(([key, value]) => {
+			if ((Array.isArray(value) && value.length === 0)) {
+        return;  
+			}
+			// Format values if they are arrays
+			dealProperties[key] = Array.isArray(value) ? value.join(';') : value;
+		});
+
+		const client = new Client({ accessToken: getHubspotAccessToken(context.auth) });
+
+		const updatedDeal = await client.crm.deals.basicApi.update(dealId, {
+			properties: dealProperties,
+		});
+		// Retrieve default properties for the deal and merge with additional properties to retrieve
+		const defaultDealProperties = getDefaultPropertiesForObject(OBJECT_TYPE.DEAL);
+
+		const dealDetails = await client.crm.deals.basicApi.getById(updatedDeal.id, [
+			...defaultDealProperties,
+			...additionalPropertiesToRetrieve,
+		]);
+
+		return dealDetails;
+	},
+});
+

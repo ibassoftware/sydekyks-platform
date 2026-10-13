@@ -1,0 +1,118 @@
+import {
+  DedupeStrategy,
+  HttpMethod,
+  HttpRequest,
+  Polling,
+  httpClient,
+  pollingHelper,
+} from '@activepieces/pieces-common';
+import {
+  AppConnectionValueForAuthProperty,
+  createTrigger,
+  Property,
+  TriggerStrategy,
+} from '@activepieces/pieces-framework';
+import dayjs from 'dayjs';
+import { discordAuth } from '../auth';
+import { discordCommon } from '../common';
+import { discordMessageOutputSchema } from '../output-schemas';
+
+import { Message } from '../common/models';
+
+const polling: Polling<AppConnectionValueForAuthProperty<typeof discordAuth>, { channel: string | undefined; limit: number }> =
+  {
+    strategy: DedupeStrategy.TIMEBASED,
+    items: async ({ auth, propsValue: { channel, limit } }) => {
+      if (channel === undefined) return [];
+
+      const request: HttpRequest = {
+        method: HttpMethod.GET,
+        url:
+          'https://discord.com/api/v9/channels/' +
+          channel +
+          '/messages?limit=' +
+          limit,
+        headers: {
+           Authorization: 'Bot ' + auth.secret_text,
+        },
+      };
+
+      const res = await httpClient.sendRequest<Message[]>(request);
+
+      const items = res.body;
+      return items.map((item) => ({
+        epochMilliSeconds: dayjs(item.timestamp).valueOf(),
+        data: item,
+      }));
+    },
+  };
+
+export const newMessage = createTrigger({
+  auth: discordAuth,
+  name: 'new_message',
+  classification: 'READ',
+  displayName: 'New Message',
+  description: 'Fires when a message is posted in a channel.',
+  aiMetadata: {
+    description: 'Fires when a new message is posted in the selected Discord channel, emitting one event per message. Polls the channel periodically, so detection is near-real-time rather than instant.',
+  },
+  type: TriggerStrategy.POLLING,
+  outputSchema: discordMessageOutputSchema,
+  props: {
+    channel: discordCommon.channel,
+    limit: Property.Number({
+      displayName: 'Limit',
+      description: 'Most recent messages checked each poll, up to 100.',
+      required: false,
+      defaultValue: 50,
+      display: 'stepper',
+      min: 1,
+      max: 100,
+      step: 1,
+      advanced: true,
+    }),
+  },
+  sampleData: {},
+  onEnable: async (context) => {
+    await pollingHelper.onEnable(polling, {
+      auth: context.auth,
+      store: context.store,
+      propsValue: {
+        channel: context.propsValue.channel,
+        limit: context.propsValue.limit ?? 50,
+      },
+    });
+  },
+  onDisable: async (context) => {
+    await pollingHelper.onDisable(polling, {
+      auth: context.auth,
+      store: context.store,
+      propsValue: {
+        channel: context.propsValue.channel,
+        limit: context.propsValue.limit ?? 50,
+      },
+    });
+  },
+  run: async (context) => {
+    return await pollingHelper.poll(polling, {
+      auth: context.auth,
+      store: context.store,
+      propsValue: {
+        channel: context.propsValue.channel,
+        limit: context.propsValue.limit ?? 50,
+      },
+      files: context.files,
+    });
+  },
+  test: async (context) => {
+    return await pollingHelper.test(polling, {
+      auth: context.auth,
+      store: context.store,
+      propsValue: {
+        channel: context.propsValue.channel,
+        limit: context.propsValue.limit ?? 50,
+      },
+      files: context.files,
+    });
+  },
+});

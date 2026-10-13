@@ -1,0 +1,30 @@
+import { HttpMethod, httpClient } from '@activepieces/pieces-common';
+import { createAction } from '@activepieces/pieces-framework';
+import { telegramCommons } from '../common';
+import { telegramBotAuth } from '../..';
+import { getChatActionOutputSchema } from '../output-schemas';
+
+export const telegramGetChatAction = createAction({
+  auth: telegramBotAuth,
+  name: 'get_chat',
+  classification: 'READ',
+  displayName: 'Get Chat',
+  description: "Get a chat's title, type, description and settings.",
+  audience: 'human',
+  aiMetadata: { description: 'Looks up current details about a chat (title, description, type, photo, member count, etc.) by chat_id. Use to resolve or inspect a chat before acting on it; the bot must be a member of or have access to the chat. Idempotent: read-only lookup with no side effects.', idempotent: true },
+  props: {
+    instructions: telegramCommons.form.chatIdInstructions(),
+    chat_id: telegramCommons.form.chatIdProp(),
+  },
+  outputSchema: getChatActionOutputSchema,
+  async run(ctx) {
+    const response = await httpClient.sendRequest<never>({
+      method: HttpMethod.POST,
+      url: telegramCommons.getApiUrl(ctx.auth, 'getChat'),
+      body: {
+        chat_id: ctx.propsValue.chat_id,
+      },
+    });
+    return response.body;
+  },
+});

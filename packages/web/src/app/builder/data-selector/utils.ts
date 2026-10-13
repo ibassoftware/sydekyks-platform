@@ -1,0 +1,496 @@
+import { isNil, isObject } from '@activepieces/core-utils';
+import {
+  flowCanvasUtils,
+  FlowAction,
+  FlowActionType,
+  flowStructureUtil,
+  FlowTrigger,
+  FlowTriggerType,
+} from '@activepieces/shared';
+import { t } from 'i18next';
+
+import { pieceSelectorUtils } from '@/features/pieces';
+
+import { pathHelpers } from './path-helpers';
+import {
+  DataSelectorTreeNode,
+  DataSelectorTestNodeData,
+  DataSelectorTreeNodeDataUnion,
+  DataSelectorTreeNodeData,
+} from './type';
+
+type PathSegment = string | number;
+
+const JOINED_VALUES_MAX_LENGTH = 32;
+
+function buildTestStepNode(
+  displayName: string,
+  stepName: string,
+): DataSelectorTreeNode<DataSelectorTreeNodeData> {
+  return {
+    key: stepName,
+    data: {
+      type: 'value',
+      value: '',
+      displayName,
+      propertyPath: stepName,
+      insertable: false,
+      stepName,
+    },
+    children: [
+      {
+        data: {
+          type: 'test',
+          stepName,
+          parentDisplayName: displayName,
+        },
+        key: `test_${stepName}`,
+      },
+    ],
+  };
+}
+
+type Node = {
+  values: unknown[];
+  properties: Record<string, Node>;
+};
+
+function mergeUniqueKeys(
+  obj: Record<string, Node>,
+  obj2: Record<string, Node>,
+): Record<string, Node> {
+  const result: Record<string, Node> = { ...obj };
+  for (const [key, values] of Object.entries(obj2)) {
+    const properties = mergeUniqueKeys(
+      result[key]?.properties || {},
+      values.properties,
+    );
+    result[key] = {
+      values: [...(result[key]?.values || []), ...values.values],
+      properties,
+    };
+  }
+  return result;
+}
+
+function extractUniqueKeys(obj: unknown): Record<string, Node> {
+  let result: Record<string, Node> = {};
+  if (isObject(obj)) {
+    for (const [entryKey, entryValue] of Object.entries(obj)) {
+      const resultValue = result[entryKey]?.values || [];
+      if (Array.isArray(entryValue)) {
+        const filteredValues = entryValue.filter(
+          (v) => !isObject(v) && !Array.isArray(v),
+        );
+        resultValue.push(...filteredValues);
+      } else if (!isObject(entryValue)) {
+        resultValue.push(entryValue);
+      }
+      const properties = extractUniqueKeys(entryValue);
+      result[entryKey] = {
+        values: resultValue,
+        properties,
+      };
+    }
+  } else if (Array.isArray(obj)) {
+    for (const value of obj) {
+      const properties = extractUniqueKeys(value);
+      result = mergeUniqueKeys(result, properties);
+    }
+  }
+  return result;
+}
+
+function convertArrayToZippedView(
+  obj: Record<string, Node>,
+  propertyPath: PathSegment[],
+): DataSelectorTreeNode<DataSelectorTreeNodeDataUnion>[] {
+  const result: DataSelectorTreeNode<DataSelectorTreeNodeDataUnion>[] = [];
+  for (const [key, node] of Object.entries(obj)) {
+    const stepName = propertyPath[0];
+    const subPath = [...propertyPath.slice(1), key];
+
+    const arrayPath = pathHelpers.propertyPathStarter(String(stepName));
+    const propertyPathWithFlattenArray = `flattenNestedKeys(${arrayPath}, ['${subPath
+      .map((s) => String(s))
+      .join("', '")}'])`;
+    const joinedValues = node.values.join(', ');
+    result.push({
+      key: key,
+      data: {
+        type: 'value',
+        value:
+          joinedValues.length > JOINED_VALUES_MAX_LENGTH
+            ? `${joinedValues.slice(0, JOINED_VALUES_MAX_LENGTH)}...`
+            : joinedValues,
+        displayName: key,
+        propertyPath: propertyPathWithFlattenArray,
+        insertable: true,
+      },
+      children:
+        Object.keys(node.properties).length > 0
+          ? convertArrayToZippedView(node.properties, [...propertyPath, key])
+          : undefined,
+    });
+  }
+  return result;
+}
+
+function buildJsonPath(propertyPath: PathSegment[]): string {
+  const propertyPathWithoutStepName = propertyPath.slice(1);
+  //need array indexes to not be quoted so we can add 1 to them when displaying the path in mention
+  return propertyPathWithoutStepName.reduce((acc, segment) => {
+    return `${acc}[${
+      typeof segment === 'string'
+        ? `'${pathHelpers.escapeMentionKey(String(segment))}'`
+        : segment
+    }]`;
+  }, pathHelpers.propertyPathStarter(String(propertyPath[0]))) as string;
+}
+
+function buildDataSelectorNode(
+  displayName: string,
+  propertyPath: PathSegment[],
+  value: unknown,
+  children: DataSelectorTreeNode<DataSelectorTreeNodeDataUnion>[] | undefined,
+  insertable = true,
+): DataSelectorTreeNode<DataSelectorTreeNodeDataUnion> {
+  const jsonPath = buildJsonPath(propertyPath);
+
+  return {
+    key: jsonPath,
+    data: {
+      type: 'value',
+      value,
+      displayName,
+      propertyPath: jsonPath,
+      insertable,
+    },
+    children,
+  };
+}
+
+function traverseOutput(
+  displayName: string,
+  propertyPath: PathSegment[],
+  node: unknown,
+  zipArraysOfProperties: boolean,
+  insertable = true,
+): DataSelectorTreeNode<DataSelectorTreeNodeDataUnion> {
+  if (Array.isArray(node)) {
+    const isArrayOfObjects = node.some((value) => isObject(value));
+    if (!zipArraysOfProperties || !isArrayOfObjects) {
+      const mentionNodes = node.map((value, idx) =>
+        traverseOutput(
+          `${displayName} [${idx + 1}]`,
+          [...propertyPath, idx],
+          value,
+          zipArraysOfProperties,
+          insertable,
+        ),
+      );
+      return buildDataSelectorNode(
+        displayName,
+        propertyPath,
+        node,
+        mentionNodes,
+        insertable,
+      );
+    } else {
+      return buildDataSelectorNode(
+        displayName,
+        propertyPath,
+        node,
+        convertArrayToZippedView(extractUniqueKeys(node), propertyPath),
+        insertable,
+      );
+    }
+  } else if (isObject(node)) {
+    const children = Object.entries(node).map(([key, value]) => {
+      if (zipArraysOfProperties) {
+        return buildDataSelectorNode(
+          key,
+          [...propertyPath, key],
+          value,
+          convertArrayToZippedView(extractUniqueKeys(value), [
+            ...propertyPath,
+            key,
+          ]),
+          insertable,
+        );
+      }
+      return traverseOutput(
+        key,
+        [...propertyPath, key],
+        value,
+        zipArraysOfProperties,
+        insertable,
+      );
+    });
+    return buildDataSelectorNode(
+      displayName,
+      propertyPath,
+      node,
+      children,
+      insertable,
+    );
+  } else {
+    return buildDataSelectorNode(
+      displayName,
+      propertyPath,
+      node,
+      undefined,
+      insertable,
+    );
+  }
+}
+
+function getSearchableValue(
+  item: DataSelectorTreeNode<DataSelectorTreeNodeDataUnion>,
+) {
+  if (item.data.type === 'test') {
+    return item.data.parentDisplayName;
+  }
+  if (item.data.type === 'chunk') {
+    return item.data.displayName;
+  }
+  // A container whose value holds the real object/array (for the type icon +
+  // count) is matched by displayName and by its children's leaf values, which
+  // are searched separately — so don't stringify the whole subtree here every
+  // keystroke (redundant and costly). Containers carrying a primitive value
+  // (e.g. the zipped-view aggregated preview string) keep their value searchable.
+  const isContainerObjectValue =
+    !isNil(item.children) &&
+    item.children.length > 0 &&
+    (isObject(item.data.value) || Array.isArray(item.data.value));
+  if (isContainerObjectValue) {
+    return '';
+  }
+  if (!isNil(item.data.value)) {
+    return JSON.stringify(item.data.value).toLowerCase();
+  } else if (item.data.value === null) {
+    return 'null';
+  }
+  return '';
+}
+
+function traverseStep(
+  step: (FlowAction | FlowTrigger) & { dfsIndex: number },
+  sampleData: Record<string, unknown>,
+  zipArraysOfProperties: boolean,
+  targetStepName: string,
+): DataSelectorTreeNode<DataSelectorTreeNodeDataUnion> {
+  const displayName = `${step.dfsIndex + 1}. ${step.displayName}`;
+  const stepNeedsTesting =
+    isNil(step.settings.sampleData?.lastTestDate) &&
+    (step.type !== FlowTriggerType.PIECE ||
+      !pieceSelectorUtils.isManualTrigger({
+        pieceName: step.settings.pieceName,
+        triggerName: step.settings.triggerName ?? '',
+      }));
+  if (stepNeedsTesting) {
+    return buildTestStepNode(displayName, step.name);
+  }
+  if (step.type === FlowActionType.LOOP_ON_ITEMS) {
+    const copiedSampleData = JSON.parse(JSON.stringify(sampleData[step.name]));
+    delete copiedSampleData['iterations'];
+    const headNode = traverseOutput(
+      displayName,
+      [step.name],
+      copiedSampleData,
+      zipArraysOfProperties,
+      true,
+    );
+    headNode.isLoopStepNode = true;
+    if (headNode.data.type === 'value') {
+      headNode.data = { ...headNode.data, stepName: step.name };
+    }
+    return headNode;
+  }
+
+  const stepNode = traverseOutput(
+    displayName,
+    [step.name],
+    sampleData[step.name],
+    zipArraysOfProperties,
+    true,
+  );
+  if (stepNode.data.type === 'value') {
+    stepNode.data = { ...stepNode.data, stepName: step.name };
+  }
+
+  const cofEnabled = flowStructureUtil.hasContinueOnFailureBranches(step);
+  if (cofEnabled) {
+    const branch = flowCanvasUtils.getStepBranchRelativeTo(
+      step,
+      targetStepName,
+    );
+    if (
+      branch !== 'on-failure' &&
+      isNil(stepNode.children) &&
+      stepNode.data.type === 'value'
+    ) {
+      const outputLeaf: DataSelectorTreeNode<DataSelectorTreeNodeDataUnion> = {
+        key: `${step.name}_output`,
+        data: {
+          type: 'value',
+          displayName: t('Output'),
+          propertyPath: pathHelpers.propertyPathStarter(step.name),
+          value: stepNode.data.value,
+          insertable: true,
+          hideStepIcon: true,
+        },
+      };
+      stepNode.data = { ...stepNode.data, insertable: false };
+      stepNode.children = [outputLeaf];
+    }
+
+    const errorMessageLeaf: DataSelectorTreeNode<DataSelectorTreeNodeDataUnion> =
+      {
+        key: `${step.name}_error_message`,
+        data: {
+          type: 'value',
+          displayName: t('Error message'),
+          propertyPath: `${step.name}['error']['message']`,
+          value: '---runtime error message---',
+          insertable: true,
+        },
+      };
+
+    if (branch === 'on-failure') {
+      if (stepNode.data.type === 'value') {
+        stepNode.data = { ...stepNode.data, insertable: false };
+      }
+      stepNode.children = [errorMessageLeaf];
+    } else if (branch !== 'on-success') {
+      const onSuccessNode: DataSelectorTreeNode<DataSelectorTreeNodeDataUnion> =
+        {
+          key: `${step.name}_on_success`,
+          data: {
+            type: 'chunk',
+            displayName: t('On success'),
+            displayNameClassName: 'text-success-11',
+          },
+          children: stepNode.children,
+        };
+      const onFailureNode: DataSelectorTreeNode<DataSelectorTreeNodeDataUnion> =
+        {
+          key: `${step.name}_on_failure`,
+          data: {
+            type: 'chunk',
+            displayName: t('On failure'),
+            displayNameClassName: 'text-danger-11',
+          },
+          children: [errorMessageLeaf],
+        };
+      stepNode.children = [onSuccessNode, onFailureNode];
+    }
+  }
+
+  return stepNode;
+}
+
+function filterBy(
+  mentions: DataSelectorTreeNode[],
+  query: string | undefined,
+): DataSelectorTreeNode<DataSelectorTreeNodeDataUnion>[] {
+  if (!query) {
+    return mentions;
+  }
+
+  const res = mentions
+    .map((item) => {
+      const filteredChildren = !isNil(item.children)
+        ? filterBy(item.children, query)
+        : undefined;
+
+      if (filteredChildren && filteredChildren.length) {
+        return {
+          ...item,
+          children: filteredChildren,
+        };
+      }
+      const searchableValue = getSearchableValue(item);
+
+      const displayName =
+        item.data.type === 'value' ? item.data.displayName.toLowerCase() : '';
+      const matchDisplayNameOrValue =
+        displayName.toLowerCase().includes(query.toLowerCase()) ||
+        searchableValue.toLowerCase().includes(query.toLowerCase());
+      if (matchDisplayNameOrValue) {
+        return item;
+      }
+      return null;
+    })
+    .filter(
+      (f) => !isNil(f),
+    ) as DataSelectorTreeNode<DataSelectorTreeNodeDataUnion>[];
+  return res;
+}
+
+function siblingRowIds(
+  nodes: DataSelectorTreeNode[],
+  parentId: string | undefined,
+): string[] {
+  const occurrences = new Map<string, number>();
+  return nodes.map((node) => {
+    const seen = occurrences.get(node.key) ?? 0;
+    occurrences.set(node.key, seen + 1);
+    const segment = encodeURIComponent(node.key);
+    const localId = seen === 0 ? segment : `${segment}#${seen}`;
+    return isNil(parentId) ? localId : `${parentId}/${localId}`;
+  });
+}
+
+function flattenVisibleRows({
+  nodes,
+  searchActive,
+  overrides,
+  parentId,
+  depth = 0,
+}: {
+  nodes: DataSelectorTreeNode[];
+  searchActive: boolean;
+  overrides: ReadonlyMap<string, boolean>;
+  parentId?: string;
+  depth?: number;
+}): DataSelectorRow[] {
+  const ids = siblingRowIds(nodes, parentId);
+  return nodes.flatMap((node, index) => {
+    const id = ids[index];
+    const children = node.children ?? [];
+    const hasChildren = children.length > 0;
+    const expandedByDefault = searchActive || depth === 0;
+    const expanded = hasChildren && (overrides.get(id) ?? expandedByDefault);
+    const row: DataSelectorRow = { id, node, depth, expanded };
+    return expanded
+      ? [
+          row,
+          ...flattenVisibleRows({
+            nodes: children,
+            searchActive,
+            overrides,
+            parentId: id,
+            depth: depth + 1,
+          }),
+        ]
+      : [row];
+  });
+}
+
+export const dataSelectorUtils = {
+  isTestStepNode: (
+    node: DataSelectorTreeNode,
+  ): node is DataSelectorTreeNode<DataSelectorTestNodeData> =>
+    node.data.type === 'test',
+  traverseStep,
+  filterBy,
+  flattenVisibleRows,
+};
+
+export type DataSelectorRow = {
+  id: string;
+  node: DataSelectorTreeNode;
+  depth: number;
+  expanded: boolean;
+};

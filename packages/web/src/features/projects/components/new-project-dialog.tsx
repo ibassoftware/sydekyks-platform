@@ -1,0 +1,339 @@
+import {
+  AppConnectionWithoutSensitiveData,
+  CreatePlatformProjectRequest,
+  PlatformRole,
+  ProjectWithLimits,
+} from '@activepieces/shared';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useQueryClient } from '@tanstack/react-query';
+import { t } from 'i18next';
+import { Crown } from 'lucide-react';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+
+import { DefaultTag } from '@/components/custom/global-connection-utils';
+import { MultiSelectPieceProperty } from '@/components/custom/multi-select-piece-property';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import {
+  Form,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { SkeletonList } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
+import { globalConnectionsQueries } from '@/features/connections';
+import { projectCollectionUtils } from '@/features/projects';
+import { platformHooks } from '@/hooks/platform-hooks';
+import { userHooks } from '@/hooks/user-hooks';
+import { AdminControl, adminControl } from '@/lib/admin-control';
+import { api } from '@/lib/api';
+import { releaseAvailability } from '@/lib/release-availability';
+
+import { projectNameSchema } from '../lib/project-name-schema';
+
+type NewProjectDialogProps = {
+  children: React.ReactNode;
+  onCreate?: (project: ProjectWithLimits) => void;
+  onBlocked?: () => void;
+  gate?: {
+    locked: boolean;
+    content: (args: { onClose: () => void }) => React.ReactNode;
+  };
+};
+
+export const NewProjectDialog = (props: NewProjectDialogProps) => {
+  const [open, setOpen] = useState(false);
+  const [blockedOnSubmit, setBlockedOnSubmit] = useState(false);
+  const showGate = props.gate?.locked === true || blockedOnSubmit;
+  const { platform } = platformHooks.useCurrentPlatform();
+  const globalConnectionsEnabled = platform.plan.globalConnectionsEnabled;
+
+  const { data: globalConnectionsPage, isLoading: isLoadingConnections } =
+    globalConnectionsQueries.useGlobalConnections({
+      request: { limit: 9999 },
+      extraKeys: [],
+    });
+
+  const globalConnections = globalConnectionsPage?.data ?? [];
+
+  const changeOpen = (next: boolean) => {
+    setOpen(next);
+    if (next && props.gate?.locked === true) {
+      props.onBlocked?.();
+    }
+    if (!next) {
+      setBlockedOnSubmit(false);
+    }
+  };
+
+  return (
+    <Dialog
+      key={open ? 'open' : 'closed'}
+      open={open}
+      onOpenChange={changeOpen}
+    >
+      <DialogTrigger asChild>{props.children}</DialogTrigger>
+      <DialogContent>
+        {showGate && props.gate !== undefined ? (
+          props.gate.content({ onClose: () => changeOpen(false) })
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>{t('Create Project')}</DialogTitle>
+              <DialogDescription>
+                {t(
+                  'Set up a new project to organize your automations and connections.',
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            {(!isLoadingConnections || !globalConnectionsEnabled) && (
+              <NewProjectForm
+                setOpen={setOpen}
+                globalConnections={globalConnections}
+                globalConnectionsEnabled={globalConnectionsEnabled}
+                onCreate={props.onCreate}
+                gate={
+                  props.gate === undefined
+                    ? undefined
+                    : {
+                        locked: props.gate.locked,
+                        onBlocked: () => {
+                          setBlockedOnSubmit(true);
+                          props.onBlocked?.();
+                        },
+                      }
+                }
+              />
+            )}
+            {isLoadingConnections && globalConnectionsEnabled && (
+              <SkeletonList numberOfItems={3} className="h-10" />
+            )}
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const NewProjectForm = ({
+  onCreate,
+  setOpen,
+  globalConnections,
+  globalConnectionsEnabled,
+  gate,
+}: Omit<NewProjectDialogProps, 'children' | 'gate'> & {
+  setOpen: (open: boolean) => void;
+  globalConnections: AppConnectionWithoutSensitiveData[];
+  globalConnectionsEnabled: boolean;
+  gate?: { locked: boolean; onBlocked: () => void };
+}) => {
+  const queryClient = useQueryClient();
+  const { platform } = platformHooks.useCurrentPlatform();
+  const platformRole = userHooks.getCurrentUserPlatformRole();
+  const canToggleSensitive =
+    platform.plan.environmentsEnabled && platformRole === PlatformRole.ADMIN;
+  const preselectedConnectionExternalIds = globalConnections
+    .filter((connection) => connection.preSelectForNewProjects)
+    .map((connection) => connection.externalId);
+
+  const form = useForm<CreatePlatformProjectRequest>({
+    resolver: zodResolver(
+      z.object({
+        displayName: projectNameSchema,
+        alertReceiverEmail: z
+          .email(t('Invalid email'))
+          .nullable()
+          .optional()
+          .or(z.literal('')),
+      }),
+    ),
+    mode: 'onChange',
+    defaultValues: {
+      displayName: '',
+      globalConnectionExternalIds: preselectedConnectionExternalIds,
+      alertReceiverEmail: '',
+      sensitive: false,
+    },
+  });
+
+  const handleCreate = () => {
+    const values = form.getValues();
+    mutate({ displayName: values.displayName });
+  };
+
+  const { mutate, isPending } = projectCollectionUtils.useCreateProject(
+    (data) => {
+      onCreate?.(data);
+      setOpen(false);
+      queryClient.invalidateQueries({
+        queryKey: globalConnectionsQueries.getGlobalConnectionsQueryKey([]),
+      });
+    },
+    (error) => {
+      form.setError('root.serverError', {
+        type: 'server',
+        message: api.extractServerErrorMessage(
+          error,
+          t('Failed to save changes. Please try again.'),
+        ),
+      });
+    },
+  );
+
+  return (
+    <>
+      <Form {...form}>
+        <form
+          className="grid space-y-4"
+          onSubmit={(e) => form.handleSubmit(handleCreate)(e)}
+        >
+          <FormField
+            name="displayName"
+            render={({ field }) => (
+              <FormItem className="grid space-y-2">
+                <Label htmlFor="displayName" showRequiredIndicator>
+                  {t('Project Name')}
+                </Label>
+                <Input
+                  {...field}
+                  id="displayName"
+                  placeholder={t('Project Name')}
+                  className="rounded-sm"
+                />
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          {releaseAvailability.projectAlerts && (
+            <FormField
+              name="alertReceiverEmail"
+              render={({ field }) => (
+                <FormItem className="grid space-y-2">
+                  <Label htmlFor="alertReceiverEmail">
+                    {t('Alert Receiver Email')}
+                  </Label>
+                  <Input
+                    {...field}
+                    id="alertReceiverEmail"
+                    type="email"
+                    placeholder="alerts@example.com"
+                    className="rounded-sm"
+                    value={field.value ?? ''}
+                  />
+                  <span className="text-xs text-gray-11">
+                    {t('Receives flow failure emails for this project.')}
+                  </span>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
+          {canToggleSensitive && (
+            <FormField
+              name="sensitive"
+              render={({ field }) => (
+                <FormItem className="flex items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="sensitive">{t('Sensitive Project')}</Label>
+                    <FormDescription>
+                      {t(
+                        'When enabled, publishing flows in this project requires approval.',
+                      )}
+                    </FormDescription>
+                  </div>
+                  <Switch
+                    id="sensitive"
+                    checked={!!field.value}
+                    onCheckedChange={field.onChange}
+                    {...adminControl(AdminControl.PROJECTS_SENSITIVE_TOGGLE)}
+                  />
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
+          {globalConnectionsEnabled && (
+            <FormField
+              name="globalConnectionExternalIds"
+              render={({ field }) => (
+                <FormItem className="grid space-y-2">
+                  <Label>{t('Global Connections')}</Label>
+                  <MultiSelectPieceProperty
+                    placeholder={t('Select global connections')}
+                    options={
+                      globalConnections.map((connection) => ({
+                        value: connection.externalId,
+                        label: connection.displayName,
+                      })) ?? []
+                    }
+                    loading={false}
+                    onChange={(value) => {
+                      field.onChange(value ?? []);
+                    }}
+                    itemExtraContent={(index) => {
+                      if (globalConnections[index].preSelectForNewProjects) {
+                        return <DefaultTag />;
+                      }
+                      return null;
+                    }}
+                    initialValues={field.value ?? []}
+                    showDeselect={(field.value ?? []).length > 0}
+                  />
+                </FormItem>
+              )}
+            />
+          )}
+          {form?.formState?.errors?.root?.serverError && (
+            <FormMessage>
+              {form.formState.errors.root.serverError.message}
+            </FormMessage>
+          )}
+          <DialogFooter>
+            <Button
+              variant={'outline'}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setOpen(false);
+              }}
+            >
+              {t('Cancel')}
+            </Button>
+            <Button
+              disabled={isPending}
+              loading={isPending}
+              {...adminControl(AdminControl.PROJECTS_NEW_SUBMIT)}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (gate?.locked === true) {
+                  gate.onBlocked();
+                  return;
+                }
+                form.handleSubmit(handleCreate)(e);
+              }}
+            >
+              {gate?.locked === true && <Crown className="size-3.5 shrink-0" />}
+              {t('Create Project')}
+            </Button>
+          </DialogFooter>
+        </form>
+      </Form>
+    </>
+  );
+};

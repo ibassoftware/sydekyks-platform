@@ -1,0 +1,117 @@
+import { randomBytes } from 'node:crypto';
+
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { kebabCase } from '@activepieces/pieces-framework';
+
+import { imageRouterAuth } from '../auth';
+import { imageRouterApi } from '../common/api';
+import { imageRouterProps } from '../common/props';
+import { createImageOutputSchema } from '../output-schemas';
+
+export const createImageAction = createAction({
+  audience: 'human',
+  auth: imageRouterAuth,
+  name: 'createImage',
+  outputSchema: createImageOutputSchema,
+  classification: 'WRITE',
+  displayName: 'Create Image',
+  description: 'Generate an image from a text prompt using any available model',
+  aiMetadata: { description: 'Generates brand-new images from a text prompt alone, routing the request through ImageRouter to whichever hosted image model is named in the required Model input, then downloading each result and saving it as a flow file. Pick this when there is no source picture to work from; use Image to Image instead to edit, mask, or transform images you already have. Quality and size are advisory and are ignored by models that do not support them. Not idempotent: each call runs a fresh generation and returns different images.', idempotent: false },
+  props: {
+    prompt: Property.ShortText({
+      displayName: 'Prompt',
+      description: 'Text prompt describing the image you want to generate',
+      required: true,
+    }),
+    model: imageRouterProps.model({ required: true }),
+    quality: Property.StaticDropdown({
+      displayName: 'Quality',
+      description: 'Image quality (not all models support this)',
+      required: false,
+      defaultValue: 'auto',
+      options: {
+        options: [
+          { label: 'Auto', value: 'auto' },
+          { label: 'Low', value: 'low' },
+          { label: 'Medium', value: 'medium' },
+          { label: 'High', value: 'high' },
+        ],
+      },
+    }),
+    size: Property.ShortText({
+      displayName: 'Size',
+      description: 'Image size (e.g., 1024x1024). Use "auto" for default size.',
+      required: false,
+      defaultValue: 'auto',
+    }),
+    responseFormat: Property.StaticDropdown({
+      displayName: 'Response Format',
+      description: 'How to receive the generated image',
+      required: false,
+      defaultValue: 'url',
+      options: {
+        options: [
+          { label: 'URL (saved in logs)', value: 'url' },
+          { label: 'Base64 JSON (saved in logs)', value: 'b64_json' },
+          { label: 'Base64 Ephemeral (not saved)', value: 'b64_ephemeral' },
+        ],
+      },
+    }),
+  },
+  async run(context) {
+    const { prompt, model, quality, size, responseFormat } = context.propsValue;
+
+    const response = await imageRouterApi.generateImage({
+      auth: context.auth,
+      prompt,
+      model,
+      quality,
+      size,
+      responseFormat,
+    });
+
+    const images = response.data || [];
+
+    if (images.length === 0) {
+      return response;
+    }
+
+    const savedImages = await Promise.all(
+      images.map(async (img, index) => {
+        let imageBuffer: Buffer;
+        let fileName: string;
+
+        if (img.b64_json) {
+          imageBuffer = Buffer.from(img.b64_json, 'base64');
+          fileName = `${randomBytes(8).toString('hex')}-${kebabCase(prompt).slice(0, 40)}-${index + 1}.png`;
+        } else if (img.url) {
+          imageBuffer = await imageRouterApi.downloadFile({ url: img.url });
+          const urlExtension = img.url.split('.').pop()?.split('?')[0] || 'png';
+          fileName = `${randomBytes(8).toString('hex')}-${kebabCase(prompt).slice(0, 40)}-${index + 1}.${urlExtension}`;
+        } else {
+          throw new Error(`Image ${index + 1} has no URL or base64 data`);
+        }
+
+        const fileUrl = await context.files.write({
+          fileName,
+          data: imageBuffer,
+        });
+
+        return {
+          index: index + 1,
+          url: img.url || null,
+          b64_json: img.b64_json || null,
+          revised_prompt: img.revised_prompt || prompt,
+          savedFile: fileUrl,
+          fileName,
+        };
+      })
+    );
+
+    return {
+      ...response,
+      images: savedImages,
+    };
+  },
+});
+

@@ -1,0 +1,567 @@
+import { isNil, SeekPage } from '@activepieces/core-utils';
+import {
+  AgentConversation,
+  AgentMessageSource,
+  ChatPersonalizationStatus,
+  PlatformRole,
+} from '@activepieces/shared';
+import { useQueryClient } from '@tanstack/react-query';
+import { t } from 'i18next';
+import { AlertTriangle, RefreshCw, Square } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import {
+  ChatContainerContent,
+  ChatContainerRoot,
+  ChatContainerScrollAnchor,
+} from '@/components/prompt-kit/chat-container';
+import { ScrollButton } from '@/components/prompt-kit/scroll-button';
+import { Button } from '@/components/ui/button';
+import { ChatCreditsAlert } from '@/features/billing';
+import { chatStoreSelectors } from '@/features/chat/lib/chat-store';
+import {
+  ChatStoreProvider,
+  useChatStoreContext,
+} from '@/features/chat/lib/chat-store-context';
+import { ChatUIMessage, chatPartUtils } from '@/features/chat/lib/chat-types';
+import { onboardingPrefillUtils } from '@/features/chat/lib/onboarding-prefill';
+import { useAgentChat } from '@/features/chat/lib/use-chat';
+import { useCreditsState } from '@/features/chat/lib/use-credits-state';
+import { usePersonalization } from '@/features/chat/lib/use-personalization';
+import { aiProviderQueries } from '@/features/platform-admin';
+import { platformHooks } from '@/hooks/platform-hooks';
+import { userHooks } from '@/hooks/user-hooks';
+import { cn } from '@/lib/utils';
+
+import { AssistantMessage } from './components/assistant-message';
+import { ChatBottomBar } from './components/chat-bottom-bar';
+import {
+  EmptyState,
+  MessageSkeletons,
+  SetupRequiredState,
+} from './components/chat-empty-state';
+import { OnboardingQuestionCard } from './components/onboarding-question-card';
+import { OnboardingWelcome } from './components/onboarding-welcome';
+import {
+  PersonalizationChip,
+  PersonalizationChipState,
+} from './components/personalization-chip';
+import { QuickReplies } from './components/quick-replies';
+import { UserMessage } from './components/user-message';
+import { getTextFromParts } from './lib/message-parsers';
+
+export function AIChatBox({
+  incognito,
+  initialPrompt,
+  agentId,
+  builder,
+  onTurnEnd,
+  editorContext,
+  onRunStateChange,
+  beforeSend,
+  emptyState,
+  footerNote,
+  placeholder,
+  conversationId,
+  onTitleUpdate,
+  onConversationCreated,
+}: AIChatBoxProps) {
+  const { data: chatProvider, isLoading: isLoadingProviders } =
+    aiProviderQueries.useChatProvider();
+
+  const needsChatProvider = agentId === undefined || builder === true;
+  if (needsChatProvider && isLoadingProviders) {
+    return <MessageSkeletons />;
+  }
+
+  if (needsChatProvider && !chatProvider) {
+    return <SetupRequiredState />;
+  }
+
+  return (
+    <ChatStoreProvider>
+      <ChatBoxContent
+        incognito={incognito}
+        initialPrompt={initialPrompt}
+        agentId={agentId}
+        builder={builder}
+        onTurnEnd={onTurnEnd}
+        editorContext={editorContext}
+        onRunStateChange={onRunStateChange}
+        beforeSend={beforeSend}
+        emptyState={emptyState}
+        footerNote={footerNote}
+        placeholder={placeholder}
+        conversationId={conversationId}
+        onTitleUpdate={onTitleUpdate}
+        onConversationCreated={onConversationCreated}
+      />
+    </ChatStoreProvider>
+  );
+}
+
+function ChatBoxContent({
+  incognito,
+  initialPrompt,
+  agentId,
+  builder,
+  onTurnEnd,
+  editorContext,
+  onRunStateChange,
+  beforeSend,
+  emptyState,
+  footerNote,
+  placeholder,
+  conversationId: initialConversationId,
+  onTitleUpdate,
+  onConversationCreated,
+}: AIChatBoxProps) {
+  const queryClient = useQueryClient();
+  const credits = useCreditsState();
+  const { data: modelCatalog } = aiProviderQueries.useChatModels({
+    enabled: agentId === undefined && !builder,
+  });
+
+  const {
+    conversationId,
+    modelName,
+    messages,
+    isStreaming,
+    isResumedStream,
+    isAwaitingResponse,
+    wasCancelled,
+    isLoadingHistory,
+    error,
+    sendMessage,
+    cancelStream,
+    setConversationId,
+    setModelName,
+  } = useAgentChat({
+    ...(agentId === undefined ? {} : { agentId }),
+    ...(builder === undefined ? {} : { builder }),
+    defaultModelName:
+      agentId === undefined ? modelCatalog?.defaultModelId ?? null : null,
+    onTitleUpdate,
+    onConversationCreated,
+    onTurnEnd,
+    editorContext,
+    onRunStateChange,
+    onCreditsExhausted: () => credits.setCreditsExhausted(true),
+  });
+
+  const setStoreConversationId = useChatStoreContext(
+    (s) => s.setConversationId,
+  );
+  const quickReplies = useChatStoreContext((s) => s.quickReplies);
+  const offerRecurringAutomation = useChatStoreContext(
+    (s) => s.offerRecurringAutomation,
+  );
+
+  useEffect(() => {
+    if (initialConversationId) {
+      void setConversationId(initialConversationId);
+    }
+  }, [initialConversationId, setConversationId]);
+
+  useEffect(() => {
+    setStoreConversationId(conversationId ?? null);
+  }, [conversationId, setStoreConversationId]);
+
+  useEffect(() => {
+    if (!isStreaming) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.closest('[role="dialog"]') ||
+          target.closest('[data-radix-popper-content-wrapper]'))
+      ) {
+        return;
+      }
+      e.preventDefault();
+      cancelStream();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isStreaming, cancelStream]);
+
+  const [hasSentMessage, setHasSentMessage] = useState(false);
+
+  const handleSend = useCallback(
+    async (
+      text: string,
+      files?: File[],
+      options?: { messageSource?: AgentMessageSource },
+    ) => {
+      if (!text.trim() && (!files || files.length === 0)) return;
+      if (beforeSend && !beforeSend()) return;
+      setHasSentMessage(true);
+      await sendMessage(text.trim(), files, options);
+    },
+    [beforeSend, sendMessage],
+  );
+
+  const sentInitialPrompt = useRef(false);
+
+  useEffect(() => {
+    const shouldSendInitialPrompt =
+      initialPrompt !== undefined &&
+      initialPrompt.trim().length > 0 &&
+      !initialConversationId &&
+      !sentInitialPrompt.current;
+    if (!shouldSendInitialPrompt) return;
+    sentInitialPrompt.current = true;
+    handleSend(initialPrompt).catch(() => undefined);
+  }, [initialPrompt, initialConversationId, handleSend]);
+
+  const handleRetry = useCallback(() => {
+    const lastUser = messages.findLast((m) => m.role === 'user');
+    if (lastUser) void sendMessage(getTextFromParts(lastUser.parts));
+  }, [messages, sendMessage]);
+
+  const lastMessage = messages[messages.length - 1];
+  const lastAssistantMessage = useMemo(
+    () => messages.findLast((m) => m.role === 'assistant'),
+    [messages],
+  );
+
+  const claimedBuildIdsByMessage = useMemo(
+    () => computeClaimedBuildIds(messages),
+    [messages],
+  );
+
+  const hasBlockingCard = useChatStoreContext((s) =>
+    chatStoreSelectors.hasBlockingCard({ state: s, lastAssistantMessage }),
+  );
+
+  const showBanner = credits.creditsExhausted || credits.showLowCreditsWarning;
+
+  const [hasInput, setHasInput] = useState(false);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const { platform } = platformHooks.useCurrentPlatform();
+  const { data: currentUser } = userHooks.useCurrentUser();
+  const personalization = usePersonalization({ enabled: !incognito });
+
+  const isAwaitingLoad =
+    !!initialConversationId && messages.length === 0 && !error;
+  const isEmpty =
+    messages.length === 0 &&
+    !isLoadingHistory &&
+    !isStreaming &&
+    !isAwaitingLoad &&
+    !hasSentMessage;
+
+  const isFirstRun =
+    personalization.personalStatus === ChatPersonalizationStatus.UNSET;
+  const companyLocked =
+    (personalization.companyInput ?? '').trim().length > 0 &&
+    currentUser?.platformRole !== PlatformRole.ADMIN;
+  const showOnboardingCard =
+    isEmpty && !incognito && (isFirstRun || promptOpen);
+  const showPersonalizationDonut =
+    isEmpty &&
+    !incognito &&
+    isNil(agentId) &&
+    !showOnboardingCard &&
+    !personalization.isResolving &&
+    personalization.status !== null &&
+    personalization.status !== ChatPersonalizationStatus.UNSET;
+  const personalizationChipState: PersonalizationChipState =
+    personalization.isResearching
+      ? 'researching'
+      : personalization.status === ChatPersonalizationStatus.FAILED
+      ? 'failed'
+      : personalization.roleInput
+      ? 'ready'
+      : 'unanswered';
+
+  const initialAnswers = onboardingPrefillUtils.resolveInitialAnswers({
+    view: {
+      roleInput: personalization.roleInput,
+      companyInput: personalization.companyInput,
+      profile: personalization.profile,
+      prefill: personalization.prefill,
+      personalStatus:
+        personalization.personalStatus ?? ChatPersonalizationStatus.UNSET,
+    },
+    platformName: platform?.name,
+  });
+
+  const handleOnboardingComplete = (answers: {
+    role: string;
+    company: string;
+    companyDomain: string | null;
+  }) => {
+    setPromptOpen(false);
+    personalization.start({
+      role: answers.role,
+      company: companyLocked ? '' : answers.companyDomain ?? answers.company,
+    });
+    void handleSend(
+      t(
+        'I work at {company} and my role is: {role}. What can you take off my plate?',
+        { role: answers.role, company: answers.company },
+      ),
+      undefined,
+      { messageSource: 'onboarding' },
+    );
+  };
+
+  const handleOnboardingDismiss = () => {
+    setPromptOpen(false);
+    if (isFirstRun) {
+      personalization.reset();
+    }
+  };
+
+  const cachedConversations = queryClient.getQueryData<
+    SeekPage<AgentConversation>
+  >(['chat-conversations']);
+  const hasConversations = (cachedConversations?.data?.length ?? 0) > 0;
+
+  return (
+    <div className="flex flex-col h-full flex-1 min-w-0">
+      <AnimatePresence mode="wait">
+        {isEmpty ? (
+          <div
+            key="empty-state"
+            className={cn(
+              'flex-1 overflow-y-auto min-h-0',
+              showPersonalizationDonut && 'pb-14',
+            )}
+          >
+            {emptyState ??
+              (showOnboardingCard ? (
+                <OnboardingWelcome />
+              ) : (
+                <EmptyState
+                  onSuggestionClick={(text) => void handleSend(text)}
+                  incognito={incognito}
+                  showFlowCards={!hasConversations}
+                  hasInput={hasInput}
+                />
+              ))}
+          </div>
+        ) : (
+          <motion.div
+            key="chat-container"
+            className="flex-1 min-h-0"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.25 }}
+          >
+            <ChatContainerRoot
+              className="flex-1 relative h-full px-3 sm:px-6"
+              style={{
+                maskImage:
+                  'linear-gradient(to bottom, black 0%, black calc(100% - 12px), transparent 100%)',
+                WebkitMaskImage:
+                  'linear-gradient(to bottom, black 0%, black calc(100% - 12px), transparent 100%)',
+              }}
+            >
+              <ChatContainerContent className="max-w-3xl mx-auto pt-8 pb-4 gap-0 min-h-full">
+                {isLoadingHistory && <MessageSkeletons />}
+
+                {messages.map((msg, idx) => {
+                  if (msg.role === 'user') {
+                    return (
+                      <UserMessage
+                        key={msg.id}
+                        message={msg}
+                        isLastMessage={idx === messages.length - 1}
+                      />
+                    );
+                  }
+
+                  const isLastStreamingAssistant =
+                    isStreaming && idx === messages.length - 1;
+
+                  const isLastAssistant = idx === messages.length - 1;
+
+                  return (
+                    <AssistantMessage
+                      key={msg.id}
+                      message={msg}
+                      isStreaming={isLastStreamingAssistant}
+                      isResumed={isLastStreamingAssistant && isResumedStream}
+                      isLastMessage={isLastAssistant}
+                      onSendPrompt={(text) => void handleSend(text)}
+                      claimedBuildIds={claimedBuildIdsByMessage.get(msg.id)}
+                      conversationId={conversationId}
+                      messageIndex={idx}
+                    />
+                  );
+                })}
+
+                {!isAwaitingResponse &&
+                  !wasCancelled &&
+                  !hasBlockingCard &&
+                  (quickReplies.length > 0 || offerRecurringAutomation) && (
+                    <div className="mt-auto pt-2">
+                      <QuickReplies
+                        replies={quickReplies}
+                        offerRecurringAutomation={offerRecurringAutomation}
+                        onSend={handleSend}
+                      />
+                    </div>
+                  )}
+
+                {wasCancelled && (
+                  <div className="flex items-center gap-2 py-2 text-xs text-gray-11 animate-in fade-in duration-200">
+                    <Square className="h-3 w-3 fill-current" />
+                    <span>{t('Response stopped')}</span>
+                  </div>
+                )}
+
+                {error && (
+                  <motion.div
+                    className="flex items-center gap-2 rounded-lg border border-danger-6 bg-danger-3 px-3 py-2 text-danger-11 text-sm"
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span className="flex-1">{error}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-danger-11 hover:text-danger-11 gap-1.5 shrink-0 h-7 px-2"
+                      onClick={handleRetry}
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      {t('Retry')}
+                    </Button>
+                  </motion.div>
+                )}
+
+                <ChatContainerScrollAnchor />
+              </ChatContainerContent>
+              <ScrollButton className="absolute bottom-4 right-1/2 translate-x-1/2" />
+            </ChatContainerRoot>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="px-3 sm:px-6 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="max-w-3xl mx-auto relative">
+          {showOnboardingCard && (
+            <div className="mb-3">
+              <OnboardingQuestionCard
+                initialRole={initialAnswers.role}
+                initialCompany={initialAnswers.company}
+                initialCompanyDomain={initialAnswers.companyDomain}
+                companyLocked={companyLocked}
+                onComplete={handleOnboardingComplete}
+                onDismiss={handleOnboardingDismiss}
+              />
+            </div>
+          )}
+          {showPersonalizationDonut && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-full z-10 mb-3 flex justify-center">
+              <div className="pointer-events-auto">
+                <PersonalizationChip
+                  state={personalizationChipState}
+                  role={personalization.roleInput}
+                  company={
+                    personalization.profile?.companyName ??
+                    personalization.companyInput
+                  }
+                  onClick={() => setPromptOpen(true)}
+                  onClear={personalization.reset}
+                />
+              </div>
+            </div>
+          )}
+          <ChatBottomBar
+            isStreaming={isStreaming}
+            onSend={handleSend}
+            onStop={cancelStream}
+            onInputChange={setHasInput}
+            recede={showOnboardingCard}
+            selectedModel={modelName}
+            onModelChange={setModelName}
+            lastAssistantMessage={lastAssistantMessage}
+            lastMessageId={lastMessage?.id}
+            hideModelSelector={agentId !== undefined}
+            placeholder={
+              placeholder ??
+              (showOnboardingCard
+                ? t('Or tell me the work you want gone')
+                : isEmpty
+                ? t('Ask, build, or run a task...')
+                : undefined)
+            }
+            banner={
+              showBanner && !hasBlockingCard ? (
+                <ChatCreditsAlert
+                  creditsExhausted={credits.creditsExhausted}
+                  creditsPercentUsed={credits.creditsPercentUsed}
+                  onDismiss={credits.dismissCreditsWarning}
+                />
+              ) : null
+            }
+          />
+          {footerNote !== undefined && (
+            <p className="pt-[9px] text-center text-[11.5px] leading-[14px] text-gray-11">
+              {footerNote}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// A build's plan is replayed across many messages; assign each build to the
+// single (latest) message allowed to render its card so the plan shows once.
+function computeClaimedBuildIds(
+  messages: ChatUIMessage[],
+): Map<string, Set<string>> {
+  const ownerMessageByBuildId = new Map<string, string>();
+  for (const msg of messages) {
+    if (msg.role !== 'assistant') continue;
+    for (const part of msg.parts) {
+      if (!chatPartUtils.isAnyToolPart(part)) continue;
+      if (chatPartUtils.getToolPartName(part) !== 'ap_set_build_plan') continue;
+      const buildId = chatPartUtils.extractBuildIdFromOutput(part);
+      if (buildId) ownerMessageByBuildId.set(buildId, msg.id);
+    }
+  }
+
+  const claimed = new Map<string, Set<string>>();
+  for (const [buildId, messageId] of ownerMessageByBuildId) {
+    const existing = claimed.get(messageId);
+    if (existing) {
+      existing.add(buildId);
+    } else {
+      claimed.set(messageId, new Set([buildId]));
+    }
+  }
+  return claimed;
+}
+
+type AIChatBoxProps = {
+  incognito: boolean;
+  initialPrompt?: string;
+  agentId?: string;
+  builder?: boolean;
+  onTurnEnd?: () => void;
+  editorContext?: {
+    flowId: string;
+    flowVersionId: string;
+    selectedStepName?: string;
+  };
+  onRunStateChange?: (running: boolean) => void;
+  beforeSend?: () => boolean;
+  emptyState?: React.ReactNode;
+  footerNote?: string;
+  placeholder?: string;
+  conversationId?: string | null;
+  onConversationCreated?: (conversationId: string) => void;
+  onTitleUpdate?: (title: string) => void;
+};

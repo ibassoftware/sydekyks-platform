@@ -1,0 +1,57 @@
+import { createAction } from '@activepieces/pieces-framework';
+import { codaAuth } from '../auth';
+import { codaClient } from '../common/types';
+import { docIdDropdown, tableIdDropdown, tableRowsDynamicProps } from '../common/props';
+import { isNil } from '@activepieces/pieces-framework';
+import { createRowActionOutputSchema } from '../output-schemas';
+
+export const createRowAction = createAction({
+	auth: codaAuth,
+	name: 'create-row',
+	classification: 'WRITE',
+	displayName: 'Create Row',
+	description: 'Creates a new row in the selected table.',
+	audience: 'human',
+	aiMetadata: { description: 'Append a new row to a table in a Coda doc, with cell values keyed by column. Use to add data to a Coda table; choose Upsert Row instead if you want to match-and-update existing rows on key columns. Requires the doc, table, and at least one non-empty cell value. Not idempotent — each call inserts a separate row.', idempotent: false },
+	props: {
+		docId: docIdDropdown,
+		tableId: tableIdDropdown,
+		rowData: tableRowsDynamicProps,
+	},
+	outputSchema: createRowActionOutputSchema,
+	async run(context) {
+		const { docId, tableId, rowData } = context.propsValue;
+		const client = codaClient(context.auth);
+
+		const cells = Object.entries(rowData ?? {})
+			.filter(([, value]) => value !== undefined && value !== null && value !== '')
+			.map(([columnId, value]) => ({
+				column: columnId,
+				value: value,
+			}));
+
+		if (cells.length === 0) {
+			throw new Error('Provide any column values to create new row.');
+		}
+
+		const payload = {
+			rows: [
+				{
+					cells: cells,
+				},
+			],
+		};
+
+		const response = await client.mutateRows(docId, tableId, payload, {
+			disableParsing: false,
+		});
+
+		const rowId = response.addedRowIds?.[0];
+
+		if (isNil(rowId)) {
+			throw new Error(`Unexpected error occured : ${JSON.stringify(response)}`);
+		}
+
+		return { rowId, requestId: response.requestId };
+	},
+});

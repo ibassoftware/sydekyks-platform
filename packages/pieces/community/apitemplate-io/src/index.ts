@@ -1,0 +1,57 @@
+import { createPiece } from '@activepieces/pieces-framework';
+import { ApitemplateAuth } from './lib/common/auth';
+import { createImage } from './lib/actions/create-image';
+import { createPdf } from './lib/actions/create-pdf';
+import { getAccountInformation } from './lib/actions/get-account-information';
+import { deleteObject } from './lib/actions/delete-object';
+import { listObjects } from './lib/actions/list-objects';
+import { createPdfFromHtml } from './lib/actions/create-pdf-from-html';
+import { createPdfFromUrl } from './lib/actions/create-pdf-from-url';
+import { createPdfFromMarkdown } from './lib/actions/create-pdf-from-markdown';
+import { listTemplates } from './lib/actions/list-templates';
+import { getTemplate } from './lib/actions/get-template';
+import { updateTemplate } from './lib/actions/update-template';
+import { mergePdfs } from './lib/actions/merge-pdfs';
+import { PieceCategory } from '@activepieces/pieces-framework';
+import { createCustomApiCallAction } from '@activepieces/pieces-common';
+import { ApitemplateAuthConfig, ApitemplateRegion, getRegionalBaseUrl } from './lib/common/client';
+
+export const apitemplateIo = createPiece({
+  displayName: 'APITemplate.io',
+  auth: ApitemplateAuth,
+  minimumSupportedRelease: '0.88.2',
+  logoUrl: 'https://cdn.activepieces.com/pieces/apitemplate-io.png',
+  categories: [PieceCategory.CONTENT_AND_FILES, PieceCategory.PRODUCTIVITY],
+  authors: ['Sanket6652'],
+  actions: [
+    createImage,
+    createPdfFromHtml,
+    createPdfFromUrl,
+    createPdf,
+    deleteObject,
+    getAccountInformation,
+    listObjects,
+    createPdfFromMarkdown,
+    listTemplates,
+    getTemplate,
+    updateTemplate,
+    mergePdfs,
+    createCustomApiCallAction({
+      auth: ApitemplateAuth,
+      baseUrl: (auth) => {
+        const authConfig = auth?.props;
+        if (!authConfig) {
+          return '';
+        }
+        return getRegionalBaseUrl(authConfig.region as ApitemplateRegion);
+      },
+      authMapping: async (auth) => {
+        const authConfig = auth.props;
+        return {
+          'X-API-KEY': authConfig.apiKey,
+        };
+      },
+    }),
+  ],
+  triggers: [],
+});

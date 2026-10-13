@@ -1,0 +1,112 @@
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { Client } from '@hubspot/api-client';
+
+import { MarkdownVariant } from '@activepieces/pieces-framework';
+import { getHubspotAccessToken, hubspotAuth } from '../auth';
+import { getDefaultPropertiesForObject, pipelineDropdown, pipelineStageDropdown, standardObjectDynamicProperties, standardObjectPropertiesDropdown } from '../common/props';
+import { OBJECT_TYPE } from '../common/constants';
+import { crmObjectOutputSchema } from '../output-schemas';
+
+export const updateTicketAction = createAction({
+    auth: hubspotAuth,
+    name: 'update-ticket',
+    classification: 'WRITE',
+    displayName: 'Update Ticket',
+    description: 'Updates a ticket in HubSpot.',
+    audience: 'both',
+    aiMetadata: { description: 'Updates properties on an existing support ticket identified by its ticket ID, such as subject, pipeline, stage, or custom fields, then returns the refreshed ticket. Use to modify a known ticket. Idempotent: applying the same property values converges to the same ticket state.', idempotent: true },
+    outputSchema: crmObjectOutputSchema,
+    props: {
+        ticketId: Property.ShortText({
+            displayName: 'Ticket ID',
+            description: 'Map it from an earlier step like Find Ticket.',
+            required: true,
+        }),
+        ticketName: Property.ShortText({
+            displayName: 'Ticket Name',
+            description: 'Leave empty to keep the current name.',
+            required: false,
+        }),
+        pipelineId: pipelineDropdown({
+            objectType: OBJECT_TYPE.TICKET,
+            displayName: 'Ticket Pipeline',
+            description: 'Leave empty to keep the current pipeline.',
+            required: false,
+        }),
+        pipelineStageId: pipelineStageDropdown({
+            objectType: OBJECT_TYPE.TICKET,
+            displayName: 'Ticket Stage',
+            description: 'Leave empty to keep the current stage.',
+            required: false,
+        }),
+        objectProperties: standardObjectDynamicProperties(OBJECT_TYPE.TICKET, [
+            'subject',
+            'hs_pipeline',
+            'hs_pipeline_stage',
+        ]),
+        markdown: Property.MarkDown({
+            variant: MarkdownVariant.INFO,
+            value: `Returned by default: subject, content, source_type, createdate, hs_pipeline, hs_pipeline_stage, hs_resolution, hs_ticket_category, hs_ticket_id, hs_ticket_priority, hs_lastmodifieddate, hubspot_owner_id, hubspot_team_id.
+
+Pick more under **Advanced**.`,
+        }),
+        additionalPropertiesToRetrieve: standardObjectPropertiesDropdown({
+            objectType: OBJECT_TYPE.TICKET,
+            displayName: 'Additional Properties to Retrieve',
+            required: false,
+            advanced: true,
+        }),
+    },
+    async run(context) {
+        const {
+            ticketId,
+            ticketName,
+            pipelineId,
+            pipelineStageId,
+        } = context.propsValue;
+        const objectProperties = context.propsValue.objectProperties??{};
+        const additionalPropertiesToRetrieve = context.propsValue.additionalPropertiesToRetrieve??[];
+
+
+        const ticketProperties: Record<string, string> = {
+        };
+
+        if(ticketName)
+        {
+            ticketProperties['subject'] = ticketName;
+        }
+        if(pipelineId)
+        {
+            ticketProperties['hs_pipeline'] = pipelineId;
+        }
+        if(pipelineStageId)
+        {
+            ticketProperties['hs_pipeline_stage'] = pipelineStageId;
+        }
+
+        // Add additional properties to the ticketProperties object
+        Object.entries(objectProperties).forEach(([key, value]) => {
+            if ((Array.isArray(value) && value.length === 0)) {
+                return;  
+			}
+            // Format values if they are arrays
+            ticketProperties[key] = Array.isArray(value) ? value.join(';') : value;
+        });
+
+        const client = new Client({ accessToken: getHubspotAccessToken(context.auth) });
+
+        const updatedTicket = await client.crm.tickets.basicApi.update(ticketId,{
+            properties: ticketProperties,
+        });
+
+        // Retrieve default properties for the ticket and merge with additional properties to retrieve
+        const defaultTicketProperties = getDefaultPropertiesForObject(OBJECT_TYPE.TICKET);
+
+        const ticketDetails = await client.crm.tickets.basicApi.getById(updatedTicket.id, [
+            ...defaultTicketProperties,
+            ...additionalPropertiesToRetrieve,
+        ]);
+
+        return ticketDetails;
+    },
+});

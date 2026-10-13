@@ -1,0 +1,41 @@
+import { createAction, Property } from '@activepieces/pieces-framework';
+import {
+  imapAuth,
+  mailboxDropdown,
+  copyEmail as copyImapEmail,
+} from '../common';
+import { copyEmailActionOutputSchema } from '../output-schemas';
+
+const props = {
+  sourceMailbox: mailboxDropdown({
+    displayName: 'Source Folder',
+    description: 'Folder the email is in.',
+    required: true,
+  }),
+  uid: Property.Number({
+    displayName: 'Message UID',
+    description: "Map uid from the New Email trigger. It's only valid in its folder.",
+    required: true,
+  }),
+  targetMailbox: mailboxDropdown({
+    displayName: 'Target Folder',
+    description: 'Folder to put the copy in.',
+    required: true,
+  }),
+};
+
+export const copyEmail = createAction({
+  auth: imapAuth,
+  name: 'copy_email',
+  classification: 'WRITE',
+  displayName: 'Copy Email',
+  description: 'Copy an email to another folder and keep the original.',
+  outputSchema: copyEmailActionOutputSchema,
+  audience: 'human',
+  aiMetadata: { description: 'Copies an email (by message UID) from a source IMAP folder into a target folder, leaving the original in place. Use to duplicate a message into another mailbox without removing it from the source. Requires the source folder, target folder, and the UID; not idempotent since each call appends another copy with a new UID.', idempotent: false },
+  props,
+  async run({ auth, propsValue }) {
+    const { uid, sourceMailbox, targetMailbox } = propsValue;
+    return await copyImapEmail({ auth, uid, sourceMailbox: sourceMailbox!, targetMailbox: targetMailbox! });
+  },
+});

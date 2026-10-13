@@ -1,0 +1,86 @@
+import { isNil } from '@activepieces/core-utils'
+import { FlowRunStatus, PauseType } from '@activepieces/shared'
+import dayjs from 'dayjs'
+import { FastifyBaseLogger } from 'fastify'
+import { In, IsNull, MoreThan, Not } from 'typeorm'
+import { repoFactory } from '../../core/db/repo-factory'
+import { redisConnections } from '../../database/redis-connections'
+import { flowRunRepo } from '../../flows/flow-run/flow-run-service'
+import { system } from '../../helper/system/system'
+import { AppSystemProp } from '../../helper/system/system-props'
+import { WaitpointEntity } from '../../waitpoints/waitpoint-entity'
+import { waitpointTimeoutJob } from '../../waitpoints/waitpoint-timeout-job'
+import { WaitpointStatus } from '../../waitpoints/waitpoint-types'
+import { jobQueue } from '../job-queue/job-queue'
+
+const REFILL_PAUSED_RUNS_KEY = 'refill_paused_runs_v7'
+const executionRetentionDays = system.getNumberOrThrow(AppSystemProp.EXECUTION_DATA_RETENTION_DAYS)
+const waitpointRepo = repoFactory(WaitpointEntity)
+
+export const refillPausedRuns = (log: FastifyBaseLogger) => ({
+    async run(): Promise<void> {
+        const redisConnection = await redisConnections.useExisting()
+        const isMigrated = await redisConnection.get(REFILL_PAUSED_RUNS_KEY)
+        if (!isNil(isMigrated)) {
+            log.info('[refillPausedRuns] Already migrated, skipping')
+            return
+        }
+
+        log.info('[refillPausedRuns] Finding paused DELAY runs with waitpoints from pre-migration data')
+        const pausedRuns = await flowRunRepo().find({
+            where: {
+                status: FlowRunStatus.PAUSED,
+                created: MoreThan(dayjs().subtract(executionRetentionDays, 'day').toISOString()),
+            },
+        })
+
+        if (pausedRuns.length === 0) {
+            log.info('[refillPausedRuns] No paused runs found')
+            await redisConnection.set(REFILL_PAUSED_RUNS_KEY, 'true')
+            return
+        }
+
+        const flowRunIds = pausedRuns.map(r => r.id)
+        const delayWaitpoints = await waitpointRepo().findBy({
+            flowRunId: In(flowRunIds),
+            type: PauseType.DELAY,
+            status: WaitpointStatus.PENDING,
+            resumeDateTime: Not(IsNull()),
+        })
+        const pausedRunById = Object.fromEntries(pausedRuns.map(run => [run.id, run]))
+
+        let migratedCount = 0
+
+        for (const waitpoint of delayWaitpoints) {
+            const pausedRun = pausedRunById[waitpoint.flowRunId]
+            if (isNil(pausedRun) || isNil(waitpoint.resumeDateTime)) {
+                continue
+            }
+            if (dayjs(pausedRun.created).isBefore(dayjs().subtract(executionRetentionDays, 'day'))) {
+                continue
+            }
+
+            try {
+                const sharedQueue = jobQueue(log).getSharedQueue()
+                const job = await sharedQueue.getJob(pausedRun.id)
+                await job?.remove()
+            }
+            catch (e) {
+                log.error({ error: e, pausedRunId: pausedRun.id }, '[refillPausedRuns] Error removing job')
+            }
+
+            await waitpointTimeoutJob.schedule({
+                flowRunId: pausedRun.id,
+                projectId: pausedRun.projectId,
+                waitpointId: waitpoint.id,
+                resumeDateTime: waitpoint.resumeDateTime,
+                log,
+            })
+            migratedCount++
+        }
+
+        log.info({ count: migratedCount }, '[refillPausedRuns] Migrated paused runs')
+        await redisConnection.set(REFILL_PAUSED_RUNS_KEY, 'true')
+    },
+})
+

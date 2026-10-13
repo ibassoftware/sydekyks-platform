@@ -1,0 +1,248 @@
+import { apId } from '@activepieces/core-utils'
+import { FlowRunStatus, FlowVersionState, PauseType, RunEnvironment } from '@activepieces/shared'
+import { FastifyInstance } from 'fastify'
+import { StatusCodes } from 'http-status-codes'
+import { distributedStore } from '../../../../../src/app/database/redis-connections'
+import { resumeService } from '../../../../../src/app/waitpoints/resume-service'
+import { waitpointService } from '../../../../../src/app/waitpoints/waitpoint-service'
+import { WaitpointStatus } from '../../../../../src/app/waitpoints/waitpoint-types'
+import { redisMetadataKey } from '../../../../../src/app/workers/job'
+import { db } from '../../../../helpers/db'
+import { createMockFlow, createMockFlowRun, createMockFlowVersion } from '../../../../helpers/mocks'
+import { createTestContext, TestContext } from '../../../../helpers/test-context'
+import { setupTestEnvironment, teardownTestEnvironment } from '../../../../helpers/test-setup'
+
+let app: FastifyInstance
+let ctx: TestContext
+
+beforeAll(async () => {
+    app = await setupTestEnvironment()
+})
+
+afterAll(async () => {
+    await teardownTestEnvironment()
+})
+
+beforeEach(async () => {
+    ctx = await createTestContext(app)
+})
+
+async function createFlowRunAndWaitpoint(params: {
+    projectId: string
+    flowRunStatus?: FlowRunStatus
+    waitpointStatus?: WaitpointStatus
+}) {
+    const flow = createMockFlow({ projectId: params.projectId })
+    await db.save('flow', flow)
+
+    const flowVersion = createMockFlowVersion({
+        flowId: flow.id,
+        state: FlowVersionState.LOCKED,
+    })
+    await db.save('flow_version', flowVersion)
+
+    const flowRun = createMockFlowRun({
+        projectId: params.projectId,
+        flowId: flow.id,
+        flowVersionId: flowVersion.id,
+        status: params.flowRunStatus ?? FlowRunStatus.PAUSED,
+        environment: RunEnvironment.PRODUCTION,
+    })
+    await db.save('flow_run', flowRun)
+
+    const waitpointId = apId()
+    await db.save('waitpoint', {
+        id: waitpointId,
+        flowRunId: flowRun.id,
+        projectId: params.projectId,
+        stepName: 'approval',
+        type: 'WEBHOOK',
+        status: params.waitpointStatus ?? WaitpointStatus.PENDING,
+        httpRequestId: null,
+        workerHandlerId: null,
+    })
+
+    return { flow, flowVersion, flowRun, waitpointId }
+}
+
+async function queueTerminalStatus({ flowRunId, projectId }: { flowRunId: string, projectId: string }) {
+    await distributedStore.merge(redisMetadataKey({ projectId, runId: flowRunId }), {
+        id: flowRunId,
+        projectId,
+        status: FlowRunStatus.CANCELED,
+        requestId: apId(),
+    })
+}
+
+describe('resumeService resumeTrustedWithoutLock', () => {
+    it('consumes a PENDING waitpoint and enqueues resume when flow is PAUSED (worker-before-callback ordering)', async () => {
+        const { flowRun, waitpointId } = await createFlowRunAndWaitpoint({
+            projectId: ctx.project.id,
+            flowRunStatus: FlowRunStatus.PAUSED,
+            waitpointStatus: WaitpointStatus.PENDING,
+        })
+
+        const result = await resumeService(app.log).resumeTrustedWithoutLock({
+            flowRunId: flowRun.id,
+            waitpointId,
+            resumePayload: { body: { status: 'approved' } },
+        })
+
+        expect(result.stale).toBe(false)
+
+        const waitpoint = await db.findOneBy('waitpoint', { flowRunId: flowRun.id })
+        expect(waitpoint).toBeNull()
+    })
+
+    it('consumes a COMPLETED waitpoint when race recovery fires (callback-before-worker ordering)', async () => {
+        const { flowRun, waitpointId } = await createFlowRunAndWaitpoint({
+            projectId: ctx.project.id,
+            flowRunStatus: FlowRunStatus.RUNNING,
+            waitpointStatus: WaitpointStatus.PENDING,
+        })
+
+        await waitpointService(app.log).complete({
+            flowRunId: flowRun.id,
+            projectId: ctx.project.id,
+            waitpointId,
+            resumePayload: { body: { status: 'early' } },
+        })
+
+        await db.update('flow_run', flowRun.id, { status: FlowRunStatus.PAUSED })
+
+        const result = await resumeService(app.log).resumeTrustedWithoutLock({
+            flowRunId: flowRun.id,
+            waitpointId,
+            resumePayload: { body: { status: 'early' } },
+        })
+
+        expect(result.stale).toBe(false)
+
+        const waitpoint = await db.findOneBy('waitpoint', { flowRunId: flowRun.id })
+        expect(waitpoint).toBeNull()
+    })
+
+    it('does not leave a stale COMPLETED row to poison the next pause cycle (leftover-row regression)', async () => {
+        const { flowRun, waitpointId } = await createFlowRunAndWaitpoint({
+            projectId: ctx.project.id,
+            flowRunStatus: FlowRunStatus.RUNNING,
+            waitpointStatus: WaitpointStatus.PENDING,
+        })
+
+        await waitpointService(app.log).complete({
+            flowRunId: flowRun.id,
+            projectId: ctx.project.id,
+            waitpointId,
+            resumePayload: { body: { status: 'quick' } },
+        })
+
+        await db.update('flow_run', flowRun.id, { status: FlowRunStatus.PAUSED })
+
+        await resumeService(app.log).resumeTrustedWithoutLock({
+            flowRunId: flowRun.id,
+            waitpointId,
+            resumePayload: { body: { status: 'quick' } },
+        })
+
+        const freshPause = await waitpointService(app.log).createForPause({
+            flowRunId: flowRun.id,
+            projectId: ctx.project.id,
+            stepName: 'approval',
+            type: PauseType.WEBHOOK,
+            version: 'V1',
+        })
+
+        expect(freshPause.inserted).toBe(true)
+        expect(freshPause.waitpoint.status).toBe(WaitpointStatus.PENDING)
+        expect(freshPause.waitpoint.stepName).toBe('approval')
+        expect(freshPause.waitpoint.resumePayload).toBeNull()
+    })
+
+    it('returns stale=true when no PENDING waitpoint exists', async () => {
+        const { flowRun } = await createFlowRunAndWaitpoint({
+            projectId: ctx.project.id,
+            flowRunStatus: FlowRunStatus.PAUSED,
+            waitpointStatus: WaitpointStatus.PENDING,
+        })
+
+        const bogusWaitpointId = apId()
+        const result = await resumeService(app.log).resumeTrustedWithoutLock({
+            flowRunId: flowRun.id,
+            waitpointId: bogusWaitpointId,
+            resumePayload: { body: { status: 'stale' } },
+        })
+
+        expect(result.stale).toBe(true)
+
+        const waitpoint = await db.findOneBy('waitpoint', { flowRunId: flowRun.id })
+        expect(waitpoint).not.toBeNull()
+    })
+})
+
+describe('resume guards against a cancellation in flight', () => {
+    it('refuses a by-run resume once a terminal status is queued but not yet persisted', async () => {
+        const { flowRun } = await createFlowRunAndWaitpoint({
+            projectId: ctx.project.id,
+            flowRunStatus: FlowRunStatus.PAUSED,
+        })
+        await waitpointService(app.log).deleteByFlowRunId({ flowRunId: flowRun.id, projectId: ctx.project.id })
+        await queueTerminalStatus({ flowRunId: flowRun.id, projectId: ctx.project.id })
+
+        const { stale } = await resumeService(app.log).legacyResume({
+            flowRunId: flowRun.id,
+            resumePayload: { body: { forged: true }, headers: {}, queryParams: {} },
+        })
+
+        expect(stale).toBe(true)
+    })
+
+    it('refuses a by-run sync resume in the same window', async () => {
+        const { flowRun } = await createFlowRunAndWaitpoint({
+            projectId: ctx.project.id,
+            flowRunStatus: FlowRunStatus.PAUSED,
+        })
+        await waitpointService(app.log).deleteByFlowRunId({ flowRunId: flowRun.id, projectId: ctx.project.id })
+        await queueTerminalStatus({ flowRunId: flowRun.id, projectId: ctx.project.id })
+
+        const response = await resumeService(app.log).legacySyncResume({
+            runId: flowRun.id,
+            payload: { body: { forged: true }, headers: {}, queryParams: {} },
+            correlationId: apId(),
+        })
+
+        expect(response.status).toBe(StatusCodes.GONE)
+    })
+
+    it('refuses an addressed resume of a live waitpoint in the same window, leaving the row intact', async () => {
+        const { flowRun, waitpointId } = await createFlowRunAndWaitpoint({
+            projectId: ctx.project.id,
+            flowRunStatus: FlowRunStatus.PAUSED,
+            waitpointStatus: WaitpointStatus.PENDING,
+        })
+        await queueTerminalStatus({ flowRunId: flowRun.id, projectId: ctx.project.id })
+
+        const { stale } = await resumeService(app.log).resumeFromWaitpoint({
+            flowRunId: flowRun.id,
+            waitpointId,
+            resumePayload: { body: { forged: true }, headers: {}, queryParams: {} },
+        })
+
+        expect(stale).toBe(true)
+        expect(await db.findOneBy('waitpoint', { id: waitpointId })).not.toBeNull()
+    })
+
+    it('still resumes a paused run with nothing queued against it', async () => {
+        const { flowRun } = await createFlowRunAndWaitpoint({
+            projectId: ctx.project.id,
+            flowRunStatus: FlowRunStatus.PAUSED,
+        })
+        await waitpointService(app.log).deleteByFlowRunId({ flowRunId: flowRun.id, projectId: ctx.project.id })
+
+        const { stale } = await resumeService(app.log).legacyResume({
+            flowRunId: flowRun.id,
+            resumePayload: { body: { approved: true }, headers: {}, queryParams: {} },
+        })
+
+        expect(stale).toBe(false)
+    })
+})

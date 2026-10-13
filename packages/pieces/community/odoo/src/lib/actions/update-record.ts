@@ -1,0 +1,57 @@
+import { createAction, Property } from "@activepieces/pieces-framework";
+import Odoo from "../../commom/index";
+import { odooAuth } from '../auth';
+import { odooRpc } from '../common/client';
+import { updateRecordOutputSchema } from '../output-schemas';
+
+export default createAction({
+    name: 'update_record',
+    classification: 'WRITE',
+    auth: odooAuth,
+    displayName: 'Custom Update Record',
+    description: 'Update an existing record in the specified model',
+    audience: 'human',
+    aiMetadata: { description: 'Overwrites fields on an existing Odoo record via the XML-RPC write call, given a model name, the target record id, and a JSON object of field names to new values. Requires a known record id (look it up first if needed). Idempotent — writing the same fields to the same id repeatedly leaves the record in the same state.', idempotent: true },
+    outputSchema: updateRecordOutputSchema,
+    props: {
+        model: Property.ShortText({
+            displayName: 'Model',
+            description: "Model name. e.g.: res.partner",
+            required: true,
+            defaultValue: 'res.partner',
+        }),
+        recordId: Property.Number({
+            displayName: 'Record ID',
+            description: 'ID of the record to update',
+            required: true,
+        }),
+        fields: Property.Json({
+            displayName: 'Fields and Values',
+            description: 'JSON object of field names and their corresponding values',
+            required: true,
+            defaultValue: {
+                "email": "updatedemail@example.com"
+            },
+        })
+    },
+    async run(context) {
+        const odoo = new Odoo({
+            url: context.auth.props.base_url,
+            port: odooRpc.resolvePort(context.auth.props.port),
+            db: context.auth.props.database,
+            username: context.auth.props.username,
+            password: context.auth.props.api_key,
+        });
+
+        try {
+            await odoo.connect();
+            const fields = context.propsValue.fields;
+            const recordId = context.propsValue.recordId;
+            const model = context.propsValue.model;
+            const result = await odoo.updateRecord({ model, recordId, fields });
+            return { success: result };
+        } catch (err) {
+            return err;
+        }
+    }
+});

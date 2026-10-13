@@ -1,0 +1,48 @@
+import { QueryClientProvider } from '@tanstack/react-query';
+import React from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { ApErrorDialog } from '@/components/custom/ap-error-dialog/ap-error-dialog';
+import { EmbeddingProvider } from '@/components/providers/embed-provider';
+import TelemetryProvider from '@/components/providers/telemetry-provider';
+import { ThemeProvider } from '@/components/providers/theme-provider';
+import { Toaster } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { RefreshAnalyticsProvider } from '@/features/platform-admin';
+
+import { EmbeddingAnalyticsLoader } from './components/embedding-analytics-loader';
+import { EmbeddingFontLoader } from './components/embedding-font-loader';
+import { GlobalErrorBoundary } from './components/global-error-boundary';
+import { InitialDataGuard } from './components/initial-data-guard';
+import { ApRouter } from './guards';
+import { queryClient } from './query-client';
+
+export function App() {
+  const { i18n } = useTranslation();
+  return (
+    <GlobalErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <RefreshAnalyticsProvider>
+          <EmbeddingProvider>
+            <InitialDataGuard>
+              <EmbeddingFontLoader>
+                <EmbeddingAnalyticsLoader />
+                <TelemetryProvider>
+                  <TooltipProvider>
+                    <ThemeProvider storageKey="vite-ui-theme">
+                      <React.Fragment key={i18n.language}>
+                        <ApRouter />
+                        <Toaster position="bottom-right" />
+                        <ApErrorDialog />
+                      </React.Fragment>
+                    </ThemeProvider>
+                  </TooltipProvider>
+                </TelemetryProvider>
+              </EmbeddingFontLoader>
+            </InitialDataGuard>
+          </EmbeddingProvider>
+        </RefreshAnalyticsProvider>
+      </QueryClientProvider>
+    </GlobalErrorBoundary>
+  );
+}

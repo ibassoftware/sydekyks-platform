@@ -1,0 +1,43 @@
+import { Property, createAction } from '@activepieces/pieces-framework';
+import { flowluAuth } from '../../auth';
+import { flowluCommon, makeClient } from '../../common';
+import { flowluProps, flowluWire } from '../../common/props';
+import { accountEnvelopeOutputSchema } from '../../output-schemas';
+
+export const createContactAction = createAction({
+  auth: flowluAuth,
+  name: 'flowlu_create_contact',
+  classification: 'WRITE',
+  displayName: 'Create CRM Account(Contact)',
+  description: 'Creates a new contact in CRM.',
+  audience: 'human',
+  aiMetadata: {
+    description:
+      'Creates a new person-type CRM account (a contact) in Flowlu, requiring at least a first name. Use to add an individual to the CRM; for companies use Create CRM Account (Organization) instead. Not idempotent — each call creates a new contact record. For agents use flowlu_account_create.',
+    idempotent: false,
+  },
+  props: {
+    honorific_title_id: flowluCommon.honorific_title_id(false),
+    first_name: Property.ShortText({
+      displayName: 'First Name',
+      required: true,
+    }),
+    middle_name: Property.ShortText({
+      displayName: 'Middle Name',
+      required: false,
+    }),
+    last_name: Property.ShortText({
+      displayName: 'Last Name',
+      required: false,
+    }),
+    ...flowluProps.account,
+  },
+  outputSchema: accountEnvelopeOutputSchema,
+  async run(context) {
+    const client = makeClient(context.auth);
+    return await client.createAccount({
+      ...flowluWire.account(context.propsValue),
+      type: 2,
+    });
+  },
+});

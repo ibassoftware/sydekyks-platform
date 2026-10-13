@@ -1,0 +1,72 @@
+import { Property, createAction } from '@activepieces/pieces-framework';
+import { googleDriveAuth, createGoogleClient } from '../auth';
+import { drive as googleDrive } from '@googleapis/drive';
+import { downloadFileFromDrive } from '../common/get-file-content';
+import { setPublicAccessActionOutputSchema } from '../output-schemas';
+
+export const setPublicAccess = createAction({
+  auth: googleDriveAuth,
+  name: 'set_public_access',
+  classification: 'WRITE',
+  description: 'Let anyone with the link open a file or folder.',
+  audience: 'human',
+  aiMetadata: { description: 'Makes a Drive file or folder accessible to anyone with the link at the chosen role (reader, commenter, or writer) and returns its shareable view/download URL. Use to publish a resource publicly. Requires the file/folder ID. Not idempotent: each call adds a new anyone-with-link permission.', idempotent: false },
+  displayName: 'Set Public Access',
+  props: {
+    fileId: Property.ShortText({
+      displayName: 'File or Folder ID',
+      description: "The ID from the item's Drive URL or an earlier step.",
+      required: true,
+      placeholder: '1dpv4-sKJfKRwI9qx1vWqQhEGEn3EpbI5',
+    }),
+    role: Property.StaticDropdown({
+      displayName: 'Role',
+      description: 'What anyone with the link can do.',
+      options: {
+        options: [
+          { label: 'Viewer', value: 'reader' },
+          { label: 'Commenter', value: 'commenter' },
+          { label: 'Editor', value: 'writer' },
+        ],
+      },
+      defaultValue: 'reader',
+      required: true,
+    }),
+  },
+  outputSchema: setPublicAccessActionOutputSchema,
+  async run(context) {
+    const authClient = await createGoogleClient(context.auth);
+
+    const fileId = context.propsValue.fileId;
+    const role = context.propsValue.role;
+
+    const drive = googleDrive({ version: 'v3', auth: authClient });
+    const permission = {
+      role,
+      type: 'anyone',
+    };
+    const res = await drive.permissions.create({
+      fileId: fileId,
+      requestBody: permission,
+      supportsAllDrives: true,
+    });
+
+    const file = await drive.files.get({
+      fileId: fileId,
+      fields: 'name,mimeType,webContentLink,webViewLink',
+      supportsAllDrives: true,
+    });
+
+    if (file.data.mimeType === 'application/vnd.google-apps.folder') {
+      return { ...res.data, webViewLink: file.data.webViewLink, downloadUrl: null };
+    }
+
+    const content = await downloadFileFromDrive(
+      context.auth,
+      context.files,
+      fileId,
+      file.data.name!
+    );
+    return { ...res.data, downloadUrl: content };
+  },
+});

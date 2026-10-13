@@ -1,0 +1,11 @@
+{
+  "Stay updated with RSS feeds": "Mit RSS-Feeds auf dem Laufenden bleiben",
+  "New Item in Feed": "Neues Element im Feed",
+  "New Items in Multiple Feeds": "Neue Artikel in mehreren Feeds",
+  "Runs when a new item is published in an RSS feed.": "Läuft, wenn in einem RSS-Feed ein neuer Eintrag veröffentlicht wird.",
+  "Runs when a new item is published in any of the feeds you list.": "Läuft, wenn in einem der angegebenen Feeds ein neuer Eintrag veröffentlicht wird.",
+  "RSS Feed URL": "RSS-Feed-URL",
+  "RSS Feed URLs": "RSS-Feed URLs",
+  "Link to the feed itself, not the site homepage; Atom works too.": "Link zum Feed selbst, nicht zur Startseite der Website; Atom funktioniert auch.",
+  "One feed address per row; a feed that fails to load is skipped.": "Eine Feed-Adresse pro Zeile; ein Feed, der nicht geladen werden kann, wird übersprungen."
+}

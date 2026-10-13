@@ -1,0 +1,70 @@
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { endClient, getClient, getProtocolBackwardCompatibility } from '../common';
+import { sftpAuth } from '../auth';
+import { Client as FTPClient, FTPError } from 'basic-ftp';
+import Client from 'ssh2-sftp-client';
+import { getSftpError } from './common';
+import { deleteFileActionOutputSchema } from '../output-schemas';
+
+async function deleteFileFromFTP(client: FTPClient, filePath: string) {
+  await client.remove(filePath);
+}
+
+async function deleteFileFromSFTP(client: Client, filePath: string) {
+  await client.delete(filePath);
+}
+
+export const deleteFileAction = createAction({
+  audience: 'both',
+  auth: sftpAuth,
+  name: 'deleteFile',
+  classification: 'DESTRUCTIVE',
+  displayName: 'Delete file',
+  description: 'Deletes a file at given path.',
+  aiMetadata: { description: 'Permanently deletes a single file at a given remote path on the connected FTP, FTPS or SFTP server. Use this for one file; use Delete Folder to remove a directory, optionally with all of its contents. Requires the exact remote path (e.g. ./myfolder/test.mp3) and there is no recycle bin or undo; idempotent in that it converges on the file being absent, though a repeat call on an already-missing path reports an error.', idempotent: true },
+  props: {
+    filePath: Property.ShortText({
+      displayName: 'File Path',
+      required: true,
+      description: 'The path of the file to delete e.g. `./myfolder/test.mp3`',
+    }),
+  },
+  outputSchema: deleteFileActionOutputSchema,
+  async run(context) {
+    const client = await getClient(context.auth.props);
+    const filePath = context.propsValue.filePath;
+    const protocolBackwardCompatibility = await getProtocolBackwardCompatibility(context.auth.props.protocol);
+    try {
+      switch (protocolBackwardCompatibility) {
+        case 'ftps':
+        case 'ftp':
+          await deleteFileFromFTP(client as FTPClient, filePath);
+          break;
+        default:
+        case 'sftp':
+          await deleteFileFromSFTP(client as Client, filePath);
+          break;
+      }
+      
+      return {
+        status: 'success',
+      };
+    }
+    catch (err) {
+      if (err instanceof FTPError) {
+        console.error(getSftpError(err.code));
+        return {
+          status: 'error',
+          error: getSftpError(err.code),
+        };
+      } else {
+        return {
+          status: 'error',
+          error: err
+        }
+      }
+    } finally {
+      await endClient(client, context.auth.props.protocol);
+    }
+  },
+});

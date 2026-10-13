@@ -1,0 +1,235 @@
+import { PieceSelectionMode, PieceSet } from '@activepieces/shared';
+import { ColumnDef } from '@tanstack/react-table';
+import { t } from 'i18next';
+import {
+  CheckIcon,
+  Copy,
+  Hash,
+  Layers,
+  LayoutGrid,
+  Settings2,
+  ToggleLeft,
+  Trash2,
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+
+import { DashboardPageHeader } from '@/app/components/dashboard-page-header';
+import { PiecesLockedBanner } from '@/app/routes/platform/setup/pieces/pieces-locked-banner';
+import {
+  CURSOR_QUERY_PARAM,
+  DataTable,
+  RowDataWithActions,
+} from '@/components/custom/data-table';
+import { DataTableColumnHeader } from '@/components/custom/data-table/data-table-column-header';
+import { ConfirmationDeleteDialog } from '@/components/custom/delete-dialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { pieceSetMutations, pieceSetQueries } from '@/features/piece-sets';
+import { AdminControl, adminControl } from '@/lib/admin-control';
+
+import { CreatePieceSetDialog } from './create-piece-set-dialog';
+import { DuplicatePieceSetDialog } from './duplicate-piece-set-dialog';
+import { EditPieceSetDialog } from './edit-piece-set-dialog';
+
+export const PieceSetsTab = () => {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [duplicatingSet, setDuplicatingSet] = useState<PieceSet | null>(null);
+  const [editingSet, setEditingSet] = useState<PieceSet | null>(null);
+
+  const cursor = searchParams.get(CURSOR_QUERY_PARAM) ?? undefined;
+  const limitParam = searchParams.get('limit');
+  const limit = limitParam ? parseInt(limitParam, 10) : undefined;
+
+  const {
+    data: pieceSetsPage,
+    isLoading,
+    isError,
+    refetch,
+  } = pieceSetQueries.usePieceSets({ cursor, limit });
+  const { mutate: deleteSet } = pieceSetMutations.useDeletePieceSet();
+
+  const pieceSets = useMemo(() => pieceSetsPage?.data ?? [], [pieceSetsPage]);
+
+  const columns: ColumnDef<RowDataWithActions<PieceSet>>[] = useMemo(
+    () => [
+      {
+        accessorKey: 'name',
+        header: ({ column }) => (
+          <DataTableColumnHeader
+            column={column}
+            title={t('Name')}
+            icon={LayoutGrid}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{row.original.name}</span>
+            {row.original.isDefault && (
+              <Badge variant="default">{t('Default')}</Badge>
+            )}
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'key',
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title={t('Key')} icon={Hash} />
+        ),
+        cell: ({ row }) =>
+          row.original.key ? (
+            <span className="font-mono text-sm">{row.original.key}</span>
+          ) : (
+            <span className="text-gray-11">—</span>
+          ),
+      },
+      {
+        id: 'includeNewPieces',
+        size: 160,
+        header: ({ column }) => (
+          <DataTableColumnHeader
+            column={column}
+            title={t('Include new pieces')}
+            icon={ToggleLeft}
+          />
+        ),
+        cell: ({ row }) => {
+          const includesNewPieces =
+            row.original.config.pieces.mode === PieceSelectionMode.INCLUDE_ALL;
+          return (
+            <Badge variant={includesNewPieces ? 'success' : 'outline'}>
+              {includesNewPieces ? t('Yes') : t('No')}
+            </Badge>
+          );
+        },
+      },
+      {
+        id: 'actions',
+        size: 80,
+        notClickable: true,
+        cell: ({ row }) => (
+          <div className="flex justify-end gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  {...adminControl(AdminControl.PIECE_SETS_EDIT_OPEN)}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditingSet(row.original)}
+                >
+                  <Settings2 className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t('Edit Details')}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  {...adminControl(AdminControl.PIECE_SETS_DUPLICATE_OPEN)}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDuplicatingSet(row.original)}
+                >
+                  <Copy className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t('Duplicate')}</TooltipContent>
+            </Tooltip>
+            <ConfirmationDeleteDialog
+              title={t('Delete {name}', { name: row.original.name })}
+              entityName={t('Piece Set')}
+              controlId={AdminControl.PIECE_SETS_DELETE_CONFIRM}
+              message={t(
+                'Projects assigned to this set will be reassigned to the default set.',
+              )}
+              mutationFn={async () => {
+                deleteSet(row.original.id);
+              }}
+            >
+              <Button
+                {...adminControl(AdminControl.PIECE_SETS_DELETE_OPEN)}
+                variant="ghost"
+                size="sm"
+                disabled={row.original.isDefault}
+              >
+                <Trash2 className="size-4 text-danger-11" />
+              </Button>
+            </ConfirmationDeleteDialog>
+          </div>
+        ),
+      },
+    ],
+    [deleteSet, setDuplicatingSet, setEditingSet],
+  );
+
+  return (
+    <>
+      <DashboardPageHeader
+        title={t('Piece Sets')}
+        description={t(
+          'A piece set decides which pieces (actions/triggers) a project can see. It can also set required actions that a flow must include before it can be published.',
+        )}
+      />
+      <PiecesLockedBanner message={t('Piece sets need a higher plan.')} />
+      <DataTable
+        emptyStateTextTitle={t('No piece sets found')}
+        emptyStateTextDescription={t(
+          'Create a piece set to control which pieces are available to specific projects',
+        )}
+        emptyStateIcon={<Layers className="size-14" />}
+        columns={columns}
+        filters={[
+          {
+            type: 'input',
+            title: t('Set Name'),
+            accessorKey: 'name',
+            icon: CheckIcon,
+          },
+        ]}
+        page={{
+          data: pieceSets,
+          next: pieceSetsPage?.next ?? null,
+          previous: pieceSetsPage?.previous ?? null,
+        }}
+        isLoading={isLoading}
+        isError={isError}
+        errorStateEntity={t('piece sets')}
+        onRetry={refetch}
+        clientFiltering={true}
+        onRowClick={(pieceSet) =>
+          navigate(`/platform/pieces/piece-sets/${pieceSet.id}`)
+        }
+        toolbarButtons={[
+          <CreatePieceSetDialog key="create" onCreated={() => refetch()} />,
+        ]}
+      />
+      {duplicatingSet && (
+        <DuplicatePieceSetDialog
+          open={!!duplicatingSet}
+          onOpenChange={(open) => {
+            if (!open) setDuplicatingSet(null);
+          }}
+          sourceId={duplicatingSet.id}
+          sourceName={duplicatingSet.name}
+        />
+      )}
+      {editingSet && (
+        <EditPieceSetDialog
+          open={!!editingSet}
+          onOpenChange={(open) => {
+            if (!open) setEditingSet(null);
+          }}
+          id={editingSet.id}
+          currentName={editingSet.name}
+          currentKey={editingSet.key ?? null}
+        />
+      )}
+    </>
+  );
+};

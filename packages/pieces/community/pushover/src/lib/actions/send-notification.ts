@@ -1,0 +1,99 @@
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { httpClient, HttpMethod } from '@activepieces/pieces-common';
+import { pushoverAuth } from '../..';
+import { buildMessageBody } from '../common';
+import { sendNotificationActionOutputSchema } from '../output-schemas';
+
+export const sendNotification = createAction({
+  auth: pushoverAuth,
+  name: 'send_notification',
+  classification: 'WRITE',
+  displayName: 'Send Notification',
+  description: 'Send a notification to Pushover',
+  audience: 'human',
+  aiMetadata: {
+    description: 'Sends a push notification through Pushover to the device(s) tied to the configured user/group key. Use to alert a person or group on their phone/desktop. The message body is required; optional priority (-2 to 2) controls urgency, and emergency priority (2) additionally requires retry and expire values. Not idempotent: each call delivers a new notification.',
+    idempotent: false,
+  },
+  props: {
+    title: Property.ShortText({
+      displayName: 'Title',
+      description: 'The title of the notification',
+      required: false,
+    }),
+    message: Property.LongText({
+      displayName: 'Message',
+      description: 'The message to send',
+      required: true,
+    }),
+    html: Property.Checkbox({
+      displayName: 'Enable HTML',
+      description: 'To enable HTML parsing',
+      required: false,
+    }),
+    priority: Property.Number({
+      displayName: 'Priority',
+      description:
+        'The priority of the notification (-2 to 2). -2 is lowest priority. If set to 2, you should also specify Retry and Expire.',
+      required: false,
+    }),
+    retry: Property.Number({
+      displayName: 'Retry',
+      description:
+        'Works only if priority is set to 2. Specifies how often (in seconds) the Pushover servers will send the same notification to the user.',
+      required: false,
+    }),
+    expire: Property.Number({
+      displayName: 'Expire',
+      description:
+        'Works only if priority is set to 2. Specifies how many seconds your notification will continue to be retried for (every retry seconds).',
+      required: false,
+    }),
+    url: Property.ShortText({
+      displayName: 'URL',
+      description: 'A supplementary URL to show with your message.',
+      required: false,
+    }),
+    url_title: Property.ShortText({
+      displayName: 'URL Title',
+      description:
+        'A title for the URL specified as the url input parameter, otherwise just the URL is shown.',
+      required: false,
+    }),
+    timestamp: Property.ShortText({
+      displayName: 'Timestamp',
+      description:
+        'a Unix timestamp of a time to display instead of when our API received it.',
+      required: false,
+    }),
+    device: Property.ShortText({
+      displayName: 'Device',
+      description:
+        'The name of one of your devices to send just to that device instead of all devices.',
+      required: false,
+    }),
+  },
+  outputSchema: sendNotificationActionOutputSchema,
+  async run({ auth, propsValue }) {
+    const body = buildMessageBody({
+      apiToken: auth.props.api_token,
+      userKey: auth.props.user_key,
+      message: propsValue.message,
+      title: propsValue.title,
+      html: propsValue.html,
+      priority: propsValue.priority,
+      retry: propsValue.retry,
+      expire: propsValue.expire,
+      url: propsValue.url,
+      urlTitle: propsValue.url_title,
+      timestamp: propsValue.timestamp,
+      device: propsValue.device,
+    });
+
+    return await httpClient.sendRequest({
+      method: HttpMethod.POST,
+      url: 'https://api.pushover.net/1/messages.json',
+      body,
+    });
+  },
+});

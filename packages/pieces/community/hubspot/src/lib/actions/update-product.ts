@@ -1,0 +1,74 @@
+import { getHubspotAccessToken, hubspotAuth } from '../auth';
+import { createAction, Property } from '@activepieces/pieces-framework';
+import {
+    getDefaultPropertiesForObject,
+    standardObjectDynamicProperties,
+    standardObjectPropertiesDropdown,
+
+} from '../common/props';
+import { OBJECT_TYPE } from '../common/constants';
+import { MarkdownVariant } from '@activepieces/pieces-framework';
+import { Client } from '@hubspot/api-client';
+import { crmObjectOutputSchema } from '../output-schemas';
+
+export const updateProductAction = createAction({
+    auth: hubspotAuth,
+    name: 'update-product',
+    classification: 'WRITE',
+    displayName: 'Update Product',
+    description: 'Updates a product in HubSpot.',
+    audience: 'both',
+    aiMetadata: { description: 'Updates properties on an existing product identified by its product ID, such as name, price, description, or tax, then returns the refreshed product. Use to modify a known product in the product library. Idempotent: applying the same property values converges to the same product state.', idempotent: true },
+    outputSchema: crmObjectOutputSchema,
+    props: {
+        productId:Property.ShortText({
+            displayName:'Product ID',
+            description:'Map it from an earlier step like Find Product.',
+            required:true
+        }),
+        objectProperties: standardObjectDynamicProperties(OBJECT_TYPE.PRODUCT,[]),
+        markdown: Property.MarkDown({
+            variant: MarkdownVariant.INFO,
+            value: `Returned by default: createdate, description, name, price, tax, hs_lastmodifieddate.
+
+Pick more under **Advanced**.`,
+        }),
+        additionalPropertiesToRetrieve: standardObjectPropertiesDropdown({
+            objectType: OBJECT_TYPE.PRODUCT,
+            displayName: 'Additional Properties to Retrieve',
+            required: false,
+            advanced: true,
+        }),
+    },
+    async run(context) {
+        const productId = context.propsValue.productId;
+        const objectProperties = context.propsValue.objectProperties ?? {};
+        const additionalPropertiesToRetrieve = context.propsValue.additionalPropertiesToRetrieve ?? [];
+
+        const productProperties: Record<string, string> = {};
+
+        // Add additional properties to the productProperties object
+        Object.entries(objectProperties).forEach(([key, value]) => {
+            if ((Array.isArray(value) && value.length === 0)) {
+                return;  
+			}
+            // Format values if they are arrays
+            productProperties[key] = Array.isArray(value) ? value.join(';') : value;
+        });
+
+        const client = new Client({ accessToken: getHubspotAccessToken(context.auth) });
+
+        const updatedProduct = await client.crm.products.basicApi.update(productId, {
+            properties: productProperties,
+        });
+        // Retrieve default properties for the product and merge with additional properties to retrieve
+        const defaultproductProperties = getDefaultPropertiesForObject(OBJECT_TYPE.PRODUCT);
+
+        const productDetails = await client.crm.products.basicApi.getById(updatedProduct.id, [
+            ...defaultproductProperties,
+            ...additionalPropertiesToRetrieve,
+        ]);
+
+        return productDetails;
+    },
+});

@@ -1,0 +1,56 @@
+import { getHubspotAccessToken, hubspotAuth } from '../auth';
+import { createAction, Property } from '@activepieces/pieces-framework';
+import {
+	getDefaultPropertiesForObject,
+	standardObjectPropertiesDropdown,
+} from '../common/props';
+import { OBJECT_TYPE } from '../common/constants';
+import { Client } from '@hubspot/api-client';
+import { MarkdownVariant } from '@activepieces/pieces-framework';
+import { crmObjectOutputSchema } from '../output-schemas';
+
+export const getCompanyAction = createAction({
+	auth: hubspotAuth,
+	name: 'get-company',
+	classification: 'READ',
+	displayName: 'Get Company',
+	description: 'Gets a company by its ID.',
+	audience: 'both',
+	aiMetadata: { description: 'Fetches a single company by its HubSpot company ID, returning default and any requested additional properties. Use when you already have the company ID; use Find Company to look one up by domain or another property first. Read-only and idempotent.', idempotent: true },
+	outputSchema: crmObjectOutputSchema,
+	props: {
+		companyId: Property.ShortText({
+			displayName: 'Company ID',
+			description: 'Map it from an earlier step like Find Company.',
+			required: true,
+		}),
+		markdown: Property.MarkDown({
+			variant: MarkdownVariant.INFO,
+			value: `Returned by default: name, domain, industry, about_us, phone, address, address2, city, state, zip, country, website, type, description, founded_year, hs_createdate, hs_lastmodifieddate, hs_object_id, is_public, timezone, total_money_raised, total_revenue, owneremail, ownername, numberofemployees, annualrevenue, lifecyclestage, createdate, web_technologies.
+
+Pick more under **Advanced**.`,
+		}),
+		additionalPropertiesToRetrieve: standardObjectPropertiesDropdown({
+			objectType: OBJECT_TYPE.COMPANY,
+			displayName: 'Additional Properties to Retrieve',
+			required: false,
+			advanced: true,
+		}),
+	},
+	async run(context) {
+		const { companyId } = context.propsValue;
+		const additionalPropertiesToRetrieve = context.propsValue.additionalPropertiesToRetrieve??[];
+
+
+		const defaultCompanyProperties = getDefaultPropertiesForObject(OBJECT_TYPE.COMPANY);
+
+		const client = new Client({ accessToken: getHubspotAccessToken(context.auth) });
+
+		const companyDetails = await client.crm.companies.basicApi.getById(companyId, [
+			...defaultCompanyProperties,
+			...additionalPropertiesToRetrieve,
+		]);
+
+		return companyDetails;
+	},
+});

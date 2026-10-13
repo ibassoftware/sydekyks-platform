@@ -1,0 +1,188 @@
+import { promisify } from 'node:util'
+import { zstdDecompress as zstdDecompressCallback } from 'node:zlib'
+import { EngineFileNotFoundError, EngineGenericError, ExecutionError, ExecutionErrorType, FileCompression, FileType, isZstdCompressed } from '@activepieces/shared'
+import { retryFetch } from './retry-fetch'
+
+const zstdDecompress = promisify(zstdDecompressCallback)
+
+const READ_URL_HEADER = 'x-ap-file-read-url'
+const FILE_TYPE_HEADER = 'x-ap-file-type'
+const FILE_NAME_HEADER = 'x-ap-file-name'
+const FILE_NAME_ENCODED_HEADER = 'x-ap-file-name-encoded'
+
+export const engineFileApi = {
+    async upload({ engineToken, apiUrl, fileId, type, fileName, compression, data }: UploadParams): Promise<UploadResult> {
+        const putUrl = `${apiUrl}v1/files/${fileId}?token=${encodeURIComponent(engineToken)}`
+
+        const headers = buildPutHeaders({ type, fileName, compression, contentLength: data.length })
+        const body = toRequestBody(data)
+
+        const initial = await retryFetch(putUrl, {
+            method: 'PUT',
+            body,
+            headers,
+            redirect: 'manual',
+        })
+
+        if (initial.status >= 300 && initial.status < 400) {
+            const location = initial.headers.get('location')
+            if (!location) {
+                throw new EngineGenericError('EngineFileUploadError', 'Server returned a redirect without a Location header')
+            }
+            const s3Response = await retryFetch(location, {
+                method: 'PUT',
+                body,
+                headers: stripApHeaders(headers),
+                redirect: 'follow',
+            })
+            if (!s3Response.ok) {
+                throw new EngineGenericError(
+                    'EngineFileUploadError',
+                    `Failed to upload to signed S3 URL for ${fileId}: ${s3Response.status} ${s3Response.statusText}`,
+                )
+            }
+            const readUrlFromHeader = initial.headers.get(READ_URL_HEADER)
+            if (!readUrlFromHeader) {
+                throw new EngineGenericError('EngineFileUploadError', `Server redirect response missing ${READ_URL_HEADER} header`)
+            }
+            return { fileId, readUrl: readUrlFromHeader }
+        }
+
+        return resolveUploadReadUrl(fileId, initial)
+    },
+    async download({ engineToken, apiUrl, fileId }: DownloadFileParams): Promise<Uint8Array> {
+        const response = await retryFetch(`${apiUrl}v1/files/${fileId}?token=${encodeURIComponent(engineToken)}`, {
+            method: 'GET',
+            redirect: 'follow',
+        })
+        if (!response.ok) {
+            // A gone file (deleted/expired trigger payload or run log) never recovers on retry and is a
+            // data-lifecycle issue, not an engine bug — surface it as a USER error so callers can fail the
+            // run cleanly. Other non-ok statuses (5xx, throttling) may be transient, so keep them ENGINE.
+            if (response.status === 404 || response.status === 410) {
+                throw new EngineFileNotFoundError(fileId)
+            }
+            throw new EngineGenericError(
+                'EngineFileDownloadError',
+                `Failed to download file ${fileId}: ${response.status} ${response.statusText}`,
+            )
+        }
+        const raw = new Uint8Array(await response.arrayBuffer())
+        // The server's proxy path runs the file through fileCompressor.decompress before
+        // streaming it back, but the S3 signed-URL redirect path serves the stored bytes
+        // straight from S3 — which for FLOW_RUN_LOG is zstd-compressed. Native fetch does
+        // not auto-decompress zstd, so callers (RESUME hydration, slice materialization)
+        // would crash on JSON.parse. Detect the magic bytes and decompress here so the
+        // download contract is "always returns the original payload" regardless of which
+        // server path served it.
+        if (isZstdCompressed(raw)) {
+            return new Uint8Array(await zstdDecompress(Buffer.from(raw)))
+        }
+        return raw
+    },
+}
+
+async function resolveUploadReadUrl(fileId: string, response: Response): Promise<UploadResult> {
+    if (!response.ok) {
+        if (response.status === 413) {
+            const serverMessage = await readErrorMessage(response)
+            throw new ExecutionError(
+                'EngineFileTooLarge',
+                JSON.stringify({ message: serverMessage ?? `File ${fileId} exceeds the server's size limit` }),
+                ExecutionErrorType.USER,
+            )
+        }
+        throw new EngineGenericError(
+            'EngineFileUploadError',
+            `Failed to upload engine file ${fileId}: ${response.status} ${response.statusText}`,
+        )
+    }
+    const readUrlFromHeader = response.headers.get(READ_URL_HEADER)
+    if (readUrlFromHeader) {
+        return { fileId, readUrl: readUrlFromHeader }
+    }
+    const body = await response.json() as { readUrl?: unknown }
+    if (typeof body.readUrl !== 'string') {
+        throw new EngineGenericError('EngineFileUploadError', 'Upload response missing readUrl')
+    }
+    return { fileId, readUrl: body.readUrl }
+}
+
+function toRequestBody(data: Uint8Array): BodyInit {
+    return data.buffer instanceof ArrayBuffer ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : new Uint8Array(data)
+}
+
+async function readErrorMessage(response: Response): Promise<string | undefined> {
+    try {
+        const body = await response.json() as { params?: { message?: unknown } }
+        return typeof body?.params?.message === 'string' ? body.params.message : undefined
+    }
+    catch {
+        return undefined
+    }
+}
+
+function buildPutHeaders({ type, fileName, compression, contentLength }: BuildHeadersParams): Record<string, string> {
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/octet-stream',
+        [FILE_TYPE_HEADER]: type,
+    }
+    if (contentLength !== undefined) {
+        headers['Content-Length'] = String(contentLength)
+    }
+    if (fileName) {
+        const wellFormedName = toWellFormed(fileName)
+        headers[FILE_NAME_HEADER] = toAsciiHeaderValue(wellFormedName)
+        headers[FILE_NAME_ENCODED_HEADER] = encodeURIComponent(wellFormedName)
+    }
+    if (compression === FileCompression.ZSTD) {
+        headers['Content-Encoding'] = 'zstd'
+    }
+    return headers
+}
+
+function toWellFormed(value: string): string {
+    return value.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '\uFFFD')
+}
+
+function toAsciiHeaderValue(value: string): string {
+    return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7e]/g, '_')
+}
+
+function stripApHeaders(headers: Record<string, string>): Record<string, string> {
+    const result: Record<string, string> = {}
+    for (const [key, value] of Object.entries(headers)) {
+        if (!key.toLowerCase().startsWith('x-ap-')) {
+            result[key] = value
+        }
+    }
+    return result
+}
+
+type UploadParams = {
+    engineToken: string
+    apiUrl: string
+    fileId: string
+    type: FileType.FLOW_STEP_FILE | FileType.FLOW_RUN_LOG | FileType.FLOW_RUN_LOG_SLICE
+    fileName?: string
+    compression?: FileCompression
+    data: Uint8Array | Buffer
+}
+
+type UploadResult = {
+    fileId: string
+    readUrl: string
+}
+
+type DownloadFileParams = {
+    engineToken: string
+    apiUrl: string
+    fileId: string
+}
+
+type BuildHeadersParams = {
+    type: FileType
+    fileName?: string
+    compression?: FileCompression
+    contentLength?: number
+}

@@ -1,0 +1,98 @@
+@font-face {
+  font-family: 'Bricolage';
+  src: url('/branding/bricolage-bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  :root[data-brand='sydekyks'],
+  [data-brand='sydekyks'] [data-theme='light'] {
+    --gray-1: #f5f3e9;
+    --gray-2: #efece0;
+    --gray-3: #eaeade;
+    --gray-4: #e4e5d8;
+    --gray-5: #dfe1d3;
+    --gray-6: #d8dbd2;
+    --gray-7: #c9cec7;
+    --gray-8: #899a9c;
+    --gray-9: #657278;
+    --gray-10: #596b70;
+    --gray-11: #4d6066;
+    --gray-12: #18313b;
+    --panel: #fffef8;
+    --sydekyks-on-accent: #fffef8;
+  }
+
+  :root[data-brand='sydekyks'][data-theme='dark'],
+  [data-brand='sydekyks'] [data-theme='dark'] {
+    --gray-1: #101f27;
+    --gray-2: #18313b;
+    --gray-3: #203c46;
+    --gray-4: #2b4650;
+    --gray-5: #364f57;
+    --gray-6: #405c62;
+    --gray-7: #547076;
+    --gray-8: #7d9699;
+    --gray-9: #97a9a9;
+    --gray-10: #adbcba;
+    --gray-11: #d0dbd6;
+    --gray-12: #f5f3e9;
+    --panel: #203c46;
+    --sydekyks-on-accent: #18313b;
+  }
+
+  :root[data-brand-palette='sydekyks'],
+  [data-brand-palette='sydekyks'] [data-theme='light'] {
+    --accent-1: #fff8f1;
+    --accent-2: #fff1e5;
+    --accent-3: #f8dfca;
+    --accent-4: #f3d0b1;
+    --accent-5: #eec3a0;
+    --accent-6: #e2ac87;
+    --accent-7: #c88960;
+    --accent-8: #a63e16;
+    --accent-9: #18313b;
+    --accent-10: #97360f;
+    --accent-11: #84401b;
+    --accent-12: #5a2e19;
+  }
+
+  :root[data-brand-palette='sydekyks'][data-theme='dark'],
+  [data-brand-palette='sydekyks'] [data-theme='dark'] {
+    --accent-1: #201c18;
+    --accent-2: #2c241e;
+    --accent-3: #3d2d22;
+    --accent-4: #503828;
+    --accent-5: #65432c;
+    --accent-6: #7d5232;
+    --accent-7: #b5774f;
+    --accent-8: #ff8551;
+    --accent-9: #ff8551;
+    --accent-10: #ffa47c;
+    --accent-11: #ffd0b5;
+    --accent-12: #fff1e5;
+  }
+
+  [data-brand='sydekyks'] ::selection {
+    background: #ff8551;
+    color: #18313b;
+  }
+
+  [data-brand='sydekyks'] :is(input, textarea) {
+    caret-color: var(--accent-8);
+  }
+}
+
+.sydekyks-wordmark {
+  font-family: 'Bricolage', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+@media (max-height: 640px) {
+  .sydekyks-companion {
+    display: none;
+  }
+}

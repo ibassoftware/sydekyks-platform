@@ -1,0 +1,129 @@
+import { createAction, DynamicPropsValue, MarkdownVariant, PieceAuth, Property } from '@activepieces/pieces-framework';
+import { AuthenticationType, httpClient, HttpMethod, propsValidation } from '@activepieces/pieces-common';
+import { CreateRecordsRequest } from '@activepieces/pieces-framework';
+import { tablesCommon } from '../common';
+import { createRecordsActionOutputSchema } from '../output-schemas';
+
+export const createRecords = createAction({
+  audience: 'both',
+  name: 'tables-create-records',
+  classification: 'WRITE',
+  displayName: 'Create Record(s)',
+  description: 'Insert one or more new records into a table.',
+  aiMetadata: { description: 'Inserts one or more new rows into an Activepieces Table via either a per-field form built from the columns of the selected table, or a raw JSON array of objects keyed by column name that overrides the form, for when the table is chosen dynamically at runtime. Use Update Record instead to change a row that already exists. Requires a table ID, and any value whose key does not match a real column is silently dropped; not idempotent, since every call appends new records with new IDs.', idempotent: false },
+  auth: PieceAuth.None(),
+  props: {
+    table_id: tablesCommon.table_id,
+    values: Property.DynamicProperties({
+      auth: PieceAuth.None(),
+      displayName: 'Values',
+      description: 'One entry per record to insert.',
+      required: true,
+      refreshers: ['table_id'],
+      props: async ({ table_id }, context): Promise<DynamicPropsValue> => {
+        const tableExternalId = table_id as unknown as string;
+        if ((tableExternalId ?? '').toString().length === 0) {
+          return {
+            markdown: Property.MarkDown({
+              value: 'Select a table to load its fields.',
+              variant: MarkdownVariant.INFO,
+            }),
+          };
+        }
+        try {
+          const tableId = await tablesCommon.convertTableExternalIdToId(tableExternalId, context);
+
+          const fields = await tablesCommon.createFieldProperties({ tableId, context });
+          if ('markdown' in fields) {
+            return fields;
+          }
+
+          return {
+            values: Property.Array({
+              displayName: 'Records',
+              description: 'Add one or more records to insert.',
+              required: true,
+              properties: fields,
+            }),
+          };
+        } catch {
+          return {
+            markdown: Property.MarkDown({
+              value:
+                "Couldn't load the fields for this table. If the table is chosen dynamically (e.g. from a previous step), open Advanced and fill in Records as JSON.",
+              variant: MarkdownVariant.INFO,
+            }),
+          };
+        }
+      },
+    }),
+    records: Property.Json({
+      displayName: 'Records as JSON',
+      description: 'Array of objects keyed by field name. Overrides the form above.',
+      required: false,
+      advanced: true,
+    }),
+  },
+  outputSchema: createRecordsActionOutputSchema,
+  async run(context) {
+    const { table_id: tableExternalId, values, records: rawRecords } = context.propsValue;
+    const tableId = await tablesCommon.convertTableExternalIdToId(tableExternalId, context);
+    const tableFields = await tablesCommon.getTableFields({ tableId, context });
+
+    // Property.Json defaults to `{}` in the builder whenever the field is left
+    // untouched, so `!= null` alone can't tell "raw JSON provided" from
+    // "advanced field never touched" — a row with no keys means the latter.
+    const rawArray: Record<string, unknown>[] = Array.isArray(rawRecords)
+      ? rawRecords
+      : rawRecords != null
+      ? [rawRecords as Record<string, unknown>]
+      : [];
+    const hasRawRecords = rawArray.some((row) => Object.keys(row ?? {}).length > 0);
+
+    let records: CreateRecordsRequest['records'];
+    if (hasRawRecords) {
+      records = toCells({ rows: rawArray, fieldIdByKey: (name) => tableFields.find((field) => field.name === name)?.id });
+    } else {
+      const formRecords = values['values'];
+      if (!Array.isArray(formRecords) || formRecords.length === 0) {
+        throw new Error(
+          'No records provided. Select a table and fill in the records form, or use the "Records (Raw)" field to provide records as JSON.'
+        );
+      }
+      records = toCells({ rows: formRecords, fieldIdByKey: (externalId) => tableFields.find((field) => field.externalId === externalId)?.id });
+      const fieldValidations = tablesCommon.createFieldValidations(tableFields);
+      for (const record of formRecords) {
+        const cleanedRecord = Object.fromEntries(Object.entries(record).filter(([_, value]) => value != null && value !== ''));
+        await propsValidation.validateZod(cleanedRecord, fieldValidations);
+      }
+    }
+
+    const response = await httpClient.sendRequest({
+      method: HttpMethod.POST,
+      url: `${context.server.apiUrl}v1/records`,
+      body: {
+        records,
+        tableId,
+      },
+      authentication: {
+        type: AuthenticationType.BEARER_TOKEN,
+        token: context.server.token,
+      },
+      retries: 5,
+    });
+
+    return response.body.map(tablesCommon.formatRecord);
+  },
+});
+
+function toCells({ rows, fieldIdByKey }: {
+  rows: Record<string, unknown>[];
+  fieldIdByKey: (key: string) => string | undefined;
+}): CreateRecordsRequest['records'] {
+  return rows.map((row) =>
+    Object.entries(row)
+      .filter(([_, value]) => value != null && value !== '')
+      .map(([key, value]) => ({ fieldId: fieldIdByKey(key), value: String(value) }))
+      .filter((cell): cell is { fieldId: string; value: string } => cell.fieldId !== undefined)
+  );
+}

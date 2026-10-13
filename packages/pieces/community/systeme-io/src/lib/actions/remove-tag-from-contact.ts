@@ -1,0 +1,117 @@
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { HttpMethod } from '@activepieces/pieces-common';
+import { systemeIoAuth } from '../common/auth';
+import { systemeIoCommon, systemeIoInput } from '../common/client';
+import { systemeIoProps } from '../common/props';
+import { removeTagFromContactActionOutputSchema } from '../output-schemas';
+
+export const removeTagFromContact = createAction({
+  auth: systemeIoAuth,
+  name: 'removeTagFromContact',
+  classification: 'WRITE',
+  displayName: 'Remove Tag from Contact',
+  description: 'Remove a tag that is currently assigned to an existing contact',
+  audience: 'both',
+  aiMetadata: { description: 'Removes a tag from an existing Systeme.io contact, given the contact id and the tag id to unassign. Use to unlabel or de-segment a contact. Idempotent: once the tag is removed, repeating the call leaves the contact in the same state.', idempotent: true },
+  props: {
+    contactId: systemeIoProps.contactIdDropdown,
+    tagId: Property.Dropdown({
+      auth: systemeIoAuth,
+      displayName: 'Tag to Remove',
+      description: 'Select a tag currently assigned to this contact',
+      required: true,
+      refreshers: ['contactId'],
+      options: async ({ auth, contactId }) => {
+        if (!auth) {
+          return {
+            disabled: true,
+            placeholder: 'Please connect your account first',
+            options: [],
+          };
+        }
+
+        if (!contactId) {
+          return {
+            disabled: true,
+            placeholder: 'Please select a contact first',
+            options: [],
+          };
+        }
+
+        try {
+          const contact = await systemeIoCommon.getContact({
+            contactId: contactId as string,
+            auth: auth.secret_text,
+          });
+
+          let contactTags: any[] = [];
+          if (contact && typeof contact === 'object' && (contact as any).tags) {
+            contactTags = (contact as any).tags;
+          }
+
+          if (contactTags.length > 0) {
+            return {
+              disabled: false,
+              options: contactTags.map((tag: any) => ({
+                label: tag.name,
+                value: tag.id,
+              })),
+            };
+          }
+
+          return {
+            disabled: true,
+            placeholder: 'This contact has no tags to remove',
+            options: [],
+          };
+        } catch (error) {
+          console.error('Error fetching contact tags:', error);
+          return {
+            disabled: true,
+            placeholder: 'Error loading contact tags',
+            options: [],
+          };
+        }
+      },
+    }),
+  },
+  outputSchema: removeTagFromContactActionOutputSchema,
+  async run(context) {
+    const { contactId, tagId } = context.propsValue;
+    const contact = systemeIoInput.requireId({ value: contactId, name: 'Contact ID' });
+    const tag = systemeIoInput.requireId({ value: tagId, name: 'Tag ID' });
+    
+    let tagName = 'Unknown Tag';
+    try {
+      const contact = await systemeIoCommon.getContact({
+        contactId,
+        auth: context.auth.secret_text,
+      });
+
+      if (contact && typeof contact === 'object' && (contact as any).tags) {
+        const contactTags = (contact as any).tags;
+        const foundTag = contactTags.find((tag: any) => tag.id == tagId);
+        if (foundTag) {
+          tagName = foundTag.name;
+        }
+      }
+    } catch (error) {
+      console.warn('Could not fetch contact details for tag name:', error);
+    }
+
+    const response = await systemeIoCommon.apiCall({
+      method: HttpMethod.DELETE,
+      url: `/contacts/${contact}/tags/${tag}`,
+      auth: context.auth.secret_text,
+    });
+
+    return {
+      success: true,
+      contactId,
+      tagId,
+      tagName,
+      message: `Tag "${tagName}" successfully removed from contact`,
+      response,
+    };
+  },
+});

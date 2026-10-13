@@ -1,0 +1,22 @@
+import { isNil } from '@activepieces/core-utils'
+import { SystemJobHandler, SystemJobName } from './common'
+
+const jobHandlers = new Map<SystemJobName, SystemJobHandler>()
+
+export const systemJobHandlers = {
+    registerJobHandler<T extends SystemJobName>(name: T, handler: SystemJobHandler<T>): void {
+        jobHandlers.set(name, handler as SystemJobHandler)
+    },
+    hasHandler(name: SystemJobName): boolean {
+        return jobHandlers.has(name)
+    },
+    getJobHandler(name: SystemJobName): SystemJobHandler {
+        const jobHandler = jobHandlers.get(name)
+
+        if (isNil(jobHandler)) {
+            throw new Error(`No handler for job ${name}`)
+        }
+
+        return jobHandler
+    },
+}

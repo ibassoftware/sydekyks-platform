@@ -1,0 +1,77 @@
+import { ApFile, createAction, Property } from '@activepieces/pieces-framework';
+import {
+  HttpRequest,
+  HttpMethod,
+  httpClient,
+} from '@activepieces/pieces-common';
+import { discordAuth } from '../auth';
+import { discordCommon } from '../common';
+import { discordMessageOutputSchema } from '../output-schemas';
+import FormData from 'form-data';
+
+interface FileObject {
+  file:ApFile
+}
+
+export const sendMessageWithBot = createAction({
+  name: 'sendMessageWithBot',
+  classification: 'WRITE',
+  auth:discordAuth,
+  displayName: 'Send Message with Bot',
+  description:
+    'Post a message and optional files to a channel or thread as the bot.',
+  audience: 'human',
+  aiMetadata: { description: 'Posts a new message (optionally with file attachments) to a Discord channel or thread using a bot token. Use when an agent needs to send bot-authored content to a known channel ID. Requires the bot to have access to that channel; each call posts a separate message, so it is not idempotent.', idempotent: false },
+  outputSchema: discordMessageOutputSchema,
+  props: {
+    channel_id: discordCommon.channel,
+    message: Property.LongText({
+      displayName: 'Message',
+      description: 'Text of the message. Leave empty to send only files.',
+      required: false,
+    }),
+    files: Property.Array({
+      displayName: 'Attachments',
+      description: 'Files uploaded with the message.',
+      properties: {
+        file: Property.File({
+          displayName: 'File',
+          required: false,
+        }),
+      },
+      required: false,
+      defaultValue: [],
+    }),
+  },
+  async run(configValue) {
+    const channelId = configValue.propsValue.channel_id;
+    const message = configValue.propsValue.message;
+    const files = configValue.propsValue.files as FileObject[] ?? [];
+  
+    const formData = new FormData();
+    if (typeof message === 'string' && message.length > 0) {
+      formData.append('content', message);
+    }
+  
+    if (files && files.length > 0) {
+      files.forEach((fileObj, index) => {
+        const file = fileObj.file;
+        formData.append(`files[${index}]`, file.data, file.filename);
+      });
+    }
+  
+    const request: HttpRequest = {
+      method: HttpMethod.POST,
+      url: `https://discord.com/api/v10/channels/${channelId}/messages`,
+      headers: {
+        authorization: `Bot ${configValue.auth.secret_text}`,
+      },
+      body: formData,
+    };
+  
+    const res = await httpClient.sendRequest<never>(request);
+  
+    return res.body;
+  }
+  
+});

@@ -1,0 +1,36 @@
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { HttpMethod, httpClient } from '@activepieces/pieces-common';
+import { telegramCommons } from '../common';
+import { telegramBotAuth } from '../..';
+import { deleteMessageActionOutputSchema } from '../output-schemas';
+
+export const telegramDeleteMessageAction = createAction({
+  auth: telegramBotAuth,
+  name: 'delete_message',
+  classification: 'DESTRUCTIVE',
+  displayName: 'Delete Message',
+  description:
+    "Delete a message. The bot needs admin rights to delete other people's messages.",
+  audience: 'human',
+  aiMetadata: { description: 'Permanently removes a message from a chat, identified by chat_id and message_id. Use to clean up or retract content; the bot can only delete its own messages or any message in groups where it is an administrator. Idempotent in effect: the message ends up deleted regardless of how many times this runs with the same input.', idempotent: true },
+  props: {
+    instructions: telegramCommons.form.chatIdInstructions(),
+    chat_id: telegramCommons.form.chatIdProp(),
+    message_id: Property.Number({
+      displayName: 'Message ID',
+      description: telegramCommons.form.messageIdDescription,
+      required: true,
+    }),
+  },
+  outputSchema: deleteMessageActionOutputSchema,
+  async run(ctx) {
+    return await httpClient.sendRequest<never>({
+      method: HttpMethod.POST,
+      url: telegramCommons.getApiUrl(ctx.auth, 'deleteMessage'),
+      body: {
+        chat_id: ctx.propsValue.chat_id,
+        message_id: ctx.propsValue.message_id,
+      },
+    });
+  },
+});

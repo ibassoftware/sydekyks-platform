@@ -1,0 +1,38 @@
+import { getHubspotAccessToken, hubspotAuth } from '../auth';
+import { AuthenticationType, httpClient, HttpMethod } from '@activepieces/pieces-common';
+import { createAction, Property } from '@activepieces/pieces-framework';
+
+export const removeEmailSubscriptionAction = createAction({
+	auth: hubspotAuth,
+	name: 'remove-email-subscription',
+	classification: 'DESTRUCTIVE',
+	displayName: 'Remove Email Subscription',
+	description: 'Unsubscribes an email address from all HubSpot email subscriptions.',
+	audience: 'both',
+	aiMetadata: { description: 'Unsubscribe an email address from all HubSpot marketing email subscriptions (opt the contact out of every subscription type). Re-running leaves the address in the same unsubscribed state, so it is idempotent.', idempotent: true },
+	props: {
+		email: Property.ShortText({
+			displayName: 'Contact Email',
+			placeholder: 'jane@example.com',
+			required: true,
+		}),
+	},
+	async run(context) {
+		const { email } = context.propsValue;
+
+       // https://developers.hubspot.com/docs/reference/api/marketing/subscriptions-preferences/v1#update-email-subscription-status-for-an-email-address
+		const response = await httpClient.sendRequest({
+			method: HttpMethod.PUT,
+			url: `https://api.hubapi.com/email/public/v1/subscriptions/${email}`,
+			authentication: {
+				type: AuthenticationType.BEARER_TOKEN,
+				token: getHubspotAccessToken(context.auth),
+			},
+			body: {
+				unsubscribeFromAll: true,
+			},
+		});
+
+        return response.body;
+	},
+});

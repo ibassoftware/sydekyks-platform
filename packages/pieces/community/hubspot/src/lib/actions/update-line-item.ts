@@ -1,0 +1,87 @@
+import { getHubspotAccessToken, hubspotAuth } from '../auth';
+import { createAction, Property } from '@activepieces/pieces-framework';
+import {
+    getDefaultPropertiesForObject,
+    productDropdown,
+    standardObjectDynamicProperties,
+    standardObjectPropertiesDropdown,
+} from '../common/props';
+import { OBJECT_TYPE } from '../common/constants';
+import { MarkdownVariant } from '@activepieces/pieces-framework';
+
+import { Client } from '@hubspot/api-client';
+import { crmObjectOutputSchema } from '../output-schemas';
+
+export const updateLineItemAction = createAction({
+    auth: hubspotAuth,
+    name: 'update-line-item',
+    classification: 'WRITE',
+    displayName: 'Update Line Item',
+    description: 'Updates a line item in HubSpot.',
+    audience: 'both',
+    aiMetadata: { description: 'Update properties (product, quantity, price, etc.) on an existing HubSpot line item identified by Line Item ID; only supplied fields change. Applying the same values repeatedly is idempotent. Use a find action to obtain the line item ID first.', idempotent: true },
+    outputSchema: crmObjectOutputSchema,
+    props: {
+        lineItemId: Property.ShortText({
+            displayName: 'Line Item ID',
+            description: 'Map it from an earlier step like Find Line Item.',
+            required: true,
+        }),
+        productId: productDropdown({
+            displayName: 'Product',
+            description: 'Leave empty to keep the current product.',
+            required: false,
+            objectType: OBJECT_TYPE.PRODUCT,
+        }),
+        objectProperties: standardObjectDynamicProperties(OBJECT_TYPE.LINE_ITEM, ['hs_product_id']),
+        markdown: Property.MarkDown({
+            variant: MarkdownVariant.INFO,
+            value: `Returned by default: name, description, price, quantity, amount, discount, tax, createdate, hs_object_id, hs_product_id, hs_images, hs_lastmodifieddate, hs_line_item_currency_code, hs_sku, hs_url, hs_cost_of_goods_sold, hs_discount_percentage, hs_term_in_months.
+
+Pick more under **Advanced**.`,
+        }),
+        additionalPropertiesToRetrieve: standardObjectPropertiesDropdown({
+            objectType: OBJECT_TYPE.LINE_ITEM,
+            displayName: 'Additional Properties to Retrieve',
+            required: false,
+            advanced: true,
+        }),
+    },
+    async run(context) {
+        const lineItemId = context.propsValue.lineItemId;
+        const productId = context.propsValue.productId;
+        const objectProperties = context.propsValue.objectProperties ?? {};
+        const additionalPropertiesToRetrieve = context.propsValue.additionalPropertiesToRetrieve ?? [];
+
+        const lineItemProperties: Record<string, string> = {};
+
+        if(productId)
+        {
+            lineItemProperties['hs_product_id'] = productId;
+        }
+
+        // Add additional properties to the lineItemProperties object
+        Object.entries(objectProperties).forEach(([key, value]) => {
+            if ((Array.isArray(value) && value.length === 0)) {
+                return;  
+            }
+            // Format values if they are arrays
+            lineItemProperties[key] = Array.isArray(value) ? value.join(';') : value;
+        });
+
+        const client = new Client({ accessToken: getHubspotAccessToken(context.auth) });
+
+        const createdLineItem = await client.crm.lineItems.basicApi.update(lineItemId, {
+            properties: lineItemProperties,
+        });
+        // Retrieve default properties for the line item and merge with additional properties to retrieve
+        const defaultlineItemProperties = getDefaultPropertiesForObject(OBJECT_TYPE.LINE_ITEM);
+
+        const lineItemDetails = await client.crm.lineItems.basicApi.getById(createdLineItem.id, [
+            ...defaultlineItemProperties,
+            ...additionalPropertiesToRetrieve,
+        ]);
+
+        return lineItemDetails;
+    },
+});

@@ -1,0 +1,78 @@
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { MarkdownVariant } from '@activepieces/pieces-framework';
+import { getHubspotAccessToken, hubspotAuth } from '../auth';
+import {
+	customObjectDropdown,
+	customObjectDynamicProperties,
+	customObjectPropertiesDropdown,
+} from '../common/props';
+
+import { Client } from '@hubspot/api-client';
+import { crmObjectOutputSchema } from '../output-schemas';
+
+export const createCustomObjectAction = createAction({
+	auth: hubspotAuth,
+	name: 'create-custome-object',
+	classification: 'WRITE',
+	displayName: 'Create Custom Object',
+	description: 'Creates a custom object record in HubSpot.',
+	audience: 'both',
+	aiMetadata: { description: 'Create a new record of a selected HubSpot custom object type from the supplied properties. Each call inserts a new record, so it is not idempotent. Requires choosing the custom object type; use Find Custom Object to locate an existing record.', idempotent: false },
+	outputSchema: crmObjectOutputSchema,
+	props: {
+		customObjectType: customObjectDropdown,
+		objectProperties: customObjectDynamicProperties,
+		markdown: Property.MarkDown({
+			variant: MarkdownVariant.INFO,
+			value: `Returned by default: hs_object_id, hs_lastmodifieddate, hs_createdate.
+
+Pick more under **Advanced**.`,
+		}),
+		additionalPropertiesToRetrieve: customObjectPropertiesDropdown({
+			displayName: 'Additional Properties to Retrieve',
+			required: false,
+			advanced: true,
+		}),
+	},
+	async run(context) {
+		const customObjectType = context.propsValue.customObjectType as string;
+		const objectProperties = context.propsValue.objectProperties ?? {};
+		const additionalPropertiesToRetrieve =
+			context.propsValue.additionalPropertiesToRetrieve?.['values'];
+
+		let propertiesToRetrieve;
+		try {
+			if (Array.isArray(additionalPropertiesToRetrieve)) {
+				propertiesToRetrieve = additionalPropertiesToRetrieve;
+			}
+			if (typeof additionalPropertiesToRetrieve === 'string') {
+				propertiesToRetrieve = JSON.parse(additionalPropertiesToRetrieve as string);
+			}
+		} catch (error) {
+			propertiesToRetrieve = [];
+		}
+
+		const customObjectProperties: Record<string, string> = {};
+
+		// Add additional properties to the customObjectProperties object
+		Object.entries(objectProperties).forEach(([key, value]) => {
+			// Format values if they are arrays
+			customObjectProperties[key] = Array.isArray(value) ? value.join(';') : value;
+		});
+
+		const client = new Client({ accessToken: getHubspotAccessToken(context.auth) });
+
+		const createdCustomObject = await client.crm.objects.basicApi.create(customObjectType, {
+			properties: customObjectProperties,
+			associations: [],
+		});
+
+		const customObjectDetails = await client.crm.objects.basicApi.getById(
+			customObjectType,
+			createdCustomObject.id,
+			propertiesToRetrieve,
+		);
+
+		return customObjectDetails;
+	},
+});

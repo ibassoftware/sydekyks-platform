@@ -1,0 +1,365 @@
+import {
+  FolderDto,
+  PopulatedFlow,
+  ProjectMemberWithUser,
+  Table,
+} from '@activepieces/shared';
+import * as AccordionPrimitive from '@radix-ui/react-accordion';
+import { t } from 'i18next';
+import {
+  Activity,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Clock,
+  Info,
+  LucideIcon,
+  Type,
+  User,
+} from 'lucide-react';
+
+import { useEmbedding } from '@/components/providers/embed-provider';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
+
+import { AutomationsSort, SelectedItemsMap, TreeItem } from '../lib/types';
+import { groupTreeItemsByFolder, nextSort } from '../lib/utils';
+
+import { AutomationsTableRow } from './automations-table-row';
+import { CreateInFolderKind } from './create-new-menu';
+
+type AutomationsTableProps = {
+  items: TreeItem[];
+  isLoading: boolean;
+  selectedItems: SelectedItemsMap;
+  expandedFolders: Set<string>;
+  projectMembers: ProjectMemberWithUser[] | undefined;
+  folders: FolderDto[];
+  selectableCount: number;
+  isPinned: (itemId: string) => boolean;
+  onTogglePin: (itemId: string) => void;
+  onToggleAllSelection: () => void;
+  onToggleItemSelection: (item: TreeItem) => void;
+  onRowClick: (item: TreeItem, ctrlKey?: boolean) => void;
+  onRenameItem: (item: TreeItem) => void;
+  onDeleteItem: (item: TreeItem) => void;
+  onDuplicateFlow: (flow: PopulatedFlow) => void;
+  onMoveItem: (item: TreeItem, folderId: string) => void;
+  onExportFlow: (flow: PopulatedFlow) => void;
+  onExportTable: (table: Table) => void;
+  onCreateInFolder?: (folderId: string, kind: CreateInFolderKind) => void;
+  userHasPermissionToWriteFlow?: boolean;
+  userHasPermissionToWriteTable?: boolean;
+  userHasPermissionToWriteAgent: boolean;
+  agentsVisible: boolean;
+  isCreatingFlow?: boolean;
+  isCreatingTable?: boolean;
+  isCreatingAgent?: boolean;
+  isMoving: boolean;
+  isDuplicating: boolean;
+  onLoadMoreInFolder: (folderId: string) => void;
+  isItemSelected: (item: TreeItem) => boolean;
+  sort: AutomationsSort;
+  onSortChange: (sort: AutomationsSort) => void;
+};
+
+const rowClassName =
+  'group flex items-center min-h-[48px] py-2 text-sm cursor-pointer hover:bg-gray-3/50';
+
+function AutomationsSkeletonRow({
+  indent = 0,
+  isEmbedded,
+}: {
+  indent?: number;
+  isEmbedded: boolean;
+}) {
+  return (
+    <div className="flex items-center py-2.5 border-b">
+      <div className="w-10 shrink-0" />
+      <div className="w-8 shrink-0" />
+      <div
+        className="flex-1 min-w-[200px] pl-2 flex items-center"
+        style={indent ? { paddingLeft: indent } : undefined}
+      >
+        <Skeleton className="h-4 w-48" />
+      </div>
+      <div className="w-[230px] shrink-0 px-2 flex items-center">
+        <Skeleton className="h-4 w-24" />
+      </div>
+      <div className="w-[200px] shrink-0 px-2 flex items-center">
+        <Skeleton className="h-4 w-28" />
+      </div>
+      {!isEmbedded && (
+        <div className="w-[250px] shrink-0 px-2 flex items-center">
+          <Skeleton className="h-4 w-32" />
+        </div>
+      )}
+      <div className="w-[160px] shrink-0 px-2 flex items-center">
+        <Skeleton className="h-4 w-16" />
+      </div>
+      <div className="w-[80px] shrink-0 px-2" />
+    </div>
+  );
+}
+
+export const AutomationsTable = ({
+  items,
+  isLoading,
+  selectedItems,
+  expandedFolders,
+  projectMembers,
+  folders,
+  selectableCount,
+  isPinned,
+  onTogglePin,
+  onToggleAllSelection,
+  onToggleItemSelection,
+  onRowClick,
+  onRenameItem,
+  onDeleteItem,
+  onDuplicateFlow,
+  onMoveItem,
+  onExportFlow,
+  onExportTable,
+  onCreateInFolder,
+  userHasPermissionToWriteFlow,
+  userHasPermissionToWriteTable,
+  userHasPermissionToWriteAgent,
+  agentsVisible,
+  isCreatingFlow,
+  isCreatingTable,
+  isCreatingAgent,
+  isMoving,
+  isDuplicating,
+  onLoadMoreInFolder,
+  isItemSelected,
+  sort,
+  onSortChange,
+}: AutomationsTableProps) => {
+  const { embedState } = useEmbedding();
+  const groups = groupTreeItemsByFolder(items);
+  const SortIcon = sortIcons[sort];
+
+  return (
+    <div className="overflow-x-auto">
+      <div className="min-w-[1000px]">
+        <div className="flex items-center h-8 text-xs border-b font-medium text-gray-12 bg-gray-3/50">
+          <div className="w-10 shrink-0 pl-4 pr-1">
+            <Checkbox
+              checked={
+                selectableCount > 0 && selectedItems.size === selectableCount
+              }
+              onCheckedChange={onToggleAllSelection}
+            />
+          </div>
+          <div className="w-8 shrink-0"></div>
+          <div className="flex-1 min-w-[200px] pl-2 flex items-center gap-1.5">
+            <button
+              type="button"
+              aria-label={sortActionLabel(sort)}
+              onClick={() => onSortChange(nextSort(sort))}
+              className="flex items-center gap-1.5 rounded-sm hover:text-accent-11 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-8"
+            >
+              <Type className="h-3.5 w-3.5" />
+              {t('Name')}
+              <SortIcon
+                className={cn(
+                  'h-3.5 w-3.5',
+                  sort === 'default' && 'text-gray-11',
+                )}
+              />
+            </button>
+          </div>
+
+          <div className="w-[230px] shrink-0 px-2 flex items-center gap-1.5">
+            <Info className="h-3.5 w-3.5" />
+            {t('Details')}
+          </div>
+
+          <div className="w-[200px] shrink-0 px-2 flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5" />
+            {t('Last modified')}
+          </div>
+          {!embedState.isEmbedded && (
+            <div className="w-[250px] shrink-0 px-2 flex items-center gap-1.5">
+              <User className="h-3.5 w-3.5" />
+              {t('Owner')}
+            </div>
+          )}
+          <div className="w-[160px] shrink-0 px-2 flex items-center gap-1.5">
+            <Activity className="h-3.5 w-3.5" />
+            {t('Status')}
+          </div>
+          <div className="w-[80px] shrink-0 px-2"></div>
+        </div>
+
+        {isLoading ? (
+          <div>
+            {Array.from({ length: 10 }).map((_, i) => (
+              <AutomationsSkeletonRow
+                key={i}
+                isEmbedded={embedState.isEmbedded}
+              />
+            ))}
+          </div>
+        ) : (
+          <AccordionPrimitive.Root
+            type="multiple"
+            value={Array.from(expandedFolders)}
+          >
+            {groups.map((group) => {
+              const isFolder = group.item.type === 'folder';
+
+              if (isFolder) {
+                return (
+                  <AccordionPrimitive.Item
+                    key={`folder-${group.item.id}`}
+                    value={group.item.id}
+                    className="border-b"
+                  >
+                    <div
+                      className={cn(rowClassName)}
+                      onClick={(e) =>
+                        onRowClick(group.item, e.ctrlKey || e.metaKey)
+                      }
+                    >
+                      <AutomationsTableRow
+                        item={group.item}
+                        isSelected={isItemSelected(group.item)}
+                        isExpanded={expandedFolders.has(group.item.id)}
+                        isPinned={isPinned(group.item.id)}
+                        projectMembers={projectMembers}
+                        folders={folders}
+                        onRowClick={() => onRowClick(group.item)}
+                        onToggleSelection={() =>
+                          onToggleItemSelection(group.item)
+                        }
+                        onTogglePin={() => onTogglePin(group.item.id)}
+                        onRename={() => onRenameItem(group.item)}
+                        onDelete={() => onDeleteItem(group.item)}
+                        onDuplicate={onDuplicateFlow}
+                        onMoveTo={onMoveItem}
+                        onExportFlow={onExportFlow}
+                        onExportTable={onExportTable}
+                        onCreateInFolder={onCreateInFolder}
+                        userHasPermissionToWriteFlow={
+                          userHasPermissionToWriteFlow
+                        }
+                        userHasPermissionToWriteTable={
+                          userHasPermissionToWriteTable
+                        }
+                        userHasPermissionToWriteAgent={
+                          userHasPermissionToWriteAgent
+                        }
+                        agentsVisible={agentsVisible}
+                        isCreatingFlow={isCreatingFlow}
+                        isCreatingTable={isCreatingTable}
+                        isCreatingAgent={isCreatingAgent}
+                        isMoving={isMoving}
+                        isDuplicating={isDuplicating}
+                        onLoadMore={undefined}
+                      />
+                    </div>
+                    <AccordionPrimitive.Content className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+                      {group.children.map((child) => (
+                        <div
+                          key={`${child.type}-${child.id}`}
+                          className={cn(rowClassName, 'border-t')}
+                          onClick={(e) =>
+                            onRowClick(child, e.ctrlKey || e.metaKey)
+                          }
+                        >
+                          <AutomationsTableRow
+                            item={child}
+                            isSelected={isItemSelected(child)}
+                            isExpanded={false}
+                            isPinned={isPinned(child.id)}
+                            projectMembers={projectMembers}
+                            folders={folders}
+                            onRowClick={() => onRowClick(child)}
+                            onToggleSelection={() =>
+                              onToggleItemSelection(child)
+                            }
+                            onTogglePin={() => onTogglePin(child.id)}
+                            onRename={() => onRenameItem(child)}
+                            onDelete={() => onDeleteItem(child)}
+                            onDuplicate={onDuplicateFlow}
+                            onMoveTo={onMoveItem}
+                            onExportFlow={onExportFlow}
+                            onExportTable={onExportTable}
+                            userHasPermissionToWriteAgent={
+                              userHasPermissionToWriteAgent
+                            }
+                            isMoving={isMoving}
+                            isDuplicating={isDuplicating}
+                            onLoadMore={
+                              child.type === 'load-more-folder'
+                                ? () => onLoadMoreInFolder(child.folderId!)
+                                : undefined
+                            }
+                          />
+                        </div>
+                      ))}
+                    </AccordionPrimitive.Content>
+                  </AccordionPrimitive.Item>
+                );
+              }
+
+              return (
+                <div
+                  key={`${group.item.type}-${group.item.id}`}
+                  className={cn(rowClassName, 'border-b')}
+                  onClick={(e) =>
+                    onRowClick(group.item, e.ctrlKey || e.metaKey)
+                  }
+                >
+                  <AutomationsTableRow
+                    item={group.item}
+                    isSelected={isItemSelected(group.item)}
+                    isExpanded={false}
+                    isPinned={isPinned(group.item.id)}
+                    projectMembers={projectMembers}
+                    folders={folders}
+                    onRowClick={() => onRowClick(group.item)}
+                    onToggleSelection={() => onToggleItemSelection(group.item)}
+                    onTogglePin={() => onTogglePin(group.item.id)}
+                    onRename={() => onRenameItem(group.item)}
+                    onDelete={() => onDeleteItem(group.item)}
+                    onDuplicate={onDuplicateFlow}
+                    onMoveTo={onMoveItem}
+                    onExportFlow={onExportFlow}
+                    onExportTable={onExportTable}
+                    userHasPermissionToWriteAgent={
+                      userHasPermissionToWriteAgent
+                    }
+                    isMoving={isMoving}
+                    isDuplicating={isDuplicating}
+                    onLoadMore={undefined}
+                  />
+                </div>
+              );
+            })}
+          </AccordionPrimitive.Root>
+        )}
+      </div>
+    </div>
+  );
+};
+
+function sortActionLabel(sort: AutomationsSort): string {
+  switch (sort) {
+    case 'default':
+      return t('Sort by name A to Z');
+    case 'name-asc':
+      return t('Sort by name Z to A');
+    case 'name-desc':
+      return t('Clear name sorting');
+  }
+}
+
+const sortIcons: Record<AutomationsSort, LucideIcon> = {
+  default: ArrowUpDown,
+  'name-asc': ArrowUp,
+  'name-desc': ArrowDown,
+};

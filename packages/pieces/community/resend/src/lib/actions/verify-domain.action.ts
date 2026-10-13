@@ -1,0 +1,23 @@
+import { createAction } from '@activepieces/pieces-framework';
+import { HttpMethod } from '@activepieces/pieces-common';
+import { resendAuth } from '../..';
+import { resendClient } from '../common/client';
+import { resendProps } from '../common/props';
+import { verifyDomainOutputSchema } from '../output-schemas';
+
+export const verifyDomain = createAction({
+  name: 'verify_domain',
+  classification: 'WRITE',
+  auth: resendAuth,
+  displayName: 'Verify Domain',
+  outputSchema: verifyDomainOutputSchema,
+  description: 'Trigger a DNS verification check for a domain',
+  audience: 'both',
+  aiMetadata: { description: 'Triggers Resend to re-check the DNS records of a domain and update its verification status, identified by domain ID. Use this after adding the required DNS records (from Create Domain) to confirm the domain is ready to send. Safe to call repeatedly — it only re-runs the check.', idempotent: true },
+  props: {
+    domain_id: resendProps.domainId,
+  },
+  async run({ auth, propsValue }) {
+    return await resendClient.sendRequest<{ object: string; id: string }>({ auth: auth.secret_text, method: HttpMethod.POST, path: `/domains/${propsValue.domain_id}/verify` });
+  },
+});

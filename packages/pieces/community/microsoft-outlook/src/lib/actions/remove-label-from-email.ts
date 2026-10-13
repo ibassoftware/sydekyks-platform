@@ -1,0 +1,46 @@
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { microsoftOutlookAuth } from '../common/auth';
+import { outlookCommon } from '../common/client';
+import { messageIdDropdown } from '../common/props';
+import { messageActionOutputSchema } from '../output-schemas';
+
+export const removeLabelFromEmailAction = createAction({
+	auth: microsoftOutlookAuth,
+	name: 'removeLabelFromEmail',
+	classification: 'WRITE',
+	displayName: 'Remove Label from Email',
+	description: 'Remove one or more Outlook categories from an email.',
+	audience: 'human',
+	aiMetadata: { description: 'Removes one or more Outlook categories (labels) from a specific message, leaving any other categories intact. Use this to untag or reclassify an email. Idempotent: re-running with the same categories yields the same final label set.', idempotent: true },
+	outputSchema: messageActionOutputSchema,
+	props: {
+		messageId: messageIdDropdown({
+			displayName: 'Email',
+			description: 'The email to remove categories from.',
+			required: true,
+		}),
+		categories: Property.Array({
+			displayName: 'Categories',
+			description: 'Category names to remove, one per row.',
+			required: true,
+		}),
+	},
+	async run(context) {
+		const { messageId, categories } = context.propsValue;
+
+		const client = outlookCommon.createClient(context.auth);
+
+		const message = await client.api(`${outlookCommon.mailboxPrefix(context.auth)}/messages/${messageId}`).get();
+		const existingCategories = message.categories || [];
+
+		const updatedCategories = existingCategories.filter(
+			(category: string) => !categories.includes(category)
+		);
+
+		const response = await client.api(`${outlookCommon.mailboxPrefix(context.auth)}/messages/${messageId}`).patch({
+			categories: updatedCategories,
+		});
+
+		return response;
+	},
+});

@@ -1,0 +1,38 @@
+import { getHubspotAccessToken, hubspotAuth } from '../auth';
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { Client } from '@hubspot/api-client';
+import { pageType } from '../common/props';
+import { pageOutputSchema } from '../output-schemas';
+
+export const getPageAction = createAction({
+	auth: hubspotAuth,
+	name: 'get-page',
+	classification: 'READ',
+	displayName: 'Get Page',
+	description: 'Gets a landing page or site page by its ID.',
+	audience: 'both',
+	aiMetadata: {
+		description:
+			'Fetch the details of a single HubSpot CMS page by its ID. Use when you already have a page ID and need its current data; the page type input selects whether to read a site page or a landing page. Read-only and repeatable.',
+		idempotent: true,
+	},
+	outputSchema: pageOutputSchema,
+	props: {
+		pageType: pageType,
+		pageId: Property.ShortText({
+			displayName: 'Page ID',
+			description: 'Map it from an earlier step like Create Page.',
+			required: true,
+		}),
+	},
+	async run(context) {
+		const { pageId, pageType } = context.propsValue;
+		const client = new Client({ accessToken: getHubspotAccessToken(context.auth) });
+
+		if (pageType === 'site_page') {
+			return await client.cms.pages.sitePagesApi.getById(pageId);
+		} else {
+			return await client.cms.pages.landingPagesApi.getById(pageId);
+		}
+	},
+});

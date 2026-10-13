@@ -1,0 +1,160 @@
+import {
+  createTrigger,
+  TriggerStrategy,
+  AppConnectionValueForAuthProperty,
+  Property,
+} from '@activepieces/pieces-framework';
+import {
+  DedupeStrategy,
+  httpClient,
+  Polling,
+  pollingHelper,
+} from '@activepieces/pieces-common';
+import { makeRequest } from '../common/client';
+import { cryptolensAuth } from '../common/auth';
+import { newApiEventTriggerOutputSchema } from '../output-schemas';
+import { HttpMethod } from '@activepieces/pieces-common';
+
+interface WebAPILog {
+  id: number;
+  productId: number;
+  key: string;
+  ip: string;
+  time: number;
+  state: number;
+  machineCode: string | null;
+  friendlyName: string;
+  floatingExpires: number;
+  doIntValue: number;
+  doId: number;
+}
+
+const props = {
+  productId: Property.Number({
+    displayName: 'Product ID',
+    description: 'Filter events for a specific product (optional)',
+    required: false,
+  }),
+  key: Property.ShortText({
+    displayName: 'License Key',
+    description:
+      'Filter events for a specific license key (requires Product ID)',
+    required: false,
+  }),
+  states: Property.LongText({
+    displayName: 'Event States',
+    description:
+      'Filter by event states (comma-separated numbers). E.g., 1010 for validation, 2010 for activation, 3010 for key creation, 6010 for deactivation',
+    required: false,
+  }),
+  limit: Property.Number({
+    displayName: 'Limit',
+    description:
+      'Maximum number of events to fetch per poll (default 100, max 1000)',
+    required: false,
+  }),
+};
+const polling: Polling<
+  AppConnectionValueForAuthProperty<typeof cryptolensAuth>,
+  {
+    productId?: number;
+    key?: string;
+    states?: string;
+    limit?: number;
+  }
+> = {
+  strategy: DedupeStrategy.TIMEBASED,
+  items: async ({ propsValue, auth, lastFetchEpochMS }) => {
+    const params = new URLSearchParams();
+
+    if (propsValue.productId) {
+      params.append('ProductId', String(propsValue.productId));
+    }
+
+    if (propsValue.key && propsValue.productId) {
+      params.append('Key', propsValue.key);
+    }
+
+    if (propsValue.states) {
+      params.append('States', propsValue.states);
+    }
+
+    const limit = propsValue.limit || 100;
+    params.append('Limit', String(limit));
+
+    // Add time filter to get events since last fetch
+    if (lastFetchEpochMS) {
+      const timeFilter = JSON.stringify({
+        gte: Math.floor(lastFetchEpochMS / 1000),
+      });
+      params.append('Time', timeFilter);
+    } else {
+      // On first run, fetch events from the last hour to avoid missing recent events
+      const oneHourAgo = Math.floor((Date.now() - 3600 * 1000) / 1000);
+      const timeFilter = JSON.stringify({ gte: oneHourAgo });
+      params.append('Time', timeFilter);
+    }
+
+    const response = await makeRequest(
+      auth.secret_text,
+      HttpMethod.GET,
+      `/ai/GetWebAPILog?${params.toString()}`
+    );
+
+    const responseBody: {
+      result: number;
+      message?: string;
+      logs: WebAPILog[];
+    } = response;
+
+    if (responseBody.result !== 0 || !responseBody.logs) {
+      return [];
+    }
+
+    return responseBody.logs.map((log) => ({
+      epochMilliSeconds: log.time * 1000,
+      data: log,
+    }));
+  },
+};
+
+export const newApiEvent = createTrigger({
+  auth: cryptolensAuth,
+  name: 'newApiEvent',
+  displayName: 'New API Event',
+  description:
+    'Trigger when a new API event is logged (activation, deactivation, key creation, etc.)',
+  aiMetadata: {
+    description: 'Fires when a new Web API event is logged in Cryptolens, such as a license activation, deactivation, validation, or key creation. Polls the audit log on an interval and can optionally be scoped to a specific product, a specific key, or particular event-state codes.',
+  },
+  outputSchema: newApiEventTriggerOutputSchema,
+  props,
+  sampleData: {
+    id: 2280434406,
+    productId: 12345,
+    key: 'AAAAA-BBBBB-CCCCC-DDDDD',
+    ip: '203.0.113.10',
+    time: 1788259071,
+    state: 3010,
+    machineCode: null,
+    friendlyName: '',
+    floatingExpires: 0,
+    doIntValue: 0,
+    doId: 0,
+  },
+  type: TriggerStrategy.POLLING,
+  async test(context) {
+    return await pollingHelper.test(polling, context);
+  },
+  async onEnable(context) {
+    const { store, auth, propsValue } = context;
+    await pollingHelper.onEnable(polling, { store, auth, propsValue });
+  },
+  async onDisable(context) {
+    const { store, auth, propsValue } = context;
+    await pollingHelper.onDisable(polling, { store, auth, propsValue });
+  },
+  async run(context) {
+    return await pollingHelper.poll(polling, context);
+  },
+});

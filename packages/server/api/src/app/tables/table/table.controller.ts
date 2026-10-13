@@ -1,0 +1,363 @@
+import { ApId, Permission, SeekPage } from '@activepieces/core-utils'
+import { CountTablesRequest, CreateTableRequest, CreateTableWebhookRequest, ExportTableResponse, ListTablesRequest, PrincipalType, SERVICE_KEY_SECURITY_OPENAPI, SharedTemplate, Table, UpdateTableRequest } from '@activepieces/shared'
+import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { StatusCodes } from 'http-status-codes'
+import { z } from 'zod'
+import { ProjectResourceType } from '../../core/security/authorization/common'
+import { securityAccess } from '../../core/security/authorization/fastify-security'
+import { userService } from '../../user/user-service'
+import { recordSideEffects } from '../record/record-side-effects'
+import { recordService } from '../record/record.service'
+import { TableEntity } from './table.entity'
+import { tableService } from './table.service'
+
+const DEFAULT_PAGE_SIZE = 10
+
+export const tablesController: FastifyPluginAsyncZod = async (fastify) => {
+
+    fastify.post('/', CreateRequest, async (request) => {
+        return tableService.create({
+            projectId: request.projectId,
+            request: request.body,
+        })
+    })
+
+    fastify.post('/:id', UpdateRequest, async (request) => {
+        return tableService.update({
+            projectId: request.projectId,
+            id: request.params.id,
+            request: request.body,
+        })
+
+    })
+
+    fastify.get('/', GetTablesRequest, async (request) => {
+        return tableService.list({
+            projectId: request.projectId,
+            cursor: request.query.cursor,
+            limit: request.query.limit ?? DEFAULT_PAGE_SIZE,
+            name: request.query.name,
+            externalIds: request.query.externalIds,
+            folderId: request.query.folderId,
+            folderIds: request.query.folderIds,
+            sortBy: request.query.sortBy,
+            order: request.query.order,
+        })
+    })
+
+    fastify.get('/:id/template', GetTableTemplateRequestOptions, async (request) => {
+        const userMetadata = request.principal.type === PrincipalType.USER ? await userService(request.log).getMetaInformation({ id: request.principal.id }) : null
+        return tableService.getTemplate({
+            tableId: request.params.id,
+            userMetadata,
+            projectId: request.projectId,
+            log: request.log,
+        })
+    })
+
+    fastify.delete('/:id', DeleteRequest, async (request, reply) => {
+        const _table = await tableService.getOneOrThrow({
+            projectId: request.projectId,
+            id: request.params.id,
+        })
+        await tableService.delete({
+            projectId: request.projectId,
+            id: request.params.id,
+        })
+        await reply.status(StatusCodes.NO_CONTENT).send()
+    })
+
+    fastify.get('/count', CountTablesRequestOptions, async (request) => {
+        return tableService.count({
+            projectId: request.projectId,
+            folderId: request.query.folderId,
+        })
+    })
+
+    fastify.get('/:id', GetTableByIdRequest, async (request) => {
+        return tableService.getOneOrThrow({
+            projectId: request.projectId,
+            id: request.params.id,
+        })
+    })
+
+    fastify.get('/:id/export', ExportTableRequest, async (request) => {
+        return tableService.exportTable({
+            projectId: request.projectId,
+            id: request.params.id,
+        })
+    })
+
+    fastify.get('/:id/export/csv', ExportTableCsvRequest, async (request) => {
+        return tableService.exportTableCsvToFile({
+            projectId: request.projectId,
+            platformId: request.principal.platform.id,
+            id: request.params.id,
+            includeHeaders: request.query.includeHeaders !== 'false',
+            log: request.log,
+        })
+    })
+
+    fastify.post('/:id/webhooks', CreateTableWebhook, async (request) => {
+        return tableService.createWebhook({
+            projectId: request.projectId,
+            id: request.params.id,
+            request: request.body,
+        })
+    })
+
+    fastify.delete('/:id/webhooks/:webhookId', DeleteTableWebhook, async (request) => {
+        return tableService.deleteWebhook({
+            projectId: request.projectId,
+            id: request.params.id,
+            webhookId: request.params.webhookId,
+        })
+    })
+
+    fastify.post('/:id/clear', ClearTableRequest, async (request, reply) => {
+        const deletedRecords = await recordService.deleteAll({
+            tableId: request.params.id,
+            projectId: request.projectId,
+        })
+        await reply.status(StatusCodes.NO_CONTENT).send()
+        await recordSideEffects(fastify.log).handleRecordsEvent({
+            tableId: request.params.id,
+            projectId: request.projectId,
+            records: deletedRecords,
+            logger: request.log,
+            authorization: request.headers.authorization as string,
+        }, 'deleted')
+    })
+}
+
+const CreateRequest = {
+    config: {
+        security: securityAccess.project([PrincipalType.USER, PrincipalType.ENGINE, PrincipalType.SERVICE], Permission.WRITE_TABLE, {
+            type: ProjectResourceType.BODY,
+        }),
+    },
+    schema: {
+        body: CreateTableRequest,
+        response: {
+            [StatusCodes.CREATED]: Table,
+        },
+    },
+}
+
+const GetTablesRequest = {
+    config: {
+        security: securityAccess.project([PrincipalType.USER, PrincipalType.ENGINE, PrincipalType.SERVICE], Permission.READ_TABLE, {
+            type: ProjectResourceType.QUERY,
+        }),
+    },
+    schema: {
+        tags: ['tables'],
+        security: [SERVICE_KEY_SECURITY_OPENAPI],
+        description: 'List tables',
+        querystring: ListTablesRequest,
+        response: {
+            [StatusCodes.OK]: SeekPage(Table),
+        },
+    },
+}
+
+const CountTablesRequestOptions = {
+    config: {
+        security: securityAccess.project([PrincipalType.USER, PrincipalType.ENGINE], Permission.READ_TABLE, {
+            type: ProjectResourceType.QUERY,
+        }),
+    },
+    schema: {
+        tags: ['tables'],
+        security: [SERVICE_KEY_SECURITY_OPENAPI],
+        description: 'Count tables',
+        querystring: CountTablesRequest,
+        response: {
+            [StatusCodes.OK]: z.number(),
+        },
+    },
+}
+
+const DeleteRequest = {
+    config: {
+        security: securityAccess.project([PrincipalType.USER, PrincipalType.ENGINE, PrincipalType.SERVICE], Permission.WRITE_TABLE, {
+            type: ProjectResourceType.TABLE,
+            tableName: TableEntity,
+        }),
+    },
+
+    schema: {
+        tags: ['tables'],
+        security: [SERVICE_KEY_SECURITY_OPENAPI],
+        description: 'Delete a table',
+        params: z.object({
+            id: ApId,
+        }),
+        response: {
+            [StatusCodes.NO_CONTENT]: z.never(),
+        },
+    },
+}
+
+const GetTableByIdRequest = {
+    config: {
+        security: securityAccess.project([PrincipalType.USER, PrincipalType.ENGINE, PrincipalType.SERVICE], Permission.READ_TABLE, {
+            type: ProjectResourceType.TABLE,
+            tableName: TableEntity,
+        }),
+    },
+    schema: {
+        tags: ['tables'],
+        security: [SERVICE_KEY_SECURITY_OPENAPI],
+        description: 'Get a table by id',
+        params: z.object({
+            id: ApId,
+        }),
+        response: {
+            [StatusCodes.OK]: Table,
+        },
+    },
+}
+
+const ExportTableRequest = {
+    config: {
+        security: securityAccess.project([PrincipalType.USER, PrincipalType.ENGINE, PrincipalType.SERVICE], Permission.READ_TABLE, {
+            type: ProjectResourceType.TABLE,
+            tableName: TableEntity,
+        }),
+    },
+    schema: {
+        tags: ['tables'],
+        security: [SERVICE_KEY_SECURITY_OPENAPI],
+        description: 'Export a table',
+        params: z.object({
+            id: z.string(),
+        }),
+        response: {
+            [StatusCodes.OK]: ExportTableResponse,
+        },
+    },
+}
+
+const ExportTableCsvRequest = {
+    config: {
+        security: securityAccess.project([PrincipalType.USER, PrincipalType.ENGINE, PrincipalType.SERVICE], Permission.READ_TABLE, {
+            type: ProjectResourceType.TABLE,
+            tableName: TableEntity,
+        }),
+    },
+    schema: {
+        tags: ['tables'],
+        security: [SERVICE_KEY_SECURITY_OPENAPI],
+        description: 'Export a table as a CSV file and return its download URL',
+        params: z.object({
+            id: z.string(),
+        }),
+        querystring: z.object({
+            includeHeaders: z.enum(['true', 'false']).optional(),
+        }),
+        response: {
+            [StatusCodes.OK]: z.object({
+                url: z.string(),
+                name: z.string(),
+                rowCount: z.number(),
+            }),
+        },
+    },
+}
+
+const CreateTableWebhook = {
+    config: {
+        security: securityAccess.project([PrincipalType.USER, PrincipalType.ENGINE, PrincipalType.SERVICE], Permission.WRITE_TABLE, {
+            type: ProjectResourceType.TABLE,
+            tableName: TableEntity,
+        }),
+    },
+    schema: {
+        tags: ['tables'],
+        security: [SERVICE_KEY_SECURITY_OPENAPI],
+        description: 'Create a table webhook',
+        params: z.object({
+            id: z.string(),
+        }),
+        body: CreateTableWebhookRequest,
+    },
+}
+
+const DeleteTableWebhook = {
+    config: {
+        security: securityAccess.project([PrincipalType.USER, PrincipalType.ENGINE, PrincipalType.SERVICE], Permission.WRITE_TABLE, {
+            type: ProjectResourceType.TABLE,
+            tableName: TableEntity,
+        }),
+    },
+    schema: {
+        tags: ['tables'],
+        security: [SERVICE_KEY_SECURITY_OPENAPI],
+        description: 'Delete a table webhook',
+        params: z.object({
+            id: z.string(),
+            webhookId: z.string(),
+        }),
+    },
+}
+
+const UpdateRequest = {
+    config: {
+        security: securityAccess.project([PrincipalType.USER, PrincipalType.ENGINE, PrincipalType.SERVICE], Permission.WRITE_TABLE, {
+            type: ProjectResourceType.TABLE,
+            tableName: TableEntity,
+        }),
+    },
+    schema: {
+        tags: ['tables'],
+        security: [SERVICE_KEY_SECURITY_OPENAPI],
+        description: 'Update a table',
+        params: z.object({
+            id: z.string(),
+        }),
+        body: UpdateTableRequest,
+    },
+}
+
+const ClearTableRequest = {
+    config: {
+        security: securityAccess.project([PrincipalType.USER, PrincipalType.ENGINE, PrincipalType.SERVICE], Permission.WRITE_TABLE, {
+            type: ProjectResourceType.TABLE,
+            tableName: TableEntity,
+        }),
+    },
+    schema: {
+        tags: ['tables'],
+        security: [SERVICE_KEY_SECURITY_OPENAPI],
+        description: 'Clear all records from a table',
+        params: z.object({
+            id: ApId,
+        }),
+        response: {
+            [StatusCodes.NO_CONTENT]: z.never(),
+        },
+    },
+}
+
+const GetTableTemplateRequestOptions = {
+    config: {
+        security: securityAccess.project(
+            [PrincipalType.USER, PrincipalType.ENGINE, PrincipalType.SERVICE], 
+            Permission.READ_TABLE, {
+                type: ProjectResourceType.TABLE,
+                tableName: TableEntity,
+            }),
+    },
+    schema: {
+        tags: ['tables'],
+        security: [SERVICE_KEY_SECURITY_OPENAPI],
+        description: 'Export table as template',
+        params: z.object({
+            id: ApId,
+        }),
+        response: {
+            [StatusCodes.OK]: SharedTemplate,
+        },
+    },
+}

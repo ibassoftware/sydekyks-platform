@@ -1,0 +1,107 @@
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { PDFDocument } from 'pdf-lib';
+import { mergePdfsActionOutputSchema } from '../output-schemas';
+
+export const mergePdfs = createAction({
+  audience: 'both',
+  name: 'mergePdfs',
+  classification: 'READ',
+  displayName: 'Merge PDFs',
+  description: 'Merge two or more PDF files into one document.',
+  aiMetadata: { description: 'Concatenates two or more PDF files into one new PDF, keeping the order in which the files are listed. Use it to join separate documents; use Extract PDF Pages to pull out or resequence pages inside a single document, and Image to PDF first if a source is an image rather than a PDF. Requires at least 2 files and each filename must end in .pdf; the source files are never modified and repeating the call produces the same merged content, so idempotent.', idempotent: true },
+  outputSchema: mergePdfsActionOutputSchema,
+  props: {
+    pdfFiles: Property.Array({
+      displayName: 'PDF Files',
+      description: 'Add the files in the order they should appear.',
+      required: true,
+      properties: {
+        file: Property.File({
+          displayName: 'PDF File',
+          required: true,
+        }),
+      },
+    }),
+    outputFileName: Property.ShortText({
+      displayName: 'Output File Name',
+      description: 'File name for the merged PDF, without the extension.',
+      required: false,
+      defaultValue: 'merged-document',
+      advanced: true,
+    }),
+  },
+  async run(context) {
+    try {
+      const { pdfFiles, outputFileName } = context.propsValue;
+      
+      // pdfFiles is already an array from Property.Array
+      
+      if (!pdfFiles || !Array.isArray(pdfFiles) || pdfFiles.length < 2) {
+        throw new Error('At least 2 PDF files are required for merging');
+      }
+
+      const mergedPdf = await PDFDocument.create();
+
+      for (let i = 0; i < pdfFiles.length; i++) {
+        const fileItem = pdfFiles[i] as any;
+        const file = fileItem.file;
+        
+        if (!file) {
+          throw new Error(`File at index ${i} is null or undefined`);
+        }
+
+        // Handle PDF files only
+        let fileData: Buffer;
+        const fileName = file.filename || file.name || `file-${i}.pdf`;
+
+        // Validate it's a PDF file
+        if (fileName && !fileName.toLowerCase().endsWith('.pdf')) {
+          throw new Error(`File at index ${i} (${fileName}) is not a PDF file`);
+        }
+
+        if (file.data) {
+          // Handle base64 strings
+          if (typeof file.data === 'string') {
+            fileData = Buffer.from(file.data, 'base64');
+          }
+          // Handle Buffer objects serialized as JSON
+          else if (file.data.type === 'Buffer' && Array.isArray(file.data.data)) {
+            fileData = Buffer.from(file.data.data);
+          }
+          // Handle direct Buffer
+          else if (Buffer.isBuffer(file.data)) {
+            fileData = file.data;
+          }
+          else {
+            throw new Error(`Unsupported data format for PDF file ${i}: ${typeof file.data}`);
+          }
+        }
+        else {
+          throw new Error(`PDF file at index ${i} has no data property`);
+        }
+
+        try {
+          const pdfDoc = await PDFDocument.load(new Uint8Array(fileData));
+          const pageCount = pdfDoc.getPageCount();
+          const pageIndices = Array.from({ length: pageCount }, (_, idx) => idx);
+          
+          const copiedPages = await mergedPdf.copyPages(pdfDoc, pageIndices);
+          copiedPages.forEach((page) => mergedPdf.addPage(page));
+          
+        } catch (error) {
+          throw new Error(`Failed to process PDF file at index ${i} (${fileName}): ${(error as Error).message}`);
+        }
+      }
+
+      const pdfBytes = await mergedPdf.save();
+      
+      return context.files.write({
+        data: Buffer.from(pdfBytes),
+        fileName: `${outputFileName || 'merged-document'}.pdf`,
+      });
+      
+    } catch (error) {
+      throw new Error(`Failed to merge PDFs: ${(error as Error).message}`);
+    }
+  },
+});

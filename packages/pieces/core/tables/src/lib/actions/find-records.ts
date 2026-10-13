@@ -1,0 +1,178 @@
+import { createAction, DynamicPropsValue, MarkdownVariant, PieceAuth, Property } from '@activepieces/pieces-framework';
+import { tablesCommon } from '../common';
+import { AuthenticationType, httpClient, HttpMethod, propsValidation } from '@activepieces/pieces-common';
+import { FieldType, Filter, FilterOperator, ListRecordsRequest, PopulatedRecord, SeekPage } from '@activepieces/pieces-framework';
+import * as z from 'zod/mini'
+import qs from 'qs';
+import { findRecordsActionOutputSchema } from '../output-schemas';
+type FieldInfo = {
+  id: string;
+  type: FieldType;
+  name: string;
+};
+
+export const findRecords = createAction({
+  audience: 'both',
+  name: 'tables-find-records',
+  classification: 'SEARCH',
+  displayName: 'Find Records',
+  description: 'Find records in a table with filters.',
+  aiMetadata: { description: 'Queries rows in an Activepieces Table, optionally narrowing them with a list of column/operator/value filter conditions and an optional row limit. This is the main way to read or search a table and to resolve the record IDs needed by Get Record, Update Record, or Delete Record(s); use Get Record when the record ID is already known. Requires the table ID; with no filters it returns every row, and filter values are type-checked against the column, so number and date columns reject unparseable values; on date and date & time columns the gt/gte/lt/lte operators compare chronologically while eq/neq compare the stored text exactly; read-only and idempotent.', idempotent: true },
+  auth: PieceAuth.None(),
+  props: {
+    table_id: tablesCommon.table_id,
+    filters: Property.DynamicProperties({
+      auth: PieceAuth.None(),
+      displayName: 'Filters',
+      description: 'All conditions must match. Empty returns every record.',
+      required: false,
+      refreshers: ['table_id'],
+      props: async (propsValue, context): Promise<DynamicPropsValue> => {
+        const table_id = propsValue['table_id'];
+        if (!table_id || typeof table_id !== 'string') {
+          return {
+            markdown: Property.MarkDown({
+              value: 'Select a table to load its fields.',
+              variant: MarkdownVariant.INFO,
+            }),
+          };
+        }
+
+        const convertedTableId = await tablesCommon.convertTableExternalIdToId(table_id, context);
+        const fields = await tablesCommon.getTableFields({
+          tableId: convertedTableId,
+          context,
+        });
+ 
+        return {
+          filters: Property.Array({
+            displayName: 'Filters',
+            description: 'All conditions must match. Empty returns every record.',
+            required: false,
+            properties: {
+              field: Property.StaticDropdown({
+                displayName: 'Field',
+                required: true,
+                options: {
+                  options: fields.map((field) => ({
+                    label: field.name,
+                    value: { id: field.externalId, type: field.type, name: field.name } as FieldInfo,
+                  })),
+                },
+              }),
+              operator: Property.StaticDropdown({
+                displayName: 'Operator',
+                required: true,
+                options: {
+                  options: [
+                    { label: 'Equals', value: FilterOperator.EQ },
+                    { label: 'Not equals', value: FilterOperator.NEQ },
+                    { label: 'Greater than', value: FilterOperator.GT },
+                    { label: 'Greater than or equal', value: FilterOperator.GTE },
+                    { label: 'Less than', value: FilterOperator.LT },
+                    { label: 'Less than or equal', value: FilterOperator.LTE },
+                    { label: 'Contains', value: FilterOperator.CO },
+                    { label: 'Exists', value: FilterOperator.EXISTS },
+                    { label: 'Does not exist', value: FilterOperator.NOT_EXISTS },
+                  ],
+                },
+              }),
+              value: Property.ShortText({
+                displayName: 'Value',
+                description: 'Ignored for Exists and Does not exist.',
+                required: false,
+              }),
+            },
+          }),
+        };
+      },
+    }),
+    limit: Property.Number({
+      displayName: 'Limit',
+      description: 'Maximum records to return. Empty returns all records.',
+      required: false,
+      advanced: true,
+    }),
+  },
+  outputSchema: findRecordsActionOutputSchema,
+  async run(context) {
+    const { table_id: tableExternalId, limit, filters } = context.propsValue;
+    const tableId = await tablesCommon.convertTableExternalIdToId(tableExternalId, context);
+    const filtersArray: { field: FieldInfo; operator: FilterOperator; value: unknown }[] = filters?.['filters'] ?? [];
+
+    for (const filter of filtersArray) {
+      if (filter.operator === FilterOperator.EXISTS || filter.operator === FilterOperator.NOT_EXISTS) {
+        continue;
+      }
+
+      const value = filter.value;
+      const fieldType = filter.field.type;
+
+      let schema: Record<string, z.core.$ZodType>;
+      switch (fieldType) {
+        case FieldType.NUMBER:
+          schema = {
+            value: z.union([z.number(), z.pipe(z.string(), z.transform(val => {
+              const num = Number(val);
+              if (isNaN(num)) throw new Error(`Invalid number for field "${filter.field.name}"`);
+              return num;
+            }))]),
+          };
+          break;
+        case FieldType.DATE:
+        case FieldType.DATETIME:
+          schema = {
+            value: z.union([z.date(), z.pipe(z.string(), z.transform(val => {
+              const date = new Date(val);
+              if (isNaN(date.getTime())) throw new Error(`Invalid date for field "${filter.field.name}"`);
+              return date;
+            }))]),
+          };
+          break;
+        default:
+          schema = {
+            value: z.string(),
+          };
+      }
+
+      await propsValidation.validateZod({ value }, schema);
+    }
+
+    const tableFields = await tablesCommon.getTableFields({ tableId, context });
+
+    const parsedFilters: Filter[] = filtersArray.map((filter) => {
+      const fieldId = tableFields.find((f) => f.externalId === filter.field.id)?.id ?? filter.field.id;
+      if (filter.operator === FilterOperator.EXISTS || filter.operator === FilterOperator.NOT_EXISTS) {
+        return {
+          fieldId,
+          operator: filter.operator,
+        };
+      }
+      return {
+        fieldId,
+        operator: filter.operator,
+        value: filter.value as string,
+      };
+    });
+
+    const request: ListRecordsRequest = {
+      tableId,
+      limit: limit ?? 999999999,
+      cursor: undefined,
+      filters: parsedFilters,
+    };
+
+
+    const response = await httpClient.sendRequest<SeekPage<PopulatedRecord>>({
+      method: HttpMethod.GET,
+      url: `${context.server.apiUrl}v1/records?${qs.stringify(request)}`,
+      authentication: {
+        type: AuthenticationType.BEARER_TOKEN,
+        token: context.server.token,
+      },
+      retries: 5,
+    });
+
+    return response.body.data.map(tablesCommon.formatRecord);
+  },
+});

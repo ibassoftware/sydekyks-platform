@@ -1,0 +1,49 @@
+import {
+  AuthenticationResponse,
+  PlatformWithoutSensitiveData,
+  UpdatePlatformRequestBody,
+} from '@activepieces/shared';
+
+import { api } from '@/lib/api';
+import { authenticationSession } from '@/lib/authentication-session';
+
+export const platformApi = {
+  createPlatform({ name }: { name: string }) {
+    return api.post<AuthenticationResponse>('/v1/platforms', { name });
+  },
+  deletePlatform() {
+    return api.delete<void>(
+      `/v1/platforms/${authenticationSession.getPlatformId()}`,
+    );
+  },
+  getCurrentPlatform() {
+    const platformId = authenticationSession.getPlatformId();
+    if (!platformId) {
+      throw Error('No platform id found');
+    }
+    return api.get<PlatformWithoutSensitiveData>(`/v1/platforms/${platformId}`);
+  },
+
+  activateLicenseKey(licenseKey: string) {
+    return api.post<void>(`/v1/platform-billing/activate`, {
+      licenseKey,
+    });
+  },
+
+  update(req: UpdatePlatformRequestBody, platformId: string) {
+    return api.post<PlatformWithoutSensitiveData>(
+      `/v1/platforms/${platformId}`,
+      req,
+    );
+  },
+  updateWithFormData(formdata: FormData, platformId: string) {
+    return api.post<PlatformWithoutSensitiveData>(
+      `/v1/platforms/${platformId}`,
+      formdata,
+      {},
+      {
+        'Content-Type': 'multipart/form-data',
+      },
+    );
+  },
+};

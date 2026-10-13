@@ -1,0 +1,53 @@
+import { createAction } from '@activepieces/pieces-framework';
+import { PromptHubClient } from '../common/client';
+import { getProjectHeadProps, sanitizeVariables } from '../common/props';
+import { getProjectHeadActionOutputSchema } from '../output-schemas';
+import { prompthubAuth } from '../..';
+
+export const getProjectHead = createAction({
+  name: 'get_project_head',
+  displayName: 'Get Project Head',
+  description: 'Get the production-ready version of a PromptHub project (typically the last commit on master/main branch). Useful for integrating prompts into your application.',
+  aiMetadata: { description: 'Fetch the head (production-ready) revision of a PromptHub project, returning its prompt text, system message, model/provider configuration, and variables. Use this to read a project\'s current prompt without executing it; an optional branch targets a non-default branch and supplied variables can be interpolated into the returned request. Read-only and idempotent. Requires the numeric project ID.', idempotent: true },
+  props: getProjectHeadProps,
+  auth: prompthubAuth,
+  outputSchema: getProjectHeadActionOutputSchema,
+  async run({ auth, propsValue }) {
+    const client = new PromptHubClient(auth.secret_text);
+    const q: Record<string, any> = {};
+    
+    if (propsValue['branch']) {
+      q['branch'] = propsValue['branch'];
+    }
+    
+    if (propsValue['fallback'] !== undefined) {
+      q['fallback'] = propsValue['fallback'] ? 1 : 0;
+    }
+    
+    const vars = sanitizeVariables(propsValue['variables'] ?? {});
+    for (const [k, v] of Object.entries(vars)) {
+      q[`variables[${encodeURIComponent(k)}]`] = encodeURIComponent(String(v));
+    }
+    
+    const result = await client.getProjectHead(propsValue['projectId'], q);
+    const data = result?.data ?? result;
+    
+    return {
+      id: data?.id,
+      provider: data?.provider,
+      model: data?.model,
+      prompt: data?.prompt,
+      system_message: data?.system_message,
+      formatted_request: data?.formatted_request,
+      hash: data?.hash,
+      commit_title: data?.commit_title,
+      commit_description: data?.commit_description,
+      variables: data?.variables,
+      project: data?.project,
+      branch: data?.branch,
+      configuration: data?.configuration,
+    };
+  },
+});
+
+

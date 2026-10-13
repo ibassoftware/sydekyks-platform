@@ -1,0 +1,50 @@
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { PageCollection } from '@microsoft/microsoft-graph-client';
+import { FileAttachment } from '@microsoft/microsoft-graph-types';
+import { microsoftOutlookAuth } from '../common/auth';
+import { outlookCommon } from '../common/client';
+import { downloadAttachmentActionOutputSchema } from '../output-schemas';
+
+export const downloadAttachmentAction = createAction({
+	auth: microsoftOutlookAuth,
+	name: 'downloadAttachment',
+	classification: 'READ',
+	displayName: 'Download Attachment',
+	description: 'Save the files attached to an email so later steps can use them.',
+	audience: 'human',
+	aiMetadata: { description: 'Fetches all file attachments from a specific Outlook message (by message ID) and writes them to storage for downstream steps. Use this after locating a message to retrieve its attached files. Requires a valid message ID; idempotent since it only reads.', idempotent: true },
+	outputSchema: downloadAttachmentActionOutputSchema,
+	props: {
+		messageId: Property.ShortText({
+			displayName: 'Message ID',
+			description: 'Map it from a Find Email step or an Outlook trigger.',
+			required: true,
+		}),
+	},
+	async run(context) {
+		const { messageId } = context.propsValue;
+
+		const client = outlookCommon.createClient(context.auth);
+
+		const response: PageCollection = await client
+			.api(`${outlookCommon.mailboxPrefix(context.auth)}/messages/${messageId}/attachments`)
+			.get();
+
+		const attachments = [];
+
+		for (const attachment of response.value as FileAttachment[]) {
+			if (attachment.name && attachment.contentBytes) {
+				attachments.push({
+					...attachment,
+					file: await context.files.write({
+						fileName: attachment.name || 'test.png',
+						data: Buffer.from(attachment.contentBytes, 'base64'),
+					}),
+				});
+			}
+		}
+
+
+		return attachments;
+	},
+});

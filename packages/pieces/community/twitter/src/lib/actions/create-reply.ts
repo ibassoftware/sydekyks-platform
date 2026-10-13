@@ -1,0 +1,80 @@
+import {
+    ApFile,
+    Property,
+    createAction,
+  } from '@activepieces/pieces-framework';
+import { TwitterApi } from 'twitter-api-v2';
+import { twitterAuth } from '../..';
+import { twitterCommon, twitterHelpers } from '../common';
+import * as z from 'zod/mini'
+import { propsValidation } from '@activepieces/pieces-common';
+
+export const createReply = createAction({
+    auth: twitterAuth,
+  
+    name: 'create-reply',
+    classification: 'WRITE',
+    displayName: 'Create Reply',
+    description: 'Post a reply to an existing tweet.',
+    audience: 'both',
+    aiMetadata: { description: 'Posts a reply to an existing tweet on X/Twitter, optionally attaching up to three images. Use this when responding to a specific tweet rather than creating a standalone post; requires the target tweet ID and non-empty reply text. Not idempotent — each call publishes a separate new reply.', idempotent: false },
+    props: {
+      tweet_id: Property.LongText({
+        displayName: 'Tweet ID',
+        description: "The number at the end of the tweet's link, after /status/.",
+        placeholder: '1712345678901234567',
+        required: true,
+      }),
+      text: twitterCommon.text,
+      image_1: twitterCommon.image_1,
+      image_2: twitterCommon.image_2,
+      image_3: twitterCommon.image_3,
+    },
+    async run(context) {
+      await propsValidation.validateZod(context.propsValue, {
+        text: z.string().check(z.minLength(1)),
+      });
+
+      const { consumerKey, consumerSecret, accessToken, accessTokenSecret } =
+        context.auth.props;
+      const userClient = new TwitterApi({
+        appKey: consumerKey,
+        appSecret: consumerSecret,
+        accessToken: accessToken,
+        accessSecret: accessTokenSecret,
+      });
+  
+      try {
+        const media: ApFile[] = [
+          context.propsValue.image_1,
+          context.propsValue.image_2,
+          context.propsValue.image_3,
+        ].filter((m): m is ApFile => !!m);
+        const uploadedMedia: Promise<string>[] = [];
+        media.forEach((m) => {
+          uploadedMedia.push(
+            userClient.v1.uploadMedia(Buffer.from(m.base64, 'base64'), {
+              mimeType: twitterHelpers.mediaMimeType(m),
+              target: 'tweet',
+            })
+          );
+        });
+        const uploaded = await Promise.all(uploadedMedia);
+
+        const response =
+          uploaded.length > 0
+            ? await userClient.v2.reply(context.propsValue.text, context.propsValue.tweet_id, {
+                media: {
+                  media_ids: [...uploaded],
+                },
+              })
+            : await userClient.v2.reply(context.propsValue.text, context.propsValue.tweet_id);
+        return response || { success: true };
+      } catch (error) {
+        throw twitterHelpers.buildError({
+          error: twitterHelpers.asTwitterError(error),
+          notFoundHint: 'the tweet you are replying to was not found or is not visible to this account.',
+        });
+      }
+    },
+  });

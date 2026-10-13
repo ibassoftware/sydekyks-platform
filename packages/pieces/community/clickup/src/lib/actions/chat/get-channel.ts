@@ -1,0 +1,32 @@
+import { createAction } from '@activepieces/pieces-framework';
+import { HttpMethod, getAccessTokenOrThrow } from '@activepieces/pieces-common';
+import { callClickUpApi3, clickupCommon } from '../../common';
+import { clickupAuth } from '../../auth';
+import { getChannelOutputSchema } from '../../output-schemas';
+
+export const getClickupChannel = createAction({
+  auth: clickupAuth,
+  name: 'get_channel',
+  classification: 'READ',
+  description: 'Get one ClickUp chat channel.',
+  audience: 'both',
+  aiMetadata: { description: 'Read-only: fetch the details of a single ClickUp Chat channel by its workspace and channel IDs. Use when you already know the channel ID; to discover channels first, use Get Channels. Safe to call repeatedly.', idempotent: true },
+  displayName: 'Get Channel',
+  props: {
+    workspace_id: clickupCommon.workspace_id(),
+    channel_id: clickupCommon.channel_id(true),
+  },
+
+  outputSchema: getChannelOutputSchema,
+  async run(configValue) {
+    const { workspace_id, channel_id } = configValue.propsValue;
+    const response = await callClickUpApi3(
+      HttpMethod.GET,
+      `workspaces/${workspace_id}/chat/channels/${channel_id}`,
+      getAccessTokenOrThrow(configValue.auth),
+      undefined,
+      {}
+    );
+    return response.body;
+  },
+});

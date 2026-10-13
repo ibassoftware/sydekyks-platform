@@ -1,0 +1,285 @@
+import { isNil, Permission, tryCatch } from '@activepieces/core-utils';
+import {
+  ApFlagId,
+  PlatformRole,
+  ProjectType,
+  ProjectIcon,
+} from '@activepieces/shared';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { t } from 'i18next';
+import { Bell, Cpu, GitBranch, Settings, Users } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
+import { z } from 'zod';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { INTERNAL_ERROR_MESSAGE } from '@/components/ui/sonner';
+import { projectCollectionUtils } from '@/features/projects';
+import { ApProjectDisplay } from '@/features/projects/components/ap-project-display';
+import { projectNameSchema } from '@/features/projects/lib/project-name-schema';
+import { getProjectName } from '@/features/projects/stores/project-collection';
+import { useAuthorization } from '@/hooks/authorization-hooks';
+import { flagsHooks } from '@/hooks/flags-hooks';
+import { platformHooks } from '@/hooks/platform-hooks';
+import { userHooks } from '@/hooks/user-hooks';
+import { api } from '@/lib/api';
+import { releaseAvailability } from '@/lib/release-availability';
+import { cn } from '@/lib/utils';
+
+import { ProjectAvatar } from '../project-avatar';
+
+import { AlertsSettings } from './alerts';
+import { EnvironmentSettings } from './environment';
+import { projectSettingsFormDefaults } from './form-defaults';
+import { GeneralSettings, FormValues } from './general';
+import { MembersSettings } from './members';
+import { PiecesSettings } from './pieces';
+
+type TabId = 'general' | 'members' | 'alerts' | 'pieces' | 'environment';
+
+interface ProjectSettingsDialogProps {
+  open: boolean;
+  onClose: () => void;
+  initialTab?: TabId;
+}
+
+export function ProjectSettingsDialog({
+  open,
+  onClose,
+  initialTab = 'general',
+}: ProjectSettingsDialogProps) {
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+  const { checkAccess } = useAuthorization();
+  const { project } = projectCollectionUtils.useCurrentProject();
+  const previousOpenRef = useRef(open);
+
+  const { data: showAlerts } = flagsHooks.useFlag(ApFlagId.SHOW_ALERTS);
+  const { data: showProjectMembers } = flagsHooks.useFlag(
+    ApFlagId.SHOW_PROJECT_MEMBERS,
+  );
+  const { platform } = platformHooks.useCurrentPlatform();
+  const platformRole = userHooks.getCurrentUserPlatformRole();
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(
+      z.object({
+        projectName: projectNameSchema,
+        icon: ProjectIcon,
+        externalId: z.string().optional(),
+        maxConcurrentJobs: z.number().nullable().optional(),
+        activeFlowsLimit: z.number().nullable().optional(),
+        sensitive: z.boolean().optional(),
+      }),
+    ),
+    mode: 'onChange',
+    defaultValues: projectSettingsFormDefaults(project),
+    disabled: checkAccess(Permission.WRITE_PROJECT) === false,
+  });
+
+  const handleSave = async (values: FormValues) => {
+    const activeFlowsLimitChanged =
+      (values.activeFlowsLimit ?? null) !==
+      (project.plan?.activeFlowsLimit ?? null);
+    const transaction = projectCollectionUtils.update(project.id, {
+      displayName: values.projectName,
+      externalId: values.externalId,
+      icon: values.icon,
+      maxConcurrentJobs: values.maxConcurrentJobs,
+      sensitive: values.sensitive,
+      plan: activeFlowsLimitChanged
+        ? { ...project.plan, activeFlowsLimit: values.activeFlowsLimit ?? null }
+        : undefined,
+    });
+    const { error } = await tryCatch(() => transaction.isPersisted.promise);
+    if (!isNil(error)) {
+      toast.error(api.extractServerErrorMessage(error, INTERNAL_ERROR_MESSAGE));
+      return;
+    }
+    toast.success(t('Your changes have been saved.'), {
+      duration: 3000,
+    });
+    onClose();
+  };
+
+  useEffect(() => {
+    const dialogJustOpened = open && !previousOpenRef.current;
+    if (dialogJustOpened) {
+      form.reset(projectSettingsFormDefaults(project));
+      setActiveTab(initialTab);
+    }
+    previousOpenRef.current = open;
+  }, [open, project]);
+
+  const hasGeneralSettings =
+    releaseAvailability.projectAdministration &&
+    (project.type === ProjectType.TEAM ||
+      (platform.plan.embeddingEnabled && platformRole === PlatformRole.ADMIN));
+
+  const tabs = [
+    {
+      id: 'general' as TabId,
+      label: t('General'),
+      icon: <Settings className="w-4 h-4" />,
+      disabled: !hasGeneralSettings,
+    },
+    {
+      id: 'members' as TabId,
+      label: t('Members'),
+      icon: <Users className="w-4 h-4" />,
+      disabled:
+        !releaseAvailability.projectMembers ||
+        project.type !== ProjectType.TEAM ||
+        !checkAccess(Permission.READ_PROJECT_MEMBER) ||
+        !showProjectMembers,
+    },
+    {
+      id: 'alerts' as TabId,
+      label: t('Alert Emails'),
+      icon: <Bell className="w-4 h-4" />,
+      disabled:
+        !releaseAvailability.projectAlerts ||
+        !checkAccess(Permission.READ_ALERT) ||
+        !showAlerts,
+    },
+    {
+      id: 'pieces' as TabId,
+      label: t('Pieces'),
+      icon: <Cpu className="w-4 h-4" />,
+      disabled: false,
+    },
+    {
+      id: 'environment' as TabId,
+      label: t('Environment'),
+      icon: <GitBranch className="w-4 h-4" />,
+      disabled:
+        !platform.plan.environmentsEnabled ||
+        !checkAccess(Permission.READ_PROJECT_RELEASE),
+    },
+  ].filter((tab) => !tab.disabled);
+
+  const visibleTab =
+    tabs.find((tab) => tab.id === activeTab)?.id ?? tabs[0]?.id;
+
+  const renderTabContent = () => {
+    switch (visibleTab) {
+      case 'general':
+        return <GeneralSettings form={form} />;
+      case 'members':
+        return <MembersSettings />;
+      case 'alerts':
+        return <AlertsSettings />;
+      case 'pieces':
+        return <PiecesSettings />;
+      case 'environment':
+        return <EnvironmentSettings />;
+      default:
+        return null;
+    }
+  };
+
+  const renderTabHeader = () => {
+    const hasUnsavedChanges =
+      visibleTab === 'general' && form.formState.isDirty;
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-lg font-bold">
+          {tabs.find((tab) => tab.id === visibleTab)?.label}
+        </span>
+        {hasUnsavedChanges && (
+          <Badge variant="ghost" className="text-gray-11">
+            {t('Unsaved changes')}
+          </Badge>
+        )}
+      </div>
+    );
+  };
+  const renderDialogFooter = () => {
+    if (visibleTab !== 'general') return null;
+
+    return (
+      <div className="border-t bg-gray-1 rounded-br-md">
+        <div className="flex items-center justify-end gap-3 px-6 py-4">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            {t('Close')}
+          </Button>
+          <Button
+            disabled={!form.formState.isDirty}
+            size="sm"
+            onClick={form.handleSubmit(handleSave)}
+          >
+            {t('Save Changes')}
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  const currentIconColor = form.watch('icon')?.color ?? project.icon.color;
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-5xl w-full max-h-[95vh] rounded-sm flex flex-col p-0">
+        <div className="flex h-[700px] max-h-[90vh] flex-col sm:max-h-none sm:flex-row">
+          <div className="w-full shrink-0 sm:w-[238px]">
+            <nav className="space-y-1 bg-gray-3 rounded-sm rounded-r-none h-auto sm:h-full flex flex-col rounded-l-md">
+              <ApProjectDisplay
+                title={getProjectName({
+                  type: project.type,
+                  displayName: form.watch('projectName') ?? project.displayName,
+                })}
+                icon={form.watch('icon') ?? project.icon}
+                containerClassName="px-3 my-4"
+                titleClassName="text-sm font-medium"
+                maxLengthToNotShowTooltip={18}
+                projectType={project.type}
+              />
+              <div className="flex gap-1 overflow-x-auto px-2 pb-2 sm:flex-col sm:pb-0">
+                {tabs.map((tab) => (
+                  <button
+                    type="button"
+                    aria-pressed={visibleTab === tab.id}
+                    key={tab.id}
+                    className={cn(
+                      'flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm font-medium transition-all cursor-pointer hover:bg-gray-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-8',
+                      {
+                        'bg-gray-4': visibleTab === tab.id,
+                      },
+                    )}
+                    onClick={() => setActiveTab(tab.id)}
+                  >
+                    {tab.icon}
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </nav>
+          </div>
+          <div className="flex-1 min-w-0 flex flex-col">
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <ScrollArea className="h-full">
+                {visibleTab === 'general' && (
+                  <ProjectAvatar
+                    displayName={project.displayName}
+                    projectType={project.type}
+                    iconColor={currentIconColor}
+                    size="md"
+                    showBackground={true}
+                  />
+                )}
+                <div className="flex flex-col gap-3 px-4 pt-4 sm:px-10">
+                  {renderTabHeader()}
+                  {renderTabContent()}
+                </div>
+              </ScrollArea>
+            </div>
+            {renderDialogFooter()}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

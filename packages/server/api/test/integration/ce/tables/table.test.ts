@@ -1,0 +1,566 @@
+import { apId } from '@activepieces/core-utils'
+import { FieldType, Table } from '@activepieces/shared'
+import { FastifyInstance } from 'fastify'
+import { StatusCodes } from 'http-status-codes'
+import { db } from '../../../helpers/db'
+import { describeWithAuth } from '../../../helpers/describe-with-auth'
+import {
+    createMockCell,
+    createMockField,
+    createMockFolder,
+    createMockProject,
+    createMockRecord,
+    createMockTable,
+} from '../../../helpers/mocks'
+import { createTestContext, TestContext } from '../../../helpers/test-context'
+import { setupTestEnvironment, teardownTestEnvironment } from '../../../helpers/test-setup'
+
+let app: FastifyInstance | null = null
+
+beforeAll(async () => {
+    app = await setupTestEnvironment()
+})
+
+afterAll(async () => {
+    await teardownTestEnvironment()
+})
+
+describe('Table API', () => {
+
+    describeWithAuth('POST /v1/tables (Create)', () => app!, (setup) => {
+        it('should create a table with name', async () => {
+            const ctx = await setup()
+
+            const response = await ctx.post('/v1/tables', {
+                projectId: ctx.project.id,
+                name: 'My Table',
+            })
+
+            expect(response?.statusCode).toBe(StatusCodes.OK)
+            const body = response?.json()
+            expect(body.name).toBe('My Table')
+            expect(body.projectId).toBe(ctx.project.id)
+            expect(body.id).toBeDefined()
+            expect(body.externalId).toBeDefined()
+        })
+
+        it('should reject creating a table in a folder from another project', async () => {
+            const ctx = await setup()
+
+            const otherProject = createMockProject({ platformId: ctx.platform.id, ownerId: ctx.user.id })
+            await db.save('project', otherProject)
+            const foreignFolder = createMockFolder({ projectId: otherProject.id })
+            await db.save('folder', foreignFolder)
+
+            const response = await ctx.post('/v1/tables', {
+                projectId: ctx.project.id,
+                name: 'My Table',
+                folderId: foreignFolder.id,
+            })
+
+            expect(response?.statusCode).toBe(StatusCodes.NOT_FOUND)
+        })
+
+        it('should create a table with initial fields', async () => {
+            const ctx = await setup()
+            const nameExtId = apId()
+            const ageExtId = apId()
+
+            const response = await ctx.post('/v1/tables', {
+                projectId: ctx.project.id,
+                name: 'Table With Fields',
+                fields: [
+                    { name: 'Name', type: FieldType.TEXT, data: null, externalId: nameExtId },
+                    { name: 'Age', type: FieldType.NUMBER, data: null, externalId: ageExtId },
+                ],
+            })
+
+            expect(response?.statusCode).toBe(StatusCodes.OK)
+            const body = response?.json()
+            expect(body.name).toBe('Table With Fields')
+
+            const fieldsResponse = await ctx.get('/v1/fields', {
+                tableId: body.id,
+            })
+            const fields = fieldsResponse?.json()
+            expect(fields.length).toBe(2)
+            expect(fields.map((f: { name: string }) => f.name).sort()).toEqual(['Age', 'Name'])
+        })
+
+        it('should assign field positions from the fields array order', async () => {
+            const ctx = await setup()
+            const fieldNames = Array.from({ length: 10 }, (_, i) => `Field ${String.fromCharCode(65 + i)}`)
+
+            const response = await ctx.post('/v1/tables', {
+                projectId: ctx.project.id,
+                name: 'Ordered Table',
+                fields: fieldNames.map((name) => ({
+                    name,
+                    type: FieldType.TEXT,
+                    data: null,
+                    externalId: apId(),
+                })),
+            })
+
+            expect(response?.statusCode).toBe(StatusCodes.OK)
+            const body = response?.json()
+
+            const fieldsResponse = await ctx.get('/v1/fields', {
+                tableId: body.id,
+            })
+            const fields = fieldsResponse?.json()
+            expect(fields.map((f: { name: string }) => f.name)).toEqual(fieldNames)
+            expect(fields.map((f: { position: number }) => f.position)).toEqual(fieldNames.map((_, i) => i))
+        })
+
+        it('should create a table with externalId', async () => {
+            const ctx = await setup()
+            const externalId = apId()
+
+            const response = await ctx.post('/v1/tables', {
+                projectId: ctx.project.id,
+                name: 'External Table',
+                externalId,
+            })
+
+            expect(response?.statusCode).toBe(StatusCodes.OK)
+            const body = response?.json()
+            expect(body.externalId).toBe(externalId)
+        })
+
+        const MALICIOUS_EXTERNAL_IDS: Array<[string, string]> = [
+            ['..', 'parent directory reference'],
+            ['.', 'current directory reference'],
+            ['', 'empty string'],
+            ['../test', 'relative traversal'],
+            ['../../etc/passwd', 'deep relative traversal'],
+            ['foo/bar', 'forward slash'],
+            ['foo\\bar', 'backslash'],
+            ['with\0null', 'null byte'],
+            ['a b', 'space'],
+            ['../../../../tmp/pwned', 'many-dot traversal'],
+            ['a'.repeat(200), 'over length limit'],
+        ]
+
+        it.each(MALICIOUS_EXTERNAL_IDS)('should reject externalId %j (%s)', async (externalId) => {
+            const ctx = await setup()
+            const response = await ctx.post('/v1/tables', {
+                projectId: ctx.project.id,
+                name: 'Malicious Table',
+                externalId,
+            })
+            expect(response?.statusCode).toBe(StatusCodes.BAD_REQUEST)
+        })
+
+        const SAFE_EXTERNAL_IDS = [
+            'safe-external-id',
+            'table_1',
+            'a',
+            'dot.inside.name',
+            'UPPER-lower.123',
+        ]
+
+        it.each(SAFE_EXTERNAL_IDS)('should accept externalId %j', async (externalId) => {
+            const ctx = await setup()
+            const response = await ctx.post('/v1/tables', {
+                projectId: ctx.project.id,
+                name: 'Safe Table',
+                externalId,
+            })
+            expect(response?.statusCode).toBe(StatusCodes.OK)
+            const body = response?.json()
+            expect(body.externalId).toBe(externalId)
+        })
+    })
+
+    describeWithAuth('POST /v1/tables/:id (Update)', () => app!, (setup) => {
+        it('should update table name', async () => {
+            const ctx = await setup()
+            const table = await createAndSaveTable(ctx)
+
+            const response = await ctx.post(`/v1/tables/${table.id}`, {
+                name: 'Updated Name',
+                folderId: null,
+            })
+
+            expect(response?.statusCode).toBe(StatusCodes.OK)
+            const body = response?.json()
+            expect(body.name).toBe('Updated Name')
+        })
+
+        it('should return 404 for non-existent table', async () => {
+            const ctx = await setup()
+
+            const response = await ctx.post(`/v1/tables/${apId()}`, {
+                name: 'Updated Name',
+                folderId: null,
+            })
+
+            expect(response?.statusCode).toBe(StatusCodes.NOT_FOUND)
+        })
+
+        it('should reject moving a table to a folder from another project', async () => {
+            const ctx = await setup()
+            const table = await createAndSaveTable(ctx)
+
+            const otherProject = createMockProject({ platformId: ctx.platform.id, ownerId: ctx.user.id })
+            await db.save('project', otherProject)
+            const foreignFolder = createMockFolder({ projectId: otherProject.id })
+            await db.save('folder', foreignFolder)
+
+            const response = await ctx.post(`/v1/tables/${table.id}`, {
+                folderId: foreignFolder.id,
+            })
+
+            expect(response?.statusCode).toBe(StatusCodes.NOT_FOUND)
+            const tableAfter = await ctx.get(`/v1/tables/${table.id}`)
+            expect(tableAfter?.json().folderId).toBeNull()
+        })
+    })
+
+    describeWithAuth('GET /v1/tables (List)', () => app!, (setup) => {
+        it('should list tables for project', async () => {
+            const ctx = await setup()
+            await createAndSaveTable(ctx)
+            await createAndSaveTable(ctx)
+
+            const response = await ctx.get('/v1/tables', {
+                projectId: ctx.project.id,
+            })
+
+            expect(response?.statusCode).toBe(StatusCodes.OK)
+            const body = response?.json()
+            expect(body.data.length).toBe(2)
+        })
+
+        it('should filter by name', async () => {
+            const ctx = await setup()
+            const table = createMockTable({ projectId: ctx.project.id })
+            table.name = 'UniqueSearchName'
+            await db.save('table', table)
+            await createAndSaveTable(ctx)
+
+            const response = await ctx.get('/v1/tables', {
+                projectId: ctx.project.id,
+                name: 'UniqueSearchName',
+            })
+
+            expect(response?.statusCode).toBe(StatusCodes.OK)
+            const body = response?.json()
+            expect(body.data.length).toBe(1)
+            expect(body.data[0].name).toBe('UniqueSearchName')
+        })
+
+        it('should respect limit parameter', async () => {
+            const ctx = await setup()
+            await createAndSaveTable(ctx)
+            await createAndSaveTable(ctx)
+            await createAndSaveTable(ctx)
+
+            const response = await ctx.get('/v1/tables', {
+                projectId: ctx.project.id,
+                limit: '2',
+            })
+
+            expect(response?.statusCode).toBe(StatusCodes.OK)
+            const body = response?.json()
+            expect(body.data.length).toBe(2)
+        })
+
+        it('should sort by name ignoring case', async () => {
+            const ctx = await setup()
+            for (const name of ['Zeta', 'alpha', 'mid']) {
+                await db.save('table', { ...createMockTable({ projectId: ctx.project.id }), name })
+            }
+
+            const ascending = await ctx.get('/v1/tables', {
+                projectId: ctx.project.id,
+                sortBy: 'NAME',
+                order: 'ASC',
+            })
+            const descending = await ctx.get('/v1/tables', {
+                projectId: ctx.project.id,
+                sortBy: 'NAME',
+                order: 'DESC',
+            })
+
+            expect(ascending?.json().data.map((table: Table) => table.name)).toEqual(['alpha', 'mid', 'Zeta'])
+            expect(descending?.json().data.map((table: Table) => table.name)).toEqual(['Zeta', 'mid', 'alpha'])
+            expect(ascending?.json().next).toBeNull()
+        })
+
+        it('should reject a name sort combined with a cursor', async () => {
+            const ctx = await setup()
+            await createAndSaveTable(ctx)
+            await createAndSaveTable(ctx)
+
+            const firstPage = await ctx.get('/v1/tables', { projectId: ctx.project.id, limit: '1' })
+            const cursor = firstPage?.json()?.next
+            expect(cursor).not.toBeNull()
+
+            const response = await ctx.get('/v1/tables', {
+                projectId: ctx.project.id,
+                sortBy: 'NAME',
+                cursor,
+            })
+
+            expect(response?.statusCode).toBe(StatusCodes.BAD_REQUEST)
+        })
+    })
+
+    describe('GET /v1/tables/count', () => {
+        it('should return correct count of tables', async () => {
+            const ctx = await createTestContext(app!)
+            await createAndSaveTable(ctx)
+            await createAndSaveTable(ctx)
+
+            const response = await ctx.get('/v1/tables/count', {
+                projectId: ctx.project.id,
+            })
+
+            expect(response?.statusCode).toBe(StatusCodes.OK)
+            expect(response?.json()).toBe(2)
+        })
+
+        it('should return 0 for project with no tables', async () => {
+            const ctx = await createTestContext(app!)
+
+            const response = await ctx.get('/v1/tables/count', {
+                projectId: ctx.project.id,
+            })
+
+            expect(response?.statusCode).toBe(StatusCodes.OK)
+            expect(response?.json()).toBe(0)
+        })
+    })
+
+    describeWithAuth('GET /v1/tables/:id (Get by ID)', () => app!, (setup) => {
+        it('should return table by ID', async () => {
+            const ctx = await setup()
+            const table = await createAndSaveTable(ctx)
+
+            const response = await ctx.get(`/v1/tables/${table.id}`)
+
+            expect(response?.statusCode).toBe(StatusCodes.OK)
+            const body = response?.json()
+            expect(body.id).toBe(table.id)
+            expect(body.name).toBe(table.name)
+        })
+
+        it('should return 404 for non-existent ID', async () => {
+            const ctx = await setup()
+
+            const response = await ctx.get(`/v1/tables/${apId()}`)
+
+            expect(response?.statusCode).toBe(StatusCodes.NOT_FOUND)
+        })
+
+        it('should not access table from another project', async () => {
+            const ctx = await setup()
+            const otherCtx = await createTestContext(app!)
+            const otherTable = await createAndSaveTable(otherCtx)
+
+            const response = await ctx.get(`/v1/tables/${otherTable.id}`)
+
+            expect(response?.statusCode).toBe(StatusCodes.FORBIDDEN)
+        })
+    })
+
+    describeWithAuth('DELETE /v1/tables/:id (Delete)', () => app!, (setup) => {
+        it('should delete table', async () => {
+            const ctx = await setup()
+            const table = await createAndSaveTable(ctx)
+
+            const response = await ctx.delete(`/v1/tables/${table.id}`)
+
+            expect(response?.statusCode).toBe(StatusCodes.NO_CONTENT)
+
+            const getResponse = await ctx.get(`/v1/tables/${table.id}`)
+            expect(getResponse?.statusCode).toBe(StatusCodes.NOT_FOUND)
+        })
+
+        it('should cascade delete fields, records, and cells', async () => {
+            const ctx = await setup()
+            const table = await createAndSaveTable(ctx)
+            const field = createMockField({ tableId: table.id, projectId: ctx.project.id })
+            await db.save('field', field)
+            const record = createMockRecord({ tableId: table.id, projectId: ctx.project.id })
+            await db.save('record', record)
+            const cell = createMockCell({ recordId: record.id, fieldId: field.id, projectId: ctx.project.id })
+            await db.save('cell', cell)
+
+            const response = await ctx.delete(`/v1/tables/${table.id}`)
+
+            expect(response?.statusCode).toBe(StatusCodes.NO_CONTENT)
+
+            const fieldResult = await db.findOneBy('field', { id: field.id })
+            expect(fieldResult).toBeNull()
+            const recordResult = await db.findOneBy('record', { id: record.id })
+            expect(recordResult).toBeNull()
+            const cellResult = await db.findOneBy('cell', { id: cell.id })
+            expect(cellResult).toBeNull()
+        })
+    })
+
+    describeWithAuth('GET /v1/tables/:id/export (Export)', () => app!, (setup) => {
+        it('should export table with fields and rows', async () => {
+            const ctx = await setup()
+            const table = await createAndSaveTable(ctx)
+            const field = createMockField({ tableId: table.id, projectId: ctx.project.id })
+            field.type = FieldType.TEXT
+            await db.save('field', field)
+            const record = createMockRecord({ tableId: table.id, projectId: ctx.project.id })
+            await db.save('record', record)
+            const cell = createMockCell({ recordId: record.id, fieldId: field.id, projectId: ctx.project.id })
+            cell.value = 'test-value'
+            await db.save('cell', cell)
+
+            const response = await ctx.get(`/v1/tables/${table.id}/export`)
+
+            expect(response?.statusCode).toBe(StatusCodes.OK)
+            const body = response?.json()
+            expect(body.name).toBe(table.name)
+            expect(body.fields.length).toBe(1)
+            expect(body.fields[0].name).toBe(field.name)
+            expect(body.rows.length).toBe(1)
+            expect(body.rows[0][field.name]).toBe('test-value')
+        })
+
+        it('should export empty table with fields but no rows', async () => {
+            const ctx = await setup()
+            const table = await createAndSaveTable(ctx)
+            const field = createMockField({ tableId: table.id, projectId: ctx.project.id })
+            field.type = FieldType.TEXT
+            await db.save('field', field)
+
+            const response = await ctx.get(`/v1/tables/${table.id}/export`)
+
+            expect(response?.statusCode).toBe(StatusCodes.OK)
+            const body = response?.json()
+            expect(body.fields.length).toBe(1)
+            expect(body.rows.length).toBe(0)
+        })
+    })
+
+    describeWithAuth('GET /v1/tables/:id/export/csv (Export CSV)', () => app!, (setup) => {
+        const seedTextField = async (ctx: TestContext, tableId: string) => {
+            const field = createMockField({ tableId, projectId: ctx.project.id })
+            field.type = FieldType.TEXT
+            field.name = 'Name'
+            await db.save('field', field)
+            return field
+        }
+
+        const seedRecord = async (ctx: TestContext, tableId: string, fieldId: string, value: string, created: string) => {
+            const record = createMockRecord({ tableId, projectId: ctx.project.id })
+            record.created = created
+            await db.save('record', record)
+            const cell = createMockCell({ recordId: record.id, fieldId, projectId: ctx.project.id })
+            cell.value = value
+            await db.save('cell', cell)
+            return record
+        }
+
+        const downloadCsv = async (ctx: TestContext, tableId: string, query?: Record<string, string>) => {
+            const response = await ctx.get(`/v1/tables/${tableId}/export/csv`, query)
+            expect(response?.statusCode).toBe(StatusCodes.OK)
+            const body = response?.json()
+            const fileUrl = new URL(body.url)
+            const fileResponse = await app!.inject({ method: 'GET', url: fileUrl.pathname + fileUrl.search })
+            return { body, csv: fileResponse.payload }
+        }
+
+        it('should stream rows, escape special chars and count rows', async () => {
+            const ctx = await setup()
+            const table = await createAndSaveTable(ctx)
+            const field = await seedTextField(ctx, table.id)
+            await seedRecord(ctx, table.id, field.id, 'Alice', '2024-01-01T00:00:00.000Z')
+            await seedRecord(ctx, table.id, field.id, 'a,b"c\nd', '2024-01-02T00:00:00.000Z')
+
+            const { body, csv } = await downloadCsv(ctx, table.id)
+
+            expect(body.name).toBe(`${table.name}.csv`)
+            expect(body.rowCount).toBe(2)
+            expect(csv.startsWith('Name\n')).toBe(true)
+            expect(csv).toContain('Alice')
+            expect(csv).toContain('"a,b""c\nd"')
+        })
+
+        it('should trim whitespace and control chars from cell edges', async () => {
+            const ctx = await setup()
+            const table = await createAndSaveTable(ctx)
+            const field = await seedTextField(ctx, table.id)
+            await seedRecord(ctx, table.id, field.id, '  padded \t', '2024-01-01T00:00:00.000Z')
+
+            const { csv } = await downloadCsv(ctx, table.id)
+
+            expect(csv).toBe('Name\npadded')
+        })
+
+        it('should omit the header row when includeHeaders is false', async () => {
+            const ctx = await setup()
+            const table = await createAndSaveTable(ctx)
+            const field = await seedTextField(ctx, table.id)
+            await seedRecord(ctx, table.id, field.id, 'Alice', '2024-01-01T00:00:00.000Z')
+
+            const { body, csv } = await downloadCsv(ctx, table.id, { includeHeaders: 'false' })
+
+            expect(body.rowCount).toBe(1)
+            expect(csv).toBe('Alice')
+        })
+
+        it('should export an empty table as header only', async () => {
+            const ctx = await setup()
+            const table = await createAndSaveTable(ctx)
+            await seedTextField(ctx, table.id)
+
+            const { body, csv } = await downloadCsv(ctx, table.id)
+
+            expect(body.rowCount).toBe(0)
+            expect(csv).toBe('Name')
+        })
+    })
+
+    describeWithAuth('POST /v1/tables/:id/clear (Clear)', () => app!, (setup) => {
+        it('should clear all records', async () => {
+            const ctx = await setup()
+            const table = await createAndSaveTable(ctx)
+            const field = createMockField({ tableId: table.id, projectId: ctx.project.id })
+            await db.save('field', field)
+            const record = createMockRecord({ tableId: table.id, projectId: ctx.project.id })
+            await db.save('record', record)
+            const cell = createMockCell({ recordId: record.id, fieldId: field.id, projectId: ctx.project.id })
+            await db.save('cell', cell)
+
+            const response = await ctx.post(`/v1/tables/${table.id}/clear`)
+
+            expect(response?.statusCode).toBe(StatusCodes.NO_CONTENT)
+        })
+
+        it('should keep table and fields after clear', async () => {
+            const ctx = await setup()
+            const table = await createAndSaveTable(ctx)
+            const field = createMockField({ tableId: table.id, projectId: ctx.project.id })
+            await db.save('field', field)
+            const record = createMockRecord({ tableId: table.id, projectId: ctx.project.id })
+            await db.save('record', record)
+
+            await ctx.post(`/v1/tables/${table.id}/clear`)
+
+            const tableResponse = await ctx.get(`/v1/tables/${table.id}`)
+            expect(tableResponse?.statusCode).toBe(StatusCodes.OK)
+
+            const fieldsResponse = await ctx.get('/v1/fields', { tableId: table.id })
+            expect(fieldsResponse?.json().length).toBe(1)
+
+            const recordsResponse = await ctx.get('/v1/records', { tableId: table.id })
+            expect(recordsResponse?.json().data.length).toBe(0)
+        })
+    })
+})
+
+async function createAndSaveTable(ctx: TestContext) {
+    const table = createMockTable({ projectId: ctx.project.id })
+    await db.save('table', table)
+    return table
+}

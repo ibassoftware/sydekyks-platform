@@ -1,0 +1,60 @@
+import { getHubspotAccessToken, hubspotAuth } from '../auth';
+import { createAction, Property } from '@activepieces/pieces-framework';
+import { getDefaultPropertiesForObject, standardObjectDynamicProperties, standardObjectPropertiesDropdown} from '../common/props';
+import { OBJECT_TYPE } from '../common/constants';
+import { MarkdownVariant } from '@activepieces/pieces-framework';
+import { Client } from '@hubspot/api-client';
+import { crmObjectOutputSchema } from '../output-schemas';
+
+export const createCompanyAction = createAction({
+	auth: hubspotAuth,
+	name: 'create-company',
+	classification: 'WRITE',
+	displayName: 'Create Company',
+	description: 'Creates a company in HubSpot.',
+	audience: 'both',
+	aiMetadata: { description: 'Create a new HubSpot company record from the supplied properties (name, domain, industry, etc.). Always inserts a new company even if one with the same domain already exists, so it is not idempotent; to change an existing record use Update Company, and to locate one first use a find action.', idempotent: false },
+	outputSchema: crmObjectOutputSchema,
+	props: {
+		objectProperties: standardObjectDynamicProperties(OBJECT_TYPE.COMPANY, []),
+		markdown: Property.MarkDown({
+			variant: MarkdownVariant.INFO,
+			value: `Returned by default: name, domain, industry, about_us, phone, address, address2, city, state, zip, country, website, type, description, founded_year, hs_createdate, hs_lastmodifieddate, hs_object_id, is_public, timezone, total_money_raised, total_revenue, owneremail, ownername, numberofemployees, annualrevenue, lifecyclestage, createdate, web_technologies.
+
+Pick more under **Advanced**.`,
+		}),
+		additionalPropertiesToRetrieve: standardObjectPropertiesDropdown({
+			objectType: OBJECT_TYPE.COMPANY,
+			displayName: 'Additional Properties to Retrieve',
+			required: false,
+			advanced: true,
+		}),
+	},
+	async run(context) {
+		const objectProperties = context.propsValue.objectProperties ?? {};
+		const additionalPropertiesToRetrieve = context.propsValue.additionalPropertiesToRetrieve ?? [];
+
+		const companyProperties: Record<string, string> = {};
+
+		// Add additional properties to the companyProperties object
+		Object.entries(objectProperties).forEach(([key, value]) => {
+			// Format values if they are arrays
+			companyProperties[key] = Array.isArray(value) ? value.join(';') : value;
+		});
+
+		const client = new Client({ accessToken: getHubspotAccessToken(context.auth) });
+
+		const createdCompany = await client.crm.companies.basicApi.create({
+			properties: companyProperties,
+		});
+		// Retrieve default properties for the comapny and merge with additional properties to retrieve
+		const defaultcompanyProperties = getDefaultPropertiesForObject(OBJECT_TYPE.COMPANY);
+
+		const companyDetails = await client.crm.companies.basicApi.getById(createdCompany.id, [
+			...defaultcompanyProperties,
+			...additionalPropertiesToRetrieve,
+		]);
+
+		return companyDetails;
+	},
+});
