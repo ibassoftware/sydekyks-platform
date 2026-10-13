@@ -1,57 +1,70 @@
 services:
   app:
-    image: ghcr.io/activepieces/activepieces:0.92.2
-    container_name: activepieces-app
+    image: ${SYDEKYKS_IMAGE:?Set the verified Sydekyks release image}
     restart: unless-stopped
     ports:
-      - '8080:80'
-    depends_on:
-      - postgres
-      - redis
-    env_file: .env
+      - "${SYDEKYKS_BIND:-127.0.0.1}:${SYDEKYKS_PORT:-8080}:80"
     environment:
-      - AP_CONTAINER_TYPE=APP
+      AP_EDITION: ce
+      AP_ENVIRONMENT: prod
+      AP_DB_TYPE: POSTGRES
+      AP_REDIS_TYPE: STANDALONE
+      AP_POSTGRES_HOST: postgres
+      AP_POSTGRES_PORT: "5432"
+      AP_POSTGRES_DATABASE: sydekyks
+      AP_POSTGRES_USERNAME: sydekyks
+      AP_POSTGRES_PASSWORD: ${AP_POSTGRES_PASSWORD:?Set the database password}
+      AP_REDIS_HOST: redis
+      AP_REDIS_PORT: "6379"
+      AP_INTERNAL_URL: http://127.0.0.1:80
+      AP_FRONTEND_URL: ${AP_FRONTEND_URL:?Set the public application URL}
+      AP_ENCRYPTION_KEY: ${AP_ENCRYPTION_KEY:?Set the encryption key}
+      AP_JWT_SECRET: ${AP_JWT_SECRET:?Set the JWT secret}
+      AP_EXECUTION_MODE: SANDBOX_CODE_ONLY
+      AP_WORKER_CONCURRENCY: "1"
+      AP_EXECUTION_DATA_RETENTION_DAYS: "30"
+      AP_PAUSED_FLOW_TIMEOUT_DAYS: "30"
+      AP_TELEMETRY_ENABLED: "false"
+      AP_CONFIG_PATH: /usr/src/app/.sydekyks
+      AP_FILE_STORAGE_LOCATION: DB
+      AP_SMTP_HOST: ${AP_SMTP_HOST:-}
+      AP_SMTP_PORT: ${AP_SMTP_PORT:-587}
+      AP_SMTP_USERNAME: ${AP_SMTP_USERNAME:-}
+      AP_SMTP_PASSWORD: ${AP_SMTP_PASSWORD:-}
+      AP_SMTP_SENDER_EMAIL: ${AP_SMTP_SENDER_EMAIL:-}
     volumes:
-      - ./cache:/usr/src/app/cache
-    networks:
-      - activepieces
-  worker:
-    image: ghcr.io/activepieces/activepieces:0.92.2
-    restart: unless-stopped
+      - app_data:/usr/src/app/.sydekyks
     depends_on:
-      - app
-    env_file: .env
-    environment:
-      - AP_CONTAINER_TYPE=WORKER
-    deploy:
-      replicas: 5
-    volumes:
-      - ./cache:/usr/src/app/cache
-    networks:
-      - activepieces
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
   postgres:
-    image: 'pgvector/pgvector:0.8.0-pg14'
-    container_name: postgres
+    image: pgvector/pgvector:0.8.1-pg16-trixie@sha256:1e4956185a7fd9306a41ee759a7b4329c4faf9a2bb91a1d01437310c97002433
     restart: unless-stopped
-    env_file: .env
     environment:
-      - 'POSTGRES_DB=${AP_POSTGRES_DATABASE}'
-      - 'POSTGRES_PASSWORD=${AP_POSTGRES_PASSWORD}'
-      - 'POSTGRES_USER=${AP_POSTGRES_USERNAME}'
+      POSTGRES_DB: sydekyks
+      POSTGRES_USER: sydekyks
+      POSTGRES_PASSWORD: ${AP_POSTGRES_PASSWORD:?Set the database password}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks:
-      - activepieces
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sydekyks -d sydekyks"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
   redis:
-    image: 'redis:7.0.7'
-    container_name: redis
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - 'redis_data:/data'
-    networks:
-      - activepieces
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 volumes:
+  app_data:
   postgres_data:
   redis_data:
-networks:
-  activepieces:

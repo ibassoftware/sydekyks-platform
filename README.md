@@ -17,6 +17,16 @@ Follow the [Docker Compose installation guide](https://docs.sydekyks.com/install
 
 The published image is `ibassoftware/sydekyks:1.0.6`, available for Linux AMD64 and ARM64. Installation requires PostgreSQL with pgvector and Redis.
 
+The root Compose file matches the reviewed installation guide. For a fresh local installation:
+
+```sh
+bash tools/deploy.sh
+docker compose config --quiet
+docker compose up -d --wait
+```
+
+Open `http://localhost:8080`. Review your private `.env` before deploying to a server. Keep the generated encryption key and database volumes when upgrading an existing installation. The supported installation runs the application and worker together with separate PostgreSQL and Redis services.
+
 ## Documentation
 
 Visit [docs.sydekyks.com](https://docs.sydekyks.com) for setup instructions and product guides.

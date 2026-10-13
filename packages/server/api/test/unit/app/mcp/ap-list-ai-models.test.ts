@@ -11,7 +11,7 @@ vi.mock('../../../../src/app/ai/ai-provider-service', () => ({
 
 vi.mock('@activepieces/server-utils', async (importOriginal) => ({
     ...(await importOriginal<Record<string, unknown>>()),
-    modelTierCatalog: (await import('../ee/agent/model-tier-fixture')).publishedModelTierCatalog,
+    modelTierCatalog: (await import('../../../helpers/model-tier-fixture')).publishedModelTierCatalog,
 }))
 
 import { system } from '../../../../src/app/helper/system/system'

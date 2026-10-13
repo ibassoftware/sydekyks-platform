@@ -2,7 +2,7 @@ import { AIProviderName } from '@activepieces/core-utils'
 import { modelTierCatalog } from '@activepieces/server-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { aiModelResolution } from '../../../../src/app/ai/ai-model-resolution'
-import { publishedTierReaders } from '../ee/agent/model-tier-fixture'
+import { publishedTierReaders } from '../../../helpers/model-tier-fixture'
 
 const warn = vi.fn()
 const log = { info: vi.fn(), warn, error: vi.fn(), debug: vi.fn() } as never

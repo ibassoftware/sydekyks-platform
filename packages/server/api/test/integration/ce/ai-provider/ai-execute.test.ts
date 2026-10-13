@@ -8,7 +8,7 @@ import { generateMockToken } from '../../../helpers/auth'
 import { mockAndSaveAIProvider } from '../../../helpers/mocks'
 import { createTestContext, TestContext } from '../../../helpers/test-context'
 import { setupTestEnvironment, teardownTestEnvironment } from '../../../helpers/test-setup'
-import { publishedTierReaders } from '../../../unit/app/ee/agent/model-tier-fixture'
+import { publishedTierReaders } from '../../../helpers/model-tier-fixture'
 
 const { enqueue } = vi.hoisted(() => ({ enqueue: vi.fn() }))
 

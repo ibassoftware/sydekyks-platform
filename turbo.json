@@ -28,7 +28,9 @@
   ],
   "tasks": {
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": [],
       "inputs": [
         "src/**",
@@ -41,8 +43,12 @@
       "cache": false
     },
     "web#build": {
-      "dependsOn": ["^build"],
-      "outputs": ["../../dist/packages/web/**"],
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "../../dist/packages/web/**"
+      ],
       "cache": false,
       "inputs": [
         "src/**",
@@ -54,8 +60,12 @@
       ]
     },
     "api#build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**"],
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ],
       "cache": false,
       "inputs": [
         "src/**",
@@ -67,7 +77,9 @@
     },
     "@activepieces/engine#build": {
       "dependsOn": [],
-      "outputs": ["../../../dist/packages/engine/**"],
+      "outputs": [
+        "../../../dist/packages/engine/**"
+      ],
       "cache": false,
       "inputs": [
         "src/**",
@@ -86,13 +98,24 @@
         "package.json",
         "webpack.config.js"
       ],
-      "outputs": ["../../../dist/packages/ee/embed-sdk/**"],
+      "outputs": [
+        "../../../dist/packages/ee/embed-sdk/**"
+      ],
       "cache": false
     },
     "bundle": {
-      "dependsOn": ["build", "@activepieces/cli#build"],
-      "inputs": ["src/**", "package.json"],
-      "outputs": ["dist/index.bundle.js", "dist/package.json"]
+      "dependsOn": [
+        "build",
+        "@activepieces/cli#build"
+      ],
+      "inputs": [
+        "src/**",
+        "package.json"
+      ],
+      "outputs": [
+        "dist/index.bundle.js",
+        "dist/package.json"
+      ]
     },
     "@activepieces/engine#test": {
       "dependsOn": [
@@ -103,41 +126,65 @@
         "@activepieces/piece-webhook#build",
         "@activepieces/piece-delay#build"
       ],
-      "inputs": ["src/**", "test/**", "tsconfig*.json", "vitest.config.*"],
-      "outputs": ["coverage/**"]
+      "inputs": [
+        "src/**",
+        "test/**",
+        "tsconfig*.json",
+        "vitest.config.*"
+      ],
+      "outputs": [
+        "coverage/**"
+      ]
     },
     "lint": {
-      "dependsOn": ["^build"],
-      "inputs": ["src/**", "test/**", "scripts/**", ".eslintrc.json", "../../.eslintrc.json"],
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "src/**",
+        "test/**",
+        "scripts/**",
+        ".eslintrc.json",
+        "../../.eslintrc.json"
+      ],
       "outputs": []
     },
     "test": {
-      "dependsOn": ["build"],
-      "inputs": ["src/**", "test/**", "tsconfig*.json", "vitest.config.*"],
-      "outputs": ["coverage/**"]
+      "dependsOn": [
+        "build"
+      ],
+      "inputs": [
+        "src/**",
+        "test/**",
+        "tsconfig*.json",
+        "vitest.config.*"
+      ],
+      "outputs": [
+        "coverage/**"
+      ]
     },
     "test-unit": {
-      "dependsOn": ["build"],
+      "dependsOn": [
+        "build"
+      ],
       "cache": false
     },
     "test-ce": {
-      "dependsOn": ["build"],
-      "cache": false
-    },
-    "test-ee": {
-      "dependsOn": ["build"],
-      "cache": false
-    },
-    "test-cloud": {
-      "dependsOn": ["build"],
+      "dependsOn": [
+        "build"
+      ],
       "cache": false
     },
     "check-migrations": {
-      "dependsOn": ["build"],
+      "dependsOn": [
+        "build"
+      ],
       "cache": false
     },
     "db-migration": {
-      "dependsOn": ["build"],
+      "dependsOn": [
+        "build"
+      ],
       "cache": false
     },
     "dev": {
@@ -145,12 +192,16 @@
       "persistent": true
     },
     "serve": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "cache": false,
       "persistent": true
     },
     "typecheck": {
-      "dependsOn": ["^build"],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": []
     }
   }

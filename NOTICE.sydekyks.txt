@@ -2,4 +2,4 @@ Sydekyks application distribution
 Upstream Activepieces content outside its restricted roots is used under the MIT license in LICENSE. Copyright and third-party license notices are retained.
 This distribution excludes packages/ee and packages/server/api/src/app/ee. It uses independently authored project authorization, Syd conversations and saved-agent implementations.
 All available Sydekyks features are free to use without a license key, activation, trial period or expiry. Hosting, support and workflow implementation are optional paid services. Provider API costs are additional. The first supported installation path uses a fresh PostgreSQL database and Redis; upgrades from Sydekyks 1.0.x require a backup and acceptance checks. Legacy upstream Activepieces database upgrades are not supported.
-Source repositories are private. The release manifest identifies the compiled workspaces and supported boundary.
+The release manifest identifies the compiled workspaces and supported boundary.
