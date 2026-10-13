@@ -95,9 +95,4 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
         run: |
           node tools/prepare-release-test-db.cjs
-          bun x vitest run --config packages/server/api/vitest.config.ts \
-            packages/server/api/test/integration/ce/mcp \
-            packages/server/api/test/integration/ce/syd \
-            packages/server/api/test/unit/syd \
-            packages/server/api/test/unit/sydekyks-community-*.test.ts \
-            --no-file-parallelism --maxWorkers=1
+          node tools/run-release-api-regressions.cjs
