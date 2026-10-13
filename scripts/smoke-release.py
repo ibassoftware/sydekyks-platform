@@ -40,7 +40,7 @@ def wait_for_app(base):
         try:
             status, flags = request(base, '/api/v1/flags')
             if status == 200:
-                return {flag['id']: flag['value'] for flag in flags}
+                return flags if isinstance(flags, dict) else {flag['id']: flag['value'] for flag in flags}
         except (OSError, ValueError):
             pass
         time.sleep(5)

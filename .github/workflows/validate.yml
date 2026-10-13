@@ -30,7 +30,7 @@ jobs:
       - name: Check release automation scripts
         run: |
           node --check scripts/stage-sydekyks-runtime.mjs
-          python3 -m py_compile scripts/smoke-release.py
+          python3 -m py_compile scripts/smoke-release.py scripts/check-release-version.py
       - run: npm run lint-dev
       - run: git diff --exit-code
       - run: cp packages/server/api/.env.tests.example packages/server/api/.env.tests
