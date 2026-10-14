@@ -15,11 +15,35 @@ All available features are free. No license key, activation, trial period, or ex
 
 ## Get started
 
-Follow the [Docker Compose installation guide](https://docs.sydekyks.com/install/options/docker-compose).
+Install and start [Docker Desktop](https://docs.docker.com/get-docker/) on Windows or macOS. On Windows, use Linux containers. On Linux, use Docker Desktop or Docker Engine with the [Compose plugin](https://docs.docker.com/compose/install/linux/). Allow at least 4 GB of memory for Docker.
 
-The release image is `ibassoftware/sydekyks:1.0.8`, available for Linux AMD64 and ARM64. Installation requires PostgreSQL with pgvector and Redis.
+Open a terminal in the folder where you want to keep Sydekyks, then copy the commands for your operating system. No repository checkout or manual configuration is needed.
 
-The root Compose file matches the reviewed installation guide. For a fresh local installation:
+### Windows (PowerShell)
+
+```powershell
+Invoke-WebRequest -UseBasicParsing https://docs.sydekyks.com/resources/operators/install-sydekyks.ps1 -OutFile install-sydekyks.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-sydekyks.ps1
+```
+
+### macOS and Linux
+
+```sh
+curl -fsSL https://docs.sydekyks.com/resources/operators/install-sydekyks.sh -o install-sydekyks.sh && sh install-sydekyks.sh
+```
+
+The installer generates private secrets and starts the Sydekyks app and worker together, with PostgreSQL and Redis. The first run can take several minutes. When it reports **Sydekyks is running**, open **[http://localhost:8080](http://localhost:8080)** and create your first administrator account.
+
+Your configuration is saved in `sydekyks/deployment`; your data is kept in Docker volumes. Rerun from the same parent folder to reuse your settings, secrets and data. Keep your `.env` file and volumes for backups and upgrades.
+
+The downloadable quick start currently installs `ibassoftware/sydekyks:1.0.6`, as pinned in the [public installation template](https://docs.sydekyks.com/resources/operators/sydekyks-env.example.txt). This repository's current release is `1.0.8`; use the repository setup below to install that version. Both releases support Linux AMD64 and ARM64.
+
+See the [installation guide](https://docs.sydekyks.com/install/options/docker-compose/) for server access, HTTPS, email, maintenance and troubleshooting.
+
+<details>
+<summary>Install release 1.0.8 from a repository checkout</summary>
+
+From the repository root, use a macOS/Linux terminal or Bash with OpenSSL installed:
 
 ```sh
 bash tools/deploy.sh
@@ -27,7 +51,11 @@ docker compose config --quiet
 docker compose up -d --wait
 ```
 
-Open `http://localhost:8080`. Review your private `.env` before deploying to a server. Keep the generated encryption key and database volumes when upgrading an existing installation. The supported installation runs the application and worker together with separate PostgreSQL and Redis services.
+This generates a private `.env` from the repository's `.env.example` and starts `ibassoftware/sydekyks:1.0.8`. If a `.env` already exists, `tools/deploy.sh` preserves it and exits; review it, then run the two Docker Compose commands directly. Open [http://localhost:8080](http://localhost:8080).
+
+Review your private `.env` before deploying to a server. Keep the encryption key and database volumes when upgrading an existing installation.
+
+</details>
 
 ## Documentation
 
