@@ -36,7 +36,7 @@ The installer generates private secrets and starts the Sydekyks app and worker t
 
 Your configuration is saved in `sydekyks/deployment`; your data is kept in Docker volumes. Rerun from the same parent folder to reuse your settings, secrets and data. Keep your `.env` file and volumes for backups and upgrades.
 
-The downloadable quick start currently installs `ibassoftware/sydekyks:1.0.6`, as pinned in the [public installation template](https://docs.sydekyks.com/resources/operators/sydekyks-env.example.txt). This repository's current release is `1.0.8`; use the repository setup below to install that version. Both releases support Linux AMD64 and ARM64.
+The quick start and repository setup use `ibassoftware/sydekyks:1.0.8`, available for Linux AMD64 and ARM64. Existing installations keep their selected version until you explicitly upgrade.
 
 See the [installation guide](https://docs.sydekyks.com/install/options/docker-compose/) for server access, HTTPS, email, maintenance and troubleshooting.
 
@@ -56,6 +56,52 @@ This generates a private `.env` from the repository's `.env.example` and starts 
 Review your private `.env` before deploying to a server. Keep the encryption key and database volumes when upgrading an existing installation.
 
 </details>
+
+## Upgrade an existing installation
+
+Read the [release log](https://www.sydekyks.com/releases/#v1.0.8), pause incoming and scheduled work, and follow the [backup procedure](https://docs.sydekyks.com/install/configure-operate/rollback/) before upgrading. Keep the original installation folder, Compose project, volumes and encryption/JWT keys. Do not rerun `tools/deploy.sh` or replace your environment file.
+
+Change only `SYDEKYKS_IMAGE` in your existing `deployment/.env` (downloadable quick start) or `.env` (repository checkout):
+
+```text
+SYDEKYKS_IMAGE=ibassoftware/sydekyks:1.0.8
+```
+
+Both command blocks below work in Windows PowerShell and macOS/Linux terminals. Run each step only after the previous one succeeds.
+
+<details open>
+<summary>Upgrade a downloadable quick-start installation</summary>
+
+From your existing `sydekyks` folder:
+
+```sh
+docker compose --env-file deployment/.env -f deployment/compose.yaml config --quiet
+docker compose --env-file deployment/.env -f deployment/compose.yaml pull app
+docker compose --env-file deployment/.env -f deployment/compose.yaml stop app
+docker compose --env-file deployment/.env -f deployment/compose.yaml up -d --no-deps --wait --wait-timeout 300 app
+docker compose --env-file deployment/.env -f deployment/compose.yaml ps
+```
+
+</details>
+
+<details>
+<summary>Upgrade a repository checkout installation</summary>
+
+From the repository root:
+
+```sh
+docker compose config --quiet
+docker compose pull app
+docker compose stop app
+docker compose up -d --no-deps --wait --wait-timeout 300 app
+docker compose ps
+```
+
+</details>
+
+These commands replace the app and its included worker, preserving PostgreSQL, Redis and application volumes. Wait for health checks, sign in with your existing account, check saved data and Connected Accounts, and run a harmless Mission before resuming work.
+
+Do not use `docker compose down --volumes`. If an upgrade fails after migrations, changing the image back alone may be unsafe; use the matching pre-upgrade data, image, files and keys from your rehearsed recovery plan. See the [complete upgrade guide](https://docs.sydekyks.com/install/reference/breaking-changes/).
 
 ## Documentation
 
