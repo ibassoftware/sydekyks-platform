@@ -2,6 +2,7 @@ import { apId } from '@activepieces/core-utils'
 import { hostingCatalog } from '@activepieces/shared'
 import { DataSource, EntityManager, In } from 'typeorm'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrant, HostingGrantEntity, HostingReservation, HostingReservationEntity } from './hosting-entities'
+import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 export function createHostedLedger({ dataSource, manager: existingManager }: { dataSource: DataSource, manager?: EntityManager }) {
@@ -61,17 +62,19 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             if (reservation.state === 'settled') return
             if (!['running', 'uncertain', 'paused'].includes(reservation.state)) hostingFail('HOSTING_INVALID_TRANSITION')
             if (await manager.getRepository(HostingReservationEntity).existsBy({ platformId, rootReservationId: reservation.id, state: In(['reserved', 'running', 'uncertain']) })) hostingFail('HOSTING_UNSETTLED_CHILDREN')
+            if (await manager.getRepository(HostingModelCallEntity).existsBy({ platformId, rootReservationId: reservation.id, state: In(['prepared', 'running', 'uncertain']) })) hostingFail('HOSTING_UNSETTLED_CHILDREN')
             await manager.getRepository(HostingReservationEntity).update({ id: reservation.id }, { state: 'settled', actualAmount: 1n })
             if (reservation.state !== 'paused') await manager.getRepository(HostingAccountEntity).update({ id: platformId }, { activeExecutions: account.activeExecutions - 1 })
             await tx.entry({ manager, reservation, operation: 'settle', amount: 1n })
         } })
     }
 
-    async function reserveManagedCall({ actor, rootReservationId, key, maxCostMicroUsd }: { actor: HostingActor, rootReservationId: string, key: string, maxCostMicroUsd: bigint }): Promise<HostingReservation> {
+    async function reserveManagedCall({ actor, rootReservationId, key, maxCostMicroUsd, expectedDay }: { actor: HostingActor, rootReservationId: string, key: string, maxCostMicroUsd: bigint, expectedDay?: string }): Promise<HostingReservation> {
         tx.assertKey(key)
         tx.assertAmount(maxCostMicroUsd)
         return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             const day = utcDay(await tx.now(manager))
+            if (expectedDay && day !== expectedDay) hostingFail('HOSTING_ADMISSION_DAY_CHANGED')
             const budget = await lockBudget({ manager, day, create: true })
             const account = await tx.account({ manager, platformId: actor.platformId })
             const root = await findReservation({ manager, platformId: account.id, reservationId: rootReservationId, kind: 'execution' })
@@ -208,6 +211,7 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             if (reservation.state === 'paused') return
             if (reservation.state !== 'running' && reservation.state !== 'uncertain') hostingFail('HOSTING_INVALID_TRANSITION')
             if (await manager.getRepository(HostingReservationEntity).existsBy({ platformId, rootReservationId: reservation.id, state: In(['reserved', 'running', 'uncertain']) })) hostingFail('HOSTING_UNSETTLED_CHILDREN')
+            if (await manager.getRepository(HostingModelCallEntity).existsBy({ platformId, rootReservationId: reservation.id, state: In(['prepared', 'running', 'uncertain']) })) hostingFail('HOSTING_UNSETTLED_CHILDREN')
             await manager.getRepository(HostingReservationEntity).update({ id: reservation.id }, { state: 'paused' })
             await manager.getRepository(HostingAccountEntity).update({ id: platformId }, { activeExecutions: account.activeExecutions - 1 })
             await tx.event({ manager, platformId, event: 'execution.parked', payload: { reservationId } })
@@ -285,3 +289,5 @@ function maxZero(value: bigint): bigint {
 }
 type Fence = { platformId: string, reservationId: string, dispatchId: string }
 type Claim = { claimed: boolean, dispatchId: string | null }
+
+export { lockBudget as lockHostedBudget }

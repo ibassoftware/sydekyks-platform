@@ -7,6 +7,8 @@ import { flowRunService } from '../flows/flow-run/flow-run-service'
 import { rejectedPromiseHandler } from '../helper/promise-handler'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingFail } from '../hosting/hosting-transactions'
 import { projectService } from '../project/project-service'
 import { resumeService } from '../waitpoints/resume-service'
 import { aiModelCandidates } from './ai-model-candidates'
@@ -15,6 +17,7 @@ import { aiUsageService } from './ai-usage-service'
 
 export const aiRpcHandlers = (log: FastifyBaseLogger) => ({
     async resolveAiProvider(input: ResolveAiProviderRequest): Promise<ResolveAiProviderResponse> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         await assertProjectBelongsToPlatform({ ...input, log })
         const config = await aiProviderService(log).getConfigOrThrow({
             platformId: input.platformId,
@@ -32,11 +35,13 @@ export const aiRpcHandlers = (log: FastifyBaseLogger) => ({
     },
 
     async resolveAiModelCandidates(input: ResolveAiModelCandidatesRequest): Promise<ResolveAiModelCandidatesResponse> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         await assertProjectBelongsToPlatform({ ...input, log })
         return aiModelCandidates(log).resolve({ platformId: input.platformId, tierId: input.modelTierId, scope: { type: 'project', projectId: input.projectId } })
     },
 
     async reportAiKeyOutcome(input: ReportAiKeyOutcomeRequest): Promise<void> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         rejectedPromiseHandler(aiProviderService(log).confirmReportedOutcome({ platformId: input.platformId, providerId: input.providerConfigId, signal: input.signal }), log)
     },
 
@@ -79,6 +84,7 @@ export const aiRpcHandlers = (log: FastifyBaseLogger) => ({
     },
 
     async reportAiUsage(input: ReportAiUsageRequest): Promise<void> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         await aiUsageService(log).report(input)
     },
 

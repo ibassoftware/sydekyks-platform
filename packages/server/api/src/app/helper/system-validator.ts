@@ -97,6 +97,8 @@ const systemPropValidators: {
 } = {
     // AppSystemProp
     [AppSystemProp.SERVICE_MODE]: enumValidator(['self_hosted', 'hosted']),
+    [AppSystemProp.HOSTED_DEEPSEEK_API_KEY]: () => true,
+    [AppSystemProp.HOSTED_DEEPSEEK_PRICE_JSON]: () => true,
     [AppSystemProp.HOSTED_STRIPE_SECRET_KEY]: () => true,
     [AppSystemProp.HOSTED_STRIPE_WEBHOOK_SECRET]: () => true,
     [AppSystemProp.ALLOW_OPEN_SIGN_UP]: booleanValidator,
@@ -301,7 +303,7 @@ export const validateEnvPropsOnStartup = async (log: FastifyBaseLogger): Promise
 
     const environment = system.get(AppSystemProp.ENVIRONMENT)
     const fileStorageLocation = process.env.AP_FILE_STORAGE_LOCATION
-    
+
     if (environment !== ApEnvironment.TESTING && fileStorageLocation === FileLocation.S3) {
         try {
             await s3Helper(log).validateS3Configuration()

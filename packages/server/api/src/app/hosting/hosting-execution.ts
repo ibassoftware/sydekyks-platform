@@ -15,6 +15,7 @@ import { WaitpointStatus } from '../waitpoints/waitpoint-types'
 import { HostingDispatch, HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingReservationEntity } from './hosting-entities'
 import { createHostedLedger } from './hosting-ledger'
+import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { HostingActor, HostingError, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 const MAX_SEGMENTS = 128
@@ -386,6 +387,7 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
         const segments = await tree({ manager, root: fresh })
         if (segments.some(item => ACTIVE.includes(item.state))) return
         if (await manager.getRepository(HostingReservationEntity).existsBy({ platformId: fresh.platformId, rootReservationId: reservation.id, state: In(['reserved', 'running', 'uncertain']) })) return
+        if (await manager.getRepository(HostingModelCallEntity).existsBy({ platformId: fresh.platformId, rootReservationId: reservation.id, state: In(['prepared', 'running', 'uncertain']) })) return
         const latestByRun = new Map<string, HostingDispatch>()
         for (const item of segments) {
             const key = item.flowRunId ?? item.id

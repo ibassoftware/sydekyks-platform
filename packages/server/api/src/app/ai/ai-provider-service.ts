@@ -11,6 +11,8 @@ import { distributedStore } from '../database/redis-connections'
 import { flagService } from '../flags/flag.service'
 import { EncryptedObject, encryptUtils } from '../helper/encryption'
 import { platformConfigurationService } from '../platform/platform-configuration.service'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingFail } from '../hosting/hosting-transactions'
 import { platformService } from '../platform/platform.service'
 import { aiKeyScope, ProviderScope } from './ai-key-scope'
 import { AIProviderEntity, AIProviderSchema } from './ai-provider-entity'
@@ -106,6 +108,7 @@ export const aiProviderService = (log: FastifyBaseLogger) => ({
     },
 
     async create(platformId: PlatformId, request: CreateAIProviderRequest): Promise<AIProviderWithoutSensitiveData> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         if (request.provider === AIProviderName.ACTIVEPIECES) {
             throw new ActivepiecesError({
                 code: ErrorCode.VALIDATION,
@@ -143,6 +146,7 @@ export const aiProviderService = (log: FastifyBaseLogger) => ({
         return toConfigResponse({ row: saved, enabledForChat: isFirstKey })
     },
     async update(platformId: PlatformId, providerId: string, request: UpdateAIProviderRequest): Promise<void> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         const aiProvider = await aiProviderRepo().findOneBy({
             platformId,
             id: providerId,
@@ -274,6 +278,7 @@ export const aiProviderService = (log: FastifyBaseLogger) => ({
     },
 
     async delete(platformId: PlatformId, providerId: string): Promise<void> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         const deleted = await transaction(async (manager) => {
             await platformModelTierService.removeKeyFromTiers({ manager, platformId, configId: providerId })
             await manager.query(
@@ -287,6 +292,7 @@ export const aiProviderService = (log: FastifyBaseLogger) => ({
         await revokeKeyIfManaged({ row: deleted, log })
     },
     async deleteManagedProvider({ platformId, inSameTransaction }: { platformId: PlatformId, inSameTransaction?: (manager: EntityManager) => Promise<unknown> }): Promise<void> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         const deleted = await transaction(async (manager) => {
             await lockPlatformForUpdate({ manager, platformId })
             const row = await deleteRowForUpdate({ manager, where: { platformId, provider: AIProviderName.ACTIVEPIECES } })
@@ -299,6 +305,7 @@ export const aiProviderService = (log: FastifyBaseLogger) => ({
         await revokeKeyIfManaged({ row: deleted, log })
     },
     async recordKeyObservation({ platformId, providerId, signal }: { platformId: PlatformId, providerId: string, signal: ProviderOutcomeSignal }): Promise<void> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         const status = classifyProviderOutcome(signal)
         if (status === 'no_change') {
             return
@@ -320,6 +327,7 @@ export const aiProviderService = (log: FastifyBaseLogger) => ({
     },
 
     async confirmReportedOutcome({ platformId, providerId, signal }: { platformId: PlatformId, providerId: string, signal: ProviderOutcomeSignal }): Promise<void> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         const status = classifyProviderOutcome(signal)
         if (status === 'no_change') {
             return
@@ -340,6 +348,7 @@ export const aiProviderService = (log: FastifyBaseLogger) => ({
     },
 
     async recheck({ platformId, providerId, expectVersion }: { platformId: PlatformId, providerId: string, expectVersion?: number }): Promise<AiProviderKeyStatus> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         const aiProvider = await getRowByIdOrThrow({ platformId, configId: providerId })
         if (aiProvider.provider === AIProviderName.ACTIVEPIECES) {
             return aiProvider.status
@@ -352,6 +361,7 @@ export const aiProviderService = (log: FastifyBaseLogger) => ({
     },
 
     async validateProviderCredentials(provider: AIProviderName, auth: AIProviderAuthConfig, config: AIProviderConfig): Promise<void> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         const providerStrategy = aiProviders[provider]
         try {
             await providerStrategy.validateConnection(auth, config, log)
@@ -406,6 +416,7 @@ export const aiProviderService = (log: FastifyBaseLogger) => ({
         return { ...aiProviderCredentials({ provider: key.provider, auth, config: key.config }), configId: key.id, platformId, modelScope: key.modelScope, modelIds: key.modelIds }
     },
     async getOrCreateActivePiecesProviderAuthConfig(platformId: PlatformId): Promise<ActivePiecesProviderAuthConfig> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         await ensureManagedProviderRow({ platformId })
         const { auth } = await this.getConfigOrThrow({ platformId, provider: AIProviderName.ACTIVEPIECES, scope: { type: 'platform' } })
         return auth as ActivePiecesProviderAuthConfig
@@ -484,6 +495,7 @@ function toConfigResponse({ row, enabledForChat }: { row: AIProviderSchema, enab
 }
 
 async function ensureManagedProviderRow({ platformId }: { platformId: PlatformId }): Promise<void> {
+    if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
     const exists = await aiProviderRepo().existsBy({ platformId, provider: AIProviderName.ACTIVEPIECES })
     if (exists) {
         return
@@ -510,6 +522,7 @@ async function ensureManagedProviderRow({ platformId }: { platformId: PlatformId
 }
 
 async function listVisibleRows({ platformId, log }: { platformId: PlatformId, log: FastifyBaseLogger }): Promise<AIProviderSchema[]> {
+    if (hostingConfiguration.getServiceMode() === 'hosted') return aiProviderRepo().findBy({ platformId, provider: AIProviderName.DEEPSEEK })
     if (flagService(log).aiCreditsEnabled()) {
         await ensureManagedProviderRow({ platformId })
     }
@@ -632,6 +645,7 @@ async function getRowByIdOrThrow({ platformId, configId }: { platformId: Platfor
 }
 
 async function fetchModels({ aiProvider, platformId, log }: { aiProvider: AIProviderSchema, platformId: PlatformId, log: FastifyBaseLogger }): Promise<AIProviderModel[]> {
+    if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
     const { provider, config } = aiProvider
     const auth = await decryptRowAuth({ aiProvider, platformId, log })
     const cacheKey = getModelsCacheKey({ provider, auth, config })
@@ -658,6 +672,7 @@ function appliesChatModelIdRule({ provider, config }: { provider: AIProviderName
 }
 
 async function decryptRowAuth({ aiProvider, platformId, log }: { aiProvider: AIProviderSchema, platformId: PlatformId, log: FastifyBaseLogger }): Promise<AIProviderAuthConfig> {
+    if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
     const auth = await encryptUtils.decryptObject<AIProviderAuthConfig>(aiProvider.auth)
     if (aiProvider.provider === AIProviderName.ACTIVEPIECES && !hasManagedKey(auth)) {
         return enrichWithKeysIfNeeded({ providerId: aiProvider.id, platformId, log })

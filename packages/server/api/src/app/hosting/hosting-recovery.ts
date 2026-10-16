@@ -12,6 +12,7 @@ import { HostingError, hostingFail } from './hosting-transactions'
 export const hostingRecovery = (log: FastifyBaseLogger) => ({
     async run(): Promise<void> {
         if (hostingConfiguration.getServiceMode() !== 'hosted') hostingFail('HOSTED_INSTALLATION_REQUIRED')
+        await hostingServices.gateway().recover()
         await hostingServices.execution().recover({ publish: async dispatch => {
             if (!dispatch.queueName || !dispatch.jobId || !dispatch.payload) return
             const queue = await jobQueue(log).getOrCreateQueue({ queueName: dispatch.queueName })

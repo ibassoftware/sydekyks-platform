@@ -1,5 +1,6 @@
 import { databaseConnection } from '../database/database-connection'
 import { encryptUtils } from '../helper/encryption'
+import { createHostedAiGateway } from './hosting-ai-gateway'
 import { createHostedExecution } from './hosting-execution'
 import { createHostedLedger } from './hosting-ledger'
 import { createHostedOnboarding } from './hosting-onboarding'
@@ -17,4 +18,7 @@ function ledger() {
 function execution() {
     return createHostedExecution({ dataSource: databaseConnection() })
 }
-export const hostingServices = { onboarding, ledger, execution }
+function gateway() {
+    return createHostedAiGateway({ dataSource: databaseConnection() })
+}
+export const hostingServices = { onboarding, ledger, execution, gateway }

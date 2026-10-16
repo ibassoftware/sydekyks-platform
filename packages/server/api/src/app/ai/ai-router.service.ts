@@ -1,12 +1,15 @@
 import { ActivepiecesError, AIProviderName, apId, ErrorCode, isNil, tryCatch } from '@activepieces/core-utils'
 import { AiStepAction, ChooseAiRouteRequest, ChooseAiRouteResponse, ExecuteAiJobData, LATEST_JOB_DATA_SCHEMA_VERSION, StartAiRouteResponse, WorkerJobType } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingFail } from '../hosting/hosting-transactions'
 import { assertCreditsAndAppSumoNotExceeded } from '../platform/billing-provider'
 import { aiExecution } from './ai-execution'
 import { aiProviderService } from './ai-provider-service'
 
 export const aiRouterService = (log: FastifyBaseLogger) => ({
     async start({ platformId, projectId, waitpointId, ...request }: StartParams): Promise<StartAiRouteResponse> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         const provider = await pickProvider({ platformId, projectId, log })
         await assertHasCredits({ platformId, log })
         const requestId = apId()
@@ -16,6 +19,7 @@ export const aiRouterService = (log: FastifyBaseLogger) => ({
     },
 
     async choose({ platformId, projectId, ...request }: ChooseParams): Promise<ChooseAiRouteResponse> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         const provider = await pickProvider({ platformId, projectId, log })
         await assertHasCredits({ platformId, log })
 

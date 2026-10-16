@@ -12,6 +12,7 @@ export async function runOnWorker(params: {
   }
 
   const request = await params.buildRequest();
+  if (context.run.callAi) return readAnswer(await context.run.callAi(request));
 
   if (!context.run.canPause) {
     const { body } = await sendToServer({ context, request });

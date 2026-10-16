@@ -11,6 +11,7 @@ import { fileService } from '../file/file.service'
 import { flowService } from '../flows/flow/flow.service'
 import { engineRunCallbackService } from '../flows/flow-run/engine-run-callback-service'
 import { flowVersionService } from '../flows/flow-version/flow-version.service'
+import { hostingAiController } from '../hosting/hosting-ai-controller'
 import { hostingConfiguration } from '../hosting/hosting-configuration'
 import { hostedRunCallback } from '../hosting/hosting-run-callback'
 import { hostingServices } from '../hosting/hosting-services'
@@ -21,6 +22,7 @@ import { getQueueName } from './job-queue/job-queue'
 export const flowEngineWorker: FastifyPluginAsyncZod = async (app) => {
 
     app.addHook('preSerialization', entitiesMustBeOwnedByCurrentProject)
+    await app.register(hostingAiController, { prefix: '/hosting-ai' })
 
     app.get('/populated-flows', GetAllFlowsByProjectParams, async (request) => {
         return flowService(request.log).list({

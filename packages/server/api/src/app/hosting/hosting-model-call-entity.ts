@@ -1,0 +1,17 @@
+import { EntitySchema } from 'typeorm'
+import { ApIdSchema, BaseColumnSchemaPart } from '../database/database-common'
+import type { HostedAiPrice } from './hosting-ai-policy'
+
+export type HostingModelCall = { id: string, created: Date, updated: Date, platformId: string, projectId: string, segmentId: string, rootReservationId: string, admissionId: string, identityId: string, callKey: string, attempt: number, requestHash: string, payer: 'managed' | 'byok', configId: string | null, credentialFingerprint: string, model: string, endpoint: string, state: 'prepared' | 'running' | 'settled' | 'uncertain' | 'cancelled', reservationId: string | null, dispatchId: string | null, fence: string | null, budgetDay: string | null, quote: HostedAiPrice | null, response: Record<string, unknown> | null, usage: Record<string, number> | null, actualMicroUsd: string | null, sentAt: Date | null, leaseUntil: Date }
+export const HostingModelCallEntity = new EntitySchema<HostingModelCall>({
+    name: 'hosting_model_call',
+    columns: { ...BaseColumnSchemaPart, platformId: ApIdSchema, projectId: ApIdSchema, segmentId: ApIdSchema, rootReservationId: ApIdSchema, admissionId: ApIdSchema, identityId: ApIdSchema, callKey: { type: String, length: 100 }, attempt: { type: Number }, requestHash: { type: String, length: 64 }, payer: { type: String }, configId: { ...ApIdSchema, nullable: true }, credentialFingerprint: { type: String, length: 64 }, model: { type: String }, endpoint: { type: String }, state: { type: String }, reservationId: { ...ApIdSchema, nullable: true }, dispatchId: { ...ApIdSchema, nullable: true }, fence: { ...ApIdSchema, nullable: true }, budgetDay: { type: String, nullable: true }, quote: { type: 'jsonb', nullable: true }, response: { type: 'jsonb', nullable: true }, usage: { type: 'jsonb', nullable: true }, actualMicroUsd: { type: 'numeric', precision: 30, scale: 0, nullable: true }, sentAt: { type: 'timestamp with time zone', nullable: true }, leaseUntil: { type: 'timestamp with time zone' } },
+    uniques: [{ name: 'uq_hosting_call_attempt', columns: ['segmentId', 'callKey', 'attempt'] }],
+    indices: [{ name: 'idx_hosting_call_root_state', columns: ['platformId', 'rootReservationId', 'state'] }, { name: 'idx_hosting_call_recovery', columns: ['state', 'leaseUntil'] }],
+    checks: [{ name: 'chk_hosting_call_state', expression: 'state IN (\'prepared\', \'running\', \'settled\', \'uncertain\', \'cancelled\')' }, { name: 'chk_hosting_call_payer', expression: 'payer IN (\'managed\', \'byok\') AND ((payer = \'managed\' AND "configId" IS NULL) OR (payer = \'byok\' AND "configId" IS NOT NULL))' }, { name: 'chk_hosting_call_attempt', expression: 'attempt >= 0 AND attempt <= 2' }],
+    foreignKeys: [
+        { target: 'hosting_dispatch', columnNames: ['segmentId', 'platformId'], referencedColumnNames: ['id', 'platformId'], onDelete: 'RESTRICT' },
+        { target: 'hosting_reservation', columnNames: ['rootReservationId', 'platformId'], referencedColumnNames: ['id', 'platformId'], onDelete: 'RESTRICT' },
+        { target: 'hosting_reservation', columnNames: ['reservationId', 'platformId'], referencedColumnNames: ['id', 'platformId'], onDelete: 'RESTRICT' },
+    ],
+})

@@ -209,6 +209,7 @@ export type CreateWaitpointHook = (params: CreateWaitpointParams) => Promise<Cre
 export type WaitForWaitpointHook = (waitpointId: string) => void;
 
 export type RunContext = {
+  callAi?: (request: Record<string, unknown>) => Promise<unknown>;
   callSubflow?: (params: { flowId: string; data: unknown; callbackUrl?: string; failParentOnFailure: boolean; key?: string }) => Promise<unknown>;
   id: FlowRunId;
   canPause: boolean;

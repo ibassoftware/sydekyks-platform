@@ -129,7 +129,12 @@ const executeAction: ActionHandler<PieceAction> = async ({ action, executionStat
             }),
             run: {
                 id: constants.flowRunId,
-                ...(constants.hostedAccounting ? { callSubflow: async (params: { flowId: string, data: unknown, callbackUrl?: string, failParentOnFailure: boolean, key?: string }) => {
+                ...(constants.hostedAccounting ? { callAi: async (request: Record<string, unknown>) => {
+                    const callKey = createHash('sha256').update(executionState.currentPath.waitpointKeyFor({ stepName: action.name })).digest('hex')
+                    const response = await fetch(`${constants.internalApiUrl}v1/engine/hosting-ai/step`, { method: 'POST', headers: { Authorization: `Bearer ${constants.engineToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...request, callKey }) })
+                    if (!response.ok) throw new EngineGenericError('HostedAiDenied', `AI request failed (${response.status})`)
+                    return response.json()
+                }, callSubflow: async (params: { flowId: string, data: unknown, callbackUrl?: string, failParentOnFailure: boolean, key?: string }) => {
                     const key = createHash('sha256').update(JSON.stringify([executionState.currentPath.waitpointKeyFor({ stepName: action.name }), params.key ?? 'call'])).digest('hex')
                     const response = await fetch(`${constants.internalApiUrl}v1/engine/nested-runs`, { method: 'POST', headers: { Authorization: `Bearer ${constants.engineToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...params, key }) })
                     if (!response.ok) throw new EngineGenericError('HostedNestedDispatchDenied', `Nested run request failed (${response.status})`)

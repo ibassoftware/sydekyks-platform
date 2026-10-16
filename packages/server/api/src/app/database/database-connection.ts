@@ -22,6 +22,7 @@ import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { HostingDispatchEntity } from '../hosting/hosting-dispatch-entity'
 import { HOSTING_ENTITIES } from '../hosting/hosting-entities'
+import { HostingModelCallEntity } from '../hosting/hosting-model-call-entity'
 import { KnowledgeBaseChunkEntity } from '../knowledge-base/knowledge-base-chunk.entity'
 import { KnowledgeBaseFileEntity } from '../knowledge-base/knowledge-base-file.entity'
 import { McpActivityEntity } from '../mcp/activity/mcp-activity-entity'
@@ -65,6 +66,7 @@ function getEntities(): EntitySchema<unknown>[] {
     return [
         ...HOSTING_ENTITIES,
         HostingDispatchEntity,
+        HostingModelCallEntity,
         TriggerEventEntity,
         AppEventRoutingEntity,
         FileEntity,

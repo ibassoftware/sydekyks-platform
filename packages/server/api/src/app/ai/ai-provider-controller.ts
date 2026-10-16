@@ -8,9 +8,15 @@ import { z } from 'zod'
 import { ProjectResourceType } from '../core/security/authorization/common'
 import { securityAccess } from '../core/security/authorization/fastify-security'
 import { aiModelOptionsService } from './ai-model-options-service'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingProviderController } from '../hosting/hosting-provider-controller'
 import { aiProviderService } from './ai-provider-service'
 
 export const aiProviderController: FastifyPluginAsyncZod = async (app) => {
+    if (hostingConfiguration.getServiceMode() === 'hosted') {
+        await app.register(hostingProviderController)
+        return
+    }
     app.get('/', ListAIProvidersForProject, async (request) => {
         return aiProviderService(app.log).listForProject({
             platformId: request.principal.platform.id,
