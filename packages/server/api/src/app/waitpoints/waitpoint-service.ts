@@ -38,6 +38,7 @@ export const waitpointService = (log: FastifyBaseLogger) => ({
             .into('waitpoint')
             .values({
                 id,
+                hostingDispatchId: params.hostingDispatchId ?? null,
                 flowRunId: params.flowRunId,
                 projectId: params.projectId,
                 stepName: params.stepName,

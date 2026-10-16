@@ -10,6 +10,8 @@ import { StreamStepProgress } from './engine-operation'
 
 
 export const UploadRunLogsRequest = z.object({
+    admissionId: z.string().optional(),
+    waitpointId: z.string().optional(),
     runId: z.string(),
     tags: z.array(z.string()).optional(),
     // Optional so the worker can post a timings-only update (provision/boot/run) after a successful

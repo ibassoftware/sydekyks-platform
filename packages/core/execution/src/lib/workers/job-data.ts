@@ -143,6 +143,7 @@ export const BeginExecuteFlowJobData = ExecuteFlowJobDataCommon.extend({
 export type BeginExecuteFlowJobData = z.infer<typeof BeginExecuteFlowJobData>
 
 export const ResumeExecuteFlowJobData = ExecuteFlowJobDataCommon.extend({
+    resumeCheckpointId: z.string().optional(),
     executionType: z.literal(ExecutionType.RESUME),
     resumeReason: z.nativeEnum(ResumeReason),
 })

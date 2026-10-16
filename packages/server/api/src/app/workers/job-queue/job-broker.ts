@@ -387,7 +387,11 @@ export const jobBroker = (log: FastifyBaseLogger) => ({
         if (isNil(job)) {
             return
         }
-        await job.extendLock(input.token, LOCK_DURATION_MS)
+        const extended = await job.extendLock(input.token, LOCK_DURATION_MS)
+        if (extended > 0 && hostingConfiguration.getServiceMode() === 'hosted') {
+            const assignment = jobAssignmentTracker.assignmentFor(input)
+            if (assignment?.admissionId) await hostingServices.execution().heartbeat({ queueName: input.queueName, jobId: input.jobId, queueToken: input.token, admissionId: assignment.admissionId })
+        }
         log.debug({ job: { id: input.jobId } }, '[jobBroker] Lock extended')
     },
 

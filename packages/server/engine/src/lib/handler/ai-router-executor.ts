@@ -141,7 +141,7 @@ async function pauseForAnswer({ action, executionState, constants, censoredInput
     })
     await aiRouterApi.start({ ...request, waitpointId: waitpoint.id })
     const paused = AiRouterStepOutput.init({ input: censoredInput }).setStatus(StepOutputStatus.PAUSED)
-    return (await executionState.upsertStep(action.name, paused)).incrementStepsExecuted().setVerdict({ status: FlowRunStatus.PAUSED })
+    return (await executionState.upsertStep(action.name, paused)).incrementStepsExecuted().setVerdict({ status: FlowRunStatus.PAUSED, waitpointId: waitpoint.id })
 }
 
 function answerFromResume(payload: ResumePayload | undefined): ChooseAiRouteResponse {

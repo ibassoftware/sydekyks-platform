@@ -19,7 +19,7 @@ import { rejectedPromiseHandler } from '../../helper/promise-handler'
 import { system } from '../../helper/system/system'
 import { AppSystemProp } from '../../helper/system/system-props'
 import { hostingConfiguration } from '../../hosting/hosting-configuration'
-import { hostingServices } from '../../hosting/hosting-services'
+import { hostedRunCallback } from '../../hosting/hosting-run-callback'
 import { hostingFail } from '../../hosting/hosting-transactions'
 import { hostingWorkerGate } from '../../hosting/hosting-worker-gate'
 import { pieceMetadataService } from '../../pieces/metadata/piece-metadata-service'
@@ -118,7 +118,11 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
         },
 
         async uploadRunLog(input) {
-            if (hostingConfiguration.getServiceMode() === 'hosted') await hostingServices.execution().flowReceipt({ connectionId, projectId: input.projectId, runId: input.runId, status: input.status })
+            if (hostingConfiguration.getServiceMode() === 'hosted') {
+                if (!input.admissionId) hostingFail('HOSTING_DISPATCH_FENCE_MISMATCH')
+                await hostedRunCallback({ log, admissionId: input.admissionId, connectionId, projectId: input.projectId, request: input })
+                return
+            }
             await engineRunCallbackService(log).uploadRunLog({ projectId: input.projectId, request: input })
         },
 

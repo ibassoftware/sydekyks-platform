@@ -1,5 +1,5 @@
 import { isNil, tryCatch } from '@activepieces/core-utils'
-import { EngineGenericError, EngineResponse, EngineResponseStatus, ExecuteFlowOperation, ExecuteTriggerResponse, ExecutionError, ExecutionErrorType, ExecutionState, ExecutionType, FlowActionType, FlowRunStatus, flowStructureUtil, GenericStepOutput, LoopStepOutput, ResumePayload, ResumeReason, StepOutput, StepOutputStatus, TriggerHookType, TriggerPayload } from '@activepieces/shared'
+import { EngineGenericError, EngineResponse, EngineResponseStatus, ExecuteFlowOperation, ExecuteTriggerResponse, ExecutionError, ExecutionErrorType, ExecutionState, ExecutionType, FlowActionType, FlowRunStatus, flowStructureUtil, GenericStepOutput, LoopStepOutput, ResumeExecuteFlowOperation, ResumePayload, ResumeReason, StepOutput, StepOutputStatus, TriggerHookType, TriggerPayload } from '@activepieces/shared'
 import { engineFileApi } from '../api/engine-file-api'
 import { EngineConstants, ResolvedBeginExecuteFlowOperation, ResolvedExecuteFlowOperation } from '../handler/context/engine-constants'
 import { FlowExecutorContext } from '../handler/context/flow-execution-context'
@@ -230,7 +230,9 @@ async function resolveExecuteFlowOperation(operation: ExecuteFlowOperation): Pro
             triggerPayload: await resolveJobPayload({ payload: operation.triggerPayload, apiUrl: operation.internalApiUrl, engineToken: operation.engineToken }),
         }
     }
-    const executionState = await fetchExecutionStateFromLogs(operation.logsFileId, operation)
+    const executionState = operation.resumeCheckpointId
+        ? await fetchHostedCheckpoint(operation)
+        : await fetchExecutionStateFromLogs(operation.logsFileId, operation)
     if (Object.keys(executionState.steps).length === 0) {
         throw new EngineGenericError('EmptyResumeStateError', 'RESUME operation received with empty execution state')
     }
@@ -300,4 +302,12 @@ type IsStepRestorableParams = {
 type InsertStepsParams = {
     stepOutput: StepOutput
     isWaitpointResume: boolean
+}
+
+async function fetchHostedCheckpoint(operation: ResumeExecuteFlowOperation): Promise<ExecutionState> {
+    const response = await fetch(`${operation.internalApiUrl}v1/engine/checkpoints/${operation.resumeCheckpointId}`, { headers: { Authorization: `Bearer ${operation.engineToken}` } })
+    if (!response.ok) throw new EngineGenericError('HostedCheckpointUnavailable', `Checkpoint request failed (${response.status})`)
+    const value: unknown = await response.json()
+    if (!value || typeof value !== 'object' || !('executionState' in value)) throw new EngineGenericError('HostedCheckpointInvalid', 'Checkpoint has no execution state')
+    return value.executionState as ExecutionState
 }

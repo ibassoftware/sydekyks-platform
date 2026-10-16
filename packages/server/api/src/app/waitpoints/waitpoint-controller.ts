@@ -4,6 +4,8 @@ import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { StatusCodes } from 'http-status-codes'
 import { securityAccess } from '../core/security/authorization/fastify-security'
 import { domainHelper } from '../helper/domain-helper'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingServices } from '../hosting/hosting-services'
 import { projectService } from '../project/project-service'
 import { barrierService, CreateBarrierResult } from './barrier-service'
 import { waitpointService } from './waitpoint-service'
@@ -13,9 +15,12 @@ export const waitpointController: FastifyPluginAsyncZod = async (app) => {
     app.post('/', CreateWaitpointParams, async (request, reply) => {
         const { flowRunId, projectId, stepName, type, version, resumeDateTime, responseToSend, workerHandlerId, httpRequestId, barrier } = request.body
 
+        const hostingDispatch = hostingConfiguration.getServiceMode() === 'hosted' ? await hostingServices.execution().assertEngineRun({ admissionId: request.principal.id, platformId: request.principal.platform.id, projectId, runId: flowRunId }) : undefined
+
         if (type === PauseType.BARRIER) {
             assertBarrierCarriesNoDeadline({ resumeDateTime })
             const created = await barrierService(request.log).create({
+                hostingDispatchId: hostingDispatch?.id,
                 flowRunId,
                 projectId,
                 platformId: await projectService(request.log).getPlatformId(projectId),
@@ -35,6 +40,7 @@ export const waitpointController: FastifyPluginAsyncZod = async (app) => {
         }
 
         const { waitpoint } = await waitpointService(request.log).createForPause({
+            hostingDispatchId: hostingDispatch?.id,
             flowRunId,
             projectId,
             stepName,

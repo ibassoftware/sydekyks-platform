@@ -5,6 +5,8 @@ import { StatusCodes } from 'http-status-codes'
 import { distributedLock, distributedStore } from '../database/redis-connections'
 import { addToQueue, findFlowRunOrThrow, flowRunService, WEBHOOK_TIMEOUT_MS } from '../flows/flow-run/flow-run-service'
 import { flowRunSideEffects } from '../flows/flow-run/flow-run-side-effects'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { HostingError } from '../hosting/hosting-transactions'
 import { projectService } from '../project/project-service'
 import { engineResponseWatcher } from '../workers/engine-response-watcher'
 import { redisMetadataKey, RunsMetadataUpsertData } from '../workers/job'
@@ -35,6 +37,20 @@ export const resumeService = (log: FastifyBaseLogger) => ({
 
     async resumeTrustedWithoutLock({ flowRunId, waitpointId, resumePayload, workerHandlerId, httpRequestId }: ResumeFromWaitpointParams): Promise<ResumeFromWaitpointResult> {
         const flowRun = await findFlowRunOrThrow(flowRunId)
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            const result = await waitpointService(log).complete({ flowRunId, waitpointId, projectId: flowRun.projectId, resumePayload: resumePayload ?? null, workerHandlerId })
+            const waitpoint = result.waitpoint ?? await waitpointService(log).findByIdAndFlowRunId({ waitpointId, flowRunId, projectId: flowRun.projectId })
+            if (!waitpoint || waitpoint.status !== WaitpointStatus.COMPLETED) return { flowRun, stale: true }
+            if (flowRun.status === FlowRunStatus.PAUSED) {
+                try {
+                    await enqueueResume({ flowRun, waitpoint, resumePayload: waitpoint.resumePayload, workerHandlerId, httpRequestId }, log)
+                }
+                catch (error) {
+                    if (!(error instanceof HostingError) || error.message !== 'HOSTING_CHECKPOINT_REQUIRED') throw error
+                }
+            }
+            return { flowRun, stale: false }
+        }
         if (await hasPendingTerminalStatus({ flowRunId, projectId: flowRun.projectId })) {
             log.warn({ flowRun: { id: flowRunId } }, '[resumeService#resumeTrustedWithoutLock] Refused a resume of a run whose terminal status is already queued')
             return { flowRun, stale: true }
@@ -234,6 +250,7 @@ async function enqueueResume(params: EnqueueResumeParams, log: FastifyBaseLogger
     // against the still-active BEGIN job or a consecutive resume for a different waitpoint
     const waitpointId = waitpoint?.id ?? 'legacy'
     await addToQueue({
+        hostedOrigin: waitpoint ? { type: 'resume', waitpointId: waitpoint.id } : undefined,
         payload: resumePayload,
         flowRun,
         platformId,

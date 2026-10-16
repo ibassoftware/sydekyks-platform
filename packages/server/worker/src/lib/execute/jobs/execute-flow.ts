@@ -65,6 +65,7 @@ export const executeFlowJob: JobHandler<ExecuteFlowJobData, FireAndForgetJobResu
             // Best-effort latency breakdown for the runs page; reuses the run-log metadata upload
             // with no status so it only merges the timings the engine's own report can't measure.
             await tryCatch(() => ctx.apiClient.uploadRunLog({
+                admissionId: ctx.admissionId,
                 runId: data.runId,
                 projectId: data.projectId,
                 provisionMs: result.timings.provisionMs,
@@ -152,6 +153,7 @@ function buildFlowOperation(
             ...base,
             executionType: ExecutionType.RESUME,
             resumePayload: data.payload,
+            resumeCheckpointId: data.resumeCheckpointId,
             resumeReason: data.resumeReason,
         }
     }
@@ -193,6 +195,7 @@ async function reportFlowStatus({ ctx, data, status, internalError, failedStep }
     // A status report has no log file of its own; carry logsFileId only for an internalError the server may
     // persist into one (see uploadRunLog). Sending it on a plain status report would dangle flow_run.logsFileId.
     await ctx.apiClient.uploadRunLog({
+        admissionId: ctx.admissionId,
         runId: data.runId,
         status,
         projectId: data.projectId,

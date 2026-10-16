@@ -73,6 +73,16 @@ export class EngineConstants {
     public readonly actionRunMode: boolean
     private project: Project | null = null
 
+    public get hostedAccounting(): boolean {
+        try {
+            const value: unknown = JSON.parse(Buffer.from(this.engineToken.split('.')[1], 'base64url').toString('utf8'))
+            return !!value && typeof value === 'object' && 'hostingProtocol' in value && value.hostingProtocol === 1
+        }
+        catch {
+            return false
+        }
+    }
+
     public get isRunningApTests(): boolean {
         return EngineConstants.TEST_MODE
     }

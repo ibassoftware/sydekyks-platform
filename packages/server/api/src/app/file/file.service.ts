@@ -11,6 +11,9 @@ import { exceptionHandler } from '../helper/exception-handler'
 import { jwtUtils } from '../helper/jwt-utils'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { HostingReservationEntity } from '../hosting/hosting-entities'
+import { hostingFail } from '../hosting/hosting-transactions'
 import { projectRepo } from '../project/project-repo'
 import { fileCompressor } from './file-compressor'
 import { FileEntity } from './file.entity'
@@ -158,6 +161,7 @@ export const fileService = (log: FastifyBaseLogger) => ({
         if (isNil(file)) {
             return
         }
+        if (hostingConfiguration.getServiceMode() === 'hosted' && await fileRepo().manager.getRepository(HostingReservationEntity).existsBy({ projectId: params.projectId, kind: 'execution', state: In(['reserved', 'running', 'paused', 'uncertain']) })) hostingFail('HOSTING_EXECUTION_FILES_RETAINED')
         if (!isNil(file.s3Key)) {
             await s3Helper(log).deleteFiles([file.s3Key])
         }
@@ -166,6 +170,10 @@ export const fileService = (log: FastifyBaseLogger) => ({
     async deleteStaleBulk(types: FileType[]) {
         const maximumFilesToDeletePerIteration = 4000
         const maximumFilesToDeletePerRun = 1_000_000
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            log.info('[FileService#deleteStaleBulk] Hosted cleanup awaits root-aware reference retention')
+            return
+        }
         const customRetentionProjects = await projectRepo().find({
             select: ['id', 'executionDataRetentionDays'],
             where: {

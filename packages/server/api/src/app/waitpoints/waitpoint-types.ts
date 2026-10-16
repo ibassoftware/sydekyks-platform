@@ -19,6 +19,7 @@ type WaitpointResumePayload = {
 } | null
 
 type Waitpoint = {
+    hostingDispatchId?: string | null
     id: ApId
     created: string
     updated: string
@@ -52,6 +53,7 @@ type WaitpointSignal = {
 }
 
 type CreateForPauseParams = {
+    hostingDispatchId?: string
     flowRunId: ApId
     projectId: ApId
     stepName: string

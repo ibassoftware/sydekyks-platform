@@ -83,6 +83,7 @@ export type HookResponse = {
     responseToSend?: RespondResponse
 } & ({
     type: 'paused'
+    waitpointId?: string
 } | {
     type: 'stopped'
     response: StopHookParams

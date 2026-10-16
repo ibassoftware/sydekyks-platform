@@ -97,6 +97,8 @@ export const streamCsvToSubflows = createAction({
       }
       await dispatchToSubflow({
         apiUrl: context.server.apiUrl,
+      hostedDispatch: context.run.callSubflow,
+      key: String(batchIndex),
         flowId: flow.id,
         parentRunId: context.run.id,
         failParentOnFailure: false,

@@ -129,6 +129,7 @@ export const flowRunService = (log: FastifyBaseLogger) => ({
         return paginationHelper.createPage<FlowRun>(data, newCursor)
     },
     async retry({ flowRunId, strategy, projectId }: RetryParams): Promise<FlowRun> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_EXPLICIT_RETRY_POLICY_REQUIRED')
         const oldFlowRun = await flowRunService(log).getOnePopulatedOrThrow({
             id: flowRunId,
             projectId,
@@ -234,6 +235,7 @@ export const flowRunService = (log: FastifyBaseLogger) => ({
         }
     },
     async cancel({ projectId, platformId, flowRunIds, excludeFlowRunIds, status, flowId, createdAfter, createdBefore }: CancelParams): Promise<void> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_ROOT_CANCELLATION_POLICY_REQUIRED')
         const filteredStatus = status ?? CANCELLABLE_STATUSES
         const flowRuns = await filterFlowRunsAndApplyFilters({
             projectId,
@@ -652,7 +654,6 @@ async function filterFlowRunsAndApplyFilters(
 
 
 export async function addToQueue(params: AddToQueueParams, log: FastifyBaseLogger): Promise<FlowRun> {
-    if (hostingConfiguration.getServiceMode() === 'hosted' && params.flowRun.parentRunId) hostingFail('HOSTING_NESTED_COORDINATOR_REQUIRED')
     const logsFileId = params.flowRun.logsFileId ?? apId()
 
     let jobPayload: JobPayload = { type: 'inline', value: null }

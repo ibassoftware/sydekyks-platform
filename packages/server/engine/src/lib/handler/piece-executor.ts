@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { isNil, isObject } from '@activepieces/core-utils'
 import { ActionContext, backwardCompatabilityContextUtils, CreateWaitpointHook, CreateWaitpointParams, CreateWaitpointResult, InputPropertyMap, PieceAuthProperty, PiecePropertyMap, RespondHook, RespondHookParams, StaticPropsValue, StopHook, StopHookParams, TagsManager, WaitForWaitpointHook } from '@activepieces/pieces-framework'
 import { AUTHENTICATION_PROPERTY_NAME, EngineGenericError, ExecutionType, FlowActionType, FlowRunStatus, GenericStepOutput, PausedFlowTimeoutError, PieceAction, RespondResponse, StepOutputStatus } from '@activepieces/shared'
@@ -128,6 +129,12 @@ const executeAction: ActionHandler<PieceAction> = async ({ action, executionStat
             }),
             run: {
                 id: constants.flowRunId,
+                ...(constants.hostedAccounting ? { callSubflow: async (params: { flowId: string, data: unknown, callbackUrl?: string, failParentOnFailure: boolean, key?: string }) => {
+                    const key = createHash('sha256').update(JSON.stringify([executionState.currentPath.waitpointKeyFor({ stepName: action.name }), params.key ?? 'call'])).digest('hex')
+                    const response = await fetch(`${constants.internalApiUrl}v1/engine/nested-runs`, { method: 'POST', headers: { Authorization: `Bearer ${constants.engineToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...params, key }) })
+                    if (!response.ok) throw new EngineGenericError('HostedNestedDispatchDenied', `Nested run request failed (${response.status})`)
+                    return response.json()
+                } } : {}),
                 canPause: !constants.actionRunMode,
                 stop: createStopHook(params),
                 respond: createRespondHook(params),
@@ -181,7 +188,7 @@ const executeAction: ActionHandler<PieceAction> = async ({ action, executionStat
             const paused = stepOutput.setOutput(output).setStatus(StepOutputStatus.PAUSED).setDuration(stepEndTime - stepStartTime)
             return (await newExecutionContext.upsertStep(action.name, paused))
                 .incrementStepsExecuted()
-                .setVerdict({ status: FlowRunStatus.PAUSED })
+                .setVerdict({ status: FlowRunStatus.PAUSED, waitpointId: params.hookResponse.waitpointId })
         }
         const succeeded = stepOutput.setOutput(output).setStatus(StepOutputStatus.SUCCEEDED).setDuration(stepEndTime - stepStartTime)
         return (await newExecutionContext.upsertStep(action.name, succeeded)).incrementStepsExecuted().setVerdict({ status: FlowRunStatus.RUNNING })
@@ -295,11 +302,12 @@ async function submitWaitpoint({ constants, waitpointKey, hookParams, req }: { c
 }
 
 function createWaitForWaitpointHook({ constants, hookParams }: { constants: EngineConstants, hookParams: { hookResponse: HookResponse } }): WaitForWaitpointHook {
-    return (_waitpointId: string) => {
+    return (waitpointId: string) => {
         assertActionRunCannotSuspend(constants)
         hookParams.hookResponse = {
             ...hookParams.hookResponse,
             type: 'paused',
+            waitpointId,
         }
     }
 }

@@ -113,6 +113,7 @@ export const callFlow = createAction({
 
     return await dispatchToSubflow({
       apiUrl: context.server.apiUrl,
+      hostedDispatch: context.run.callSubflow,
       flowId: flow.id,
       parentRunId: context.run.id,
       failParentOnFailure: context.propsValue.waitForResponse ?? false,

@@ -50,7 +50,7 @@ type ExtractOIDCProps<T> = T extends OIDCProperty<infer Props> ? Props : never;
 type ExtractOAuth2Props<T> = T extends OAuth2Property<infer Props> ? Props : never;
 
 
-export type AppConnectionValueForAuthProperty<T extends PieceAuthProperty | PieceAuthProperty[] | undefined> = 
+export type AppConnectionValueForAuthProperty<T extends PieceAuthProperty | PieceAuthProperty[] | undefined> =
   T extends PieceAuthProperty[] ? AppConnectionValueForSingleAuthProperty<T[number]> :
   T extends PieceAuthProperty ? AppConnectionValueForSingleAuthProperty<T> :
   T extends undefined ? undefined : never;
@@ -209,6 +209,7 @@ export type CreateWaitpointHook = (params: CreateWaitpointParams) => Promise<Cre
 export type WaitForWaitpointHook = (waitpointId: string) => void;
 
 export type RunContext = {
+  callSubflow?: (params: { flowId: string; data: unknown; callbackUrl?: string; failParentOnFailure: boolean; key?: string }) => Promise<unknown>;
   id: FlowRunId;
   canPause: boolean;
   stop: StopHook;

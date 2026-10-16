@@ -51,8 +51,8 @@ function assertGrantActive({ grant, now: instant }: { grant: HostingGrant, now: 
     if (grant.validFrom > instant || grant.validUntil <= instant) hostingFail('HOSTING_GRANT_EXPIRED')
 }
 
-async function entry({ manager, reservation, operation, amount }: { manager: EntityManager, reservation: HostingReservation, operation: 'reserve' | 'dispatch' | 'settle' | 'release' | 'uncertain', amount: bigint }): Promise<void> {
-    await manager.getRepository(HostingLedgerEntity).insert({ id: apId(), platformId: reservation.platformId, grantId: reservation.grantId, reservationId: reservation.id, operation, key: `${operation}:${reservation.id}`, amount })
+async function entry({ manager, reservation, operation, amount, key }: { manager: EntityManager, reservation: HostingReservation, operation: 'reserve' | 'dispatch' | 'settle' | 'release' | 'uncertain', amount: bigint, key?: string }): Promise<void> {
+    await manager.getRepository(HostingLedgerEntity).insert({ id: apId(), platformId: reservation.platformId, grantId: reservation.grantId, reservationId: reservation.id, operation, key: key ?? `${operation}:${reservation.id}`, amount })
 }
 
 async function event({ manager, platformId, event, payload }: { manager: EntityManager, platformId: string, event: string, payload: Record<string, unknown> }): Promise<void> {

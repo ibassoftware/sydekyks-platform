@@ -59,10 +59,10 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             const reservation = await findReservation({ manager, platformId, reservationId, kind: 'execution' })
             assertFence({ reservation, dispatchId })
             if (reservation.state === 'settled') return
-            if (reservation.state !== 'running' && reservation.state !== 'uncertain') hostingFail('HOSTING_INVALID_TRANSITION')
+            if (!['running', 'uncertain', 'paused'].includes(reservation.state)) hostingFail('HOSTING_INVALID_TRANSITION')
             if (await manager.getRepository(HostingReservationEntity).existsBy({ platformId, rootReservationId: reservation.id, state: In(['reserved', 'running', 'uncertain']) })) hostingFail('HOSTING_UNSETTLED_CHILDREN')
             await manager.getRepository(HostingReservationEntity).update({ id: reservation.id }, { state: 'settled', actualAmount: 1n })
-            await manager.getRepository(HostingAccountEntity).update({ id: platformId }, { activeExecutions: account.activeExecutions - 1 })
+            if (reservation.state !== 'paused') await manager.getRepository(HostingAccountEntity).update({ id: platformId }, { activeExecutions: account.activeExecutions - 1 })
             await tx.entry({ manager, reservation, operation: 'settle', amount: 1n })
         } })
     }
@@ -150,7 +150,8 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
         } })
     }
 
-    async function markUncertain({ platformId, reservationId, dispatchId }: Fence): Promise<void> {
+    async function markUncertain({ platformId, reservationId, dispatchId, attemptKey }: Fence & { attemptKey?: string }): Promise<void> {
+        if (attemptKey) tx.assertKey(attemptKey)
         await tx.run({ dataSource, manager: existingManager, fn: async manager => {
             await tx.account({ manager, platformId })
             const reservation = await findReservation({ manager, platformId, reservationId })
@@ -158,7 +159,7 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             if (reservation.state === 'uncertain') return
             if (reservation.state !== 'running') hostingFail('HOSTING_INVALID_TRANSITION')
             await manager.getRepository(HostingReservationEntity).update({ id: reservation.id }, { state: 'uncertain' })
-            await tx.entry({ manager, reservation, operation: 'uncertain', amount: reservation.amount })
+            await tx.entry({ manager, reservation, operation: 'uncertain', amount: reservation.amount, key: attemptKey ? `uncertain:${reservation.id}:${attemptKey}` : undefined })
             await tx.event({ manager, platformId, event: 'accounting.uncertain', payload: { reservationId } })
         } })
     }
@@ -199,7 +200,40 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
         } })
     }
 
-    return { reserveExecution, claimExecution, finishExecution, reserveManagedCall, claimManagedCall, settleManagedCall, markUncertain, releaseUnsent, cancelUnsent, balance }
+    async function parkExecution({ platformId, reservationId, dispatchId }: Fence): Promise<void> {
+        await tx.run({ dataSource, manager: existingManager, fn: async manager => {
+            const account = await tx.account({ manager, platformId })
+            const reservation = await findReservation({ manager, platformId, reservationId, kind: 'execution' })
+            assertFence({ reservation, dispatchId })
+            if (reservation.state === 'paused') return
+            if (reservation.state !== 'running' && reservation.state !== 'uncertain') hostingFail('HOSTING_INVALID_TRANSITION')
+            if (await manager.getRepository(HostingReservationEntity).existsBy({ platformId, rootReservationId: reservation.id, state: In(['reserved', 'running', 'uncertain']) })) hostingFail('HOSTING_UNSETTLED_CHILDREN')
+            await manager.getRepository(HostingReservationEntity).update({ id: reservation.id }, { state: 'paused' })
+            await manager.getRepository(HostingAccountEntity).update({ id: platformId }, { activeExecutions: account.activeExecutions - 1 })
+            await tx.event({ manager, platformId, event: 'execution.parked', payload: { reservationId } })
+        } })
+    }
+
+    async function resumeExecution({ actor, reservationId }: { actor: HostingActor, reservationId: string }): Promise<void> {
+        await tx.run({ dataSource, manager: existingManager, fn: async manager => {
+            const account = await tx.account({ manager, platformId: actor.platformId })
+            const reservation = await findReservation({ manager, platformId: actor.platformId, reservationId, kind: 'execution' })
+            await tx.member({ manager, actor, projectId: reservation.projectId, write: true })
+            assertOwner({ actor, reservation })
+            const now = await tx.now(manager)
+            tx.assertActive({ account, now })
+            const grant = await manager.getRepository(HostingGrantEntity).findOneByOrFail({ id: reservation.grantId, platformId: actor.platformId })
+            tx.assertGrantActive({ grant, now })
+            if (reservation.state === 'running') return
+            if (reservation.state !== 'paused') hostingFail('HOSTING_INVALID_TRANSITION')
+            if (account.activeExecutions >= hostingCatalog.getPlan({ planId: account.planId }).concurrency) hostingFail('HOSTING_CONCURRENCY_LIMIT')
+            await manager.getRepository(HostingReservationEntity).update({ id: reservation.id }, { state: 'running' })
+            await manager.getRepository(HostingAccountEntity).update({ id: account.id }, { activeExecutions: account.activeExecutions + 1 })
+            await tx.event({ manager, platformId: account.id, event: 'execution.resumed', payload: { reservationId } })
+        } })
+    }
+
+    return { reserveExecution, claimExecution, finishExecution, parkExecution, resumeExecution, reserveManagedCall, claimManagedCall, settleManagedCall, markUncertain, releaseUnsent, cancelUnsent, balance }
 }
 
 async function activeGrant({ manager, platformId, meter, now }: { manager: EntityManager, platformId: string, meter: 'execution' | 'managed_ai', now: Date }): Promise<HostingGrant> {

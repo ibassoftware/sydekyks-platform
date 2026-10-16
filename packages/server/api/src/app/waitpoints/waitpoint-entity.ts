@@ -11,6 +11,7 @@ export const WaitpointEntity = new EntitySchema<WaitpointSchema>({
     name: 'waitpoint',
     columns: {
         ...BaseColumnSchemaPart,
+        hostingDispatchId: { ...ApIdSchema, nullable: true },
         flowRunId: {
             ...ApIdSchema,
             nullable: false,
@@ -99,6 +100,7 @@ export const WaitpointEntity = new EntitySchema<WaitpointSchema>({
             where: '"type" = \'BARRIER\' AND "status" = \'COMPLETED\'',
         },
     ],
+    foreignKeys: [{ target: 'hosting_dispatch', columnNames: ['hostingDispatchId'], referencedColumnNames: ['id'], onDelete: 'RESTRICT' }],
     relations: {
         project: {
             type: 'many-to-one',

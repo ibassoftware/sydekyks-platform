@@ -256,6 +256,7 @@ function withTruncatedInput<T extends BaseStepOutput>(stepOutput: T): T {
 
 export type FlowVerdict = {
     status: FlowRunStatus.PAUSED
+    waitpointId?: string
 } | {
     status: FlowRunStatus.SUCCEEDED
     stopResponse: RespondResponse | undefined

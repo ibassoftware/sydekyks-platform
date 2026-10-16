@@ -1,6 +1,6 @@
 
 import { ActivepiecesError, ErrorCode, isNil } from '@activepieces/core-utils'
-import { ChooseAiRouteRequest, ChooseAiRouteResponse, FileType, FlowVersion, GetFlowVersionForWorkerRequest, ListFlowsRequest, PrincipalType, SendFlowResponseRequest, StartAiRouteResponse, UpdateStepProgressRequest, UploadRunLogsRequest } from '@activepieces/shared'
+import { ChooseAiRouteRequest, ChooseAiRouteResponse, FileType, FlowVersion, GetFlowVersionForWorkerRequest, ListFlowsRequest, PrincipalType, SendFlowResponseRequest, StartAiRouteResponse, UpdateStepProgressRequest, UploadRunLogsRequest, WorkerJobType } from '@activepieces/shared'
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { StatusCodes } from 'http-status-codes'
 import { z } from 'zod'
@@ -12,8 +12,11 @@ import { flowService } from '../flows/flow/flow.service'
 import { engineRunCallbackService } from '../flows/flow-run/engine-run-callback-service'
 import { flowVersionService } from '../flows/flow-version/flow-version.service'
 import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostedRunCallback } from '../hosting/hosting-run-callback'
 import { hostingServices } from '../hosting/hosting-services'
+import { hostingFail } from '../hosting/hosting-transactions'
 import { pieceBundle } from '../pieces/piece-bundle'
+import { getQueueName } from './job-queue/job-queue'
 
 export const flowEngineWorker: FastifyPluginAsyncZod = async (app) => {
 
@@ -90,7 +93,10 @@ export const flowEngineWorker: FastifyPluginAsyncZod = async (app) => {
     })
 
     app.post('/run-logs', RunLogsRequest, async (request, reply) => {
-        if (hostingConfiguration.getServiceMode() === 'hosted') await hostingServices.execution().flowReceipt({ admissionId: request.principal.id, projectId: request.principal.projectId, runId: request.body.runId, status: request.body.status })
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            await hostedRunCallback({ log: request.log, admissionId: request.principal.id, projectId: request.principal.projectId, request: request.body })
+            return reply.status(StatusCodes.OK).send()
+        }
         await engineRunCallbackService(request.log).uploadRunLog({
             projectId: request.principal.projectId,
             request: request.body,
@@ -103,6 +109,19 @@ export const flowEngineWorker: FastifyPluginAsyncZod = async (app) => {
             request: request.body,
         })
         return reply.status(StatusCodes.OK).send()
+    })
+
+    app.get('/checkpoints/:id', { config: { security: securityAccess.engine() }, schema: { params: z.object({ id: z.string() }) } }, async request => {
+        if (hostingConfiguration.getServiceMode() !== 'hosted') hostingFail('HOSTED_INSTALLATION_REQUIRED')
+        return hostingServices.execution().checkpoint({ admissionId: request.principal.id, platformId: request.principal.platform.id, projectId: request.principal.projectId, checkpointId: request.params.id })
+    })
+
+    app.post('/nested-runs', { config: { security: securityAccess.engine() }, schema: { body: z.object({ flowId: z.string(), key: z.string().max(120), data: z.unknown(), callbackUrl: z.string().url().optional(), failParentOnFailure: z.boolean() }).strict() } }, async request => {
+        if (hostingConfiguration.getServiceMode() !== 'hosted') hostingFail('HOSTED_INSTALLATION_REQUIRED')
+        const projectId = request.principal.projectId
+        const platformId = request.principal.platform.id
+        const queueName = await getQueueName({ platformId, projectId, jobType: WorkerJobType.EXECUTE_FLOW }, request.log)
+        return hostingServices.execution().nested({ admissionId: request.principal.id, projectId, platformId, queueName, flowId: request.body.flowId, key: request.body.key, payload: { data: request.body.data, callbackUrl: request.body.callbackUrl }, failParentOnFailure: request.body.failParentOnFailure })
     })
 
     app.post('/ai-router', AiRouterRequest, async (request, reply) => {

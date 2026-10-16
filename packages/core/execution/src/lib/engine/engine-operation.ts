@@ -132,6 +132,7 @@ export type BeginExecuteFlowOperation = BaseExecuteFlowOperation<ExecutionType.B
 }
 
 export type ResumeExecuteFlowOperation = BaseExecuteFlowOperation<ExecutionType.RESUME> & {
+    resumeCheckpointId?: string
     resumePayload: JobPayload
     resumeReason: ResumeReason
 }

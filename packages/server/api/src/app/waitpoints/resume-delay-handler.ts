@@ -9,6 +9,9 @@ import { flowVersionService } from '../flows/flow-version/flow-version.service'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { SystemJobData, SystemJobName } from '../helper/system-jobs/common'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingServices } from '../hosting/hosting-services'
+import { projectService } from '../project/project-service'
 import { barrierService } from './barrier-service'
 import { resumeService } from './resume-service'
 import { waitpointService } from './waitpoint-service'
@@ -48,6 +51,10 @@ export async function handleResumeDelayWaitpoint({ data, log }: HandleResumeDela
     const pastPauseTimeout = dayjs().isAfter(dayjs(flowRun.created).add(pauseTimeoutDays, 'day'))
     const isWebhookExpiry = waitpoint.type === PauseType.WEBHOOK
     if (isWebhookExpiry || pastPauseTimeout) {
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            await hostingServices.execution().expireWaitpoint({ platformId: await projectService(log).getPlatformId(flowRun.projectId), projectId: flowRun.projectId, runId: flowRun.id, waitpointId: waitpoint.id })
+            return
+        }
         const message = isWebhookExpiry
             ? 'Waitpoint expired: no webhook was received within the pause-timeout window'
             : `Resume dispatched past pause-timeout window (${pauseTimeoutDays} days from run start)`

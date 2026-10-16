@@ -116,7 +116,10 @@ export async function dispatchToSubflow({
     data,
     callbackUrl,
     retries,
+    hostedDispatch,
+    key,
 }: DispatchToSubflowParams): Promise<unknown> {
+    if (hostedDispatch) return hostedDispatch({ flowId, data, callbackUrl, failParentOnFailure, key });
     const response = await httpClient.sendRequest({
         method: HttpMethod.POST,
         url: `${apiUrl.replace(/\/$/, '')}/v1/webhooks/${flowId}`,
@@ -160,6 +163,8 @@ type ListParams = {
 }
 
 type DispatchToSubflowParams = {
+    hostedDispatch?: (params: { flowId: string; data: unknown; callbackUrl?: string; failParentOnFailure: boolean; key?: string }) => Promise<unknown>;
+    key?: string;
     apiUrl: string;
     flowId: string;
     parentRunId: string;

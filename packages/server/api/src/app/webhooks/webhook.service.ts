@@ -10,6 +10,8 @@ import { pinoLogging } from '../helper/logger'
 import { rejectedPromiseHandler } from '../helper/promise-handler'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingFail } from '../hosting/hosting-transactions'
 import { shouldBlockRunOnCredits } from '../platform/billing-provider'
 import { triggerSourceService } from '../trigger/trigger-source/trigger-source-service'
 import { engineResponseWatcher } from '../workers/engine-response-watcher'
@@ -56,6 +58,7 @@ export const webhookService = {
         failParentOnFailure,
         timeoutMs,
     }: HandleWebhookParams): Promise<EngineHttpResponse> {
+        if (hostingConfiguration.getServiceMode() === 'hosted' && parentRunId) hostingFail('HOSTING_AUTHENTICATED_NESTED_CALL_REQUIRED')
         const webhookHeader = 'x-webhook-id'
         const webhookRequestId = apId()
         wideEvent.set({

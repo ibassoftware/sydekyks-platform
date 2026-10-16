@@ -42,6 +42,7 @@ export const barrierService = (log: FastifyBaseLogger) => ({
                 id: apId(),
                 created: now,
                 updated: now,
+                hostingDispatchId: params.hostingDispatchId ?? null,
                 flowRunId: params.flowRunId,
                 projectId: params.projectId,
                 stepName: params.stepName,
@@ -304,6 +305,7 @@ const UpdatedSignalRows = z.array(z.object({ waitpointId: z.string() }))
 export type BarrierReleaseReason = 'predicate' | 'timeout'
 
 export type CreateBarrierParams = {
+    hostingDispatchId?: string
     flowRunId: string
     projectId: string
     platformId: string

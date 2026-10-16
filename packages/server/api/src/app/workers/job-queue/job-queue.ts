@@ -8,6 +8,7 @@ import { system } from '../../helper/system/system'
 import { AppSystemProp } from '../../helper/system/system-props'
 import { hostingConfiguration } from '../../hosting/hosting-configuration'
 import { HostingJobOrigin } from '../../hosting/hosting-execution'
+import { hostingRecovery } from '../../hosting/hosting-recovery'
 import { hostingServices } from '../../hosting/hosting-services'
 import { hostingFail } from '../../hosting/hosting-transactions'
 import { projectWorkerGroupService } from '../../project/project-worker-group.service'
@@ -18,28 +19,40 @@ const EIGHT_MINUTES_IN_MILLISECONDS = apDayjsDuration(8, 'minute').asMillisecond
 const REDIS_FAILED_JOB_RETENTION_DAYS = apDayjsDuration(system.getNumberOrThrow(AppSystemProp.REDIS_FAILED_JOB_RETENTION_DAYS), 'day').asSeconds()
 const REDIS_FAILED_JOB_RETRY_COUNT = system.getNumberOrThrow(AppSystemProp.REDIS_FAILED_JOB_RETENTION_MAX_COUNT)
 
+let recoveryTimer: ReturnType<typeof setInterval> | undefined
+let recoveryRun: Promise<void> | undefined
 const dedicatedWorkersQueues = new Map<string, Queue>()
 
 export const jobQueue = (log: FastifyBaseLogger) => ({
     async init(): Promise<void> {
         await ensureQueueExists({ log, queueName: QueueName.WORKER_JOBS })
+        if (hostingConfiguration.getServiceMode() === 'hosted' && !recoveryTimer) {
+            recoveryTimer = setInterval(() => {
+                if (recoveryRun) return
+                recoveryRun = hostingRecovery(log).run().catch(error => log.error({ error }, '[hostingRecovery] Sweep failed')).finally(() => {
+                    recoveryRun = undefined
+                })
+            }, 30_000)
+            recoveryTimer.unref()
+        }
         log.info('[jobQueue#init] Dynamic queue system initialized')
     },
     async add(params: AddJobParams<JobType>): Promise<Job | null> {
-        const { type, data } = params
+        const { type } = params
+        let { data } = params
 
         const platformId = data.platformId
         const projectId = 'projectId' in data ? data.projectId : null
         const queueName = await getQueueName({ platformId, projectId, jobType: data.jobType }, log)
         if (hostingConfiguration.getServiceMode() === 'hosted') {
             if (type !== JobType.ONE_TIME) hostingFail('HOSTING_JOB_PATH_NOT_READY')
-            await hostingServices.execution().prepare({ queueName, jobId: params.id, data, origin: params.hostedOrigin })
+            data = await hostingServices.execution().prepare({ queueName, jobId: params.id, data, origin: params.hostedOrigin, delay: params.delay })
         }
         const queue = await ensureQueueExists({ log, queueName })
 
         switch (type) {
             case JobType.REPEATING: {
-                const { scheduleOptions } = params
+                const { scheduleOptions, data } = params
                 await queue.upsertJobScheduler(data.flowVersionId, scheduleOptions.type === TriggerSourceScheduleType.INTERVAL ? {
                     every: scheduleOptions.intervalMs,
                     startDate: Date.now() + scheduleOptions.intervalMs,
@@ -59,6 +72,7 @@ export const jobQueue = (log: FastifyBaseLogger) => ({
                 return queue.add(params.id, data, {
                     priority: JOB_PRIORITY[getDefaultJobPriority(data)],
                     delay: params.delay,
+                    ...(hostingConfiguration.getServiceMode() === 'hosted' ? { attempts: 1 } : {}),
                     jobId: params.id,
                     ...(isNil(params.retryBackoffMs) ? {} : { backoff: { type: 'exponential', delay: params.retryBackoffMs } }),
                     ...(data.jobType === WorkerJobType.EVENT_DESTINATION ? { removeOnFail: true } : {}),
@@ -155,6 +169,9 @@ export const jobQueue = (log: FastifyBaseLogger) => ({
     },
 
     async close(): Promise<void> {
+        if (recoveryTimer) clearInterval(recoveryTimer)
+        recoveryTimer = undefined
+        await recoveryRun
         log.info('[jobQueue#close] Closing job queue')
         const allQueues = [...dedicatedWorkersQueues.values()].filter(queue => !isNil(queue))
         await Promise.allSettled(
@@ -238,7 +255,7 @@ export const PROJECT_GROUP_ROUTABLE_JOB_TYPES = new Set<WorkerJobType>([
     WorkerJobType.EXECUTE_WEBHOOK,
 ])
 
-async function getQueueName({ platformId, projectId, jobType }: GetQueueNameParams, log: FastifyBaseLogger): Promise<string> {
+export async function getQueueName({ platformId, projectId, jobType }: GetQueueNameParams, log: FastifyBaseLogger): Promise<string> {
     if (!isNil(platformId) && !isNil(projectId) && !isNil(jobType) && PROJECT_GROUP_ROUTABLE_JOB_TYPES.has(jobType)) {
         const workerGroupsEnabled = await workerGroupService(log).isWorkerGroupsEnabled({ platformId })
         if (workerGroupsEnabled) {

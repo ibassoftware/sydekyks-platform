@@ -12,6 +12,7 @@ export type JobContext = {
     runtime: Runtime
     resolver: Resolver
     workerIndex: number
+    admissionId?: string
     jobId: string
     lastAttempt: boolean
     engineToken: string
