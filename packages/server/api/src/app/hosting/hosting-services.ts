@@ -4,6 +4,7 @@ import { createHostedAiGateway } from './hosting-ai-gateway'
 import { createHostedExecution } from './hosting-execution'
 import { createHostedLedger } from './hosting-ledger'
 import { createHostedOnboarding } from './hosting-onboarding'
+import { createHostedStripe } from './hosting-stripe'
 import { hostingFail } from './hosting-transactions'
 
 async function onboarding() {
@@ -21,4 +22,7 @@ function execution() {
 function gateway() {
     return createHostedAiGateway({ dataSource: databaseConnection() })
 }
-export const hostingServices = { onboarding, ledger, execution, gateway }
+async function billing() {
+    return createHostedStripe({ dataSource: databaseConnection() })
+}
+export const hostingServices = { onboarding, ledger, execution, gateway, billing }

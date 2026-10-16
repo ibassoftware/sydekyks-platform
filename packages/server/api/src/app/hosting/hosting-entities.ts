@@ -17,7 +17,7 @@ export const HostingAccountEntity = new EntitySchema<HostingAccount>({
         ...BaseColumnSchemaPart, ownerIdentityId: ApIdSchema, initialProjectId: ApIdSchema,
         status: { type: String }, planId: { type: String }, catalogVersion: { type: String },
         trialStartedAt: timestamp, trialEndsAt: timestamp, validUntil: timestamp,
-        activeExecutions: { type: Number, default: 0 },
+        activeExecutions: { type: Number, default: 0 }, billingHold: { type: Boolean, default: false },
     },
     checks: [{ expression: '"activeExecutions" >= 0' }, { expression: '"status" IN (\'trialing\', \'active\', \'suspended\')' }, { expression: '"planId" IN (\'trial\', \'starter\', \'team\')' }],
     foreignKeys: [{ target: 'platform', columnNames: ['id'], referencedColumnNames: ['id'], onDelete: 'RESTRICT' }],
@@ -37,7 +37,7 @@ export const HostingPolicyEntity = new EntitySchema<HostingPolicy>({
 export const HostingGrantEntity = new EntitySchema<HostingGrant>({
     name: 'hosting_grant', columns: {
         ...BaseColumnSchemaPart, platformId: ApIdSchema, sourceKey: { type: String, length: 180 }, meter: { type: String },
-        amount: quantity, reserved: quantity, consumed: quantity, validFrom: timestamp, validUntil: timestamp,
+        amount: quantity, reserved: quantity, consumed: quantity, validFrom: timestamp, validUntil: timestamp, revokedAt: { ...timestamp, nullable: true },
     },
     uniques: [{ columns: ['platformId', 'sourceKey', 'meter'] }, { columns: ['id', 'platformId'] }],
     checks: [{ expression: 'amount >= 0 AND reserved >= 0 AND consumed >= 0' }, { expression: '"validUntil" > "validFrom"' }, { expression: 'meter IN (\'execution\', \'managed_ai\')' }],
@@ -101,13 +101,13 @@ export const HostingOutboxEntity = new EntitySchema<HostingOutboxEvent>({
 export const HOSTING_ENTITIES = [HostingAccountEntity, HostingEligibilityEntity, HostingPolicyEntity, HostingGrantEntity, HostingReservationEntity, HostingLedgerEntity, HostingDailyBudgetEntity, HostingInvitationEntity, HostingOutboxEntity]
 
 type HostingBase = { id: string, created: Date, updated: Date }
-export type HostingAccount = HostingBase & { ownerIdentityId: string, initialProjectId: string, status: 'trialing' | 'active' | 'suspended', planId: HostedPlanId, catalogVersion: string, trialStartedAt: Date, trialEndsAt: Date, validUntil: Date, activeExecutions: number }
+export type HostingAccount = HostingBase & { ownerIdentityId: string, initialProjectId: string, status: 'trialing' | 'active' | 'suspended', planId: HostedPlanId, catalogVersion: string, trialStartedAt: Date, trialEndsAt: Date, validUntil: Date, activeExecutions: number, billingHold?: boolean }
 export type HostingEligibility = HostingBase & { identityId: string, platformId: string }
 export type HostingPolicy = HostingBase & { subjectKeyFingerprint: string }
 export type HostingMeter = 'execution' | 'managed_ai'
-export type HostingGrant = HostingBase & { platformId: string, sourceKey: string, meter: HostingMeter, amount: bigint, reserved: bigint, consumed: bigint, validFrom: Date, validUntil: Date }
+export type HostingGrant = HostingBase & { platformId: string, sourceKey: string, meter: HostingMeter, amount: bigint, reserved: bigint, consumed: bigint, validFrom: Date, validUntil: Date, revokedAt?: Date | null }
 export type HostingReservation = HostingBase & { platformId: string, projectId: string, identityId: string, grantId: string, key: string, kind: HostingMeter, payer: 'managed' | 'byok', state: 'reserved' | 'running' | 'settled' | 'released' | 'uncertain' | 'paused', rootReservationId: string | null, day: string | null, amount: bigint, actualAmount: bigint | null, dispatchId: string | null }
-export type HostingLedgerEntry = HostingBase & { platformId: string, grantId: string, reservationId: string | null, operation: 'grant' | 'reserve' | 'dispatch' | 'settle' | 'release' | 'uncertain', key: string, amount: bigint }
+export type HostingLedgerEntry = HostingBase & { platformId: string, grantId: string, reservationId: string | null, operation: 'grant' | 'reserve' | 'dispatch' | 'settle' | 'release' | 'uncertain' | 'revoke', key: string, amount: bigint }
 export type HostingDailyBudget = HostingBase & { reserved: bigint, consumed: bigint, limit: bigint }
 export type HostingInvitation = HostingBase & { platformId: string, subject: string, tokenDigest: string, role: PlatformRole, projectUnits: number, status: 'pending' | 'accepted' | 'revoked', expiresAt: Date, acceptedIdentityId: string | null }
 export type HostingOutboxEvent = HostingBase & { platformId: string, event: string, payload: Record<string, unknown>, processedAt: Date | null }

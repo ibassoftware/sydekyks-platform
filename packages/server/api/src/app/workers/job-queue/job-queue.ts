@@ -21,6 +21,8 @@ const REDIS_FAILED_JOB_RETRY_COUNT = system.getNumberOrThrow(AppSystemProp.REDIS
 
 let recoveryTimer: ReturnType<typeof setInterval> | undefined
 let recoveryRun: Promise<void> | undefined
+let billingTimer: ReturnType<typeof setInterval> | undefined
+let billingRun: Promise<void> | undefined
 const dedicatedWorkersQueues = new Map<string, Queue>()
 
 export const jobQueue = (log: FastifyBaseLogger) => ({
@@ -34,6 +36,15 @@ export const jobQueue = (log: FastifyBaseLogger) => ({
                 })
             }, 30_000)
             recoveryTimer.unref()
+        }
+        if (hostingConfiguration.getServiceMode() === 'hosted' && !billingTimer) {
+            billingTimer = setInterval(() => {
+                if (billingRun) return
+                billingRun = hostingServices.billing().then(service => service.recover()).catch(() => log.warn('[hostingBilling] Recovery remains blocked')).finally(() => {
+                    billingRun = undefined
+                })
+            }, 30_000)
+            billingTimer.unref()
         }
         log.info('[jobQueue#init] Dynamic queue system initialized')
     },
@@ -171,7 +182,9 @@ export const jobQueue = (log: FastifyBaseLogger) => ({
     async close(): Promise<void> {
         if (recoveryTimer) clearInterval(recoveryTimer)
         recoveryTimer = undefined
-        await recoveryRun
+        if (billingTimer) clearInterval(billingTimer)
+        billingTimer = undefined
+        await Promise.all([recoveryRun, billingRun])
         log.info('[jobQueue#close] Closing job queue')
         const allQueues = [...dedicatedWorkersQueues.values()].filter(queue => !isNil(queue))
         await Promise.allSettled(

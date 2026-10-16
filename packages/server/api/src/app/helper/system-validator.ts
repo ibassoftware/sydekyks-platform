@@ -99,6 +99,7 @@ const systemPropValidators: {
     [AppSystemProp.SERVICE_MODE]: enumValidator(['self_hosted', 'hosted']),
     [AppSystemProp.HOSTED_DEEPSEEK_API_KEY]: () => true,
     [AppSystemProp.HOSTED_DEEPSEEK_PRICE_JSON]: () => true,
+    [AppSystemProp.HOSTED_STRIPE_CATALOG_JSON]: () => true,
     [AppSystemProp.HOSTED_STRIPE_SECRET_KEY]: () => true,
     [AppSystemProp.HOSTED_STRIPE_WEBHOOK_SECRET]: () => true,
     [AppSystemProp.ALLOW_OPEN_SIGN_UP]: booleanValidator,

@@ -44,14 +44,14 @@ async function member({ manager, actor, admin = false, projectId, write = false 
 
 function assertActive({ account: value, now: instant }: { account: HostingAccount, now: Date }): void {
     if (value.catalogVersion !== hostingCatalog.version) hostingFail('HOSTING_CATALOG_UNAVAILABLE')
-    if (value.status === 'suspended' || value.validUntil.getTime() <= instant.getTime()) hostingFail('HOSTING_ENTITLEMENT_EXPIRED')
+    if (value.billingHold || value.status === 'suspended' || value.validUntil.getTime() <= instant.getTime()) hostingFail('HOSTING_ENTITLEMENT_EXPIRED')
 }
 
 function assertGrantActive({ grant, now: instant }: { grant: HostingGrant, now: Date }): void {
-    if (grant.validFrom > instant || grant.validUntil <= instant) hostingFail('HOSTING_GRANT_EXPIRED')
+    if (grant.revokedAt || grant.validFrom > instant || grant.validUntil <= instant) hostingFail('HOSTING_GRANT_EXPIRED')
 }
 
-async function entry({ manager, reservation, operation, amount, key }: { manager: EntityManager, reservation: HostingReservation, operation: 'reserve' | 'dispatch' | 'settle' | 'release' | 'uncertain', amount: bigint, key?: string }): Promise<void> {
+async function entry({ manager, reservation, operation, amount, key }: { manager: EntityManager, reservation: HostingReservation, operation: 'reserve' | 'dispatch' | 'settle' | 'release' | 'uncertain' | 'revoke', amount: bigint, key?: string }): Promise<void> {
     await manager.getRepository(HostingLedgerEntity).insert({ id: apId(), platformId: reservation.platformId, grantId: reservation.grantId, reservationId: reservation.id, operation, key: key ?? `${operation}:${reservation.id}`, amount })
 }
 

@@ -23,6 +23,7 @@ import { AppSystemProp } from '../helper/system/system-props'
 import { HostingDispatchEntity } from '../hosting/hosting-dispatch-entity'
 import { HOSTING_ENTITIES } from '../hosting/hosting-entities'
 import { HostingModelCallEntity } from '../hosting/hosting-model-call-entity'
+import { HOSTING_STRIPE_ENTITIES } from '../hosting/hosting-stripe-entities'
 import { KnowledgeBaseChunkEntity } from '../knowledge-base/knowledge-base-chunk.entity'
 import { KnowledgeBaseFileEntity } from '../knowledge-base/knowledge-base-file.entity'
 import { McpActivityEntity } from '../mcp/activity/mcp-activity-entity'
@@ -65,6 +66,7 @@ const databaseType = system.get(AppSystemProp.DB_TYPE)
 function getEntities(): EntitySchema<unknown>[] {
     return [
         ...HOSTING_ENTITIES,
+        ...HOSTING_STRIPE_ENTITIES,
         HostingDispatchEntity,
         HostingModelCallEntity,
         TriggerEventEntity,

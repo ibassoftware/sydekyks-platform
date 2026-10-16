@@ -12,10 +12,12 @@ import { authnRateLimit } from '../core/security/rate-limit'
 import { userService } from '../user/user-service'
 import { hostingConfiguration } from './hosting-configuration'
 import { hostingServices } from './hosting-services'
+import { hostingStripeController } from './hosting-stripe-controller'
 import { HostingActor, HostingError } from './hosting-transactions'
 
 export const hostingController: FastifyPluginAsyncZod = async app => {
     if (hostingConfiguration.getServiceMode() !== 'hosted') return
+    await app.register(hostingStripeController, { prefix: '/billing' })
     app.setErrorHandler((error, _request, reply) => {
         if (error instanceof HostingError) return reply.code(403).send({ code: error.message })
         throw error
