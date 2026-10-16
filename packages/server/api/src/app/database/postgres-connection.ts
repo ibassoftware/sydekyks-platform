@@ -11,7 +11,9 @@ import { SydekyksUpstreamOctober211882000000000 } from './migration/postgres/188
 import { ReshapeFlowRunListIndexesForBarrierChildren1871000000000 } from './migration/postgres/background/1871000000000-ReshapeFlowRunListIndexesForBarrierChildren'
 import { BackfillPieceTranslation1874000000000 } from './migration/postgres/background/1874000000000-BackfillPieceTranslation'
 
-export const getMigrations = () => [SydekyksInitialSchema1880000000000, SydekyksUpstream1031881000000000, SydekyksUpstreamOctober211882000000000]
+import { SydekyksHostingLedger1882000000000 } from './migration/postgres/1882000000000-SydekyksHostingLedger'
+
+export const getMigrations = () => [SydekyksInitialSchema1880000000000, SydekyksUpstream1031881000000000, SydekyksUpstreamOctober211882000000000, SydekyksHostingLedger1882000000000]
 
 function getSslConfig() {
     return system.getBoolean(AppSystemProp.POSTGRES_USE_SSL) ? { rejectUnauthorized: true } : false
