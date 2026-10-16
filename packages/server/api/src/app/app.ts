@@ -46,6 +46,7 @@ import { SystemJobBackoff, systemJobsSchedule } from './helper/system-jobs/syste
 import { systemSnapshot } from './helper/system-snapshot'
 import { validateEnvPropsOnStartup } from './helper/system-validator'
 import { shutdownTelemetry } from './helper/telemetry.utils'
+import { hostingBootstrap } from './hosting/hosting-bootstrap'
 import { knowledgeBaseModule } from './knowledge-base/knowledge-base.module'
 import { mcpActivityController } from './mcp/activity/mcp-activity-controller'
 import { mcpServerModule } from './mcp/mcp-module'
@@ -83,6 +84,7 @@ import { workerCapacity } from './workers/machine/worker-capacity'
 import { migrateQueuesAndRunConsumers, workerModule } from './workers/worker-module'
 
 export const setupApp = async (app: FastifyInstance): Promise<FastifyInstance> => {
+    await hostingBootstrap.verify()
     app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, async (_request: FastifyRequest, payload: unknown) => {
         return payload as Buffer
     })

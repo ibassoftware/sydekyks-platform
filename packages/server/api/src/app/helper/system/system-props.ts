@@ -4,6 +4,9 @@ import { environmentMigrations } from '@activepieces/server-utils'
 export type SystemProp = AppSystemProp
 
 export enum AppSystemProp {
+    SERVICE_MODE = 'SERVICE_MODE',
+    HOSTED_STRIPE_SECRET_KEY = 'HOSTED_STRIPE_SECRET_KEY',
+    HOSTED_STRIPE_WEBHOOK_SECRET = 'HOSTED_STRIPE_WEBHOOK_SECRET',
     ALLOW_OPEN_SIGN_UP = 'ALLOW_OPEN_SIGN_UP',
     ALLOWED_EMBED_ORIGINS = 'ALLOWED_EMBED_ORIGINS',
     API_KEY = 'API_KEY',

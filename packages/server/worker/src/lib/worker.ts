@@ -9,6 +9,7 @@ import { io, Socket } from 'socket.io-client'
 import { createApiToWorkerHandlers } from './api-notify-service'
 import { getApiUrl, system, WorkerSystemProp } from './config/configs'
 import { logger } from './config/logger'
+import { workerServiceMode } from './config/worker-service-mode'
 import { workerSettings } from './config/worker-settings'
 import { getHandler } from './execute/job-registry'
 import { JobContext, JobResult, JobResultKind } from './execute/types'
@@ -60,6 +61,7 @@ let cacheSweepFirstRunTimeout: NodeJS.Timeout | null = null
 
 export const worker = {
     async start({ apiUrl, socketUrl, workerToken, withHealthServer = false }: WorkerStartParams): Promise<void> {
+        workerServiceMode.assertRuntimeAvailable()
         versionChecker.assertReleaseReadable()
         modelCatalog.load().catch(() => undefined)
         await modelTierCatalog.warmUp()
@@ -82,7 +84,14 @@ export const worker = {
         socket.on('connect', async () => {
             logger.info('Connected to API server via Socket.IO')
             resetPollLoopLiveness({ loopCount: 0 })
-            await fetchAndStoreSettings(socket!)
+            const connectedSocket = socket
+            if (isNil(connectedSocket)) return
+            const { error } = await tryCatch(() => fetchAndStoreSettings(connectedSocket))
+            if (error) {
+                logger.error({ error }, 'Worker settings rejected; stopping this connection')
+                socket?.disconnect()
+                return
+            }
             void startPollingWorkers(apiClient).catch((err) => {
                 logger.error({ error: err }, 'Polling workers crashed unexpectedly')
             })
@@ -431,8 +440,13 @@ async function fetchAndStoreSettings(sock: Socket): Promise<void> {
         logger.error({ error }, 'Failed to build machine info for settings fetch')
         return
     }
-    return new Promise<void>((resolve) => {
+    return new Promise<void>((resolve, reject) => {
         sock.emit(WebsocketServerEvent.FETCH_WORKER_SETTINGS, request, (response: WorkerSettingsResponse) => {
+            const { error } = tryCatchSync(() => workerServiceMode.assertSettings({ response }))
+            if (error) {
+                reject(error)
+                return
+            }
             const localExecutionMode = system.get(WorkerSystemProp.EXECUTION_MODE)
             if (!isNil(localExecutionMode)) {
                 response.EXECUTION_MODE = localExecutionMode
@@ -465,9 +479,11 @@ async function fetchAndStoreSettings(sock: Socket): Promise<void> {
 }
 
 function getWorkerProps(): WorkerProps {
+    const hostingProps = workerServiceMode.getProps()
     try {
         const settings = sandboxConfig.getSandboxSettings()
         return {
+            ...hostingProps,
             EXECUTION_MODE: settings.EXECUTION_MODE,
             WORKER_CONCURRENCY: system.get(WorkerSystemProp.WORKER_CONCURRENCY)!,
             SANDBOX_MEMORY_LIMIT: settings.SANDBOX_MEMORY_LIMIT,
@@ -476,7 +492,7 @@ function getWorkerProps(): WorkerProps {
         }
     }
     catch {
-        return {}
+        return hostingProps
     }
 }
 

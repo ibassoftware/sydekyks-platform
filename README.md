@@ -111,6 +111,10 @@ Visit [docs.sydekyks.com](https://docs.sydekyks.com) for setup instructions and 
 
 Self-hosting is free. Optional managed hosting and support, including workflow implementation, are available through [Sydekyks](https://www.sydekyks.com).
 
+`AP_SERVICE_MODE` defaults to `self_hosted`; existing installations need no new configuration or Stripe credentials. The runtime records its service mode in an internal database flag and refuses a configuration that conflicts with it. This preserves existing accounts, workflows and provider keys rather than automatically converting an installation into a hosted subscription.
+
+Paid hosting foundations are under development. Setting `AP_SERVICE_MODE=hosted` does not enable a hosted service: API and worker startup remain blocked until tenant admission and billing are implemented. Hosted configuration accepts only Stripe test keys. Existing self-hosted billing and provider behavior remain unchanged.
+
 Authorized partners may provide hosting and support under their written partner agreements. Installation, customization, training, and support on customer-owned infrastructure are permitted. Competing hosting and software resale of code covered by the Sustainable Use License require written authorization.
 
 Connected services and AI providers may charge their own fees.

@@ -5,6 +5,7 @@ services:
     ports:
       - "${SYDEKYKS_BIND:-127.0.0.1}:${SYDEKYKS_PORT:-8080}:80"
     environment:
+      AP_SERVICE_MODE: ${AP_SERVICE_MODE:-self_hosted}
       AP_EDITION: ce
       AP_ENVIRONMENT: prod
       AP_DB_TYPE: POSTGRES

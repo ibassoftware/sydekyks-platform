@@ -6,6 +6,7 @@ import { FastifyBaseLogger } from 'fastify'
 import { domainHelper } from '../../helper/domain-helper'
 import { system } from '../../helper/system/system'
 import { AppSystemProp } from '../../helper/system/system-props'
+import { hostingConfiguration } from '../../hosting/hosting-configuration'
 import { workerGroupService } from '../../sydekyks-community/shared-worker-routing'
 import { WorkerGroupAssignment } from '../job'
 import { workerMachineCache } from './machine-cache'
@@ -22,6 +23,8 @@ async function buildSettingsResponse(_log: FastifyBaseLogger): Promise<WorkerSet
     }
     const executionMode = system.getOrThrow<ExecutionMode>(AppSystemProp.EXECUTION_MODE)
     const settings = {
+        SERVICE_MODE: hostingConfiguration.getServiceMode(),
+        HOSTING_ACCOUNTING_PROTOCOL: 0,
         TRIGGER_TIMEOUT_SECONDS: system.getNumberOrThrow(AppSystemProp.TRIGGER_TIMEOUT_SECONDS),
         PAUSED_FLOW_TIMEOUT_DAYS: system.getNumberOrThrow(AppSystemProp.PAUSED_FLOW_TIMEOUT_DAYS),
         EXECUTION_MODE: executionMode,

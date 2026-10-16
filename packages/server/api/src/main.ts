@@ -7,6 +7,7 @@ import { initializeDatabase } from './app/database'
 import { distributedLock } from './app/database/redis-connections'
 import { system } from './app/helper/system/system'
 import { AppSystemProp } from './app/helper/system/system-props'
+import { hostingConfiguration } from './app/hosting/hosting-configuration'
 import { setupServer } from './app/server'
 
 const start = async (app: FastifyInstance): Promise<void> => {
@@ -55,6 +56,7 @@ function setupTimeZone(): void {
 
 
 const main = async (): Promise<void> => {
+    hostingConfiguration.validate()
     setupTimeZone()
     await aiDevtools.register({ enabled: system.get(AppSystemProp.ENVIRONMENT) === ApEnvironment.DEVELOPMENT })
     if (system.isApp()) {

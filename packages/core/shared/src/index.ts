@@ -27,6 +27,7 @@ export * from './lib/core/health'
 export * from '@activepieces/core-utils'
 
 // management
+export * from './lib/management/hosting/hosting-catalog'
 export * from './lib/management/platform'
 export * from './lib/management/project'
 export * from './lib/management/project-role/project-role.request'

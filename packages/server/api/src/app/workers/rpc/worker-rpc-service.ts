@@ -1,6 +1,6 @@
 import { assertNotNullOrUndefined, isNil, spreadIfDefined } from '@activepieces/core-utils'
 import { apVersionUtil, onCallService, UNKNOWN_VERSION } from '@activepieces/server-utils'
-import { AgentRunSource, ExecutionType, FileCompression, FileLocation, FileType, FlowOperationType, FlowStatus, WebsocketClientEvent, WorkerGroupScope, WorkerToApiContract } from '@activepieces/shared'
+import { AgentRunSource, ExecutionType, FileCompression, FileLocation, FileType, FlowOperationType, FlowStatus, WebsocketClientEvent, WorkerGroupScope, WorkerProps, WorkerToApiContract } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { aiRpcHandlers } from '../../ai/ai-rpc-handlers'
 import { websocketService } from '../../core/websockets.service'
@@ -18,6 +18,7 @@ import { EMPTY_PREWARM_RESPONSE, preWarmWorkersService } from '../../flows/pre-w
 import { rejectedPromiseHandler } from '../../helper/promise-handler'
 import { system } from '../../helper/system/system'
 import { AppSystemProp } from '../../helper/system/system-props'
+import { hostingWorkerGate } from '../../hosting/hosting-worker-gate'
 import { pieceMetadataService } from '../../pieces/metadata/piece-metadata-service'
 import { shouldBlockRunOnCredits } from '../../platform/billing-provider'
 import { projectService } from '../../project/project-service'
@@ -81,9 +82,12 @@ function workerVersionIsCompatible({ log, workerVersion, workerId, rpcMethod }: 
     return false
 }
 
-export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAssignment | null = null, connectionId?: string): WorkerToApiContract {
+export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAssignment | null = null, connectionId?: string, workerProps?: WorkerProps): WorkerToApiContract {
+    const connectionWorkerProps = Object.freeze({ ...workerProps })
+    const connectionIsCompatible = () => hostingWorkerGate.isCompatible({ workerProps: connectionWorkerProps })
     return {
         async poll(input) {
+            if (!connectionIsCompatible() || !hostingWorkerGate.isCompatible({ workerProps: input.workerProps })) return null
             log.info({ worker: { id: input.workerId }, workerGroup: assignment ?? undefined }, '[workerRpc#poll] Poll request received')
             await machineService(log).onConnection(input, assignment)
             if (!workerVersionIsCompatible({ log, workerVersion: input.workerProps.version, workerId: input.workerId, rpcMethod: 'poll' })) {
@@ -101,7 +105,7 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
         },
 
         async startJob(input) {
-            if (isNil(connectionId)) return false
+            if (isNil(connectionId) || !connectionIsCompatible()) return false
             return jobBroker(log).startJob(input, connectionId)
         },
 
@@ -210,6 +214,7 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
         },
 
         async getPrewarmData(input) {
+            if (!connectionIsCompatible()) return EMPTY_PREWARM_RESPONSE
             if (!workerVersionIsCompatible({ log, workerVersion: input.workerVersion, rpcMethod: 'getPrewarmData' })) {
                 return EMPTY_PREWARM_RESPONSE
             }
@@ -217,6 +222,7 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
         },
 
         async getPrewarmScopeFile(input) {
+            if (!connectionIsCompatible()) return null
             const file = await fileService(log).getFile({
                 fileId: input.fileId,
                 type: FileType.PREWARM_SCOPE,

@@ -96,6 +96,9 @@ const systemPropValidators: {
     [key in SystemProp]: (value: string) => true | string
 } = {
     // AppSystemProp
+    [AppSystemProp.SERVICE_MODE]: enumValidator(['self_hosted', 'hosted']),
+    [AppSystemProp.HOSTED_STRIPE_SECRET_KEY]: () => true,
+    [AppSystemProp.HOSTED_STRIPE_WEBHOOK_SECRET]: () => true,
     [AppSystemProp.ALLOW_OPEN_SIGN_UP]: booleanValidator,
     [AppSystemProp.EXECUTION_MODE]: enumValidator(Object.values(ExecutionMode)),
     [AppSystemProp.SKIP_PREWARM_CODES]: booleanValidator,

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { BaseModelSchema } from '@activepieces/core-utils'
+import { ServiceMode } from '../hosting/service-mode'
 import { EngineResponseStatus } from '../engine/engine-operation'
 import { JobData } from './job-data'
 
@@ -33,6 +34,8 @@ export const SandboxInformation = z.object({
 
 export type SandboxInformation = z.infer<typeof SandboxInformation>
 export const WorkerProps = z.object({
+    serviceMode: ServiceMode.optional(),
+    accountingProtocol: z.number().int().nonnegative().optional(),
     EXECUTION_MODE: z.string().optional(),
     WORKER_CONCURRENCY: z.string().optional(),
     SANDBOX_MEMORY_LIMIT: z.string().optional(),
@@ -106,6 +109,8 @@ export const WorkerMachineHealthcheckRequest = MachineInformation
 export type WorkerMachineHealthcheckRequest = z.infer<typeof WorkerMachineHealthcheckRequest>
 
 export const WorkerSettingsResponse = z.object({
+    SERVICE_MODE: ServiceMode.optional(),
+    HOSTING_ACCOUNTING_PROTOCOL: z.number().int().nonnegative().optional(),
     PUBLIC_URL: z.string(),
     TRIGGER_TIMEOUT_SECONDS: z.number(),
     TRIGGER_HOOKS_TIMEOUT_SECONDS: z.number(),
