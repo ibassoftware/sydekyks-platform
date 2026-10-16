@@ -4,6 +4,9 @@ import { Worker as BullMQWorker, Job, UnrecoverableError } from 'bullmq'
 import { FastifyBaseLogger } from 'fastify'
 import { accessTokenManager } from '../../authentication/lib/access-token-manager'
 import { redisConnections } from '../../database/redis-connections'
+import { hostingConfiguration } from '../../hosting/hosting-configuration'
+import { hostingServices } from '../../hosting/hosting-services'
+import { HostingError } from '../../hosting/hosting-transactions'
 import { engineResponseWatcher } from '../engine-response-watcher'
 import { QueueName } from '../job'
 import { jobMigrations } from '../migrations/job-data-migrations'
@@ -89,6 +92,7 @@ async function tryDequeue(worker: BullMQWorker, queueName: string, log: FastifyB
     }
 
     if (job.deferredFailure) {
+        await cancelHostedDelivery({ queueName, jobId: job.id ?? job.name })
         log.warn(
             { queueName, job: { id: job.id }, jobName: job.name, deferredFailure: job.deferredFailure },
             '[jobBroker#tryDequeue] Failing job with deferred failure (BullMQ stalled limit exceeded)',
@@ -119,6 +123,7 @@ async function tryDequeue(worker: BullMQWorker, queueName: string, log: FastifyB
 
     const parseResult = JobData.safeParse(migratedData)
     if (!parseResult.success) {
+        await cancelHostedDelivery({ queueName, jobId })
         const issues = parseResult.error.issues.map(issue => `${issue.path.join('.') || '<root>'}: ${issue.message}`).join('; ')
         const reason = `Job data failed schema validation after migration: ${issues}`
         log.error(
@@ -138,6 +143,7 @@ async function tryDequeue(worker: BullMQWorker, queueName: string, log: FastifyB
 
     const interceptorResult = await runInterceptors({ jobId, jobData: migratedData, job, log })
     if (interceptorResult === 'DISCARD') {
+        await cancelHostedDelivery({ queueName, jobId })
         await job.moveToCompleted(null, token, false)
         return tryDequeue(worker, queueName, log)
     }
@@ -149,7 +155,16 @@ async function tryDequeue(worker: BullMQWorker, queueName: string, log: FastifyB
         return tryDequeue(worker, queueName, log)  // retry getNextJob instead of returning null
     }
 
-    const admissionId = apId()
+    const admission = await tryCatch(async () => hostingConfiguration.getServiceMode() === 'hosted'
+        ? hostingServices.execution().admit({ queueName, jobId, data: parseResult.data, queueToken: token })
+        : apId())
+    if (admission.error) {
+        if (!(admission.error instanceof HostingError) || admission.error.message === 'HOSTING_CONCURRENCY_LIMIT') await job.moveToDelayed(Date.now() + 1000, token)
+        else await job.moveToFailed(new UnrecoverableError('HOSTING_ADMISSION_DENIED'), token, false)
+        for (const interceptor of interceptors) await interceptor.onJobFinished({ jobId, jobData: parseResult.data, failed: true, log })
+        return tryDequeue(worker, queueName, log)
+    }
+    const admissionId = admission.data
     const engineToken = await accessTokenManager(log).generateEngineToken({
         jobId: admissionId,
         projectId: migratedData.projectId as string,
@@ -211,6 +226,10 @@ async function runInterceptors({ jobId, jobData, job, log }: { jobId: string, jo
     return null
 }
 
+async function cancelHostedDelivery({ queueName, jobId }: { queueName: string, jobId: string }): Promise<void> {
+    if (hostingConfiguration.getServiceMode() === 'hosted') await hostingServices.execution().cancel({ queueName, jobId, allowMissing: true })
+}
+
 function buildFailedReason(errorMessage: string, logs?: string): string {
     if (!logs) return errorMessage
     return `${errorMessage}\n${logs}`
@@ -225,6 +244,7 @@ export const jobBroker = (log: FastifyBaseLogger) => ({
     },
 
     async poll(queueName: string = QueueName.WORKER_JOBS, connectionId?: string): Promise<ConsumeJobRequest | null> {
+        if (hostingConfiguration.getServiceMode() === 'hosted' && !connectionId) return null
         const worker = await ensureBullMQWorker(queueName, log)
         const dispatcher = ensureDispatcher(queueName, worker, log)
         const job = await dispatcher.poll()
@@ -237,7 +257,17 @@ export const jobBroker = (log: FastifyBaseLogger) => ({
     async startJob(input: { jobId: string, token: string, queueName: string }, connectionId: string): Promise<boolean> {
         if (!jobAssignmentTracker.belongsTo({ ...input, connectionId })) return false
         const assignment = jobAssignmentTracker.assignmentFor(input)
-        return Boolean(assignment?.admissionId)
+        if (!assignment?.admissionId) return false
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            const job = await fetchJobFromRedis(input.queueName, input.jobId, log)
+            if (!job || await job.extendLock(input.token, LOCK_DURATION_MS) <= 0) return false
+            const parsed = JobData.safeParse(job.data)
+            if (!parsed.success) {
+                await cancelHostedDelivery(input); return false
+            }
+            return hostingServices.execution().start({ queueName: input.queueName, jobId: input.jobId, queueToken: input.token, connectionId, admissionId: assignment.admissionId, data: parsed.data })
+        }
+        return true
     },
 
     async releaseConnectionJobs(connectionId: string): Promise<void> {
@@ -246,7 +276,11 @@ export const jobBroker = (log: FastifyBaseLogger) => ({
             return
         }
         log.info({ connection: { id: connectionId }, jobCount: jobs.length }, '[jobBroker] Worker connection closed with in-flight jobs — returning them to the queue')
-        for (const { jobId, token, queueName } of jobs) {
+        for (const { jobId, token, queueName, admissionId } of jobs) {
+            if (hostingConfiguration.getServiceMode() === 'hosted') {
+                if (admissionId) await hostingServices.execution().disconnect({ queueName, jobId, admissionId })
+                continue
+            }
             const { error } = await tryCatch(() => returnJobToQueue(jobId, token, queueName, log))
             if (error) {
                 log.error({ connection: { id: connectionId }, job: { id: jobId }, error: String(error) }, '[jobBroker] Failed to return in-flight job on disconnect — leaving for stalled-scan recovery')
@@ -263,11 +297,23 @@ export const jobBroker = (log: FastifyBaseLogger) => ({
             return
         }
 
+        if (hostingConfiguration.getServiceMode() === 'hosted' && !JobData.safeParse(job.data).success) {
+            await cancelHostedDelivery(input); return
+        }
         const jobData = JobData.parse(job.data)
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            if (!assignment.admissionId || await job.extendLock(input.token, LOCK_DURATION_MS) <= 0) return
+            await hostingServices.execution().complete({ queueName: input.queueName, jobId: input.jobId, queueToken: input.token, connectionId, admissionId: assignment.admissionId, status: input.status })
+        }
         const waitingCaller = callerWaitingForResponse(jobData)
 
         let finalized = false
         const { error } = await tryCatch(async () => {
+            if (input.status === EngineResponseStatus.INTERNAL_ERROR && hostingConfiguration.getServiceMode() === 'hosted') {
+                await job.moveToFailed(new UnrecoverableError('HOSTING_EXECUTION_UNCERTAIN'), input.token, false)
+                finalized = true
+                return
+            }
             if (input.status === EngineResponseStatus.INTERNAL_ERROR) {
                 if (waitingCaller) {
                     // User-interaction jobs (piece-metadata extraction, validation, property/auth, trigger

@@ -1,10 +1,10 @@
 import { apId } from '@activepieces/core-utils'
-import { DefaultProjectRole, McpOAuthGrant, PlatformRole } from '@activepieces/shared'
+import { McpOAuthGrant, PlatformRole } from '@activepieces/shared'
 import { FastifyInstance } from 'fastify'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { mcpOAuthClientIdentity } from '../../../../src/app/mcp/oauth/client/mcp-oauth-client-identity'
 import { db } from '../../../helpers/db'
-import { createMemberContext, createTestContext, TestContext } from '../../../helpers/test-context'
+import { createWorkspaceUserContext, createTestContext, TestContext } from '../../../helpers/test-context'
 import { setupTestEnvironment } from '../../../helpers/test-setup'
 
 let app: FastifyInstance | null = null
@@ -74,7 +74,7 @@ describe('MCP OAuth connected clients', () => {
 
     describe('GET /v1/mcp-oauth/grants scope', () => {
         it('lists every members grant on the platform for a platform admin', async () => {
-            const other = await createMemberContext(app!, ctx, { projectRole: DefaultProjectRole.ADMIN })
+            const other = await createWorkspaceUserContext({ app: app!, parentCtx: ctx, platformRole: PlatformRole.MEMBER })
             const mine = await grantAccess({ userId: ctx.user.id, projectId: ctx.project.id, redirectUris: [CLAUDE_REDIRECT] })
             const theirs = await grantAccess({ userId: other.user.id, projectId: ctx.project.id, redirectUris: [CURSOR_REDIRECT] })
 
@@ -86,7 +86,7 @@ describe('MCP OAuth connected clients', () => {
         })
 
         it('lists every members grant for a platform operator', async () => {
-            const operator = await createMemberContext(app!, ctx, { projectRole: DefaultProjectRole.VIEWER })
+            const operator = await createWorkspaceUserContext({ app: app!, parentCtx: ctx, platformRole: PlatformRole.MEMBER })
             await promoteToOperator(operator)
             await grantAccess({ userId: ctx.user.id, projectId: ctx.project.id, redirectUris: [CLAUDE_REDIRECT] })
             await grantAccess({ userId: operator.user.id, projectId: ctx.project.id, redirectUris: [CURSOR_REDIRECT] })
@@ -97,7 +97,7 @@ describe('MCP OAuth connected clients', () => {
         })
 
         it('lists only their own grants for a non-privileged member', async () => {
-            const member = await createMemberContext(app!, ctx, { projectRole: DefaultProjectRole.ADMIN })
+            const member = await createWorkspaceUserContext({ app: app!, parentCtx: ctx, platformRole: PlatformRole.MEMBER })
             await grantAccess({ userId: ctx.user.id, projectId: ctx.project.id, redirectUris: [CLAUDE_REDIRECT] })
             const theirs = await grantAccess({ userId: member.user.id, projectId: ctx.project.id, redirectUris: [CURSOR_REDIRECT] })
 
@@ -139,7 +139,7 @@ describe('MCP OAuth connected clients', () => {
         })
 
         it('renders a null member when the user who signed in has been deleted', async () => {
-            const member = await createMemberContext(app!, ctx, { projectRole: DefaultProjectRole.ADMIN })
+            const member = await createWorkspaceUserContext({ app: app!, parentCtx: ctx, platformRole: PlatformRole.MEMBER })
             const orphaned = await grantAccess({ userId: member.user.id, projectId: ctx.project.id, redirectUris: [CLAUDE_REDIRECT] })
             await db.delete('user', member.user.id)
 
@@ -190,7 +190,7 @@ describe('MCP OAuth connected clients', () => {
         })
 
         it('filters by member', async () => {
-            const other = await createMemberContext(app!, ctx, { projectRole: DefaultProjectRole.ADMIN })
+            const other = await createWorkspaceUserContext({ app: app!, parentCtx: ctx, platformRole: PlatformRole.MEMBER })
             await grantAccess({ userId: ctx.user.id, projectId: ctx.project.id, redirectUris: [CLAUDE_REDIRECT] })
             const theirs = await grantAccess({ userId: other.user.id, projectId: ctx.project.id, redirectUris: [CURSOR_REDIRECT] })
 
@@ -259,7 +259,7 @@ describe('MCP OAuth connected clients', () => {
         })
 
         it('lets a platform admin revoke another members grant', async () => {
-            const other = await createMemberContext(app!, ctx, { projectRole: DefaultProjectRole.ADMIN })
+            const other = await createWorkspaceUserContext({ app: app!, parentCtx: ctx, platformRole: PlatformRole.MEMBER })
             const theirs = await grantAccess({ userId: other.user.id, projectId: ctx.project.id, redirectUris: [CLAUDE_REDIRECT] })
 
             const response = await ctx.post('/v1/mcp-oauth/grants/revoke', { ids: [theirs] })
@@ -269,7 +269,7 @@ describe('MCP OAuth connected clients', () => {
         })
 
         it('writes nothing at all when one id in a members batch is not theirs', async () => {
-            const member = await createMemberContext(app!, ctx, { projectRole: DefaultProjectRole.ADMIN })
+            const member = await createWorkspaceUserContext({ app: app!, parentCtx: ctx, platformRole: PlatformRole.MEMBER })
             const theirs = await grantAccess({ userId: member.user.id, projectId: ctx.project.id, redirectUris: [CLAUDE_REDIRECT] })
             const mine = await grantAccess({ userId: ctx.user.id, projectId: ctx.project.id, redirectUris: [CLAUDE_REDIRECT] })
 

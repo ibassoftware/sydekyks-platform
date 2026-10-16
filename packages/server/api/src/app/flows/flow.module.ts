@@ -16,6 +16,7 @@ export const flowModule: FastifyPluginAsyncZod = async (app) => {
                 projectId,
                 flowVersionId: data.flowVersionId,
                 triggeredBy: principal.id,
+                hostedOrigin: { type: 'user', userId: principal.id, tokenVersion: principal.tokenVersion ?? null },
             })
             socket.emit(WebsocketClientEvent.TEST_FLOW_RUN_STARTED, flowRun)
         }
@@ -26,6 +27,7 @@ export const flowModule: FastifyPluginAsyncZod = async (app) => {
                 projectId,
                 flowVersionId: data.flowVersionId,
                 triggeredBy: principal.id,
+                hostedOrigin: { type: 'user', userId: principal.id, tokenVersion: principal.tokenVersion ?? null },
             })
             socket.emit(WebsocketClientEvent.MANUAL_TRIGGER_RUN_STARTED, flowRun)
         }

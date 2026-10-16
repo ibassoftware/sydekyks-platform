@@ -73,10 +73,13 @@ jobs:
           HOSTING_TEST_POSTGRES_USER: sydekyks_ci
           HOSTING_TEST_POSTGRES_PASSWORD: disposable-ci-only
           HOSTING_TEST_POSTGRES_DATABASE: sydekyks_ci
+          AP_REDIS_TYPE: STANDALONE
+          AP_REDIS_HOST: 127.0.0.1
+          AP_REDIS_PORT: '6379'
         run: |
           (cd packages/core/execution && bun x vitest run src/lib/hosting/service-mode.test.ts)
           (cd packages/core/shared && bun x vitest run test/management/hosting-catalog.test.ts)
-          bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/hosting-configuration.test.ts packages/server/api/test/unit/hosting-bootstrap.test.ts packages/server/api/test/unit/hosting-installation.test.ts packages/server/api/test/unit/hosting-app-startup.test.ts packages/server/api/test/unit/hosting-worker-rpc.test.ts packages/server/api/test/integration/ce/hosting/hosting-installation-races.test.ts packages/server/api/test/integration/ce/hosting/hosting-onboarding-ledger.test.ts packages/server/api/test/unit/hosting-ledger-pglite.test.ts --maxWorkers=2
+          bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/hosting-configuration.test.ts packages/server/api/test/unit/hosting-bootstrap.test.ts packages/server/api/test/unit/hosting-installation.test.ts packages/server/api/test/unit/hosting-app-startup.test.ts packages/server/api/test/unit/hosting-worker-rpc.test.ts packages/server/api/test/integration/ce/hosting/hosting-installation-races.test.ts packages/server/api/test/integration/ce/hosting/hosting-auth-execution.test.ts packages/server/api/test/integration/ce/hosting/hosting-onboarding-ledger.test.ts packages/server/api/test/unit/hosting-ledger-pglite.test.ts --maxWorkers=2
           bun x vitest run --config packages/server/worker/vitest.config.ts packages/server/worker/test/lib/worker-service-mode.test.ts --maxWorkers=2
       - name: Check Syd worker and supporting agent regressions
         run: >-

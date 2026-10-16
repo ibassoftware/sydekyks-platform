@@ -3,11 +3,14 @@ import { ApEdition, AuthenticationResponse, CreatePlatformRequest, FileType, Pla
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { StatusCodes } from 'http-status-codes'
 import { z } from 'zod'
+import { authenticationUtils } from '../authentication/authentication-utils'
 import { securityAccess } from '../core/security/authorization/fastify-security'
 import { fileService } from '../file/file.service'
 import { attachMultipartFieldsToBody } from '../helper/multipart-body'
 import { system } from '../helper/system/system'
 import { userIdentityHelper } from '../helper/user-identity-helper'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingServices } from '../hosting/hosting-services'
 import { sydCopilotAvailability } from '../syd/copilot/copilot-availability'
 import { userService } from '../user/user-service'
 import { platformService } from './platform.service'
@@ -15,6 +18,11 @@ import { platformService } from './platform.service'
 const edition = system.getEdition()
 export const platformController: FastifyPluginAsyncZod = async (app) => {
     app.post('/', CreatePlatformEndpoint, async (req) => {
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            if (req.principal.type !== PrincipalType.ONBOARDING) throw new ActivepiecesError({ code: ErrorCode.AUTHORIZATION, params: {} })
+            const tenant = await (await hostingServices.onboarding()).provision({ identityId: req.principal.id, name: req.body.name, expectedTokenVersion: req.principal.tokenVersion ?? null })
+            return authenticationUtils(req.log).getProjectAndToken({ ...tenant, expectedTokenVersion: tenant.tokenVersion })
+        }
         const isOnboarding = req.principal.type === PrincipalType.ONBOARDING
         if (!isOnboarding && edition !== ApEdition.CLOUD) {
             // only first ee/ce user will be able to have onboarding token. which means any other principal type should not be able to create platform

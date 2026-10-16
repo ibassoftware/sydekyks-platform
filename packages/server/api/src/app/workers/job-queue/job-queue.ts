@@ -6,6 +6,10 @@ import { FastifyBaseLogger } from 'fastify'
 import { redisConnections } from '../../database/redis-connections'
 import { system } from '../../helper/system/system'
 import { AppSystemProp } from '../../helper/system/system-props'
+import { hostingConfiguration } from '../../hosting/hosting-configuration'
+import { HostingJobOrigin } from '../../hosting/hosting-execution'
+import { hostingServices } from '../../hosting/hosting-services'
+import { hostingFail } from '../../hosting/hosting-transactions'
 import { projectWorkerGroupService } from '../../project/project-worker-group.service'
 import { workerGroupService } from '../../sydekyks-community/shared-worker-routing'
 import { getPlatformGroupQueueName, getProjectGroupQueueName, QueueName } from '../job'
@@ -27,6 +31,10 @@ export const jobQueue = (log: FastifyBaseLogger) => ({
         const platformId = data.platformId
         const projectId = 'projectId' in data ? data.projectId : null
         const queueName = await getQueueName({ platformId, projectId, jobType: data.jobType }, log)
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            if (type !== JobType.ONE_TIME) hostingFail('HOSTING_JOB_PATH_NOT_READY')
+            await hostingServices.execution().prepare({ queueName, jobId: params.id, data, origin: params.hostedOrigin })
+        }
         const queue = await ensureQueueExists({ log, queueName })
 
         switch (type) {
@@ -82,6 +90,7 @@ export const jobQueue = (log: FastifyBaseLogger) => ({
         const queue = await ensureQueueExists({ log, queueName })
         const job = await queue.getJob(jobId)
         if (!isNil(job)) {
+            if (hostingConfiguration.getServiceMode() === 'hosted') await hostingServices.execution().cancel({ queueName, jobId })
             await job.remove()
             log.info({
                 job: { id: jobId },
@@ -103,6 +112,7 @@ export const jobQueue = (log: FastifyBaseLogger) => ({
             log.info({ job: { id: jobId }, queueName }, '[jobQueue#cancelAndReportNeverStarted] job not found')
             return false
         }
+        if (hostingConfiguration.getServiceMode() === 'hosted') await hostingServices.execution().cancel({ queueName, jobId })
         const everDequeued = !isNil(job.processedOn)
         const { error } = await tryCatch(() => job.remove())
         if (error) {
@@ -134,7 +144,13 @@ export const jobQueue = (log: FastifyBaseLogger) => ({
         const queue = await ensureQueueExists({ log, queueName })
         const allJobs = await queue.getJobs(['waiting', 'delayed'])
         const matching = allJobs.filter((j) => j.id?.startsWith(flowRunId))
-        await Promise.allSettled(matching.map((j) => j.remove()))
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            for (const job of matching) {
+                if (job.id) await hostingServices.execution().cancel({ queueName, jobId: job.id })
+                await job.remove()
+            }
+        }
+        else await Promise.allSettled(matching.map((j) => j.remove()))
         log.info({ flowRun: { id: flowRunId }, queueName, removedIds: matching.map((j) => j.id) }, '[jobQueue#removeAllFlowRunJobs] done')
     },
 
@@ -272,6 +288,7 @@ type BaseAddParams<JD extends Omit<JobData, 'engineToken'>, JT extends JobType> 
     data: JD
     type: JT
     delay?: number
+    hostedOrigin?: HostingJobOrigin
 }
 type RepeatingJobAddParams = BaseAddParams<PollingJobData | RenewWebhookJobData, JobType.REPEATING> & {
     scheduleOptions: ScheduleOptions

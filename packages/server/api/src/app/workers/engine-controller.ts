@@ -11,6 +11,8 @@ import { fileService } from '../file/file.service'
 import { flowService } from '../flows/flow/flow.service'
 import { engineRunCallbackService } from '../flows/flow-run/engine-run-callback-service'
 import { flowVersionService } from '../flows/flow-version/flow-version.service'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingServices } from '../hosting/hosting-services'
 import { pieceBundle } from '../pieces/piece-bundle'
 
 export const flowEngineWorker: FastifyPluginAsyncZod = async (app) => {
@@ -88,6 +90,7 @@ export const flowEngineWorker: FastifyPluginAsyncZod = async (app) => {
     })
 
     app.post('/run-logs', RunLogsRequest, async (request, reply) => {
+        if (hostingConfiguration.getServiceMode() === 'hosted') await hostingServices.execution().flowReceipt({ admissionId: request.principal.id, projectId: request.principal.projectId, runId: request.body.runId, status: request.body.status })
         await engineRunCallbackService(request.log).uploadRunLog({
             projectId: request.principal.projectId,
             request: request.body,

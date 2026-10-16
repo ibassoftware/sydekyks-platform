@@ -2,6 +2,7 @@ import { ActivepiecesError, ErrorCode } from '@activepieces/core-utils'
 import { parseError, wideEvent } from '@activepieces/server-utils'
 import { FastifyError, FastifyReply, FastifyRequest } from 'fastify'
 import { StatusCodes } from 'http-status-codes'
+import { HostingError } from '../hosting/hosting-transactions'
 import { exceptionHandler } from './exception-handler'
 
 
@@ -10,7 +11,10 @@ export const errorHandler = async (
     request: FastifyRequest,
     reply: FastifyReply,
 ): Promise<void> => {
-    if (error instanceof ActivepiecesError) {
+    if (error instanceof HostingError) {
+        await reply.status(StatusCodes.FORBIDDEN).send({ code: error.message })
+    }
+    else if (error instanceof ActivepiecesError) {
         const statusCode = statusCodeMap[error.error.code] ?? StatusCodes.BAD_REQUEST
 
         await reply.status(statusCode).send({

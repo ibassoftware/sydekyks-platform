@@ -13,6 +13,9 @@ import { paginationHelper } from '../../helper/pagination/pagination-utils'
 import { Order } from '../../helper/pagination/paginator'
 import { system } from '../../helper/system/system'
 import { AppSystemProp } from '../../helper/system/system-props'
+import { hostingConfiguration } from '../../hosting/hosting-configuration'
+import { HostingJobOrigin } from '../../hosting/hosting-execution'
+import { hostingFail } from '../../hosting/hosting-transactions'
 import { assertRunCreditsNotExceeded, shouldBlockRunOnCredits } from '../../platform/billing-provider'
 import { projectLifecycle } from '../../project/project-lifecycle'
 import { projectService } from '../../project/project-service'
@@ -305,6 +308,7 @@ export const flowRunService = (log: FastifyBaseLogger) => ({
         platformId,
         stepNameToTest,
         environment,
+        hostedOrigin,
     }: StartParams): Promise<FlowRun> {
         const newFlowRun = await queueOrCreateInstantly({
             projectId,
@@ -327,6 +331,7 @@ export const flowRunService = (log: FastifyBaseLogger) => ({
 
         await addToQueue({
             flowRun: newFlowRun,
+            hostedOrigin,
             platformId,
             payload,
             executeTrigger,
@@ -368,7 +373,7 @@ export const flowRunService = (log: FastifyBaseLogger) => ({
         return flowRun
     },
 
-    async test({ projectId, flowVersionId, parentRunId, stepNameToTest, triggeredBy }: TestParams): Promise<FlowRun> {
+    async test({ projectId, flowVersionId, parentRunId, stepNameToTest, triggeredBy, hostedOrigin }: TestParams): Promise<FlowRun> {
         const flowVersion = await flowVersionService(log).getOneOrThrow(flowVersionId)
         await flowService(log).getOneOrThrow({ id: flowVersion.flowId, projectId })
 
@@ -390,6 +395,7 @@ export const flowRunService = (log: FastifyBaseLogger) => ({
         }, log)
         return addToQueue({
             flowRun,
+            hostedOrigin,
             payload: triggerPayload,
             executionType: ExecutionType.BEGIN,
             workerHandlerId: undefined,
@@ -405,7 +411,7 @@ export const flowRunService = (log: FastifyBaseLogger) => ({
             }) : undefined,
         }, log)
     },
-    async startManualTrigger({ projectId, flowVersionId, triggeredBy }: StartManualTriggerParams): Promise<FlowRun> {
+    async startManualTrigger({ projectId, flowVersionId, triggeredBy, hostedOrigin }: StartManualTriggerParams): Promise<FlowRun> {
         const flowVersion = await flowVersionService(log).getOneOrThrow(flowVersionId)
         await flowService(log).getOneOrThrow({ id: flowVersion.flowId, projectId })
         const triggerPayload = {}
@@ -441,6 +447,7 @@ export const flowRunService = (log: FastifyBaseLogger) => ({
         }, log)
         return addToQueue({
             flowRun,
+            hostedOrigin,
             payload: triggerPayload,
             executionType: ExecutionType.BEGIN,
             workerHandlerId: undefined,
@@ -645,6 +652,7 @@ async function filterFlowRunsAndApplyFilters(
 
 
 export async function addToQueue(params: AddToQueueParams, log: FastifyBaseLogger): Promise<FlowRun> {
+    if (hostingConfiguration.getServiceMode() === 'hosted' && params.flowRun.parentRunId) hostingFail('HOSTING_NESTED_COORDINATOR_REQUIRED')
     const logsFileId = params.flowRun.logsFileId ?? apId()
 
     let jobPayload: JobPayload = { type: 'inline', value: null }
@@ -687,6 +695,7 @@ export async function addToQueue(params: AddToQueueParams, log: FastifyBaseLogge
     const aParentIsBlockedOnThisRun = params.flowRun.failParentOnFailure && !isNil(params.flowRun.parentRunId)
     await jobQueue(log).add({
         id: params.jobId ?? params.flowRun.id,
+        hostedOrigin: params.hostedOrigin,
         type: JobType.ONE_TIME,
         data,
         retryBackoffMs: aParentIsBlockedOnThisRun ? PARENT_BOUND_RETRY_BACKOFF_MS : undefined,
@@ -801,7 +810,7 @@ async function queueOrCreateInstantly(params: CreateParams, log: FastifyBaseLogg
         triggeredBy: params.triggeredBy,
     }
     return projectLifecycle.runWhileActive({ projectId: params.projectId, log, operation: async project => {
-        if (project.type === ProjectType.TEAM) return flowRunRepo().save(flowRun)
+        if (hostingConfiguration.getServiceMode() === 'hosted' || project.type === ProjectType.TEAM) return flowRunRepo().save(flowRun)
         switch (params.environment) {
             case RunEnvironment.TESTING:
                 return flowRunRepo().save(flowRun)
@@ -870,6 +879,7 @@ type ResolveStepOutputParams = {
 }
 
 type AddToQueueParamsCommon = {
+    hostedOrigin?: HostingJobOrigin
     flowRun: FlowRun
     platformId: PlatformId
     payload?: unknown
@@ -907,6 +917,7 @@ type PersistQuotaExceededTriggerLogParams = {
 }
 
 type StartParams = {
+    hostedOrigin?: HostingJobOrigin
     flowId: FlowId
     payload: unknown
     platformId: PlatformId
@@ -927,6 +938,7 @@ type StartParams = {
 
 
 type TestParams = {
+    hostedOrigin?: HostingJobOrigin
     projectId: ProjectId
     flowVersionId: FlowVersionId
     triggeredBy?: string
@@ -935,6 +947,7 @@ type TestParams = {
 }
 
 type StartManualTriggerParams = {
+    hostedOrigin?: HostingJobOrigin
     projectId: ProjectId
     flowVersionId: FlowVersionId
     triggeredBy: string

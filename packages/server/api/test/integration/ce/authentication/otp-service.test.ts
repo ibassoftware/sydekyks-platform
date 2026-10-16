@@ -1,3 +1,4 @@
+import { vi } from 'vitest'
 import { OtpType } from '@activepieces/shared'
 import { FastifyInstance } from 'fastify'
 import { otpService } from '../../../../src/app/authentication/otp/otp-service'
@@ -5,6 +6,8 @@ import { databaseConnection } from '../../../../src/app/database/database-connec
 import { distributedStore } from '../../../../src/app/database/redis-connections'
 import { createMockUserIdentity } from '../../../helpers/mocks'
 import { setupTestEnvironment, teardownTestEnvironment } from '../../../helpers/test-setup'
+
+vi.mock('../../../../src/app/sydekyks-community/email', () => ({ emailService: () => ({ sendOtp: vi.fn().mockResolvedValue(undefined) }) }))
 
 let app: FastifyInstance | null = null
 

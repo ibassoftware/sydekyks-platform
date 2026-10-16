@@ -5,9 +5,13 @@ import { McpOAuthClientKey, McpOAuthGrant, McpOAuthToken } from '@activepieces/s
 import { FastifyBaseLogger } from 'fastify'
 import { In, ObjectLiteral, SelectQueryBuilder } from 'typeorm'
 import { repoFactory } from '../../../core/db/repo-factory'
+import { databaseConnection } from '../../../database/database-connection'
 import { JwtAudience, jwtUtils } from '../../../helper/jwt-utils'
 import { buildPaginator } from '../../../helper/pagination/build-paginator'
 import { paginationHelper } from '../../../helper/pagination/pagination-utils'
+import { hostingConfiguration } from '../../../hosting/hosting-configuration'
+import { HostingError, hostingTransactions } from '../../../hosting/hosting-transactions'
+import { UserEntity } from '../../../user/user-entity'
 import { mcpListingUtils } from '../../mcp-listing-utils'
 import { mcpOAuthClientIdentity } from '../client/mcp-oauth-client-identity'
 import { McpOAuthClientEntity } from '../client/mcp-oauth-client.entity'
@@ -138,6 +142,19 @@ export const mcpOAuthTokenService = {
         if (error || isNil(payload)) {
             log.debug({ error }, 'MCP OAuth token verification failed')
             return { status: 'invalid' }
+        }
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            const result = await tryCatch(async () => {
+                if (!payload.grantId) return false
+                const record = await repo().findOneBy({ id: payload.grantId, userId: payload.sub, platformId: payload.platformId, clientId: payload.clientId, revoked: false })
+                if (!record || record.projectId !== payload.projectId || new Date(record.expiresAt) <= new Date()) return false
+                const user = await databaseConnection().getRepository(UserEntity).findOneBy({ id: payload.sub, platformId: payload.platformId })
+                if (!user) return false
+                await hostingTransactions.run({ dataSource: databaseConnection(), fn: manager => hostingTransactions.member({ manager, actor: { identityId: user.identityId, platformId: payload.platformId }, projectId: payload.projectId ?? undefined }) })
+                return true
+            })
+            if (result.error) return { status: result.error instanceof HostingError ? 'invalid' : 'unavailable' }
+            if (!result.data) return { status: 'invalid' }
         }
         const { grantId } = payload
         if (!isNil(grantId)) {

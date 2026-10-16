@@ -9,6 +9,8 @@ import { repoFactory } from '../core/db/repo-factory'
 import { transaction } from '../core/db/transaction'
 import { buildPaginator } from '../helper/pagination/build-paginator'
 import { paginationHelper } from '../helper/pagination/pagination-utils'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingFail } from '../hosting/hosting-transactions'
 import { platformService } from '../platform/platform.service'
 import { projectService } from '../project/project-service'
 import { UserEntity, UserSchema } from './user-entity'
@@ -18,6 +20,7 @@ export const userRepo = repoFactory(UserEntity)
 
 export const userService = (log: FastifyBaseLogger) => ({
     async create(params: CreateParams): Promise<User> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_TENANT_SERVICE_REQUIRED')
         const isActive = params.isActive ?? true
         const user: NewUser = {
             id: apId(),
@@ -58,6 +61,7 @@ export const userService = (log: FastifyBaseLogger) => ({
         await userRepo().update({ id }, { lastActiveDate: dayjs().toISOString() })
     },
     async update({ id, status, platformId, platformRole, externalId }: UpdateParams): Promise<UserWithMetaInformation> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_TENANT_SERVICE_REQUIRED')
         const user = await this.getOrThrow({ id })
         assertNotNullOrUndefined(user.platformId, 'platformId')
 
@@ -162,6 +166,7 @@ export const userService = (log: FastifyBaseLogger) => ({
         return this.getMetaInformation({ id })
     },
     async delete({ id, platformId }: DeleteParams): Promise<void> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_TENANT_SERVICE_REQUIRED')
         await assertNotPlatformOwner({ id, platformId, log })
         const user = await userRepo().findOneBy({ id, platformId })
         if (isNil(user)) {

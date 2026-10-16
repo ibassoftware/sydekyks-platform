@@ -4,6 +4,8 @@ import { FastifyBaseLogger, FastifyRequest } from 'fastify'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { telemetry } from '../helper/telemetry.utils'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingServices } from '../hosting/hosting-services'
 import { platformService } from '../platform/platform.service'
 import { projectService } from '../project/project-service'
 import { userService } from '../user/user-service'
@@ -43,6 +45,7 @@ export const authenticationUtils = (log: FastifyBaseLogger) => ({
             ? findPersonalProject(projects, params.userId) ?? projects?.[0]
             : projects.find((project) => project.id === params.projectId)
         const identity = await userIdentityService(log).getOneOrFail({ id: user.identityId })
+        if (params.expectedTokenVersion !== undefined && (identity.tokenVersion ?? null) !== params.expectedTokenVersion) throw new ActivepiecesError({ code: ErrorCode.SESSION_EXPIRED, params: {} })
         if (!identity.verified) {
             throw new ActivepiecesError({
                 code: ErrorCode.EMAIL_IS_NOT_VERIFIED,
@@ -117,6 +120,10 @@ export const authenticationUtils = (log: FastifyBaseLogger) => ({
         const identity = await userIdentityService(log).getOneOrFail({ id: identityId })
         if (!identity.verified || signupNames.isPlaceholderName(identity)) {
             return { response: await this.getOnboardingResponse({ identityId }), signedUp: false }
+        }
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            const tenant = await (await hostingServices.onboarding()).provision({ identityId, name: signupNames.platformNameFromSignup({ firstName: identity.firstName, email: identity.email }) })
+            return { response: await this.getProjectAndToken({ ...tenant, expectedTokenVersion: tenant.tokenVersion }), signedUp: tenant.created }
         }
         const { response, provisioned } = await platformService(log).createPlatformWithProject({
             identityId,
@@ -316,5 +323,6 @@ type GetProjectAndTokenParams = {
     userId: string
     platformId: string
     projectId: string | null
+    expectedTokenVersion?: string | null
     scope?: EndpointScope
 }

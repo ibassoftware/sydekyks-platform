@@ -7,6 +7,8 @@ import { rejectedPromiseHandler } from '../helper/promise-handler'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { telemetry } from '../helper/telemetry.utils'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingServices } from '../hosting/hosting-services'
 import { platformService } from '../platform/platform.service'
 import { userService } from '../user/user-service'
 import { userInvitationsService } from '../user-invitations/user-invitation.service'
@@ -95,6 +97,10 @@ export const passwordlessAuthService = (log: FastifyBaseLogger) => ({
             log,
         }), log)
 
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            if (preferredPlatformId) return { response: await authenticationService(log).switchPlatform({ identityId: verifiedIdentity.id, platformId: preferredPlatformId }), signedUp: false }
+            return authenticationUtils(log).provisionOrOnboard({ identityId: verifiedIdentity.id })
+        }
         if (!isNil(platformId)) {
             const mayJoin = await mayJoinPlatform({ email, platformId, identity: verifiedIdentity, log })
             if (!mayJoin) {
@@ -134,9 +140,13 @@ export const passwordlessAuthService = (log: FastifyBaseLogger) => ({
         return authenticationUtils(log).provisionOrOnboard({ identityId: verifiedIdentity.id })
     },
 
-    async completeSignUp({ identityId, fullName }: CompleteSignUpParams): Promise<AuthenticationResult & { provider: UserIdentityProvider }> {
+    async completeSignUp({ identityId, fullName, tokenVersion }: CompleteSignUpParams): Promise<AuthenticationResult & { provider: UserIdentityProvider }> {
         const identity = await userIdentityService(log).getOneOrFail({ id: identityId })
         const { firstName, lastName } = signupNames.splitFullName({ fullName, email: identity.email })
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            const tenant = await (await hostingServices.onboarding()).provision({ identityId, name: signupNames.platformNameFromSignup({ firstName, email: identity.email }), names: { firstName, lastName }, expectedTokenVersion: tokenVersion })
+            return { response: await authenticationUtils(log).getProjectAndToken({ ...tenant, expectedTokenVersion: tenant.tokenVersion }), signedUp: tenant.created, provider: identity.provider }
+        }
         const writeNames = async (): Promise<void> => {
             await userIdentityService(log).updateNames({ id: identityId, firstName, lastName })
         }
@@ -218,6 +228,7 @@ type RequestCodeParams = {
 }
 
 type CompleteSignUpParams = {
+    tokenVersion?: string | null
     identityId: string
     fullName: string
 }

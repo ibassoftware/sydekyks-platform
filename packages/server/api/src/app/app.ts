@@ -47,6 +47,7 @@ import { systemSnapshot } from './helper/system-snapshot'
 import { validateEnvPropsOnStartup } from './helper/system-validator'
 import { shutdownTelemetry } from './helper/telemetry.utils'
 import { hostingBootstrap } from './hosting/hosting-bootstrap'
+import { hostingController } from './hosting/hosting-controller'
 import { knowledgeBaseModule } from './knowledge-base/knowledge-base.module'
 import { mcpActivityController } from './mcp/activity/mcp-activity-controller'
 import { mcpServerModule } from './mcp/mcp-module'
@@ -130,7 +131,7 @@ export const setupApp = async (app: FastifyInstance): Promise<FastifyInstance> =
 
     await app.register(rateLimitModule)
     app.addHook('onResponse', async (request, reply) => {
-        // eslint-disable-next-line                                                                                                                                                                                                                     
+        // eslint-disable-next-line
         reply.header('x-request-id', request.id)
     })
     app.addHook('onRequest', async (request, reply) => {
@@ -195,6 +196,7 @@ export const setupApp = async (app: FastifyInstance): Promise<FastifyInstance> =
     await app.register(openapiModule)
     await app.register(appEventRoutingModule)
     await app.register(authenticationModule)
+    await app.register(hostingController, { prefix: '/v1/hosting' })
     await app.register(triggerModule)
     await app.register(platformModule)
     await app.register(piecesReportModule)

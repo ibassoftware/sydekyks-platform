@@ -7,6 +7,8 @@ import { z } from 'zod'
 import { securityAccess } from '../core/security/authorization/fastify-security'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingFail } from '../hosting/hosting-transactions'
 import { assertCreditsAndAppSumoNotExceeded } from '../platform/billing-provider'
 import { aiExecution } from './ai-execution'
 import { aiModelCandidates } from './ai-model-candidates'
@@ -17,6 +19,7 @@ export const aiExecuteController: FastifyPluginAsyncZod = async (app) => {
     const bodyLimit = maxSocketHttpBufferSizeBytes(system.getNumberOrThrow(AppSystemProp.MAX_FILE_SIZE_MB))
 
     app.post('/execute', { ...ExecuteAiRoute, bodyLimit }, async (request, reply) => {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_GATEWAY_REQUIRED')
         if (request.principal.type !== PrincipalType.ENGINE) {
             throw new ActivepiecesError({
                 code: ErrorCode.AUTHORIZATION,

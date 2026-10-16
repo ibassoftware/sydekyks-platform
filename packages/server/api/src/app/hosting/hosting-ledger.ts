@@ -4,11 +4,11 @@ import { DataSource, EntityManager, In } from 'typeorm'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrant, HostingGrantEntity, HostingReservation, HostingReservationEntity } from './hosting-entities'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
-export function createHostedLedger({ dataSource }: { dataSource: DataSource }) {
+export function createHostedLedger({ dataSource, manager: existingManager }: { dataSource: DataSource, manager?: EntityManager }) {
     async function reserveExecution({ actor, projectId, key, payer }: { actor: HostingActor, projectId: string, key: string, payer: 'managed' | 'byok' }): Promise<HostingReservation> {
         tx.assertKey(key)
         if (payer !== 'managed' && payer !== 'byok') hostingFail('HOSTING_INVALID_PAYER')
-        return tx.run({ dataSource, fn: async manager => {
+        return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             const account = await tx.account({ manager, platformId: actor.platformId })
             await tx.member({ manager, actor, projectId, write: true })
             const existing = await manager.getRepository(HostingReservationEntity).findOneBy({ platformId: actor.platformId, kind: 'execution', key })
@@ -32,7 +32,7 @@ export function createHostedLedger({ dataSource }: { dataSource: DataSource }) {
     }
 
     async function claimExecution({ actor, reservationId }: { actor: HostingActor, reservationId: string }): Promise<Claim> {
-        return tx.run({ dataSource, fn: async manager => {
+        return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             const account = await tx.account({ manager, platformId: actor.platformId })
             const reservation = await findReservation({ manager, platformId: actor.platformId, reservationId, kind: 'execution' })
             await tx.member({ manager, actor, projectId: reservation.projectId, write: true })
@@ -54,7 +54,7 @@ export function createHostedLedger({ dataSource }: { dataSource: DataSource }) {
     }
 
     async function finishExecution({ platformId, reservationId, dispatchId }: Fence): Promise<void> {
-        await tx.run({ dataSource, fn: async manager => {
+        await tx.run({ dataSource, manager: existingManager, fn: async manager => {
             const account = await tx.account({ manager, platformId })
             const reservation = await findReservation({ manager, platformId, reservationId, kind: 'execution' })
             assertFence({ reservation, dispatchId })
@@ -70,7 +70,7 @@ export function createHostedLedger({ dataSource }: { dataSource: DataSource }) {
     async function reserveManagedCall({ actor, rootReservationId, key, maxCostMicroUsd }: { actor: HostingActor, rootReservationId: string, key: string, maxCostMicroUsd: bigint }): Promise<HostingReservation> {
         tx.assertKey(key)
         tx.assertAmount(maxCostMicroUsd)
-        return tx.run({ dataSource, fn: async manager => {
+        return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             const day = utcDay(await tx.now(manager))
             const budget = await lockBudget({ manager, day, create: true })
             const account = await tx.account({ manager, platformId: actor.platformId })
@@ -103,7 +103,7 @@ export function createHostedLedger({ dataSource }: { dataSource: DataSource }) {
     }
 
     async function claimManagedCall({ actor, reservationId }: { actor: HostingActor, reservationId: string }): Promise<Claim> {
-        return tx.run({ dataSource, fn: async manager => {
+        return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             const peek = await findReservation({ manager, platformId: actor.platformId, reservationId, kind: 'managed_ai' })
             await lockBudget({ manager, day: requiredDay(peek), create: false })
             const account = await tx.account({ manager, platformId: actor.platformId })
@@ -129,7 +129,7 @@ export function createHostedLedger({ dataSource }: { dataSource: DataSource }) {
 
     async function settleManagedCall({ platformId, reservationId, dispatchId, actualCostMicroUsd }: Fence & { actualCostMicroUsd: bigint }): Promise<void> {
         if (typeof actualCostMicroUsd !== 'bigint' || actualCostMicroUsd < 0n || actualCostMicroUsd > 10n ** 24n) hostingFail('HOSTING_INVALID_AMOUNT')
-        await tx.run({ dataSource, fn: async manager => {
+        await tx.run({ dataSource, manager: existingManager, fn: async manager => {
             const peek = await findReservation({ manager, platformId, reservationId, kind: 'managed_ai' })
             const budget = await lockBudget({ manager, day: requiredDay(peek), create: false })
             await tx.account({ manager, platformId })
@@ -151,7 +151,7 @@ export function createHostedLedger({ dataSource }: { dataSource: DataSource }) {
     }
 
     async function markUncertain({ platformId, reservationId, dispatchId }: Fence): Promise<void> {
-        await tx.run({ dataSource, fn: async manager => {
+        await tx.run({ dataSource, manager: existingManager, fn: async manager => {
             await tx.account({ manager, platformId })
             const reservation = await findReservation({ manager, platformId, reservationId })
             assertFence({ reservation, dispatchId })
@@ -164,7 +164,7 @@ export function createHostedLedger({ dataSource }: { dataSource: DataSource }) {
     }
 
     async function releaseUnsent({ actor, reservationId }: { actor: HostingActor, reservationId: string }): Promise<void> {
-        await tx.run({ dataSource, fn: async manager => {
+        await tx.run({ dataSource, manager: existingManager, fn: async manager => {
             const peek = await findReservation({ manager, platformId: actor.platformId, reservationId })
             if (peek.kind === 'managed_ai') await lockBudget({ manager, day: requiredDay(peek), create: false })
             await tx.account({ manager, platformId: actor.platformId })
@@ -178,7 +178,7 @@ export function createHostedLedger({ dataSource }: { dataSource: DataSource }) {
     }
 
     async function cancelUnsent({ platformId, reservationId }: { platformId: string, reservationId: string }): Promise<void> {
-        await tx.run({ dataSource, fn: async manager => {
+        await tx.run({ dataSource, manager: existingManager, fn: async manager => {
             const peek = await findReservation({ manager, platformId, reservationId })
             if (peek.kind === 'managed_ai') await lockBudget({ manager, day: requiredDay(peek), create: false })
             await tx.account({ manager, platformId })
@@ -190,7 +190,7 @@ export function createHostedLedger({ dataSource }: { dataSource: DataSource }) {
     }
 
     async function balance({ actor }: { actor: HostingActor }) {
-        return tx.run({ dataSource, fn: async manager => {
+        return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             await tx.account({ manager, platformId: actor.platformId })
             await tx.member({ manager, actor })
             const now = await tx.now(manager)

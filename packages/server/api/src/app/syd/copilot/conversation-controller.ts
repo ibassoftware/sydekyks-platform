@@ -5,6 +5,7 @@ import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { IsNull } from 'typeorm'
 import { z } from 'zod'
 import { securityAccess } from '../../core/security/authorization/fastify-security'
+import { hostingConfiguration } from '../../hosting/hosting-configuration'
 import { mcpUtils } from '../../mcp/tools/mcp-utils'
 import { assertCreditsAndAppSumoNotExceeded } from '../../platform/billing-provider'
 import { jobQueue, JobType } from '../../workers/job-queue/job-queue'
@@ -16,7 +17,7 @@ import { sydEditorContext } from './editor-context'
 import { sydMemoryEditor } from './memory-editor'
 import { sydCopilotActions } from './tools/copilot-actions'
 
-async function sendMessage({ platformId, userId, id, body, log }: ActorScope & { id: string, body: SydSendMessageRequest, log: FastifyBaseLogger }): Promise<{ conversationId: string, runId: string }> {
+async function sendMessage({ platformId, userId, id, body, log, tokenVersion }: ActorScope & { id: string, body: SydSendMessageRequest, log: FastifyBaseLogger, tokenVersion?: string | null }): Promise<{ conversationId: string, runId: string }> {
     const conversation = await sydConversationService(log).getConversationOrThrow({ platformId, userId, id })
     const editor = body.editorContext ? await sydEditorContext.getForUser({ platformId, userId, context: body.editorContext, log }) : null
     if (editor && editor.projectId !== conversation.projectId) await sydCopilotContext.assertProjectSwitchKeepsKey({ platformId, fromProjectId: conversation.projectId ?? null, toProjectId: editor.projectId, log })
@@ -25,7 +26,7 @@ async function sendMessage({ platformId, userId, id, body, log }: ActorScope & {
     const projectId = sydCopilotContext.selectRunProject({ conversationProjectId: editor?.projectId ?? conversation.projectId ?? null, projects })
     await sydCopilotContext.assertRunProviderConfigured({ platformId, scope: sydCopilotContext.runScopeOrThrow({ projectId }), log })
     await assertCreditsAndAppSumoNotExceeded({ platformId, log })
-    const runId = body.runId ?? apId()
+    const runId = hostingConfiguration.getServiceMode() === 'hosted' ? apId() : body.runId ?? apId()
     const claim = await sydCopilotContext.claimConversationForRun({ platformId, userId, conversationId: id, runId })
     if (editor && editor.projectId !== conversation.projectId) {
         const changed = await sydCopilotContext.conversationRepo().update({ id, platformId, userId, activeRunId: runId, source: AgentRunSource.CHAT }, { projectId: editor.projectId })
@@ -35,7 +36,7 @@ async function sendMessage({ platformId, userId, id, body, log }: ActorScope & {
         await sydApprovalGate.requestCancel({ conversationId: id, runId: claim.preemptedRunId })
         await sydApprovalGate.clearPendingGate({ conversationId: id, runId: claim.preemptedRunId })
     }
-    await jobQueue(log).add({ id: apId(), type: JobType.ONE_TIME, data: {
+    await jobQueue(log).add({ id: hostingConfiguration.getServiceMode() === 'hosted' ? runId : apId(), type: JobType.ONE_TIME, hostedOrigin: { type: 'user', userId, tokenVersion }, data: {
         schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, jobType: WorkerJobType.EXECUTE_AGENT_RUN,
         platformId, userId, projectId, conversationId: id, runId,
         userMessage: body.content, modelName: conversation.modelName ?? null, files: body.files, source: AgentRunSource.CHAT, messageSource: body.messageSource, editorContext: body.editorContext,
@@ -109,7 +110,7 @@ const handlers = {
     setMessageFeedback: async ({ request }: { request: HandlerRequest<SetMessageFeedbackRoute>, reply: FastifyReply }) => {
         await sydConversationService(request.log).setMessageFeedback({ ...actor(request), ...request.params, request: request.body }); return { success: true }
     },
-    sendMessage: async ({ request }: { request: HandlerRequest<SendRoute>, reply: FastifyReply }) => sendMessage({ ...actor(request), id: request.params.id, body: request.body, log: request.log }),
+    sendMessage: async ({ request }: { request: HandlerRequest<SendRoute>, reply: FastifyReply }) => sendMessage({ ...actor(request), id: request.params.id, body: request.body, log: request.log, tokenVersion: request.principal.type === PrincipalType.USER ? request.principal.tokenVersion ?? null : undefined }),
     decideToolApproval: async ({ request }: { request: HandlerRequest<ToolApprovalRoute>, reply: FastifyReply }) => decideToolApproval({ ...actor(request), gateId: request.params.gateId, body: request.body, log: request.log }),
     cancelConversation: async ({ request }: { request: HandlerRequest<ConversationRoute>, reply: FastifyReply }) => cancelConversation({ ...actor(request), id: request.params.id, log: request.log }),
     getPendingDecision: async ({ request }: { request: HandlerRequest<ConversationRoute>, reply: FastifyReply }) => getPendingDecision({ ...actor(request), id: request.params.id, log: request.log }),

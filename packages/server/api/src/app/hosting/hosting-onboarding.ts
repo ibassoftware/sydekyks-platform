@@ -35,13 +35,13 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
                 const account = await manager.getRepository(HostingAccountEntity).findOneBy({ id: prior.platformId })
                 if (!account) hostingFail('HOSTING_TRIAL_ALREADY_USED')
                 const user = await tx.member({ manager, actor: { identityId, platformId: account.id } })
-                return { platformId: account.id, userId: user.id, projectId: account.initialProjectId, created: false }
+                return { platformId: account.id, userId: user.id, projectId: account.initialProjectId, created: false, tokenVersion: identity.tokenVersion ?? null }
             }
             const joined = await manager.getRepository(UserEntity).find({ where: { identityId, status: UserStatus.ACTIVE }, order: { created: 'ASC' } })
             for (const user of joined) {
                 if (!user.platformId || !await manager.getRepository(HostingAccountEntity).existsBy({ id: user.platformId })) continue
                 const project = await manager.getRepository(ProjectEntity).findOneBy({ platformId: user.platformId, ownerId: user.id })
-                return { platformId: user.platformId, userId: user.id, projectId: project?.id ?? null, created: false }
+                return { platformId: user.platformId, userId: user.id, projectId: project?.id ?? null, created: false, tokenVersion: identity.tokenVersion ?? null }
             }
             if (await eligibility.existsBy({ identityId })) hostingFail('HOSTING_TRIAL_ALREADY_USED')
             const platformId = apId()
@@ -67,9 +67,10 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
                 await manager.getRepository(HostingGrantEntity).insert({ id: grantId, platformId, sourceKey: `trial:${subject(identity.email)}`, meter, amount, reserved: 0n, consumed: 0n, validFrom: now, validUntil: trialEndsAt })
                 await manager.getRepository(HostingLedgerEntity).insert({ id: apId(), platformId, grantId, reservationId: null, operation: 'grant', key: `grant:${grantId}`, amount })
             }
-            await manager.getRepository(UserIdentityEntity).update({ id: identityId }, { ...names, tokenVersion: apId(), lastLoggedInPlatformId: platformId })
+            const tokenVersion = apId()
+            await manager.getRepository(UserIdentityEntity).update({ id: identityId }, { ...names, tokenVersion, lastLoggedInPlatformId: platformId })
             await tx.event({ manager, platformId, event: 'tenant.provisioned', payload: { identityId, userId, projectId } })
-            return { platformId, userId, projectId, created: true }
+            return { platformId, userId, projectId, created: true, tokenVersion }
         } })
     }
 
@@ -97,11 +98,12 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
         } })
     }
 
-    async function acceptInvitation({ identityId, token }: { identityId: string, token: string }): Promise<ProvisionedTenant> {
+    async function acceptInvitation({ identityId, token, expectedTokenVersion }: { identityId: string, token: string, expectedTokenVersion?: string | null }): Promise<ProvisionedTenant> {
         if (!/^[A-Za-z0-9_-]{43}$/.test(token)) hostingFail('HOSTING_INVALID_INVITATION')
         return tx.run({ dataSource, fn: async manager => {
             await policy(manager)
             const identity = await lockedIdentity({ manager, identityId })
+            if (expectedTokenVersion !== undefined && (identity.tokenVersion ?? null) !== expectedTokenVersion) hostingFail('HOSTING_SESSION_EXPIRED')
             const peek = await manager.getRepository(HostingInvitationEntity).findOneBy({ tokenDigest: digest(token) })
             if (!peek || peek.subject !== subject(identity.email)) hostingFail('HOSTING_INVALID_INVITATION')
             const account = await tx.account({ manager, platformId: peek.platformId })
@@ -110,7 +112,7 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
             if (invitation.status === 'accepted' && invitation.acceptedIdentityId === identityId) {
                 const member = await tx.member({ manager, actor: { identityId, platformId: account.id } })
                 const project = await manager.getRepository(ProjectEntity).findOneBy({ platformId: account.id, ownerId: member.id })
-                return { platformId: account.id, userId: member.id, projectId: project?.id ?? null, created: false }
+                return { platformId: account.id, userId: member.id, projectId: project?.id ?? null, created: false, tokenVersion: identity.tokenVersion ?? null }
             }
             const now = await tx.now(manager)
             if (invitation.status !== 'pending' || invitation.expiresAt <= now) hostingFail('HOSTING_INVALID_INVITATION')
@@ -123,9 +125,10 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
             const userId = previous?.id ?? apId()
             if (!alreadyActive) await manager.getRepository(UserEntity).save({ id: userId, identityId, platformId: account.id, platformRole: invitation.role, status: UserStatus.ACTIVE })
             const projectId = project?.id ?? await insertProject({ manager, platformId: account.id, userId, name: `${identity.firstName}'s Project`, type: ProjectType.PERSONAL })
-            await manager.getRepository(UserIdentityEntity).update({ id: identityId }, { tokenVersion: apId(), lastLoggedInPlatformId: account.id })
+            const tokenVersion = apId()
+            await manager.getRepository(UserIdentityEntity).update({ id: identityId }, { tokenVersion, lastLoggedInPlatformId: account.id })
             await tx.event({ manager, platformId: account.id, event: 'invitation.accepted', payload: { invitationId: invitation.id, identityId, userId } })
-            return { platformId: account.id, userId, projectId, created: false }
+            return { platformId: account.id, userId, projectId, created: false, tokenVersion }
         } })
     }
 
@@ -160,12 +163,12 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
 
     async function selectTenant({ actor }: { actor: HostingActor }): Promise<ProvisionedTenant> {
         return tx.run({ dataSource, fn: async manager => {
-            await lockedIdentity({ manager, identityId: actor.identityId })
+            const identity = await lockedIdentity({ manager, identityId: actor.identityId })
             await tx.account({ manager, platformId: actor.platformId })
             const user = await tx.member({ manager, actor })
             const project = await manager.getRepository(ProjectEntity).findOneBy({ platformId: actor.platformId, ownerId: user.id })
             await manager.getRepository(UserIdentityEntity).update({ id: actor.identityId }, { lastLoggedInPlatformId: actor.platformId })
-            return { platformId: actor.platformId, userId: user.id, projectId: project?.id ?? null, created: false }
+            return { platformId: actor.platformId, userId: user.id, projectId: project?.id ?? null, created: false, tokenVersion: identity.tokenVersion ?? null }
         } })
     }
 
@@ -206,4 +209,4 @@ function assertName(name: string): void {
 }
 
 type ProvisionParams = { identityId: string, name: string, expectedTokenVersion?: string | null, names?: { firstName: string, lastName: string } }
-export type ProvisionedTenant = { platformId: string, userId: string, projectId: string | null, created: boolean }
+export type ProvisionedTenant = { platformId: string, userId: string, projectId: string | null, created: boolean, tokenVersion: string | null }

@@ -14,6 +14,7 @@ export const sampleDataController: FastifyPluginAsyncZod = async (fastify) => {
             flowVersionId: request.body.flowVersionId,
             stepNameToTest: request.body.stepName,
             triggeredBy: request.principal.id,
+            hostedOrigin: request.principal.type === PrincipalType.USER ? { type: 'user', userId: request.principal.id, tokenVersion: request.principal.tokenVersion ?? null } : undefined,
         })
     })
 
@@ -36,7 +37,7 @@ export const sampleDataController: FastifyPluginAsyncZod = async (fastify) => {
 const GetSampleDataRequestParams = {
     config: {
         security: securityAccess.project(
-            [PrincipalType.USER, PrincipalType.SERVICE], 
+            [PrincipalType.USER, PrincipalType.SERVICE],
             undefined, {
                 type: ProjectResourceType.QUERY,
             }),
@@ -51,7 +52,7 @@ const GetSampleDataRequestParams = {
 const TestSampleDataRequestBody = {
     config: {
         security: securityAccess.project(
-            [PrincipalType.USER, PrincipalType.SERVICE], 
+            [PrincipalType.USER, PrincipalType.SERVICE],
             undefined, {
                 type: ProjectResourceType.BODY,
             }),

@@ -4,6 +4,8 @@ import { FastifyBaseLogger } from 'fastify'
 import { Brackets, EntityManager, IsNull, Not, ObjectLiteral, SelectQueryBuilder } from 'typeorm'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingFail } from '../hosting/hosting-transactions'
 import { userRepo, userService } from '../user/user-service'
 import { projectHooks, ProjectPostCreateContext } from './project-hooks'
 import { projectRepo } from './project-repo'
@@ -13,6 +15,7 @@ export { projectRepo }
 
 export const projectService = (log: FastifyBaseLogger) => ({
     async create(params: CreateParams): Promise<Project> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_TENANT_SERVICE_REQUIRED')
         const { callPostCreateHooks = true, entityManager, postCreateContext, ...rest } = params
         const icon = this.createProjectIcon()
         const newProject: NewProject = {

@@ -8,6 +8,7 @@ import { commonProperties } from '../../../../src/app/database/database-connecti
 import { SydekyksInitialSchema1880000000000 } from '../../../../src/app/database/migration/postgres/1880000000000-SydekyksInitialSchema'
 import { SydekyksUpstream1031881000000000 } from '../../../../src/app/database/migration/postgres/1881000000000-SydekyksUpstream103'
 import { SydekyksHostingLedger1882000000000 } from '../../../../src/app/database/migration/postgres/1882000000000-SydekyksHostingLedger'
+import { SydekyksHostingDispatch1883000000000 } from '../../../../src/app/database/migration/postgres/1883000000000-SydekyksHostingDispatch'
 import { FlagEntity } from '../../../../src/app/flags/flag.entity'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingEligibilityEntity, HostingGrantEntity, HostingInvitationEntity, HostingLedgerEntity, HostingOutboxEntity, HostingReservationEntity } from '../../../../src/app/hosting/hosting-entities'
 import { INSTALLATION_MODE_FLAG_ID } from '../../../../src/app/hosting/hosting-installation'
@@ -26,6 +27,7 @@ const migration = new SydekyksHostingLedger1882000000000()
 
 beforeAll(async () => {
     await ds.initialize()
+    await ds.query('CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public')
     const runner = ds.createQueryRunner()
     await runner.createSchema(schema, true)
     try {
@@ -33,6 +35,7 @@ beforeAll(async () => {
         await new SydekyksInitialSchema1880000000000().up(runner)
         await new SydekyksUpstream1031881000000000().up(runner)
         await migration.up(runner)
+        await new SydekyksHostingDispatch1883000000000().up(runner)
         await runner.commitTransaction()
     }
     finally { if (runner.isTransactionActive) await runner.rollbackTransaction(); await runner.release() }
@@ -401,7 +404,7 @@ describe('additive hosting migration', () => {
     it('rolls back empty tables without modifying self-hosted records and can reapply', async () => {
         const identityId = await identity()
         const runner = ds.createQueryRunner()
-        try { await runner.startTransaction(); await migration.down(runner); await migration.up(runner); await runner.commitTransaction() }
+        try { await runner.startTransaction(); await new SydekyksHostingDispatch1883000000000().down(runner); await migration.down(runner); await migration.up(runner); await new SydekyksHostingDispatch1883000000000().up(runner); await runner.commitTransaction() }
         finally { if (runner.isTransactionActive) await runner.rollbackTransaction(); await runner.release() }
         expect(await ds.getRepository(UserIdentityEntity).existsBy({ id: identityId })).toBe(true)
         expect(await ds.getRepository(FlagEntity).existsBy({ id: INSTALLATION_MODE_FLAG_ID })).toBe(true)

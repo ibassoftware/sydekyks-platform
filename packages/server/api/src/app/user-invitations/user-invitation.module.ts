@@ -10,12 +10,14 @@ import { ProjectResourceType } from '../core/security/authorization/common'
 import { securityAccess } from '../core/security/authorization/fastify-security'
 import { rejectedPromiseHandler } from '../helper/promise-handler'
 import { telemetry } from '../helper/telemetry.utils'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
 import { projectService } from '../project/project-service'
 import { platformMustBeOwnedByCurrentUser } from '../sydekyks-community/feature-access'
 import { userService } from '../user/user-service'
 import { INVITATION_EXPIRY_SECONDS, userInvitationsService } from './user-invitation.service'
 
 export const invitationModule: FastifyPluginAsyncZod = async (app) => {
+    if (hostingConfiguration.getServiceMode() === 'hosted') return
     await app.register(invitationController, { prefix: '/v1/user-invitations' })
 }
 

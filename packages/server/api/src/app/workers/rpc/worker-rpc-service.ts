@@ -18,6 +18,9 @@ import { EMPTY_PREWARM_RESPONSE, preWarmWorkersService } from '../../flows/pre-w
 import { rejectedPromiseHandler } from '../../helper/promise-handler'
 import { system } from '../../helper/system/system'
 import { AppSystemProp } from '../../helper/system/system-props'
+import { hostingConfiguration } from '../../hosting/hosting-configuration'
+import { hostingServices } from '../../hosting/hosting-services'
+import { hostingFail } from '../../hosting/hosting-transactions'
 import { hostingWorkerGate } from '../../hosting/hosting-worker-gate'
 import { pieceMetadataService } from '../../pieces/metadata/piece-metadata-service'
 import { shouldBlockRunOnCredits } from '../../platform/billing-provider'
@@ -115,10 +118,12 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
         },
 
         async uploadRunLog(input) {
+            if (hostingConfiguration.getServiceMode() === 'hosted') await hostingServices.execution().flowReceipt({ connectionId, projectId: input.projectId, runId: input.runId, status: input.status })
             await engineRunCallbackService(log).uploadRunLog({ projectId: input.projectId, request: input })
         },
 
         async submitPayloads(input) {
+            if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_TRIGGER_COORDINATOR_REQUIRED')
             const { flowVersionId, projectId, payloads, httpRequestId, streamStepProgress, environment, parentRunId, failParentOnFailure } = input
 
             const flowVersion = await flowVersionService(log).getOne(flowVersionId)
@@ -148,6 +153,7 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
                             shouldExecuteTriggerOnRetry: false,
                         })
                         : flowRunService(log).start({
+                            hostedOrigin: { type: 'scheduled' },
                             flowId: flowVersion.flowId,
                             environment,
                             flowVersionId,

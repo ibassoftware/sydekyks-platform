@@ -10,6 +10,8 @@ import { defaultTheme } from '../flags/theme'
 import { rejectedPromiseHandler } from '../helper/promise-handler'
 import { system } from '../helper/system/system'
 import { telemetry } from '../helper/telemetry.utils'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingFail } from '../hosting/hosting-transactions'
 import { projectService } from '../project/project-service'
 import { platformPlanService, SYDEKYKS_CAPABILITIES } from '../sydekyks-community/platform-capabilities'
 import { userService } from '../user/user-service'
@@ -38,6 +40,7 @@ export const platformService = (log: FastifyBaseLogger) => ({
         return platforms
     },
     async create(params: AddParams): Promise<PlatformWithoutFederatedAuth> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_TENANT_SERVICE_REQUIRED')
         const {
             ownerId,
             name,
@@ -86,6 +89,7 @@ export const platformService = (log: FastifyBaseLogger) => ({
         return stripFederatedAuth(savedPlatform)
     },
     async createPlatformWithProject({ identityId, name, invalidatePreviousTokens, isFirstPlatform, callerTokenVersion, beforeProvision }: CreatePlatformWithProjectParams): Promise<CreatePlatformWithProjectResult> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_TENANT_SERVICE_REQUIRED')
         return distributedLock(log).runExclusive({
             key: `create-platform-${identityId}`,
             timeoutInSeconds: 30,

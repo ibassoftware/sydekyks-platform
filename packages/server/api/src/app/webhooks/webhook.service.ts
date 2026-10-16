@@ -298,6 +298,7 @@ async function handleSync(params: SyncWebhookParams): Promise<EngineHttpResponse
     }
 
     const createdRun = await flowRunService(logger).start({
+        hostedOrigin: { type: 'scheduled' },
         platformId,
         environment: runEnvironment,
         flowId: flow.id,

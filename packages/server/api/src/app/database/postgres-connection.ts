@@ -13,7 +13,9 @@ import { BackfillPieceTranslation1874000000000 } from './migration/postgres/back
 
 import { SydekyksHostingLedger1882000000000 } from './migration/postgres/1882000000000-SydekyksHostingLedger'
 
-export const getMigrations = () => [SydekyksInitialSchema1880000000000, SydekyksUpstream1031881000000000, SydekyksUpstreamOctober211882000000000, SydekyksHostingLedger1882000000000]
+import { SydekyksHostingDispatch1883000000000 } from './migration/postgres/1883000000000-SydekyksHostingDispatch'
+
+export const getMigrations = () => [SydekyksInitialSchema1880000000000, SydekyksUpstream1031881000000000, SydekyksUpstreamOctober211882000000000, SydekyksHostingLedger1882000000000, SydekyksHostingDispatch1883000000000]
 
 function getSslConfig() {
     return system.getBoolean(AppSystemProp.POSTGRES_USE_SSL) ? { rejectUnauthorized: true } : false

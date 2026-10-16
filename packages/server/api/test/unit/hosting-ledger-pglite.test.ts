@@ -4,6 +4,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest'
 import { UserIdentityEntity } from '../../src/app/authentication/user-identity/user-identity-entity'
 import { SydekyksHostingLedger1882000000000 } from '../../src/app/database/migration/postgres/1882000000000-SydekyksHostingLedger'
 import { createPGliteDataSource } from '../../src/app/database/pglite-connection'
+import { SydekyksHostingDispatch1883000000000 } from '../../src/app/database/migration/postgres/1883000000000-SydekyksHostingDispatch'
 import { FlagEntity } from '../../src/app/flags/flag.entity'
 import { HostingLedgerEntity } from '../../src/app/hosting/hosting-entities'
 import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
@@ -22,8 +23,10 @@ it('applies and rolls back additive schema on PGlite while preserving legacy dat
     try {
         await runner.startTransaction()
         await runner.query("CREATE FUNCTION hosting_reject_ledger_mutation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'HOSTING_LEDGER_IMMUTABLE'; END $$")
+        await new SydekyksHostingDispatch1883000000000().down(runner)
         await migration.down(runner)
         await migration.up(runner)
+        await new SydekyksHostingDispatch1883000000000().up(runner)
         await runner.commitTransaction()
     }
     finally { if (runner.isTransactionActive) await runner.rollbackTransaction(); await runner.release() }

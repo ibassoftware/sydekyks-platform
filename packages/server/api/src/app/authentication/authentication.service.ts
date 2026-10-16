@@ -1,22 +1,40 @@
-import { ActivepiecesError, assertNotNullOrUndefined, ErrorCode, isNil } from '@activepieces/core-utils'
+import { ActivepiecesError, apId, assertNotNullOrUndefined, ErrorCode, isNil } from '@activepieces/core-utils'
 import { cryptoUtils } from '@activepieces/server-utils'
 import { ApEdition, ApEnvironment, ApFlagId, AuthenticationResponse, OtpType, PlatformWithoutSensitiveData, User, UserIdentity, UserIdentityProvider } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
+import { databaseConnection } from '../database/database-connection'
 import { flagService } from '../flags/flag.service'
 import { rejectedPromiseHandler } from '../helper/promise-handler'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingServices } from '../hosting/hosting-services'
+import { hostingTransactions } from '../hosting/hosting-transactions'
 import { platformService } from '../platform/platform.service'
 import { userService } from '../user/user-service'
 import { userInvitationsService } from '../user-invitations/user-invitation.service'
 import { AuthenticationResult, authenticationUtils } from './authentication-utils'
+import { passwordHasher } from './lib/password-hasher'
 import { zerobounce } from './lib/zerobounce'
 import { otpService } from './otp/otp-service'
+import { UserIdentityEntity } from './user-identity/user-identity-entity'
 import { userIdentityService } from './user-identity/user-identity-service'
 
 const PLATFORM_CONTROLLED_PROVIDERS = new Set([UserIdentityProvider.JWT, UserIdentityProvider.SAML])
 
 export const authenticationService = (log: FastifyBaseLogger) => ({
+    async verifyHostedEmail({ email, code, newPassword }: { email: string, code: string, newPassword: string }): Promise<AuthenticationResult> {
+        if (hostingConfiguration.getServiceMode() !== 'hosted') throw new ActivepiecesError({ code: ErrorCode.AUTHORIZATION, params: {} })
+        const identity = await userIdentityService(log).getIdentityByEmail(email)
+        if (!identity || identity.verified || !await otpService(log).confirm({ identityId: identity.id, type: OtpType.EMAIL_VERIFICATION, value: code })) throw new ActivepiecesError({ code: ErrorCode.INVALID_OTP, params: {} })
+        const password = await passwordHasher.hash(newPassword)
+        await hostingTransactions.run({ dataSource: databaseConnection(), fn: async manager => {
+            const current = await manager.getRepository(UserIdentityEntity).findOne({ where: { id: identity.id }, lock: { mode: 'pessimistic_write' } })
+            if (!current || current.verified || current.email !== identity.email) throw new ActivepiecesError({ code: ErrorCode.INVALID_OTP, params: {} })
+            await manager.getRepository(UserIdentityEntity).update({ id: current.id }, { verified: true, password, tokenVersion: apId() })
+        } })
+        return authenticationUtils(log).provisionOrOnboard({ identityId: identity.id })
+    },
     async signUp(params: SignUpParams): Promise<AuthenticationResult> {
         if (requiresSignUpAbuseCheck(params.provider)) {
             const maySignUp = await zerobounce.maySignUp({ email: params.email, log })
@@ -24,6 +42,8 @@ export const authenticationService = (log: FastifyBaseLogger) => ({
                 throw refusedSignUpError(params)
             }
         }
+        const hosted = hostingConfiguration.getServiceMode() === 'hosted'
+        if (hosted && params.platformId) throw new ActivepiecesError({ code: ErrorCode.AUTHORIZATION, params: {} })
         const platformId = params.platformId
 
         if (!isNil(platformId)) {
@@ -49,7 +69,7 @@ export const authenticationService = (log: FastifyBaseLogger) => ({
                 identity: userIdentity,
                 platformId,
             })
-            await userInvitationsService(log).provisionUserInvitation({ email: params.email })
+            if (!hosted) await userInvitationsService(log).provisionUserInvitation({ email: params.email })
 
             log.info({ email: params.email, platform: { id: platformId } }, 'User signed up to existing platform')
             const response = await authenticationUtils(log).getProjectAndToken({
@@ -64,12 +84,12 @@ export const authenticationService = (log: FastifyBaseLogger) => ({
         const isFederatedProvider = params.provider === UserIdentityProvider.GOOGLE || params.provider === UserIdentityProvider.JWT || params.provider === UserIdentityProvider.SAML
         const userIdentity = await userIdentityService(log).create({
             ...params,
-            verified: hasInvitations || isFederatedProvider,
+            verified: (!hosted && hasInvitations) || isFederatedProvider,
         })
         await sendVerificationOrAutoVerify(userIdentity, log)
         await flagService(log).save({ id: ApFlagId.USER_CREATED, value: true })
         await authenticationUtils(log).saveNewsLetterSubscriber(userIdentity)
-        await userInvitationsService(log).provisionUserInvitation({ email: params.email })
+        if (hostingConfiguration.getServiceMode() !== 'hosted') await userInvitationsService(log).provisionUserInvitation({ email: params.email })
 
         const preferredPlatformId = await authenticationService(log).selectCloudSignInPlatformId({ identityId: userIdentity.id })
         if (!isNil(preferredPlatformId)) {
@@ -131,12 +151,13 @@ export const authenticationService = (log: FastifyBaseLogger) => ({
         return { response, signedUp: false }
     },
     async selectCloudSignInPlatformId({ identityId }: SelectCloudSignInPlatformIdParams): Promise<string | null> {
-        if (system.getEdition() !== ApEdition.CLOUD) {
+        if (hostingConfiguration.getServiceMode() !== 'hosted' && system.getEdition() !== ApEdition.CLOUD) {
             return null
         }
         const platforms = await platformService(log).listPlatformsForIdentityWithAtleastProject({ identityId })
         const identity = await userIdentityService(log).getOneOrFail({ id: identityId })
         const lastUsed = !isNil(identity.lastLoggedInPlatformId) ? platforms.find((p) => p.id === identity.lastLoggedInPlatformId) : undefined
+        if (hostingConfiguration.getServiceMode() === 'hosted') return lastUsed?.id ?? platforms[0]?.id ?? null
         const licensed = platforms.find((p) => !isNil(p.plan.licenseKey))
         return lastUsed?.id ?? licensed?.id ?? platforms[0]?.id ?? null
     },
@@ -181,6 +202,7 @@ export const authenticationService = (log: FastifyBaseLogger) => ({
                 imageUrl: params.imageUrl,
             })
         }
+        if (hostingConfiguration.getServiceMode() === 'hosted') return { response: await authenticationService(log).switchPlatform({ identityId: userIdentity.id, platformId }), signedUp: false }
         const { user, created } = await userService(log).getOrCreateWithProject({
             identity: userIdentity,
             platformId,
@@ -194,6 +216,10 @@ export const authenticationService = (log: FastifyBaseLogger) => ({
         return { response, signedUp: created }
     },
     async switchPlatform(params: SwitchPlatformParams): Promise<AuthenticationResponse> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            const tenant = await (await hostingServices.onboarding()).selectTenant({ actor: { identityId: params.identityId, platformId: params.platformId, ...(params.tokenVersion !== undefined ? { tokenVersion: params.tokenVersion } : {}) } })
+            return authenticationUtils(log).getProjectAndToken({ ...tenant, expectedTokenVersion: tenant.tokenVersion })
+        }
         const platforms = await platformService(log).listPlatformsForIdentityWithAtleastProject({ identityId: params.identityId })
         const platform = platforms.find((platform) => platform.id === params.platformId)
         await assertUserCanSwitchToPlatform(platform)
@@ -237,6 +263,10 @@ async function getUserForPlatform(identityId: string, platform: PlatformWithoutS
 }
 
 async function sendVerificationOrAutoVerify(userIdentity: UserIdentity, log: FastifyBaseLogger): Promise<void> {
+    if (hostingConfiguration.getServiceMode() === 'hosted') {
+        if (!userIdentity.verified) await otpService(log).createAndSend({ platformId: null, email: userIdentity.email, type: OtpType.EMAIL_VERIFICATION })
+        return
+    }
     const edition = system.getEdition()
     const environment = system.get(AppSystemProp.ENVIRONMENT)
     switch (edition) {
@@ -327,6 +357,7 @@ type SignInWithPasswordParams = {
 }
 
 type SwitchPlatformParams = {
+    tokenVersion?: string | null
     identityId: string
     platformId: string
 }

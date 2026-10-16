@@ -9,12 +9,14 @@ import { UserEntity } from '../user/user-entity'
 import { HostingAccount, HostingAccountEntity, HostingGrant, HostingLedgerEntity, HostingOutboxEntity, HostingReservation } from './hosting-entities'
 import { INSTALLATION_MODE_FLAG_ID } from './hosting-installation'
 
-async function run<T>({ dataSource, fn }: { dataSource: DataSource, fn: (manager: EntityManager) => Promise<T> }): Promise<T> {
-    return dataSource.transaction(async manager => {
+async function run<T>({ dataSource, manager: existing, fn }: { dataSource: DataSource, manager?: EntityManager, fn: (manager: EntityManager) => Promise<T> }): Promise<T> {
+    const operation = async (manager: EntityManager): Promise<T> => {
         const flag = await manager.getRepository(FlagEntity).findOneBy({ id: INSTALLATION_MODE_FLAG_ID })
         if (!z.object({ schemaVersion: z.literal(1), serviceMode: z.literal('hosted') }).safeParse(flag?.value).success) hostingFail('HOSTED_INSTALLATION_REQUIRED')
         return fn(manager)
-    })
+    }
+    if (existing && (existing.connection !== dataSource || !existing.queryRunner?.isTransactionActive)) hostingFail('HOSTING_TRANSACTION_REQUIRED')
+    return existing ? operation(existing) : dataSource.transaction(operation)
 }
 
 async function now(manager: EntityManager): Promise<Date> {
@@ -31,7 +33,7 @@ async function account({ manager, platformId }: { manager: EntityManager, platfo
 async function member({ manager, actor, admin = false, projectId, write = false }: { manager: EntityManager, actor: HostingActor, admin?: boolean, projectId?: string, write?: boolean }) {
     const identity = await manager.getRepository(UserIdentityEntity).findOneBy({ id: actor.identityId })
     const user = await manager.getRepository(UserEntity).findOneBy({ platformId: actor.platformId, identityId: actor.identityId, status: UserStatus.ACTIVE })
-    if (!identity?.verified || !user || (admin && user.platformRole !== PlatformRole.ADMIN)) hostingFail('HOSTING_ACCESS_DENIED')
+    if (!identity?.verified || (actor.tokenVersion !== undefined && (identity.tokenVersion ?? null) !== actor.tokenVersion) || !user || (admin && user.platformRole !== PlatformRole.ADMIN)) hostingFail('HOSTING_ACCESS_DENIED')
     if (projectId) {
         const project = await manager.getRepository(ProjectEntity).findOneBy({ id: projectId, platformId: actor.platformId })
         if (!project || (project.type === 'PERSONAL' && project.ownerId !== user.id)) hostingFail('HOSTING_PROJECT_ACCESS_DENIED')
@@ -71,4 +73,4 @@ function assertAmount(amount: bigint): void {
 
 export class HostingError extends Error {}
 export const hostingTransactions = { run, now, account, member, assertActive, assertGrantActive, entry, event, hostingFail, assertKey, assertAmount }
-export type HostingActor = { identityId: string, platformId: string }
+export type HostingActor = { identityId: string, platformId: string, tokenVersion?: string | null }
