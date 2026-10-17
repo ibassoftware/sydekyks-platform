@@ -272,6 +272,7 @@ function SessionAuth({
       status={!denied && !status.isError ? status.data : undefined}
       email={email}
       pending={pending}
+      canRefresh={!denied}
       loading={
         offer.isPending || (stage === 'ready' && status.isPending && !denied)
       }
@@ -317,7 +318,7 @@ function SessionAuth({
 function message(error: HostedAuthError['kind'], stage: AuthStage) {
   const messages = {
     session: t(
-      'Your session changed or expired. Use another account or reload this page to sign in again.',
+      'Your session changed or expired. Use another account to sign in again.',
     ),
     denied: t(
       'Your workspace access changed. Sign in again or contact a platform administrator.',

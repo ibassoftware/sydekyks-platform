@@ -27,6 +27,7 @@ export type HostedAuthViewProps = {
   email: string;
   pending: boolean;
   loading: boolean;
+  canRefresh?: boolean;
   error: string | null;
   notice: string | null;
   cooldown: number;
@@ -51,6 +52,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
     email,
     pending,
     loading,
+    canRefresh = true,
     error,
     notice,
     cooldown,
@@ -121,9 +123,13 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                 : t('Sign in to your workspace')}
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-gray-11">
-              {ready
+              {ready && status
                 ? t(
                     'Your current access is verified by the server. Signing in never restarts a trial.',
+                  )
+                : ready
+                ? t(
+                    'Your workspace access is checked on the server. Signing in never restarts a trial.',
                   )
                 : details
                 ? t(
@@ -348,7 +354,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                 )}
               </div>
             )}
-            {ready && !loading && !status && (
+            {ready && !loading && !status && canRefresh && (
               <Button variant="outline" className="mt-5" onClick={onRefresh}>
                 {t('Refresh access status')}
               </Button>
@@ -430,7 +436,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
               </p>
             )}
             {challenge && <div className="mt-5">{challenge}</div>}
-            {!loading && !offer && (
+            {!loading && !offer && canRefresh && (
               <Button variant="outline" className="mt-5" onClick={onRefresh}>
                 {t('Reload setup details')}
               </Button>
