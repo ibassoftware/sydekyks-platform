@@ -1,6 +1,7 @@
 import { AgentConversation, AgentRunSource, chatBilling, ChatToolCall, isAppSumoCreditedPlan, PersistedAgentMessage, PersistedAgentPartType, PersistedAgentRole, PersistedToolCallStatus } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { LicenseKeyPostHogEvents } from '../../helper/telemetry.utils'
+import { hostingConfiguration } from '../../hosting/hosting-configuration'
 import { trackBillingAndSendTelemetry } from '../../platform/billing-and-telemetry'
 import { CreditUsageSource, TrackCreditsParams } from '../../platform/billing-provider'
 import { platformService } from '../../platform/platform.service'
@@ -24,6 +25,8 @@ function countBillableToolCallsInLatestTurn({ messages }: { messages: PersistedA
 }
 
 async function chargeForLatestTurn({ conversation, runId, log }: ChargeForLatestTurnParams): Promise<void> {
+    // Hosted turns settle each provider call through the durable credit ledger.
+    if (hostingConfiguration.getServiceMode() === 'hosted') return
     const messages = sydConversationHistory.resolveMessages({ conversation, log })
     const turnIndex = messages.filter((message) => message.role === PersistedAgentRole.USER).length
     const configured = conversation.source === AgentRunSource.CHAT || conversation.source === AgentRunSource.AGENT_BUILDER ? null : await sydAgentRuntime.snapshot({ conversationId: conversation.id, runId })

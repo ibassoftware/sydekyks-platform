@@ -69,6 +69,7 @@ export class HostedChatError extends Error {
       | 'key'
       | 'project'
       | 'credits'
+      | 'context'
       | 'send',
   ) {
     super(hostedChatErrorText(kind));
@@ -89,6 +90,8 @@ export function hostedChatErrorText(kind: HostedChatError['kind']) {
       return 'This conversation belongs to a different project. Reopen it or start a new chat.';
     case 'credits':
       return 'Your hosted allowance is unavailable or exhausted. Check your billing before sending again.';
+    case 'context':
+      return 'This conversation exceeds the current chat limits. Start a new chat with a shorter message. No execution was charged for this send.';
     case 'send':
       return 'The send outcome could not be confirmed. Refresh the conversation before sending again; another send may use another execution.';
     default:
@@ -121,6 +124,8 @@ export async function hostedChatRequest<T>(
     const code = api.isError(error)
       ? (error.response?.data as { code?: string })?.code
       : undefined;
+    if (code === 'HOSTING_CHAT_CONTEXT_LIMIT')
+      throw new HostedChatError('context');
     if (
       status === 401 ||
       code === 'SESSION_EXPIRED' ||

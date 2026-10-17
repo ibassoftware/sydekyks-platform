@@ -14,9 +14,19 @@ const socket = io(API_BASE_URL, {
 
 const SocketContext = React.createContext<typeof socket>(socket);
 
-export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
-  const token = authenticationSession.getToken();
-  const projectId = authenticationSession.getProjectId();
+export const SocketProvider = ({
+  children,
+  session,
+}: {
+  children: React.ReactNode;
+  session?: { token: string | null; projectId: string | null };
+}) => {
+  const token =
+    session === undefined ? authenticationSession.getToken() : session.token;
+  const projectId =
+    session === undefined
+      ? authenticationSession.getProjectId()
+      : session.projectId;
   const toastIdRef = useRef<string | null>(null);
 
   useEffect(() => {

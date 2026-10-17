@@ -6,6 +6,14 @@ import { JobContext } from '../../../types'
 
 export const HOSTED_AGENT_MAX_OUTPUT = 4096
 
+export function hostedAgentFailureMessage(message: string): string {
+    if (/HOSTING_BYOK_|HOSTING_EXACT_BYOK_KEY_REQUIRED/.test(message)) return 'Your selected key is no longer available for this workspace. Choose an available billing option before sending again.'
+    if (/HOSTING_AI_OUTCOME_UNCERTAIN/.test(message)) return 'The provider response could not be verified. Credits may remain held while this is reviewed. Contact your workspace administrator before retrying.'
+    if (/HOSTING_(ENTITLEMENT|GRANT|ACCESS|PROJECT_ACCESS)|HOSTING_AI_SEGMENT_DENIED/.test(message)) return 'This run no longer has access to the workspace or its credits. Refresh your session and check your available credits.'
+    if (/Payload Too Large|HOSTING_AI_(REQUEST|STREAM)_LIMIT/.test(message)) return 'This conversation exceeds the current chat limits. Start a new chat with a shorter message.'
+    return 'This reply could not be completed. Check your available credits and selected billing option before sending again.'
+}
+
 export function createHostedAgentModel({ ctx, config }: { ctx: JobContext, config: NonNullable<AgentConfigResponse['hosted']> }) {
     if (!ctx.admissionId || config.protocol !== 1 || config.model !== 'deepseek-flash') throw new Error('HOSTING_AI_SEGMENT_DENIED')
     let sequence = 0

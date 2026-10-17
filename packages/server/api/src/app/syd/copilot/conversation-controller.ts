@@ -6,7 +6,7 @@ import { IsNull } from 'typeorm'
 import { z } from 'zod'
 import { securityAccess } from '../../core/security/authorization/fastify-security'
 import { hostingConfiguration } from '../../hosting/hosting-configuration'
-import { hostedCopilotPayer } from '../../hosting/hosting-copilot'
+import { assertHostedChatContext, hostedCopilotPayer } from '../../hosting/hosting-copilot'
 import { hostingFail } from '../../hosting/hosting-transactions'
 import { mcpUtils } from '../../mcp/tools/mcp-utils'
 import { assertCreditsAndAppSumoNotExceeded } from '../../platform/billing-provider'
@@ -26,12 +26,13 @@ async function sendMessage({ platformId, userId, id, body, log, tokenVersion }: 
     await assertAgentMessageRateLimitNotExceeded({ platformId, userId, log })
     const projects = await sydCopilotContext.getUserProjects({ platformId, userId, log })
     const hosted = hostingConfiguration.getServiceMode() === 'hosted'
+    if (hosted) assertHostedChatContext({ messages: conversation.messages, content: body.content })
     const projectId = hosted && body.hostedProjectId ? body.hostedProjectId : sydCopilotContext.selectRunProject({ conversationProjectId: editor?.projectId ?? conversation.projectId ?? null, projects })
     if (hosted && (!projectId || !projects.some(project => project.id === projectId) || (body.hostedProjectId && ((conversation.projectId && conversation.projectId !== projectId) || (editor && editor.projectId !== projectId))))) hostingFail('HOSTING_PROJECT_ACCESS_DENIED')
     const payer = hosted ? await hostedCopilotPayer({ platformId, projectId: projectId!, provider: body.hostedPayer?.type === 'byok' ? AIProviderName.DEEPSEEK : AIProviderName.ACTIVEPIECES, configId: body.hostedPayer?.type === 'byok' ? body.hostedPayer.configId : undefined }) : undefined
     if (hosted && body.files?.length) throw new Error('HOSTING_TOOL_NOT_METERED')
     if (!hosted) await sydCopilotContext.assertRunProviderConfigured({ platformId, scope: sydCopilotContext.runScopeOrThrow({ projectId }), log })
-    await assertCreditsAndAppSumoNotExceeded({ platformId, log })
+    if (!hosted) await assertCreditsAndAppSumoNotExceeded({ platformId, log })
     const runId = hostingConfiguration.getServiceMode() === 'hosted' ? apId() : body.runId ?? apId()
     const claim = await sydCopilotContext.claimConversationForRun({ platformId, userId, conversationId: id, runId })
     if ((editor || (hosted && body.hostedProjectId)) && projectId !== conversation.projectId) {

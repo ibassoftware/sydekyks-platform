@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 
-import { SocketProvider } from '@/components/providers/socket-provider';
 import { AutomaticTrialActivation } from '@/features/billing';
+import { HostedSocketProvider as SocketProvider } from '@/features/hosted-chat/hosted-socket-provider';
 import { projectCollectionUtils } from '@/features/projects';
 import { flagsHooks } from '@/hooks/flags-hooks';
 import { platformHooks } from '@/hooks/platform-hooks';

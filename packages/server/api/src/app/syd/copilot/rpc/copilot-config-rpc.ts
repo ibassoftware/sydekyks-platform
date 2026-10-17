@@ -10,6 +10,7 @@ import { AppSystemProp } from '../../../helper/system/system-props'
 import { HOSTED_AI_MAX_OUTPUT, HOSTED_DEEPSEEK_MODEL } from '../../../hosting/hosting-ai-policy'
 import { hostingConfiguration } from '../../../hosting/hosting-configuration'
 import { hostedCopilotPayer } from '../../../hosting/hosting-copilot'
+import { hostedCopilotPrompt } from '../../../hosting/hosting-copilot-prompt'
 import { platformService } from '../../../platform/platform.service'
 import { userService } from '../../../user/user-service'
 import { sydApprovalGate } from '../approval-gate'
@@ -67,8 +68,8 @@ export const sydCopilotConfigRpc = (log: FastifyBaseLogger) => ({
         const runId = input.runId ?? conversation.activeRunId ?? undefined
         const lock = await sydCopilotContext.acquireStreamingLock({ platformId, userId, conversationId, runId })
         if (lock !== 'acquired') throw new ActivepiecesError({ code: lock === 'superseded' ? ErrorCode.AGENT_RUN_SUPERSEDED : ErrorCode.VALIDATION, params: { message: lock === 'superseded' ? 'This message was replaced by a newer one' : 'An agent is already running for this conversation' } })
-        const inventory = !input.dryRun && selectedProjectId ? await tryCatch(() => appConnectionService(log).list({ platformId, projectId: selectedProjectId, pieceName: undefined, displayName: undefined, status: undefined, cursorRequest: null, scope: undefined, externalIds: undefined, limit: CONNECTION_INVENTORY_LIMIT })) : null
-        const systemPrompt = (hosted ? 'Hosted Copilot currently supports conversation, workspace context and thinking status only. Use only the supplied local tools; explain when a request requires a tool that is unavailable.\n\n' : '') + (editor ? `${editor.note}\n\n` : '') + sydCopilotPrompt.buildSystemPrompt({ projects, currentProjectId: selectedProjectId, frontendUrl: system.getOrThrow(AppSystemProp.FRONTEND_URL), templates: input.promptOverride }) + sydRunContext.buildRunNotes({
+        const inventory = !hosted && !input.dryRun && selectedProjectId ? await tryCatch(() => appConnectionService(log).list({ platformId, projectId: selectedProjectId, pieceName: undefined, displayName: undefined, status: undefined, cursorRequest: null, scope: undefined, externalIds: undefined, limit: CONNECTION_INVENTORY_LIMIT })) : null
+        const systemPrompt = hosted ? hostedCopilotPrompt({ projectId: selectedProjectId!, projectName: projects[0].displayName, now: new Date() }) : (editor ? `${editor.note}\n\n` : '') + sydCopilotPrompt.buildSystemPrompt({ projects, currentProjectId: selectedProjectId, frontendUrl: system.getOrThrow(AppSystemProp.FRONTEND_URL), templates: input.promptOverride }) + sydRunContext.buildRunNotes({
             source: AgentRunSource.CHAT, messageSource: input.messageSource, currentDate: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }),
             searchAvailable, fetchAvailable: !hosted && !input.dryRun, scrapeAvailable: !input.dryRun && Boolean(aiTools.webScraping),
             imageAvailable: active && Boolean(aiTools.imageGeneration || imageModelId), imageEditAvailable: Boolean(imageModelId), emailAvailable: emailEnabled, agentsAvailable, userEmail: user.email,

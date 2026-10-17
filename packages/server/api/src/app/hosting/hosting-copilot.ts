@@ -11,6 +11,12 @@ import { HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
+export function assertHostedChatContext({ messages, content }: { messages: unknown[], content: string }): void {
+    // Leave room for the bounded system prompt, schemas and local tool results.
+    // Refuse before claiming the conversation or reserving an execution.
+    if (content.length > 32768 || messages.length >= 32 || Buffer.byteLength(JSON.stringify([...messages, { role: 'user', content }])) > 40 * 1024) hostingFail('HOSTING_CHAT_CONTEXT_LIMIT')
+}
+
 export async function hostedCopilotPayer({ platformId, projectId, provider, configId }: { platformId: string, projectId: string, provider?: string, configId?: string }): Promise<HostedAiInput['payer']> {
     if ((!provider || provider === AIProviderName.ACTIVEPIECES) && !configId) return { type: 'managed' }
     if (provider !== AIProviderName.DEEPSEEK || !configId) hostingFail('HOSTING_EXACT_BYOK_KEY_REQUIRED')

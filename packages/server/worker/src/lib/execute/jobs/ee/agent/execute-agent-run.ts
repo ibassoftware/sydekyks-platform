@@ -9,7 +9,7 @@ import { agentMcpClient, McpConnection } from './agent-mcp-client'
 import { stepResultFrom } from './agent-step-result'
 import { agentToolPolicy } from './agent-tool-policy'
 import { agentWorkerTools, GateDecision, TaintState } from './agent-worker-tools'
-import { createHostedAgentModel, hostedAgentTools } from './hosted-agent-model'
+import { createHostedAgentModel, hostedAgentFailureMessage, hostedAgentTools } from './hosted-agent-model'
 import { classifyAgentRunError, delayWithJitter, drainOf, firstStepUsesFastModel, isTransientFailureText, NO_STEP_CONTENT, runAgentTurn, StreamDrain, trackStepContent } from './run-agent-turn'
 import { unwrapLazyToolChunk } from './tools/skill-tools'
 
@@ -424,8 +424,9 @@ export const executeAgentRunJob: JobHandler<ExecuteAgentRunJobData, FireAndForge
             log[errorClass === 'internal' ? 'error' : 'warn']({ error: err, conversation: { id: conversationId }, provider: runProvider, model: { id: runModelId }, agentRun: { errorClass, source } }, '[executeAgentRun] Agent job failed')
             const errorMessage = apErrorOf(err)?.message ?? formatPieceError(err).message
             const isCreditError = errorClass === 'credit'
+            const hostedConfigRefused = hosted && !configLoaded && /\bHOSTING_(BYOK_SCOPE_DENIED|EXACT_BYOK_KEY_REQUIRED|AI_PAYER_CONFLICT|PROJECT_ACCESS_DENIED|TOOL_NOT_METERED)\b/.test(errorMessage)
             // "User not found" is OpenRouter refusing a key, and reads like a missing account.
-            const clientMessage = !isCreditError && isTransientFailureText(errorMessage)
+            const clientMessage = hosted ? hostedAgentFailureMessage(errorMessage) : !isCreditError && isTransientFailureText(errorMessage)
                 ? 'The AI provider is temporarily unavailable. Please try again in a moment.'
                 : isCreditError || isNil(runProvider)
                     ? errorMessage
@@ -447,7 +448,7 @@ export const executeAgentRunJob: JobHandler<ExecuteAgentRunJobData, FireAndForge
             await sendEventWithRetry({
                 event: { type: AgentEventType.FINISHED, data: { conversationId } },
             })
-            if (errorClass !== 'internal') {
+            if (errorClass !== 'internal' || hostedConfigRefused) {
                 if (isNil(releaseError)) {
                     return { kind: JobResultKind.FIRE_AND_FORGET, status: EngineResponseStatus.USER_FAILURE }
                 }
