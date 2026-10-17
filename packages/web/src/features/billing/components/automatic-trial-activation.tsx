@@ -11,6 +11,7 @@ import { CopyToClipboardInput } from '@/components/custom/clipboard/copy-to-clip
 import { FullLogo } from '@/components/custom/full-logo';
 import { LoadingSpinner } from '@/components/custom/spinner';
 import { Button } from '@/components/ui/button';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import {
   useAuthorization,
   useIsPlatformAdmin,
@@ -26,6 +27,11 @@ import {
 import { cn } from '@/lib/utils';
 
 export const AutomaticTrialActivation = () => {
+  const hosted = useHostedBillingEnabled();
+  return hosted ? null : <LegacyAutomaticTrialActivation />;
+};
+
+const LegacyAutomaticTrialActivation = () => {
   const { platform } = platformHooks.useCurrentPlatform();
   const { data: edition } = flagsHooks.useFlag<ApEdition>(ApFlagId.EDITION);
   const isPlatformAdmin = useIsPlatformAdmin();

@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto'
 import { apId } from '@activepieces/core-utils'
-import { hostingCatalog, UserStatus } from '@activepieces/shared'
+import { hostingCatalog } from '@activepieces/shared'
 import { DataSource, EntityManager, LessThanOrEqual } from 'typeorm'
-import { ProjectEntity } from '../project/project-entity'
-import { UserEntity } from '../user/user-entity'
+import { hostingResourceFits as resourceFits } from './hosting-billing-resources'
 import { hostingConfiguration } from './hosting-configuration'
-import { HostingAccountEntity, HostingGrant, HostingGrantEntity, HostingInvitationEntity, HostingLedgerEntity } from './hosting-entities'
+import { HostingAccount, HostingAccountEntity, HostingGrant, HostingGrantEntity, HostingLedgerEntity } from './hosting-entities'
 import { createStripeAdapter, PaidPeriodEvidence } from './hosting-stripe-adapter'
 import { HostingStripeBindingEntity, HostingStripeCommandEntity, HostingStripeInboxEntity, HostingStripePeriodEntity, StripeBinding, StripeCommand, StripePeriod } from './hosting-stripe-entities'
 import { readStripePolicy, stripeDigest, stripeId } from './hosting-stripe-policy'
@@ -23,6 +22,12 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
         if (value.stripeAccountId !== policy.catalog.accountId || value.catalogHash !== policy.hash) hostingFail('HOSTING_STRIPE_BINDING_POLICY_CHANGED')
         return value
     }
+    async function assertCheckoutPolicy(manager: EntityManager, account: HostingAccount, bound: StripeBinding, planId: 'starter' | 'team', now: Date): Promise<void> {
+        const endedOnly = bound.holds.length === 1 && bound.holds[0] === 'subscription_ended'
+        if (account.status === 'suspended' || bound.holds.some(reason => reason !== 'subscription_ended') || (account.billingHold && !endedOnly)) hostingFail('HOSTING_STRIPE_PURCHASE_BLOCKED')
+        if (!await resourceFits(manager, account.id, planId, now)) hostingFail('HOSTING_STRIPE_PLAN_RESOURCE_LIMIT')
+        if (bound.subscriptionId && (!['canceled', 'incomplete_expired'].includes(bound.subscriptionStatus ?? '') || account.validUntil > now)) hostingFail('HOSTING_STRIPE_SUBSCRIPTION_EXISTS')
+    }
     async function command(actor: HostingActor, kind: StripeCommand['kind'], payload: Record<string, unknown>): Promise<StripeCommand> {
         return tx.run({ dataSource, fn: async manager => {
             const account = await tx.account({ manager, platformId: actor.platformId })
@@ -37,27 +42,25 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
             }
             const fullPayload = { catalogHash: policy.hash, ...payload }
             const hash = stripeDigest(fullPayload)
+            if (kind === 'checkout') await assertCheckoutPolicy(manager, account, bound, selectedPlan(payload.planId), now)
             if (previous) {
                 if (previous.payloadHash !== hash || previous.actorIdentityId !== actor.identityId || previous.tokenVersion !== (actor.tokenVersion ?? null)) hostingFail('HOSTING_STRIPE_COMMAND_CONFLICT')
                 return previous
             }
-            if (kind === 'checkout' && !await resourceFits(manager, account.id, selectedPlan(payload.planId), now)) hostingFail('HOSTING_STRIPE_PLAN_RESOURCE_LIMIT')
-            if (kind === 'checkout' && bound.holds.some(reason => reason !== 'subscription_ended')) hostingFail('HOSTING_STRIPE_PURCHASE_BLOCKED')
-            if (kind === 'checkout' && bound.subscriptionId && (!['canceled', 'incomplete_expired'].includes(bound.subscriptionStatus ?? '') || account.validUntil > now)) hostingFail('HOSTING_STRIPE_SUBSCRIPTION_EXISTS')
             const id = apId()
             return repo.save(repo.create({ id, platformId: account.id, kind, state: 'prepared', actorIdentityId: actor.identityId, tokenVersion: actor.tokenVersion ?? null, payload: fullPayload, payloadHash: hash, idempotencyKey: `hosting:test:${policy.catalog.accountId}:${id}` }))
         } })
     }
     async function send(actor: HostingActor, command: StripeCommand): Promise<StripeCommand> {
         const claimed = await tx.run({ dataSource, fn: async manager => {
-            await tx.account({ manager, platformId: actor.platformId })
+            const account = await tx.account({ manager, platformId: actor.platformId })
             await tx.member({ manager, actor, admin: true })
-            await binding(manager, actor.platformId)
+            const bound = await binding(manager, actor.platformId)
             const row = await manager.getRepository(HostingStripeCommandEntity).findOneByOrFail({ id: command.id, platformId: actor.platformId })
+            if (row.kind === 'checkout') await assertCheckoutPolicy(manager, account, bound, selectedPlan(row.payload.planId), await tx.now(manager))
             if (row.state === 'ready') return row
             if (row.state === 'closed' || row.payloadHash !== stripeDigest(row.payload) || row.payload.catalogHash !== policy.hash || row.actorIdentityId !== actor.identityId || row.tokenVersion !== (actor.tokenVersion ?? null)) hostingFail('HOSTING_STRIPE_COMMAND_CONFLICT')
             const now = await tx.now(manager)
-            if (row.kind === 'checkout' && !await resourceFits(manager, actor.platformId, selectedPlan(row.payload.planId), now)) hostingFail('HOSTING_STRIPE_PLAN_RESOURCE_LIMIT')
             if ((row.state === 'running' && row.leaseUntil && row.leaseUntil > now) || (row.firstSentAt && now.getTime() - row.firstSentAt.getTime() > 23 * 3600_000)) hostingFail('HOSTING_STRIPE_COMMAND_RECONCILIATION_REQUIRED')
             return manager.getRepository(HostingStripeCommandEntity).save({ ...row, state: 'running', fence: apId(), firstSentAt: row.firstSentAt ?? now, leaseUntil: new Date(now.getTime() + 120_000) })
         } })
@@ -91,11 +94,11 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
     }
     async function deliver(actor: HostingActor, commandId: string): Promise<StripeCommand> {
         return tx.run({ dataSource, fn: async manager => {
-            await tx.account({ manager, platformId: actor.platformId })
+            const account = await tx.account({ manager, platformId: actor.platformId })
             await tx.member({ manager, actor, admin: true })
             const row = await manager.getRepository(HostingStripeCommandEntity).findOneByOrFail({ id: commandId, platformId: actor.platformId })
+            if (row.kind === 'checkout') await assertCheckoutPolicy(manager, account, await binding(manager, actor.platformId), selectedPlan(row.payload.planId), await tx.now(manager))
             if (row.state !== 'ready' || row.actorIdentityId !== actor.identityId || row.tokenVersion !== (actor.tokenVersion ?? null)) hostingFail('HOSTING_ACCESS_DENIED')
-            if (row.kind === 'checkout' && !await resourceFits(manager, actor.platformId, selectedPlan(row.payload.planId), await tx.now(manager))) hostingFail('HOSTING_STRIPE_PLAN_RESOURCE_LIMIT')
             if (row.kind !== 'customer' && (!row.expiresAt || row.expiresAt <= await tx.now(manager))) hostingFail('HOSTING_STRIPE_SESSION_EXPIRED')
             return row
         } })
@@ -327,12 +330,4 @@ async function revokeGrant({ manager, grant, now }: { manager: EntityManager, gr
 function selectedPlan(value: unknown): 'starter' | 'team' {
     if (value !== 'starter' && value !== 'team') hostingFail('HOSTING_STRIPE_PRICE_DENIED')
     return value
-}
-async function resourceFits(manager: EntityManager, platformId: string, planId: 'starter' | 'team', now: Date): Promise<boolean> {
-    const plan = hostingCatalog.getPlan({ planId })
-    const invitations = await manager.getRepository(HostingInvitationEntity).findBy({ platformId, status: 'pending' })
-    const pending = invitations.filter(value => value.expiresAt > now)
-    const users = await manager.getRepository(UserEntity).countBy({ platformId, status: UserStatus.ACTIVE })
-    const projects = await manager.getRepository(ProjectEntity).countBy({ platformId })
-    return users + pending.length <= plan.users && projects + pending.reduce((sum, value) => sum + value.projectUnits, 0) <= plan.projects
 }

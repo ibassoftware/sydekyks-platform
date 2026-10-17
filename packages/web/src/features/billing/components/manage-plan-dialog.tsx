@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 
 import { useManagePlanDialogStore } from '../stores/manage-plan-dialog-state';
 
@@ -14,6 +15,11 @@ import { PlanSelector } from './plan-selector';
 import { PlanSwitchSuccessDialog } from './plan-switch-success-dialog';
 
 export function ManagePlanDialog() {
+  const hosted = useHostedBillingEnabled();
+  return hosted ? null : <LegacyManagePlanDialog />;
+}
+
+function LegacyManagePlanDialog() {
   const { isOpen, closeDialog } = useManagePlanDialogStore();
 
   return (

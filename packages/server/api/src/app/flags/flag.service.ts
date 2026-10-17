@@ -10,6 +10,7 @@ import { domainHelper } from '../helper/domain-helper'
 import { auditLogRetentionCeiling } from '../helper/retention/audit-log-retention-ceiling'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
 import { knowledgeBaseSchema } from '../knowledge-base/knowledge-base-schema'
 import { smtpEmailSender } from '../sydekyks-community/email'
 import { isToolSearchEnabled } from '../tool-search/tool-search-flag'
@@ -67,6 +68,7 @@ export const flagService = (log: FastifyBaseLogger) => ({
         const updated = now
         const currentVersion = apVersionUtil.getCurrentRelease()
         flags.push(
+            { id: ApFlagId.SERVICE_MODE, value: hostingConfiguration.getServiceMode(), created, updated },
             {
                 id: ApFlagId.ENVIRONMENT,
                 value: system.get(AppSystemProp.ENVIRONMENT),

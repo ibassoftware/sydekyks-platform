@@ -12,6 +12,10 @@ import { HostingActor, hostingFail } from './hosting-transactions'
 export const hostingStripeController: FastifyPluginAsyncZod = async app => {
     if (hostingConfiguration.getServiceMode() !== 'hosted') return
     const user = { security: securityAccess.platformAdminOnly([PrincipalType.USER]), rateLimit: authnRateLimit }
+    app.get('/overview', { config: user }, async (request, reply) => {
+        void reply.header('Cache-Control', 'private, no-store').header('Vary', 'Authorization')
+        return hostingServices.billingView().read(await actor(request))
+    })
     app.get('/', { config: user }, async request => (await hostingServices.billing()).status(await actor(request)))
     app.post('/checkout', { config: user, schema: { body: z.strictObject({ planId: z.enum(['starter', 'team']) }) } }, async request => (await hostingServices.billing()).checkout(await actor(request), request.body.planId))
     app.post('/portal', { config: user, schema: { body: z.strictObject({}) } }, async request => (await hostingServices.billing()).portal(await actor(request)))

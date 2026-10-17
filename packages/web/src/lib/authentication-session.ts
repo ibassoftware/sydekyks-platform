@@ -128,6 +128,7 @@ export const authenticationSession = {
   clearSession() {
     ApStorage.getInstance().removeItem(projectIdKey);
     ApStorage.getInstance().removeItem(tokenKey);
+    window.dispatchEvent(new Event('storage'));
   },
   logOut() {
     const hadSession = !isNil(this.getToken());

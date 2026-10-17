@@ -1,7 +1,14 @@
-function isRouteAvailable({ pathname }: { pathname: string }): boolean {
+function isRouteAvailable({
+  pathname,
+  hostedBilling = false,
+}: {
+  pathname: string;
+  hostedBilling?: boolean;
+}): boolean {
   const path = pathname
     .split(/[?#]/)[0]
     .replace(/^\/projects\/[^/]+(?=\/)/, '');
+  if (hostedBilling && path === '/platform/billing') return true;
   return !UNAVAILABLE_ROUTE_PREFIXES.some(
     (prefix) => path === prefix || path.startsWith(`${prefix}/`),
   );

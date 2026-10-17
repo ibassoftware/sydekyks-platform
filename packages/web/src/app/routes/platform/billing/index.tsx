@@ -30,6 +30,8 @@ import {
   useCancelSubscriptionGuard,
   useManagePlanDialogStore,
 } from '@/features/billing';
+import { HostedBillingPage } from '@/features/hosted-billing/billing-page';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import { flagsHooks } from '@/hooks/flags-hooks';
 import { platformHooks } from '@/hooks/platform-hooks';
 import { AdminControl, adminControl } from '@/lib/admin-control';
@@ -37,6 +39,11 @@ import { AdminControl, adminControl } from '@/lib/admin-control';
 import { UsageTab } from './usage-tab';
 
 export function BillingPlanTab() {
+  const hosted = useHostedBillingEnabled();
+  return hosted ? <HostedBillingPage /> : <LegacyBillingPlanTab />;
+}
+
+function LegacyBillingPlanTab() {
   return (
     <BillingPageShell
       lockTitle={t('Unlock Billing & Usage')}

@@ -1,6 +1,7 @@
 import { databaseConnection } from '../database/database-connection'
 import { encryptUtils } from '../helper/encryption'
 import { createHostedAiGateway } from './hosting-ai-gateway'
+import { createHostedBillingView } from './hosting-billing-view'
 import { createHostedExecution } from './hosting-execution'
 import { createHostedLedger } from './hosting-ledger'
 import { createHostedOnboarding } from './hosting-onboarding'
@@ -25,4 +26,7 @@ function gateway() {
 async function billing() {
     return createHostedStripe({ dataSource: databaseConnection() })
 }
-export const hostingServices = { onboarding, ledger, execution, gateway, billing }
+function billingView() {
+    return createHostedBillingView({ dataSource: databaseConnection() })
+}
+export const hostingServices = { onboarding, ledger, execution, gateway, billing, billingView }

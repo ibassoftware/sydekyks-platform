@@ -4,6 +4,7 @@ import { matchRoutes, Navigate, useLocation } from 'react-router-dom';
 import { PageTitle } from '@/app/components/page-title';
 import { RouteLoadingBar } from '@/components/custom/route-loading-bar';
 import { Error, Success } from '@/features/billing';
+import { HostedBillingReturn } from '@/features/hosted-billing/billing-return';
 
 import { PlatformLayout } from '../components/platform-layout';
 
@@ -110,6 +111,7 @@ const AI_TAB_PATHS = {
 const PIECES_TAB_PATHS = { pieces: '', 'piece-sets': 'piece-sets' };
 
 export const platformRoutes = [
+  { path: '/settings/billing', element: <HostedBillingReturn /> },
   {
     path: '/platform',
     element: (

@@ -171,5 +171,5 @@ function requiredTime(value: Date | null): Date {
     if (!value) hostingFail('HOSTING_STRIPE_COMMAND_UNCLAIMED'); return value
 }
 function providerUrl(value: string, host: string): string {
-    const url = new URL(value); if (url.protocol !== 'https:' || url.hostname !== host || url.username || url.password) hostingFail('HOSTING_STRIPE_URL_DENIED'); return value
+    const url = new URL(value); if (url.protocol !== 'https:' || url.hostname !== host || url.username || url.password || url.port) hostingFail('HOSTING_STRIPE_URL_DENIED'); return value
 }
