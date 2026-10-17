@@ -3,11 +3,14 @@ import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { StatusCodes } from 'http-status-codes'
 import { securityAccess } from '../../core/security/authorization/fastify-security'
 import { authnRateLimit } from '../../core/security/rate-limit'
+import { hostingConfiguration } from '../../hosting/hosting-configuration'
+import { hostingFail } from '../../hosting/hosting-transactions'
 import { platformUtils } from '../../platform/platform.utils'
 import { otpService } from './otp-service'
 
 export const otpController: FastifyPluginAsyncZod = async (app) => {
     app.post('/', CreateOtpRequest, async (req, res) => {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_USE_HOSTED_AUTHENTICATION')
         const platformId = await platformUtils.getPlatformIdForRequest(req)
         await otpService(req.log).createAndSend({
             platformId,

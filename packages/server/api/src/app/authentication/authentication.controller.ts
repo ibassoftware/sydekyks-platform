@@ -3,13 +3,15 @@ import { ApplicationEventName, attributionUtils, CompleteSignUpRequest, Principa
 import { FastifyRequest } from 'fastify'
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { securityAccess } from '../core/security/authorization/fastify-security'
-import { authnRateLimit } from '../core/security/rate-limit'
+import { authnRateLimit, emailCodeRateLimit } from '../core/security/rate-limit'
 import { applicationEvents } from '../helper/application-events'
 import { networkUtils } from '../helper/network-utils'
 import { rejectedPromiseHandler } from '../helper/promise-handler'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { telemetry } from '../helper/telemetry.utils'
+import { assertHostedEmailCodes } from '../hosting/hosting-auth-policy'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
 import { platformUtils } from '../platform/platform.utils'
 import { userService } from '../user/user-service'
 import { authenticationService } from './authentication.service'
@@ -20,9 +22,12 @@ export const authenticationController: FastifyPluginAsyncZod = async (
     app,
 ) => {
     app.post('/sign-up', SignUpRequestOptions, async (request) => {
+        const hosted = hostingConfiguration.getServiceMode() === 'hosted'
+        if (hosted) assertHostedEmailCodes(request.log)
 
         const platformId = await platformUtils.getPlatformIdForRequest(request)
         await turnstile.assertSolved({
+            failClosed: hosted,
             token: request.body.captchaToken,
             remoteIp: clientIp(request),
             log: request.log,
@@ -166,7 +171,7 @@ const SwitchPlatformRequestOptions = {
 const SignUpRequestOptions = {
     config: {
         security: securityAccess.public(),
-        rateLimit: authnRateLimit,
+        rateLimit: hostingConfiguration.getServiceMode() === 'hosted' ? emailCodeRateLimit : authnRateLimit,
     },
     schema: {
         body: SignUpRequest,

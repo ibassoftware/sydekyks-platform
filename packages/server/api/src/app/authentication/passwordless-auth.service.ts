@@ -1,7 +1,9 @@
-import { ActivepiecesError, ErrorCode, isNil } from '@activepieces/core-utils'
+import { ActivepiecesError, apId, ErrorCode, isNil } from '@activepieces/core-utils'
 import { cryptoUtils } from '@activepieces/server-utils'
 import { ApFlagId, OtpType, TelemetryEvent, TelemetryEventName, UserIdentity, UserIdentityProvider } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
+import { QueryFailedError } from 'typeorm'
+import { databaseConnection } from '../database/database-connection'
 import { flagService } from '../flags/flag.service'
 import { rejectedPromiseHandler } from '../helper/promise-handler'
 import { system } from '../helper/system/system'
@@ -9,20 +11,23 @@ import { AppSystemProp } from '../helper/system/system-props'
 import { telemetry } from '../helper/telemetry.utils'
 import { hostingConfiguration } from '../hosting/hosting-configuration'
 import { hostingServices } from '../hosting/hosting-services'
+import { hostingTransactions } from '../hosting/hosting-transactions'
 import { platformService } from '../platform/platform.service'
 import { userService } from '../user/user-service'
 import { userInvitationsService } from '../user-invitations/user-invitation.service'
 import { AuthenticationResult, authenticationUtils } from './authentication-utils'
 import { authenticationService } from './authentication.service'
+import { passwordHasher } from './lib/password-hasher'
 import { signupNames } from './lib/signup-names'
 import { turnstile } from './lib/turnstile'
 import { zerobounce } from './lib/zerobounce'
 import { otpService } from './otp/otp-service'
+import { UserIdentityEntity } from './user-identity/user-identity-entity'
 import { userIdentityService } from './user-identity/user-identity-service'
 
 export const passwordlessAuthService = (log: FastifyBaseLogger) => ({
-    async requestCode({ email, platformId, captchaToken, remoteIp }: RequestCodeParams): Promise<void> {
-        await turnstile.assertSolved({ token: captchaToken, remoteIp, log })
+    async requestCode({ email, platformId, captchaToken, remoteIp, strictCaptcha = false }: RequestCodeParams): Promise<void> {
+        await turnstile.assertSolved({ token: captchaToken, remoteIp, log, failClosed: strictCaptcha })
         const existingIdentity = await userIdentityService(log).getIdentityByEmail(email)
         if (isNil(existingIdentity)) {
             const maySignUp = await zerobounce.maySignUp({ email, log })
@@ -38,16 +43,22 @@ export const passwordlessAuthService = (log: FastifyBaseLogger) => ({
             }
         }
         if (isNil(existingIdentity)) {
-            await userIdentityService(log).create({
-                email,
-                password: await cryptoUtils.generateRandomPassword(),
-                firstName: signupNames.firstNameFromEmail(email),
-                lastName: '',
-                trackEvents: true,
-                newsLetter: false,
-                provider: UserIdentityProvider.EMAIL,
-                verified: false,
-            })
+            try {
+                await userIdentityService(log).create({
+                    email,
+                    password: await cryptoUtils.generateRandomPassword(),
+                    firstName: signupNames.firstNameFromEmail(email),
+                    lastName: '',
+                    trackEvents: true,
+                    newsLetter: false,
+                    provider: UserIdentityProvider.EMAIL,
+                    verified: false,
+                })
+            }
+            catch (error) {
+                const duplicate = (error instanceof QueryFailedError && error.driverError?.code === '23505') || (error instanceof ActivepiecesError && error.error.code === ErrorCode.EXISTING_USER)
+                if (hostingConfiguration.getServiceMode() !== 'hosted' || !duplicate || !await userIdentityService(log).getIdentityByEmail(email)) throw error
+            }
         }
         await otpService(log).createAndSend({
             platformId,
@@ -81,6 +92,24 @@ export const passwordlessAuthService = (log: FastifyBaseLogger) => ({
         if (!codeIsValid) {
             throw new ActivepiecesError({ code: ErrorCode.INVALID_OTP, params: {} })
         }
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            const verified = await hostingTransactions.run({ dataSource: databaseConnection(), fn: async manager => {
+                const current = await manager.getRepository(UserIdentityEntity).findOne({ where: { id: identity.id }, lock: { mode: 'pessimistic_write' } })
+                if (!current || current.email !== identity.email) throw new ActivepiecesError({ code: ErrorCode.INVALID_OTP, params: {} })
+                if (!current.verified) {
+                    const changes = { verified: true, password: await passwordHasher.hash(await cryptoUtils.generateRandomPassword()), tokenVersion: apId() }
+                    await manager.getRepository(UserIdentityEntity).update({ id: current.id }, changes)
+                    return { ...current, ...changes }
+                }
+                return current
+            } })
+            const selected = await authenticationService(log).selectCloudSignInPlatformId({ identityId: verified.id })
+            if (selected) {
+                await assertPlatformAuthIsOpenTo({ email: verified.email, platformId: selected, log })
+                return { response: await authenticationService(log).switchPlatform({ identityId: verified.id, platformId: selected, tokenVersion: verified.tokenVersion ?? null }), signedUp: false }
+            }
+            return authenticationUtils(log).provisionOrOnboard({ identityId: verified.id, expectedTokenVersion: verified.tokenVersion ?? null })
+        }
         const verifiedIdentity = identity.verified ? identity : await userIdentityService(log).verifyAndDiscardPassword(identity.id)
         await flagService(log).save({ id: ApFlagId.USER_CREATED, value: true })
 
@@ -97,10 +126,6 @@ export const passwordlessAuthService = (log: FastifyBaseLogger) => ({
             log,
         }), log)
 
-        if (hostingConfiguration.getServiceMode() === 'hosted') {
-            if (preferredPlatformId) return { response: await authenticationService(log).switchPlatform({ identityId: verifiedIdentity.id, platformId: preferredPlatformId }), signedUp: false }
-            return authenticationUtils(log).provisionOrOnboard({ identityId: verifiedIdentity.id })
-        }
         if (!isNil(platformId)) {
             const mayJoin = await mayJoinPlatform({ email, platformId, identity: verifiedIdentity, log })
             if (!mayJoin) {
@@ -221,6 +246,7 @@ type TrackForIdentityParams = {
 }
 
 type RequestCodeParams = {
+    strictCaptcha?: boolean
     email: string
     platformId: string | null
     captchaToken: string | undefined

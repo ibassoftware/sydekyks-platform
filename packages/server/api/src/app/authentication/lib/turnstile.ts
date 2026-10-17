@@ -35,8 +35,9 @@ function rejected(): ActivepiecesError {
     })
 }
 
-async function assertSolved({ token, remoteIp, log }: AssertSolvedParams): Promise<void> {
+async function assertSolved({ token, remoteIp, log, failClosed = false }: AssertSolvedParams): Promise<void> {
     if (!isConfigured()) {
+        if (failClosed) throw rejected()
         return
     }
     if (isNil(token) || token.length === 0) {
@@ -60,10 +61,12 @@ async function assertSolved({ token, remoteIp, log }: AssertSolvedParams): Promi
             log.warn({ error }, '[turnstile#assertSolved] siteverify answered with an error status, refusing')
             throw rejected()
         }
+        if (failClosed) throw rejected()
         log.warn({ error }, '[turnstile#assertSolved] challenge could not be verified, allowing the request through')
         return
     }
     if (isNil(response)) {
+        if (failClosed) throw rejected()
         log.warn('[turnstile#assertSolved] challenge could not be verified, allowing the request through')
         return
     }
@@ -85,6 +88,7 @@ type SiteVerifyResponse = {
 }
 
 type AssertSolvedParams = {
+    failClosed?: boolean
     token: string | undefined
     remoteIp: string | undefined
     log: FastifyBaseLogger

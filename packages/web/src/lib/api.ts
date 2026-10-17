@@ -63,6 +63,7 @@ function globalErrorHandler(error: AxiosError) {
 function request<TResponse>(
   url: string,
   config: AxiosRequestConfig = {},
+  scope?: { anonymous: boolean },
 ): Promise<TResponse> {
   const resolvedUrl = !isUrlRelative(url) ? url : `${API_URL}${url}`;
   const isApWebsite = resolvedUrl.startsWith(API_URL);
@@ -77,7 +78,7 @@ function request<TResponse>(
     headers: {
       ...config.headers,
       Authorization: getToken(
-        unAuthenticated,
+        unAuthenticated || scope?.anonymous === true,
         isApWebsite,
         authenticationSession.getToken(),
       ),
@@ -103,6 +104,7 @@ function request<TResponse>(
         error,
       });
       if (
+        !scope &&
         isAxiosError(error) &&
         !ignroedGlobalErrorHandlerRoutes.includes(url)
       ) {
@@ -170,6 +172,13 @@ function getToken(
 export type HttpError = AxiosError<unknown, AxiosResponse<unknown>>;
 
 export const api = {
+  // Callers must fence results against their captured session and sanitize errors.
+  // A late response must not trigger global logout or licensing side effects.
+  sessionScoped: <TResponse>(
+    url: string,
+    config: AxiosRequestConfig,
+    anonymous = false,
+  ) => request<TResponse>(url, config, { anonymous }),
   isApError(error: unknown, errorCode: ErrorCode): error is HttpError {
     if (!isAxiosError(error)) {
       return false;

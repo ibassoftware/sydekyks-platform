@@ -83,3 +83,4 @@ export * from './lib/ee/flow-approval'
 export * from './lib/management/project/project-requests'
 
 export * from './lib/sydekyks-license'
+export * from './lib/management/hosting/hosting-onboarding-view'

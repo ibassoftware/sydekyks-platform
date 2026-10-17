@@ -1,37 +1,31 @@
 import { ActivepiecesError, ErrorCode } from '@activepieces/core-utils'
-import { EmailType, OtpType, PasswordType, PlatformRole, PrincipalType } from '@activepieces/shared'
+import { EmailType, PasswordType, PlatformRole, PrincipalType, RequestEmailCodeRequest } from '@activepieces/shared'
 import { FastifyRequest } from 'fastify'
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { authenticationUtils } from '../authentication/authentication-utils'
 import { authenticationService } from '../authentication/authentication.service'
-import { otpService } from '../authentication/otp/otp-service'
-import { userIdentityService } from '../authentication/user-identity/user-identity-service'
 import { securityAccess } from '../core/security/authorization/fastify-security'
-import { authnRateLimit } from '../core/security/rate-limit'
+import { authnRateLimit, emailCodeRateLimit } from '../core/security/rate-limit'
+import { networkUtils } from '../helper/network-utils'
 import { userService } from '../user/user-service'
+import { resendHostedVerification } from './hosting-auth-policy'
 import { hostingConfiguration } from './hosting-configuration'
+import { hostingOnboardingController } from './hosting-onboarding-controller'
 import { hostingServices } from './hosting-services'
 import { hostingStripeController } from './hosting-stripe-controller'
 import { HostingActor, HostingError } from './hosting-transactions'
 
 export const hostingController: FastifyPluginAsyncZod = async app => {
     if (hostingConfiguration.getServiceMode() !== 'hosted') return
+    await app.register(hostingOnboardingController, { prefix: '/onboarding' })
     await app.register(hostingStripeController, { prefix: '/billing' })
     app.setErrorHandler((error, _request, reply) => {
         if (error instanceof HostingError) return reply.code(403).send({ code: error.message })
         throw error
     })
-    app.post('/verification-code', { config: { security: securityAccess.public(), rateLimit: authnRateLimit }, schema: { body: z.strictObject({ email: EmailType }) } }, async (request, reply) => {
-        const identity = await userIdentityService(request.log).getIdentityByEmail(request.body.email)
-        if (identity && !identity.verified) {
-            try {
-                await otpService(request.log).createAndSend({ platformId: null, email: identity.email, type: OtpType.EMAIL_VERIFICATION })
-            }
-            catch (error) {
-                request.log.error({ error }, 'Hosted verification delivery failed')
-            }
-        }
+    app.post('/verification-code', { config: { security: securityAccess.public(), rateLimit: emailCodeRateLimit }, schema: { body: RequestEmailCodeRequest.strict() } }, async (request, reply) => {
+        await resendHostedVerification({ ...request.body, remoteIp: networkUtils.clientIp(request), log: request.log })
         return reply.code(204).send()
     })
     app.post('/verify-email', { config: { security: securityAccess.public(), rateLimit: authnRateLimit }, schema: { body: z.strictObject({ email: EmailType, code: z.string().min(1).max(128), newPassword: PasswordType }) } }, async request => (await authenticationService(request.log).verifyHostedEmail(request.body)).response)

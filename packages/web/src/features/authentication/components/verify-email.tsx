@@ -10,6 +10,8 @@ import { LoadingSpinner } from '@/components/custom/spinner';
 import { useTelemetry } from '@/components/providers/telemetry-provider';
 import { Card } from '@/components/ui/card';
 import { internalErrorToast } from '@/components/ui/sonner';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
+import { HostedAuthLanding } from '@/features/hosted-onboarding/auth-landing';
 import { usePartnerStack } from '@/hooks/use-partner-stack';
 import { api } from '@/lib/api';
 import { pendingRedirect } from '@/lib/navigation-utils';
@@ -17,6 +19,15 @@ import { pendingRedirect } from '@/lib/navigation-utils';
 import { authMutations } from '../hooks/auth-hooks';
 
 const VerifyEmail = () => {
+  const hosted = useHostedBillingEnabled();
+  return hosted ? (
+    <HostedAuthLanding initialStage="verification" />
+  ) : (
+    <LegacyVerifyEmail />
+  );
+};
+
+const LegacyVerifyEmail = () => {
   const [isExpired, setIsExpired] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();

@@ -28,12 +28,14 @@ export const authenticationService = (log: FastifyBaseLogger) => ({
         const identity = await userIdentityService(log).getIdentityByEmail(email)
         if (!identity || identity.verified || !await otpService(log).confirm({ identityId: identity.id, type: OtpType.EMAIL_VERIFICATION, value: code })) throw new ActivepiecesError({ code: ErrorCode.INVALID_OTP, params: {} })
         const password = await passwordHasher.hash(newPassword)
-        await hostingTransactions.run({ dataSource: databaseConnection(), fn: async manager => {
+        const tokenVersion = await hostingTransactions.run({ dataSource: databaseConnection(), fn: async manager => {
             const current = await manager.getRepository(UserIdentityEntity).findOne({ where: { id: identity.id }, lock: { mode: 'pessimistic_write' } })
             if (!current || current.verified || current.email !== identity.email) throw new ActivepiecesError({ code: ErrorCode.INVALID_OTP, params: {} })
-            await manager.getRepository(UserIdentityEntity).update({ id: current.id }, { verified: true, password, tokenVersion: apId() })
+            const nextVersion = apId()
+            await manager.getRepository(UserIdentityEntity).update({ id: current.id }, { verified: true, password, tokenVersion: nextVersion })
+            return nextVersion
         } })
-        return authenticationUtils(log).provisionOrOnboard({ identityId: identity.id })
+        return authenticationUtils(log).provisionOrOnboard({ identityId: identity.id, expectedTokenVersion: tokenVersion })
     },
     async signUp(params: SignUpParams): Promise<AuthenticationResult> {
         if (requiresSignUpAbuseCheck(params.provider)) {
@@ -114,6 +116,13 @@ export const authenticationService = (log: FastifyBaseLogger) => ({
         const identity = await userIdentityService(log).verifyIdentityPassword(params)
         const platformId = isNil(params.predefinedPlatformId) ? await authenticationService(log).selectCloudSignInPlatformId({ identityId: identity.id }) : params.predefinedPlatformId
 
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            const expectedTokenVersion = identity.tokenVersion ?? null
+            if (!platformId) return authenticationUtils(log).provisionOrOnboard({ identityId: identity.id, expectedTokenVersion })
+            await authenticationUtils(log).assertEmailAuthIsEnabled({ platformId, provider: UserIdentityProvider.EMAIL })
+            await authenticationUtils(log).assertDomainIsAllowed({ email: identity.email, platformId })
+            return { response: await authenticationService(log).switchPlatform({ identityId: identity.id, platformId, tokenVersion: expectedTokenVersion }), signedUp: false }
+        }
         if (isNil(platformId)) { // always cloud
             // A Cloud password sign-up is created unverified and only gets its
             // platform here, on the first sign-in after the verification email.

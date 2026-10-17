@@ -6,6 +6,7 @@ import { AppSystemProp } from '../helper/system/system-props'
 import { telemetry } from '../helper/telemetry.utils'
 import { hostingConfiguration } from '../hosting/hosting-configuration'
 import { hostingServices } from '../hosting/hosting-services'
+import { hostingTransactions } from '../hosting/hosting-transactions'
 import { platformService } from '../platform/platform.service'
 import { projectService } from '../project/project-service'
 import { userService } from '../user/user-service'
@@ -83,8 +84,9 @@ export const authenticationUtils = (log: FastifyBaseLogger) => ({
         }
     },
 
-    async getOnboardingResponse({ identityId }: GetOnboardingResponseParams): Promise<AuthenticationResponse> {
+    async getOnboardingResponse({ identityId, expectedTokenVersion }: GetOnboardingResponseParams): Promise<AuthenticationResponse> {
         const identity = await userIdentityService(log).getOneOrFail({ id: identityId })
+        if (expectedTokenVersion !== undefined && (identity.tokenVersion ?? null) !== expectedTokenVersion) hostingTransactions.hostingFail('HOSTING_SESSION_EXPIRED')
         if (!identity.verified) {
             throw new ActivepiecesError({
                 code: ErrorCode.EMAIL_IS_NOT_VERIFIED,
@@ -116,13 +118,14 @@ export const authenticationUtils = (log: FastifyBaseLogger) => ({
         }
     },
 
-    async provisionOrOnboard({ identityId }: ProvisionOrOnboardParams): Promise<AuthenticationResult> {
+    async provisionOrOnboard({ identityId, expectedTokenVersion }: ProvisionOrOnboardParams): Promise<AuthenticationResult> {
         const identity = await userIdentityService(log).getOneOrFail({ id: identityId })
+        if (expectedTokenVersion !== undefined && (identity.tokenVersion ?? null) !== expectedTokenVersion) hostingTransactions.hostingFail('HOSTING_SESSION_EXPIRED')
         if (!identity.verified || signupNames.isPlaceholderName(identity)) {
-            return { response: await this.getOnboardingResponse({ identityId }), signedUp: false }
+            return { response: await this.getOnboardingResponse({ identityId, expectedTokenVersion }), signedUp: false }
         }
         if (hostingConfiguration.getServiceMode() === 'hosted') {
-            const tenant = await (await hostingServices.onboarding()).provision({ identityId, name: signupNames.platformNameFromSignup({ firstName: identity.firstName, email: identity.email }) })
+            const tenant = await (await hostingServices.onboarding()).provision({ identityId, name: signupNames.platformNameFromSignup({ firstName: identity.firstName, email: identity.email }), expectedTokenVersion })
             return { response: await this.getProjectAndToken({ ...tenant, expectedTokenVersion: tenant.tokenVersion }), signedUp: tenant.created }
         }
         const { response, provisioned } = await platformService(log).createPlatformWithProject({
@@ -307,6 +310,7 @@ type AssertUserIsInvitedToPlatformOrProjectParams = {
 }
 
 type ProvisionOrOnboardParams = {
+    expectedTokenVersion?: string | null
     identityId: string
 }
 
@@ -316,6 +320,7 @@ export type AuthenticationResult = {
 }
 
 type GetOnboardingResponseParams = {
+    expectedTokenVersion?: string | null
     identityId: string
 }
 

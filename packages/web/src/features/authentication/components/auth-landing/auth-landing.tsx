@@ -2,6 +2,8 @@ import { isNil } from '@activepieces/core-utils';
 import { t } from 'i18next';
 import { useEffect, useRef } from 'react';
 
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
+import { HostedAuthLanding } from '@/features/hosted-onboarding/auth-landing';
 import { authenticationSession } from '@/lib/authentication-session';
 import { useRedirectAfterLogin } from '@/lib/navigation-utils';
 
@@ -11,6 +13,15 @@ import { AuthDrawerBody, AuthMode } from './auth-drawer-body';
 const NUDGE_STREAK_WINDOW_MS = 700;
 
 export function AuthLanding({ initialMode }: AuthLandingProps) {
+  const hosted = useHostedBillingEnabled();
+  return hosted ? (
+    <HostedAuthLanding initialMode={initialMode} />
+  ) : (
+    <LegacyAuthLanding initialMode={initialMode} />
+  );
+}
+
+function LegacyAuthLanding({ initialMode }: AuthLandingProps) {
   const redirectAfterLogin = useRedirectAfterLogin();
   const signedIn =
     !isNil(authenticationSession.getToken()) &&
