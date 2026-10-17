@@ -42,9 +42,13 @@ async function request<T>(
         ? 'trial'
         : code === 'VALIDATION'
         ? 'captcha'
-        : status === 401 || code === 'HOSTING_SESSION_EXPIRED'
+        : status === 401 ||
+          code === 'SESSION_EXPIRED' ||
+          code === 'HOSTING_SESSION_EXPIRED'
         ? 'session'
-        : code === 'HOSTING_ACCESS_DENIED' || code === 'AUTHORIZATION'
+        : code === 'HOSTING_ACCESS_DENIED' ||
+          code === 'AUTHORIZATION' ||
+          code === 'USER_IS_INACTIVE'
         ? 'denied'
         : 'unavailable';
     // Plain bounded errors only; Axios configs include credentials and must not escape.

@@ -58,11 +58,11 @@ async function assertSolved({ token, remoteIp, log, failClosed = false }: Assert
     ))
     if (!isNil(error)) {
         if (siteVerifyAnswered(error)) {
-            log.warn({ error }, '[turnstile#assertSolved] siteverify answered with an error status, refusing')
+            log.warn('[turnstile#assertSolved] siteverify answered with an error status, refusing')
             throw rejected()
         }
         if (failClosed) throw rejected()
-        log.warn({ error }, '[turnstile#assertSolved] challenge could not be verified, allowing the request through')
+        log.warn('[turnstile#assertSolved] challenge could not be verified, allowing the request through')
         return
     }
     if (isNil(response)) {
@@ -70,8 +70,10 @@ async function assertSolved({ token, remoteIp, log, failClosed = false }: Assert
         log.warn('[turnstile#assertSolved] challenge could not be verified, allowing the request through')
         return
     }
-    if (!response.data.success) {
-        log.warn({ errors: response.data['error-codes'] }, '[turnstile#assertSolved] challenge rejected')
+    // Only the provider's explicit boolean approval is a solved challenge.
+    // Never log provider payloads or Axios errors: they can contain the secret and token.
+    if (response.data?.success !== true) {
+        log.warn('[turnstile#assertSolved] challenge rejected')
         throw rejected()
     }
 }
