@@ -19,6 +19,7 @@ import { rejectedPromiseHandler } from '../../helper/promise-handler'
 import { system } from '../../helper/system/system'
 import { AppSystemProp } from '../../helper/system/system-props'
 import { hostingConfiguration } from '../../hosting/hosting-configuration'
+import { protectHostedCopilotRpc } from '../../hosting/hosting-copilot'
 import { hostedRunCallback } from '../../hosting/hosting-run-callback'
 import { hostingFail } from '../../hosting/hosting-transactions'
 import { hostingWorkerGate } from '../../hosting/hosting-worker-gate'
@@ -88,7 +89,7 @@ function workerVersionIsCompatible({ log, workerVersion, workerId, rpcMethod }: 
 export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAssignment | null = null, connectionId?: string, workerProps?: WorkerProps): WorkerToApiContract {
     const connectionWorkerProps = Object.freeze({ ...workerProps })
     const connectionIsCompatible = () => hostingWorkerGate.isCompatible({ workerProps: connectionWorkerProps })
-    return {
+    return protectHostedCopilotRpc({
         async poll(input) {
             if (!connectionIsCompatible() || !hostingWorkerGate.isCompatible({ workerProps: input.workerProps })) return null
             log.info({ worker: { id: input.workerId }, workerGroup: assignment ?? undefined }, '[workerRpc#poll] Poll request received')
@@ -476,7 +477,7 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
         async sendPersonalizationProgress(input) {
             return sydPersonalizationService(log).sendProgress(input)
         },
-    }
+    }, connectionId)
 }
 
 // Binds conversation/run/platform/user to the per-call logger so every chat RPC

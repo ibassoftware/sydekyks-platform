@@ -6,6 +6,7 @@ import { IsNull } from 'typeorm'
 import { z } from 'zod'
 import { securityAccess } from '../../core/security/authorization/fastify-security'
 import { hostingConfiguration } from '../../hosting/hosting-configuration'
+import { hostedCopilotPayer } from '../../hosting/hosting-copilot'
 import { mcpUtils } from '../../mcp/tools/mcp-utils'
 import { assertCreditsAndAppSumoNotExceeded } from '../../platform/billing-provider'
 import { jobQueue, JobType } from '../../workers/job-queue/job-queue'
@@ -24,7 +25,10 @@ async function sendMessage({ platformId, userId, id, body, log, tokenVersion }: 
     await assertAgentMessageRateLimitNotExceeded({ platformId, userId, log })
     const projects = await sydCopilotContext.getUserProjects({ platformId, userId, log })
     const projectId = sydCopilotContext.selectRunProject({ conversationProjectId: editor?.projectId ?? conversation.projectId ?? null, projects })
-    await sydCopilotContext.assertRunProviderConfigured({ platformId, scope: sydCopilotContext.runScopeOrThrow({ projectId }), log })
+    const hosted = hostingConfiguration.getServiceMode() === 'hosted'
+    const payer = hosted ? await hostedCopilotPayer({ platformId, projectId: projectId!, provider: body.hostedPayer?.type === 'byok' ? AIProviderName.DEEPSEEK : AIProviderName.ACTIVEPIECES, configId: body.hostedPayer?.type === 'byok' ? body.hostedPayer.configId : undefined }) : undefined
+    if (hosted && body.files?.length) throw new Error('HOSTING_TOOL_NOT_METERED')
+    if (!hosted) await sydCopilotContext.assertRunProviderConfigured({ platformId, scope: sydCopilotContext.runScopeOrThrow({ projectId }), log })
     await assertCreditsAndAppSumoNotExceeded({ platformId, log })
     const runId = hostingConfiguration.getServiceMode() === 'hosted' ? apId() : body.runId ?? apId()
     const claim = await sydCopilotContext.claimConversationForRun({ platformId, userId, conversationId: id, runId })
@@ -39,6 +43,7 @@ async function sendMessage({ platformId, userId, id, body, log, tokenVersion }: 
     await jobQueue(log).add({ id: hostingConfiguration.getServiceMode() === 'hosted' ? runId : apId(), type: JobType.ONE_TIME, hostedOrigin: { type: 'user', userId, tokenVersion }, data: {
         schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, jobType: WorkerJobType.EXECUTE_AGENT_RUN,
         platformId, userId, projectId, conversationId: id, runId,
+        ...(payer ? { provider: payer.type === 'managed' ? AIProviderName.ACTIVEPIECES : AIProviderName.DEEPSEEK, ...(payer.type === 'byok' ? { providerConfigId: payer.configId } : {}) } : {}),
         userMessage: body.content, modelName: conversation.modelName ?? null, files: body.files, source: AgentRunSource.CHAT, messageSource: body.messageSource, editorContext: body.editorContext,
     } })
     return { conversationId: id, runId }
@@ -126,7 +131,7 @@ const handlers = {
     instructMemory: async ({ request }: { request: HandlerRequest<InstructMemoryRoute>, reply: FastifyReply }) => sydMemoryEditor.applyInstruction({ ...actor(request), instruction: request.body.instruction, log: request.log }),
 }
 
-const SydSendMessageRequest = SendAgentMessageRequest.safeExtend({ editorContext: z.object({ flowId: z.string(), flowVersionId: z.string(), selectedStepName: z.string().optional() }).optional() })
+const SydSendMessageRequest = SendAgentMessageRequest.safeExtend({ hostedPayer: z.discriminatedUnion('type', [z.strictObject({ type: z.literal('managed') }), z.strictObject({ type: z.literal('byok'), configId: z.string().length(21) })]).optional(), editorContext: z.object({ flowId: z.string(), flowVersionId: z.string(), selectedStepName: z.string().optional() }).optional() })
 type SydSendMessageRequest = z.infer<typeof SydSendMessageRequest>
 
 const register: FastifyPluginAsyncZod = async (app) => {

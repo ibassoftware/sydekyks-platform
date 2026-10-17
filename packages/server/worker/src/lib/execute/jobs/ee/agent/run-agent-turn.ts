@@ -2,6 +2,7 @@ import { AiProviderKeyStatus, AIProviderName, ErrorCode, formatPieceError, isFal
 import { agentAiUtils, aiProviderSignal, ContentPartLike } from '@activepieces/server-utils'
 import { AgentPhase, AgentRunSource, agentToolClassification, agentToolPhases, agentToolSkills, AI_PROVIDER_ENTITY_TYPES, aiProviderUtils, apErrorOf, CHAT_CREDITS_PER_TOOL_CALL, chatBilling, ChatToolCall, LAZY_TOOL_NAME, PersistedAgentPart, SkillSurface, TASK_COMPLETION_TOOL_NAME } from '@activepieces/shared'
 import { APICallError, generateText, isLoopFinished, isStepCount, LanguageModel, LanguageModelUsage, ModelMessage, NoSuchToolError, RetryError, StepResultPerformance, StopCondition, streamText, ToolChoice, ToolExecutionOptions, ToolSet } from 'ai'
+import { HOSTED_AGENT_MAX_OUTPUT } from './hosted-agent-model'
 import { buildSkillSurface } from './tools/skill-tools'
 
 const MAX_AUTO_CONTINUATIONS = 3
@@ -68,7 +69,7 @@ export function drainOf({ state }: { state: StepContentState }): StreamDrain {
     return { lastStepSentContent: state.sentWhenFailed ?? state.sentInStep }
 }
 
-async function runTieredAgentTurn({ models, fastModel, systemPrompt, messages, tools, allToolNames, tier, phaseState, abortSignal, log, sinks, stopWhen, stepCeiling, creditsLeft, priorToolCalls, onModelOutcome, onStepModel, skills }: TieredRunAgentTurnParams): Promise<AgentTurnResult> {
+async function runTieredAgentTurn({ hosted = false, models, fastModel, systemPrompt, messages, tools, allToolNames, tier, phaseState, abortSignal, log, sinks, stopWhen, stepCeiling, creditsLeft, priorToolCalls, onModelOutcome, onStepModel, skills }: TieredRunAgentTurnParams): Promise<AgentTurnResult> {
     const drainStream = sinks?.drainStream ?? ((result: ReturnType<typeof streamText>) => result.consumeStream())
     const onProgress = sinks?.onProgress ?? (() => {})
     const baseStopCondition = stopWhen ?? isLoopFinished()
@@ -111,8 +112,8 @@ async function runTieredAgentTurn({ models, fastModel, systemPrompt, messages, t
     const maxTurnTokens = runawayTokenCeiling(models[0].provider)
     const runsATier = models.some((candidate) => !isNil(candidate.key))
     const peers = [...models, ...(isNil(fastModel) ? [] : [fastModel])]
-    const ranked = await Promise.all(models.map((turnModel) => withOutputBudget({ turnModel, peers })))
-    let fast = isNil(fastModel) ? undefined : await withOutputBudget({ turnModel: fastModel, peers })
+    const ranked = await Promise.all(models.map((turnModel) => withOutputBudget({ turnModel, peers, hosted })))
+    let fast = isNil(fastModel) ? undefined : await withOutputBudget({ turnModel: fastModel, peers, hosted })
     let modelIndex = 0
     let lastStepUsedFast = false
     const failedModelIds = new Set<string>()
@@ -140,7 +141,7 @@ async function runTieredAgentTurn({ models, fastModel, systemPrompt, messages, t
 
     const runStreamAttempt = (attemptMessages: ModelMessage[]): ReturnType<typeof streamText> => streamText({
         model: current().model,
-        maxRetries: runsATier && hasNextModel() ? SDK_RETRIES_BEFORE_FALLBACK : SDK_RETRIES,
+        maxRetries: hosted ? 0 : runsATier && hasNextModel() ? SDK_RETRIES_BEFORE_FALLBACK : SDK_RETRIES,
         maxOutputTokens: current().budget.maxOutputTokens,
         abortSignal,
         instructions: agentAiUtils.buildSystemPromptWithCaching({ systemPrompt: turnSystemPrompt, provider: current().provider }),
@@ -214,6 +215,7 @@ async function runTieredAgentTurn({ models, fastModel, systemPrompt, messages, t
             const { data: repaired } = await tryCatch(async () => {
                 const { text } = await generateText({
                     model: current().model,
+                    ...(hosted ? { maxRetries: 0, maxOutputTokens: 1024 } : {}),
                     abortSignal,
                     telemetry: agentAiUtils.buildTelemetry({ functionId: 'agent-tool-repair' }),
                     prompt: `Fix this invalid input for the tool "${toolCall.toolName}". The error was: ${error.message}\n\nOriginal input:\n${toolCall.input}\n\nThe input must match this JSON schema:\n${JSON.stringify(schema)}\n\nReturn ONLY the corrected JSON input, nothing else.`,
@@ -299,7 +301,7 @@ async function runTieredAgentTurn({ models, fastModel, systemPrompt, messages, t
             const sentNothing = runsATier && drained?.lastStepSentContent === false
             const dropsFast = failedFast && sentNothing
             const movesOn = !failedFast && sentNothing && isFallbackWorthy(signal) && hasNextModel()
-            if (dropsFast || movesOn) {
+            if (!hosted && (dropsFast || movesOn)) {
                 if (!failedFast) {
                     modelIndex++
                 }
@@ -311,7 +313,7 @@ async function runTieredAgentTurn({ models, fastModel, systemPrompt, messages, t
                 streamRetries = 0
                 continue
             }
-            if (shouldRetryStream({ producedVisibleOutput: producedVisibleOutput || drained?.lastStepSentContent === true, streamRetries })) {
+            if (!hosted && shouldRetryStream({ producedVisibleOutput: producedVisibleOutput || drained?.lastStepSentContent === true, streamRetries })) {
                 streamRetries++
                 log.warn({ streamRetries, error: streamError }, 'Chat stream failed before any visible output — retrying the turn')
                 streamError = null
@@ -401,7 +403,8 @@ async function runTieredAgentTurn({ models, fastModel, systemPrompt, messages, t
     }
 }
 
-async function withOutputBudget({ turnModel, peers }: { turnModel: TurnModel, peers: TurnModel[] }): Promise<BudgetedTurnModel> {
+async function withOutputBudget({ turnModel, peers, hosted }: { turnModel: TurnModel, peers: TurnModel[], hosted: boolean }): Promise<BudgetedTurnModel> {
+    if (hosted) return { ...turnModel, thinkingBudget: 0, budget: { maxOutputTokens: HOSTED_AGENT_MAX_OUTPUT, maxOutputTokensWithoutThinking: HOSTED_AGENT_MAX_OUTPUT, thinkingBudget: 0 } }
     const sameProviderIds = unique(peers.filter((peer) => peer.provider === turnModel.provider).map((peer) => peer.modelId))
     const maxOutputTokens = await agentAiUtils.affordableOutputTokens({ provider: turnModel.provider, modelIds: sameProviderIds, thinkingBudget: turnModel.thinkingBudget })
     const roomForThinking = Math.min(turnModel.thinkingBudget, maxOutputTokens - MIN_THINKING_BUDGET)
@@ -658,6 +661,7 @@ type BudgetedTurnModel = TurnModel & {
 }
 
 export type TieredRunAgentTurnParams = {
+    hosted?: boolean
     models: [TurnModel, ...TurnModel[]]
     fastModel?: TurnModel
     systemPrompt: string

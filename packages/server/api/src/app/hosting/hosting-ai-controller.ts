@@ -4,8 +4,9 @@ import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { securityAccess } from '../core/security/authorization/fastify-security'
 import { authnRateLimit } from '../core/security/rate-limit'
-import { HOSTED_DEEPSEEK_MODEL, HostedAiRequest } from './hosting-ai-policy'
+import { HOSTED_AI_TIMEOUT_MS, HOSTED_DEEPSEEK_MODEL, HostedAiRequest } from './hosting-ai-policy'
 import { hostingConfiguration } from './hosting-configuration'
+import { assertHostedCopilotModel } from './hosting-copilot'
 import { hostingServices } from './hosting-services'
 import { hostingFail } from './hosting-transactions'
 
@@ -20,6 +21,33 @@ const stepSchema = z.strictObject({
 export const hostingAiController: FastifyPluginAsyncZod = async app => {
     if (hostingConfiguration.getServiceMode() !== 'hosted') return
     const config = { security: securityAccess.engine(), rateLimit: authnRateLimit }
+    app.post('/copilot/completions', { config, bodyLimit: 65536, schema: { body: HostedAiRequest.extend({ stream: z.boolean().default(false) }).strict() } }, async (request, reply) => {
+        const { stream, ...body } = request.body
+        const input = HostedAiRequest.parse(body)
+        await assertHostedCopilotModel({ admissionId: request.principal.id, request: input })
+        const scope = { admissionId: request.principal.id, platformId: request.principal.platform.id, projectId: request.principal.projectId }
+        const abort = new AbortController()
+        const onClose = () => abort.abort()
+        reply.raw.once('close', onClose)
+        if (reply.raw.destroyed || request.raw.aborted) onClose()
+        const deadline = setTimeout(onClose, HOSTED_AI_TIMEOUT_MS)
+        if (!stream) {
+            try {
+                return await hostingServices.gateway().execute({ scope, request: input, signal: abort.signal })
+            }
+            finally {
+                clearTimeout(deadline); reply.raw.removeListener('close', onClose)
+            }
+        }
+        const output = await hostingServices.gateway().stream({ scope, request: input, signal: abort.signal }).catch(error => {
+            clearTimeout(deadline); reply.raw.removeListener('close', onClose); throw error
+        })
+        output.once('close', () => {
+            clearTimeout(deadline); reply.raw.removeListener('close', onClose)
+        })
+        void reply.header('Cache-Control', 'private, no-store').header('X-Accel-Buffering', 'no')
+        return reply.type('text/event-stream').send(output)
+    })
     app.post('/chat/completions', { config, bodyLimit: 65536, schema: { body: HostedAiRequest } }, async request => hostingServices.gateway().execute({ scope: { admissionId: request.principal.id, platformId: request.principal.platform.id, projectId: request.principal.projectId }, request: request.body }))
     app.post('/step', { config, bodyLimit: 65536, schema: { body: stepSchema } }, async request => {
         const input = request.body

@@ -2,12 +2,14 @@ import { ActivepiecesAiBilling, ActivepiecesAiConsumerSource, AIProviderName, Er
 import { agentAiUtils, aiUtils } from '@activepieces/server-utils'
 import { AgentEvent, AgentEventType, AgentKnowledgeBaseTool, AgentMcpTool, AgentOutputField, AgentPhase, AgentPieceTool, AgentResult, AgentRunSource, AgentTool, agentToolSkills, AgentToolType, AiProviderCredentials, apErrorOf, EngineResponseStatus, ExecuteAgentRunJobData, MAX_AGENT_TURN_WALL_CLOCK_MS, PersistedAgentMessage, PersistedAgentMessageSchema, PersistedAgentPart, PersistedAgentPartType, PersistedAgentRole, ResolvedAgentFlowTool, SkillSurface, WorkerJobType } from '@activepieces/shared'
 import { createUIMessageStream, generateText, ModelMessage, streamText, ToolSet, toUIMessageStream } from 'ai'
+import { workerServiceMode } from '../../../../config/worker-service-mode'
 import { FireAndForgetJobResult, JobContext, JobHandler, JobResultKind } from '../../../types'
 import { toResolvedAiFile } from '../../ai/ai-files'
 import { agentMcpClient, McpConnection } from './agent-mcp-client'
 import { stepResultFrom } from './agent-step-result'
 import { agentToolPolicy } from './agent-tool-policy'
 import { agentWorkerTools, GateDecision, TaintState } from './agent-worker-tools'
+import { createHostedAgentModel, hostedAgentTools } from './hosted-agent-model'
 import { classifyAgentRunError, delayWithJitter, drainOf, firstStepUsesFastModel, isTransientFailureText, NO_STEP_CONTENT, runAgentTurn, StreamDrain, trackStepContent } from './run-agent-turn'
 import { unwrapLazyToolChunk } from './tools/skill-tools'
 
@@ -42,6 +44,15 @@ const DELIVERY_MAX_ATTEMPTS = 5
 export const executeAgentRunJob: JobHandler<ExecuteAgentRunJobData, FireAndForgetJobResult> = {
     jobType: WorkerJobType.EXECUTE_AGENT_RUN,
     async execute(ctx: JobContext, data: ExecuteAgentRunJobData): Promise<FireAndForgetJobResult> {
+        const hosted = workerServiceMode.getProps().serviceMode === 'hosted'
+        if (hosted) {
+            if (!ctx.admissionId) throw new Error('HOSTING_AI_SEGMENT_DENIED')
+            const apiClient = ctx.apiClient
+            ctx = { ...ctx, apiClient: new Proxy(apiClient, { get(target, key, receiver) {
+                const value = Reflect.get(target, key, receiver)
+                return typeof value === 'function' ? (input: object) => value({ ...input, admissionId: ctx.admissionId }) : value
+            } }) }
+        }
         const { conversationId, runId, projectId, platformId, userId, userMessage, modelName, files, promptOverride, dryRun, discoveryOnly, source: jobSource, flowRunId, waitpointId } = data
         const log = ctx.log.child({ conversation: { id: conversationId }, agentRun: { source: jobSource ?? AgentRunSource.CHAT }, ...spreadIfDefined('run', isNil(runId) ? undefined : { id: runId }) })
 
@@ -106,6 +117,7 @@ export const executeAgentRunJob: JobHandler<ExecuteAgentRunJobData, FireAndForge
                 ...spreadIfDefined('discoveryOnly', discoveryOnly),
             })
 
+            if (hosted !== Boolean(config.hosted)) throw new Error('HOSTING_AI_CONFIG_MISMATCH')
             configLoaded = true
             const { credentials } = config
             const { provider } = credentials
@@ -126,13 +138,13 @@ export const executeAgentRunJob: JobHandler<ExecuteAgentRunJobData, FireAndForge
                 conversationId,
                 chat: { userId, turnIndex: config.previousUiMessages.length, tier: config.tier.id },
             }
-            const model = aiUtils.createModel({
+            const model = hosted ? createHostedAgentModel({ ctx, config: config.hosted! }) : aiUtils.createModel({
                 credentials, modelId: config.modelId,
                 metadata: { platformId, conversationId, runId },
                 billing,
                 turnAlreadyCharged: true,
             })
-            const fastModel = aiUtils.createModel({
+            const fastModel = hosted ? model : aiUtils.createModel({
                 credentials, modelId: config.fastModelId,
                 billing,
                 turnAlreadyCharged: true,
@@ -148,7 +160,7 @@ export const executeAgentRunJob: JobHandler<ExecuteAgentRunJobData, FireAndForge
             })
 
             // dryRun (playground): skip MCP and don't execute tools, so the run has no side effects.
-            const connection: McpConnection = dryRun
+            const connection: McpConnection = hosted || dryRun
                 ? { mcpClient: null, mcpToolSet: {} }
                 : await agentMcpClient.connect({ mcpCredentials: config.mcpCredentials, conversationId, log })
             mcpClient = connection.mcpClient
@@ -217,7 +229,7 @@ export const executeAgentRunJob: JobHandler<ExecuteAgentRunJobData, FireAndForge
                 }) : {}),
             }
 
-            const allTools = buildToolSet({
+            const allTools = hosted ? hostedAgentTools(config) : buildToolSet({
                 provider,
                 providerConfigId: config.providerConfigId,
                 modelId: config.modelId,
@@ -239,13 +251,13 @@ export const executeAgentRunJob: JobHandler<ExecuteAgentRunJobData, FireAndForge
 
             const thinkingStartTime = Date.now()
 
-            const autoTitlePromise = generateTitleIfFirstTurn({
+            const autoTitlePromise = hosted ? Promise.resolve(undefined) : generateTitleIfFirstTurn({
                 model, userMessage, previousUiMessages: config.previousUiMessages as unknown[], log, conversationId, abortSignal: abortController.signal,
             })
 
             const turn = await agentMcpClient.withStepMcpTools({
                 tools: configuredMcpTools,
-                skip: (dryRun ?? false) || (discoveryOnly ?? false),
+                skip: hosted || (dryRun ?? false) || (discoveryOnly ?? false),
                 log,
                 run: (stepMcpToolSet) => {
                     const mergedTools = { ...allTools, ...agentWorkerTools.wrapToolsWithTaint({ tools: stepMcpToolSet, taintState }) }
@@ -255,14 +267,15 @@ export const executeAgentRunJob: JobHandler<ExecuteAgentRunJobData, FireAndForge
 
                     return runAgentTurn({
                         ...spreadIfDefined('stepCeiling', data.maxSteps),
-                        creditsLeft: (pendingCredits) => ctx.apiClient.agentCreditsLeft({ platformId, conversationId, pendingCredits }),
+                        hosted,
+                        ...(hosted ? {} : { creditsLeft: (pendingCredits: number) => ctx.apiClient.agentCreditsLeft({ platformId, conversationId, pendingCredits }) }),
                         model,
                         fastModel: firstStepUsesFastModel({ source, dryRun, runsASavedAgent: !isNil(data.promptOverride) }) ? fastModel : undefined,
                         provider,
                         systemPrompt: config.systemPrompt,
                         messages: config.messages as ModelMessage[],
                         tools: mergedTools,
-                        ...spreadIfDefined('skills', skillsFor({ source, guides: config.guides })),
+                        ...(hosted ? {} : { ...spreadIfDefined('skills', skillsFor({ source, guides: config.guides })) }),
                         allToolNames,
                         tier: config.tier,
                         modelId: config.modelId,

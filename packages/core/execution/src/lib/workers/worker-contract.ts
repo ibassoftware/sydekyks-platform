@@ -126,6 +126,7 @@ export type SendAgentEventRequest = {
 }
 
 export type GetAgentConfigRequest = {
+    admissionId?: string
     provider?: AIProviderName
     providerConfigId?: string
     conversationId: string
@@ -160,6 +161,7 @@ export type AgentAiToolsConfig = {
 }
 
 export type AgentConfigResponse = {
+    hosted?: { protocol: 1, model: string, payer: { type: 'managed' } | { type: 'byok', configId: string } }
     credentials: AiProviderCredentials
     providerConfigId: string
     modelId: string
