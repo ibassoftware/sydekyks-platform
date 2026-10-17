@@ -97,6 +97,7 @@ const systemPropValidators: {
 } = {
     // AppSystemProp
     [AppSystemProp.SERVICE_MODE]: enumValidator(['self_hosted', 'hosted']),
+    [AppSystemProp.HOSTED_OPERATOR_IDENTITY_IDS]: (value) => !value || value.split(',').every(id => id.trim().length === 21) ? true : 'Operator identity IDs must be 21 characters',
     [AppSystemProp.HOSTED_DEEPSEEK_API_KEY]: () => true,
     [AppSystemProp.HOSTED_DEEPSEEK_PRICE_JSON]: () => true,
     [AppSystemProp.HOSTED_STRIPE_CATALOG_JSON]: () => true,

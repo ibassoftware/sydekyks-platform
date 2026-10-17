@@ -29,6 +29,11 @@ import { onboardingPrefillUtils } from '@/features/chat/lib/onboarding-prefill';
 import { useAgentChat } from '@/features/chat/lib/use-chat';
 import { useCreditsState } from '@/features/chat/lib/use-credits-state';
 import { usePersonalization } from '@/features/chat/lib/use-personalization';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
+import {
+  HostedChatBoundary,
+  useHostedChatPayer,
+} from '@/features/hosted-chat/hosted-chat-provider';
 import { aiProviderQueries } from '@/features/platform-admin';
 import { platformHooks } from '@/hooks/platform-hooks';
 import { userHooks } from '@/hooks/user-hooks';
@@ -51,7 +56,27 @@ import { QuickReplies } from './components/quick-replies';
 import { UserMessage } from './components/user-message';
 import { getTextFromParts } from './lib/message-parsers';
 
-export function AIChatBox({
+export function AIChatBox(props: AIChatBoxProps) {
+  const hosted = useHostedBillingEnabled();
+  if (!hosted) return <LegacyAIChatBox {...props} />;
+  if (props.agentId !== undefined || props.builder)
+    return (
+      <p className="p-4 text-sm text-gray-11">
+        {t(
+          'Hosted Copilot currently supports workspace chat. Saved-agent and builder execution are not available yet.',
+        )}
+      </p>
+    );
+  return (
+    <HostedChatBoundary conversationId={props.conversationId}>
+      <ChatStoreProvider>
+        <ChatBoxContent {...props} />
+      </ChatStoreProvider>
+    </HostedChatBoundary>
+  );
+}
+
+function LegacyAIChatBox({
   incognito,
   initialPrompt,
   errorRecovery,
@@ -121,9 +146,10 @@ function ChatBoxContent({
   onConversationCreated,
 }: AIChatBoxProps) {
   const queryClient = useQueryClient();
+  const hostedChat = useHostedChatPayer();
   const credits = useCreditsState();
   const { data: modelCatalog } = aiProviderQueries.useChatModels({
-    enabled: agentId === undefined && !builder,
+    enabled: !hostedChat && agentId === undefined && !builder,
   });
 
   const {
@@ -143,8 +169,11 @@ function ChatBoxContent({
   } = useAgentChat({
     ...(agentId === undefined ? {} : { agentId }),
     ...(builder === undefined ? {} : { builder }),
-    defaultModelName:
-      agentId === undefined ? modelCatalog?.defaultModelId ?? null : null,
+    defaultModelName: hostedChat
+      ? 'deepseek-flash'
+      : agentId === undefined
+      ? modelCatalog?.defaultModelId ?? null
+      : null,
     onTitleUpdate,
     onConversationCreated,
     onTurnEnd,
@@ -216,11 +245,12 @@ function ChatBoxContent({
       initialPrompt !== undefined &&
       initialPrompt.trim().length > 0 &&
       !initialConversationId &&
-      !sentInitialPrompt.current;
+      !sentInitialPrompt.current &&
+      (!hostedChat || hostedChat.ready);
     if (!shouldSendInitialPrompt) return;
     sentInitialPrompt.current = true;
     handleSend(initialPrompt).catch(() => undefined);
-  }, [initialPrompt, initialConversationId, handleSend]);
+  }, [initialPrompt, initialConversationId, handleSend, hostedChat]);
 
   const handleRetry = useCallback(() => {
     const lastUser = messages.findLast((m) => m.role === 'user');
@@ -245,13 +275,16 @@ function ChatBoxContent({
     chatStoreSelectors.hasBlockingCard({ state: s, lastAssistantMessage }),
   );
 
-  const showBanner = credits.creditsExhausted || credits.showLowCreditsWarning;
+  const showBanner =
+    !hostedChat && (credits.creditsExhausted || credits.showLowCreditsWarning);
 
   const [hasInput, setHasInput] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
   const { platform } = platformHooks.useCurrentPlatform();
   const { data: currentUser } = userHooks.useCurrentUser();
-  const personalization = usePersonalization({ enabled: !incognito });
+  const personalization = usePersonalization({
+    enabled: !hostedChat && !incognito,
+  });
 
   const isAwaitingLoad =
     !!initialConversationId && messages.length === 0 && !error;
@@ -268,8 +301,9 @@ function ChatBoxContent({
     (personalization.companyInput ?? '').trim().length > 0 &&
     currentUser?.platformRole !== PlatformRole.ADMIN;
   const showOnboardingCard =
-    isEmpty && !incognito && (isFirstRun || promptOpen);
+    !hostedChat && isEmpty && !incognito && (isFirstRun || promptOpen);
   const showPersonalizationDonut =
+    !hostedChat &&
     isEmpty &&
     !incognito &&
     isNil(agentId) &&
@@ -348,7 +382,7 @@ function ChatBoxContent({
                 <EmptyState
                   onSuggestionClick={(text) => void handleSend(text)}
                   incognito={incognito}
-                  showFlowCards={!hasConversations}
+                  showFlowCards={!hostedChat && !hasConversations}
                   hasInput={hasInput}
                 />
               ))}
@@ -435,15 +469,21 @@ function ChatBoxContent({
                     <div className="min-w-0 flex-1 break-words" role="alert">
                       <p>{error}</p>
                       {errorRecovery && <p className="mt-2">{errorRecovery}</p>}
-                    </div>
+                      {hostedChat && (
+                        <span className="mt-1 block text-xs">
+                          {t(
+                            'Sending again creates a new run and may use another execution. Your selected billing option will be checked again.',
+                          )}
+                        </div>
                     <Button
                       variant="ghost"
                       size="sm"
                       className="text-danger-11 hover:text-danger-11 gap-1.5 shrink-0 h-7 px-2"
                       onClick={handleRetry}
+                      disabled={Boolean(hostedChat && !hostedChat.ready)}
                     >
                       <RefreshCw className="h-3 w-3" />
-                      {t('Retry')}
+                      {t(hostedChat ? 'Send again' : 'Retry')}
                     </Button>
                   </motion.div>
                 )}

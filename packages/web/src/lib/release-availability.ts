@@ -8,7 +8,11 @@ function isRouteAvailable({
   const path = pathname
     .split(/[?#]/)[0]
     .replace(/^\/projects\/[^/]+(?=\/)/, '');
-  if (hostedBilling && path === '/platform/billing') return true;
+  if (
+    hostedBilling &&
+    (path === '/platform/billing' || path === '/platform/billing/clients')
+  )
+    return true;
   return !UNAVAILABLE_ROUTE_PREFIXES.some(
     (prefix) => path === prefix || path.startsWith(`${prefix}/`),
   );

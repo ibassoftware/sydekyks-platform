@@ -61,6 +61,12 @@ export function useStreamingReducer({
   const chunkBufferRef = useRef<UIMessageChunk[]>([]);
   const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const pendingRunEvents = useRef<{
+    events: SocketEvent[];
+    bytes: number;
+  } | null>(null);
+  const replayEvent = useRef<((event: SocketEvent) => void) | null>(null);
+  const requireRunId = useRef(false);
 
   const onTitleUpdateRef = useRef(onTitleUpdate);
   onTitleUpdateRef.current = onTitleUpdate;
@@ -135,6 +141,8 @@ export function useStreamingReducer({
     }
     chunkBufferRef.current = [];
     reducerStateRef.current = null;
+    pendingRunEvents.current = null;
+    replayEvent.current = null;
   }, []);
 
   useEffect(() => {
@@ -147,6 +155,14 @@ export function useStreamingReducer({
 
   const setActiveRunId = useCallback((runId: string) => {
     activeRunIdRef.current = runId;
+    const buffered = pendingRunEvents.current;
+    pendingRunEvents.current = null;
+    const handler = replayEvent.current;
+    if (buffered && handler)
+      for (const event of buffered.events) {
+        if (!replayEvent.current) break;
+        if (event.runId === runId) handler(event);
+      }
     chatDebug.setContext({ run: { id: runId } });
   }, []);
 
@@ -155,12 +171,19 @@ export function useStreamingReducer({
       conversationId: string,
       options?: {
         initialParts?: ChatUIMessage['parts'];
+        awaitRunId?: boolean;
+        runId?: string;
       },
     ) => {
       teardown();
       setIsResumedStream(!!options?.initialParts?.length);
       streamGenerationRef.current++;
-      activeRunIdRef.current = undefined;
+      activeRunIdRef.current = options?.runId;
+      requireRunId.current =
+        options?.awaitRunId === true || Boolean(options?.runId);
+      pendingRunEvents.current = options?.awaitRunId
+        ? { events: [], bytes: 0 }
+        : null;
       chatDebug.setContext({ conversation: { id: conversationId } });
       chatDebug.info(
         {
@@ -228,6 +251,26 @@ export function useStreamingReducer({
           );
           return;
         }
+        if (requireRunId.current && !event.runId) return;
+        const pending = pendingRunEvents.current;
+        if (pending) {
+          const size = new TextEncoder().encode(
+            JSON.stringify(event),
+          ).byteLength;
+          if (
+            pending.events.length >= 256 ||
+            pending.bytes + size > 1_048_576
+          ) {
+            handleError({
+              errorMessage:
+                'The early chat response exceeded its buffer. Refresh the conversation before sending again.',
+            });
+            return;
+          }
+          pending.events.push(event);
+          pending.bytes += size;
+          return;
+        }
         const runId = activeRunIdRef.current;
         if (runId && event.runId && event.runId !== runId) {
           chatDebug.debug(
@@ -292,6 +335,7 @@ export function useStreamingReducer({
         }
       };
 
+      replayEvent.current = handler;
       socket.on(WebsocketClientEvent.CHAT_MESSAGE_CHUNK, handler);
 
       const reconnectHandler = () => {
@@ -322,6 +366,7 @@ export function useStreamingReducer({
   );
 
   const stopStream = useCallback(() => {
+    if (requireRunId.current) streamGenerationRef.current++;
     teardown();
     setStreamingMessage(null);
     setStreamError(null);

@@ -14,6 +14,7 @@ import { ProjectEntity } from '../project/project-entity'
 import { UserEntity } from '../user/user-entity'
 import { HostedKeyAuth, hostedKeyModels, hostedKeyResponse } from './hosting-ai-credentials'
 import { HOSTED_DEEPSEEK_MODEL } from './hosting-ai-policy'
+import { hostedChatOptions } from './hosting-chat-options'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 export const hostingProviderController: FastifyPluginAsyncZod = async app => {
@@ -22,6 +23,10 @@ export const hostingProviderController: FastifyPluginAsyncZod = async app => {
     const admin = { security: securityAccess.platformAdminOnly([PrincipalType.USER]) }
     const idParams = z.object({ id: z.string().length(21) })
     const common = { displayName: z.string().trim().min(1).max(80), config: z.strictObject({}).optional() }
+    app.get('/chat-options', { config: user, schema: { querystring: z.object({ projectId: z.string().length(21), conversationId: z.string().length(21).optional() }).strict() } }, async (request, reply) => {
+        void reply.header('Cache-Control', 'private, no-store')
+        return run(request, async (manager, actor) => hostedChatOptions({ manager, actor, userId: request.principal.id, ...request.query }), false)
+    })
     app.get('/configs', { config: admin }, async request => run(request, async manager => (await manager.getRepository(AIProviderEntity).findBy({ platformId: request.principal.platform.id, provider: AIProviderName.DEEPSEEK })).map(hostedKeyResponse)))
     app.get('/tiers', { config: user }, async request => run(request, async () => ({ flow: { tiers: [{ id: HOSTED_DEEPSEEK_MODEL, label: 'DeepSeek Flash', modelId: HOSTED_DEEPSEEK_MODEL }], defaultTierId: HOSTED_DEEPSEEK_MODEL }, chat: { tiers: [], defaultTierId: '' } }), false))
     app.get('/', { config: projectUser, schema: { querystring: z.object({ projectId: z.string().optional() }) } }, async request => run(request, async (manager, actor) => {

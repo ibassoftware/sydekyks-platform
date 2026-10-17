@@ -17,6 +17,13 @@ import { useQuery } from '@tanstack/react-query';
 import { t } from 'i18next';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import {
+  HostedChatSubmission,
+  HostedChatError,
+  HostedChatScope,
+  assertHostedChatScope,
+} from '@/features/hosted-chat/hosted-chat-api';
+import { useHostedChatPayer } from '@/features/hosted-chat/hosted-chat-provider';
 import { api } from '@/lib/api';
 import { chatDebug } from '@/lib/chat-debug-logger';
 
@@ -290,6 +297,16 @@ export function useAgentChat({
   };
   onRunStateChange?: (running: boolean) => void;
 } = {}) {
+  const hostedChat = useHostedChatPayer();
+  const hostedChatRef = useRef(hostedChat);
+  hostedChatRef.current = hostedChat;
+  const sendAttemptRef = useRef(0);
+  useEffect(
+    () => () => {
+      sendAttemptRef.current++;
+    },
+    [],
+  );
   const editorContextRef = useRef(editorContext);
   editorContextRef.current = editorContext;
   const onRunStateChangeRef = useRef(onRunStateChange);
@@ -329,6 +346,27 @@ export function useAgentChat({
   onTitleUpdateRef.current = onTitleUpdate;
   const onConversationCreatedRef = useRef(onConversationCreated);
   onConversationCreatedRef.current = onConversationCreated;
+
+  const readIsCurrent = useCallback(
+    (convId: string, attempt: number, scope?: HostedChatScope) => {
+      if (conversationIdRef.current !== convId) return false;
+      if (!scope) return true;
+      try {
+        assertHostedChatScope(scope);
+      } catch {
+        return false;
+      }
+      const current = hostedChatRef.current?.scope;
+      return (
+        attempt === sendAttemptRef.current &&
+        current?.session === scope.session &&
+        current?.projectPointer === scope.projectPointer &&
+        (current.conversationId === convId ||
+          (current.conversationId === null && scope.conversationId === null))
+      );
+    },
+    [],
+  );
 
   const handleTitleUpdate = useCallback((title: string) => {
     onTitleUpdateRef.current?.(title);
@@ -439,10 +477,12 @@ export function useAgentChat({
   const reconcile = useCallback(
     async (convId: string): Promise<ChatUIMessage[] | null> => {
       if (conversationIdRef.current !== convId) return null;
+      const scope = hostedChatRef.current?.scope;
+      const attempt = sendAttemptRef.current;
       const { data: result } = await tryCatch(() =>
-        chatApi.getMessages(convId),
+        chatApi.getMessages(convId, scope),
       );
-      if (conversationIdRef.current !== convId) return null;
+      if (!readIsCurrent(convId, attempt, scope)) return null;
       if (!result) return null;
       const mapped = chatUtils.mapHistoryToUIMessages(result.data);
       setPersistedMessages(mapped);
@@ -454,7 +494,7 @@ export function useAgentChat({
       });
       return mapped;
     },
-    [store],
+    [store, readIsCurrent],
   );
 
   const settleStreamRef = useRef<
@@ -500,8 +540,10 @@ export function useAgentChat({
     },
     onStaleCheck: (convId) => {
       void tryCatch(async () => {
-        const conv = await chatApi.getConversation(convId);
-        if (isNil(conv) || conversationIdRef.current !== convId) return;
+        const scope = hostedChatRef.current?.scope;
+        const attempt = sendAttemptRef.current;
+        const conv = await chatApi.getConversation(convId, scope);
+        if (isNil(conv) || !readIsCurrent(convId, attempt, scope)) return;
 
         if (conv.status !== AgentConversationStatus.STREAMING) {
           settleStreamRef.current(convId);
@@ -516,8 +558,14 @@ export function useAgentChat({
   // when the run ended without an assistant reply — instead of blanking the panel.
   settleStreamRef.current = (convId, opts) => {
     const gen = streamGeneration.current;
+    const scope = hostedChatRef.current?.scope;
+    const attempt = sendAttemptRef.current;
     void reconcile(convId).then((mapped) => {
-      if (conversationIdRef.current !== convId) return;
+      if (
+        !readIsCurrent(convId, attempt, scope) ||
+        (scope && gen !== streamGeneration.current)
+      )
+        return;
       // Defense-in-depth: a settled turn's history should only ever grow (it now
       // includes the just-finished reply). Refuse a strictly-shorter reconcile so
       // a transient server hiccup can never collapse the visible conversation.
@@ -645,6 +693,7 @@ export function useAgentChat({
   }, []);
 
   const cancelStream = useCallback(() => {
+    sendAttemptRef.current++;
     commitInFlightTurn();
     stopStream();
     setOptimisticUserMessage(null);
@@ -652,7 +701,9 @@ export function useAgentChat({
     updateSendStatus({ type: 'cancelled' });
     const convId = conversationIdRef.current;
     if (convId) {
-      void chatApi.cancelConversation(convId);
+      void tryCatch(() =>
+        chatApi.cancelConversation(convId, hostedChatRef.current?.scope),
+      );
     }
   }, [commitInFlightTurn, stopStream, updateSendStatus]);
 
@@ -660,13 +711,22 @@ export function useAgentChat({
     async ({
       title,
       modelName,
-    }: { title?: string | null; modelName?: string | null } = {}) => {
-      const conv = await chatApi.createConversation({
-        title: title ?? null,
-        modelName: modelName ?? null,
-        ...(agentId === undefined ? {} : { agentId }),
-        ...(builder === undefined ? {} : { builder }),
-      });
+      hosted,
+    }: {
+      title?: string | null;
+      modelName?: string | null;
+      hosted?: HostedChatSubmission;
+    } = {}) => {
+      const conv = await chatApi.createConversation(
+        {
+          title: title ?? null,
+          modelName: modelName ?? null,
+          ...(agentId === undefined ? {} : { agentId }),
+          ...(builder === undefined ? {} : { builder }),
+        },
+        hosted,
+      );
+      hosted?.assertCurrent();
       conversationIdRef.current = conv.id;
       setConversationIdState(conv.id);
       return conv;
@@ -680,7 +740,39 @@ export function useAgentChat({
       files?: File[],
       options?: { messageSource?: AgentMessageSource },
     ) => {
+      const hostedChat = hostedChatRef.current;
+      if (hostedChat && sendStatusRef.current.type === 'submitting') return;
+      const attempt = ++sendAttemptRef.current;
       updateSendStatus({ type: 'submitting' });
+      if (hostedChat) setIsLoadingHistory(false);
+      let hosted: HostedChatSubmission | undefined;
+      if (hostedChat && files?.length) {
+        updateSendStatus({
+          type: 'error',
+          message: 'Attachments are not available in hosted chat yet.',
+        });
+        return;
+      }
+      if (hostedChat) {
+        const prepared = await tryCatch(() => hostedChat.prepare());
+        if (attempt !== sendAttemptRef.current) return;
+        if (prepared.error || !prepared.data) {
+          updateSendStatus({
+            type: 'error',
+            message: prepared.error?.message ?? 'Chat billing is unavailable.',
+          });
+          return;
+        }
+        const captured = prepared.data;
+        hosted = {
+          ...captured,
+          assertCurrent: () => {
+            captured.assertCurrent();
+            if (attempt !== sendAttemptRef.current)
+              throw new HostedChatError('session');
+          },
+        };
+      }
 
       const fileNames = files?.map((f) => f.name) ?? [];
       lastSentFileNamesRef.current = fileNames;
@@ -733,9 +825,11 @@ export function useAgentChat({
           const conv = await createConversation({
             title: content.slice(0, 100),
             modelName: modelNameRef.current ?? defaultModelNameRef.current,
+            hosted,
           });
           onConversationCreatedRef.current?.(conv.id);
         });
+        if (hostedChat && attempt !== sendAttemptRef.current) return;
         if (convError) {
           setOptimisticUserMessage(null);
           updateSendStatus({
@@ -761,9 +855,9 @@ export function useAgentChat({
       }
 
       const runId = apId();
-      startStream(convId);
-      setActiveRunId(runId);
-      updateSendStatus({ type: 'idle' });
+      startStream(convId, hosted ? { awaitRunId: true } : undefined);
+      if (!hosted) setActiveRunId(runId);
+      if (!hosted) updateSendStatus({ type: 'idle' });
       chatDebug.info(
         {
           conversation: { id: convId },
@@ -774,9 +868,10 @@ export function useAgentChat({
         'sending chat message',
       );
 
-      const { error: sendError } = await tryCatch(async () =>
+      const { data: sent, error: sendError } = await tryCatch(async () =>
         chatApi.sendMessage({
           conversationId: convId,
+          hosted,
           content,
           runId,
           editorContext: editorContextRef.current,
@@ -786,6 +881,9 @@ export function useAgentChat({
             : {}),
         }),
       );
+      if (hostedChat && attempt !== sendAttemptRef.current) return;
+      if (hosted && sent?.runId) setActiveRunId(sent.runId);
+      if (hosted) updateSendStatus({ type: 'idle' });
       if (sendError) {
         chatDebug.error(
           {
@@ -828,6 +926,7 @@ export function useAgentChat({
         })
       )
         return;
+      sendAttemptRef.current++;
       stopStream();
       setIsPollingForAgentReply(false);
       updateSendStatus({ type: 'idle' });
@@ -841,11 +940,13 @@ export function useAgentChat({
       setOptimisticUserMessage(null);
 
       setIsLoadingHistory(true);
+      const scope = hostedChatRef.current?.scope;
+      const attempt = sendAttemptRef.current;
       const [historyResult, convResult] = await Promise.all([
-        tryCatch(async () => chatApi.getMessages(id)),
-        tryCatch(async () => chatApi.getConversation(id)),
+        tryCatch(async () => chatApi.getMessages(id, scope)),
+        tryCatch(async () => chatApi.getConversation(id, scope)),
       ]);
-      if (conversationIdRef.current !== id) return;
+      if (!readIsCurrent(id, attempt, scope)) return;
       if (historyResult.error || convResult.error) {
         conversationIdRef.current = null;
         setConversationIdState(null);
@@ -857,6 +958,20 @@ export function useAgentChat({
         return;
       }
       const mapped = chatUtils.mapHistoryToUIMessages(historyResult.data.data);
+      if (
+        scope &&
+        convResult.data.status === AgentConversationStatus.STREAMING &&
+        !convResult.data.activeRunId
+      ) {
+        setPersistedMessages(mapped);
+        setIsLoadingHistory(false);
+        updateSendStatus({
+          type: 'error',
+          message:
+            'The active run could not be verified. Refresh the conversation before sending again.',
+        });
+        return;
+      }
       const restored = chatUtils.extractQuickRepliesFromHistory(mapped);
       applyQuickRepliesToStore({ setState: store.setState, data: restored });
       restoreReceiptsIntoStore({
@@ -877,14 +992,19 @@ export function useAgentChat({
         } else {
           setPersistedMessages(mapped);
         }
-        const { data: gate } = await tryCatch(() => chatApi.getPendingGate(id));
-        if (conversationIdRef.current !== id) return;
+        const { data: gate } = await tryCatch(() =>
+          chatApi.getPendingGate(id, scope),
+        );
+        if (!readIsCurrent(id, attempt, scope)) return;
         const baseParts = isCurrentStreamingResponse
           ? mapped[lastAssistantIdx].parts
           : undefined;
         const gatePart = gate ? buildGatePart(gate) : undefined;
         startStream(id, {
           initialParts: gatePart ? [...(baseParts ?? []), gatePart] : baseParts,
+          ...(hostedChatRef.current && convResult.data.activeRunId
+            ? { runId: convResult.data.activeRunId }
+            : {}),
         });
         if (gate) {
           store.setState((prev) => ({
@@ -905,19 +1025,31 @@ export function useAgentChat({
       }
       setIsLoadingHistory(false);
     },
-    [stopStream, startStream, updateSendStatus, store, t],
+    [stopStream, startStream, updateSendStatus, store, readIsCurrent],
   );
 
   useQuery({
-    queryKey: ['chat-agent-poll', conversationId],
+    queryKey: hostedChat
+      ? [
+          'hosted-chat-poll',
+          hostedChat.scope.session.epoch,
+          hostedChat.scope.session.platformId,
+          hostedChat.scope.session.id,
+          hostedChat.scope.projectPointer,
+          conversationId,
+        ]
+      : ['chat-agent-poll', conversationId],
+    ...(hostedChat ? { retry: false, gcTime: 0 } : {}),
     queryFn: async () => {
       if (!conversationId || conversationIdRef.current !== conversationId)
         return null;
+      const scope = hostedChatRef.current?.scope;
+      const attempt = sendAttemptRef.current;
       const [messagesResult, convResult] = await Promise.all([
-        chatApi.getMessages(conversationId),
-        chatApi.getConversation(conversationId),
+        chatApi.getMessages(conversationId, scope),
+        chatApi.getConversation(conversationId, scope),
       ]);
-      if (conversationIdRef.current !== conversationId) return null;
+      if (!readIsCurrent(conversationId, attempt, scope)) return null;
       const mapped = chatUtils.mapHistoryToUIMessages(messagesResult.data);
       const current = persistedMessagesRef.current;
       // Never let a poll shrink the visible history — only apply growth or
@@ -940,9 +1072,9 @@ export function useAgentChat({
         });
         if (!hasBlockingCard) {
           const { data: gate } = await tryCatch(() =>
-            chatApi.getPendingGate(conversationId),
+            chatApi.getPendingGate(conversationId, scope),
           );
-          if (gate && conversationIdRef.current === conversationId) {
+          if (gate && readIsCurrent(conversationId, attempt, scope)) {
             store.setState((prev) => ({
               toolCallMeta: {
                 ...prev.toolCallMeta,
@@ -957,7 +1089,7 @@ export function useAgentChat({
       }
       return mapped;
     },
-    enabled: isPollingForAgentReply && !isStreamActive,
+    enabled: isPollingForAgentReply && !isStreamActive && !hostedChat?.denied,
     refetchInterval: AGENT_POLL_INTERVAL_MS,
   });
 

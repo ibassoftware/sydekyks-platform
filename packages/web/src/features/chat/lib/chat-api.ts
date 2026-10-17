@@ -15,12 +15,38 @@ import {
   UpdateAgentMemoryRequest,
 } from '@activepieces/shared';
 
+import {
+  hostedChatRequest,
+  HostedChatSubmission,
+  HostedChatScope,
+  HostedChatError,
+} from '@/features/hosted-chat/hosted-chat-api';
 import { api } from '@/lib/api';
 
 async function createConversation(
   request: CreateAgentConversationRequest,
+  hosted?: HostedChatSubmission,
 ): Promise<AgentConversation> {
   const root = request.agentId || request.builder ? NATIVE_ROOT : SYD_ROOT;
+  if (hosted) {
+    hosted.assertCurrent();
+    const conversation = await hostedChatRequest<AgentConversation>(
+      hosted.scope,
+      `${SYD_ROOT}/conversations`,
+      { method: 'POST', data: { ...request, projectId: hosted.projectId } },
+      true,
+    );
+    hosted.assertCurrent();
+    if (
+      conversation.projectId !== hosted.projectId ||
+      conversation.platformId !== hosted.scope.session.platformId ||
+      conversation.userId !== hosted.scope.session.id
+    )
+      throw new HostedChatError('denied');
+    hosted.bindConversation(conversation.id);
+    conversationRoots.set(conversation.id, SYD_ROOT);
+    return conversation;
+  }
   const conversation = await api.post<AgentConversation>(
     `${root}/conversations`,
     request,
@@ -53,7 +79,14 @@ async function listConversations({
   return page;
 }
 
-async function getConversation(id: string): Promise<AgentConversation> {
+async function getConversation(
+  id: string,
+  scope?: HostedChatScope,
+): Promise<AgentConversation> {
+  if (scope)
+    return hostedChatRequest(scope, `${SYD_ROOT}/conversations/${id}`, {
+      method: 'GET',
+    });
   const known = conversationRoots.get(id);
   if (known) return api.get<AgentConversation>(`${known}/conversations/${id}`);
   try {
@@ -84,7 +117,14 @@ async function getConversation(id: string): Promise<AgentConversation> {
 
 async function getMessages(
   conversationId: string,
+  scope?: HostedChatScope,
 ): Promise<{ data: PersistedAgentMessage[] | AgentHistoryMessage[] }> {
+  if (scope)
+    return hostedChatRequest(
+      scope,
+      `${SYD_ROOT}/conversations/${conversationId}/messages`,
+      { method: 'GET' },
+    );
   return api.get<{ data: PersistedAgentMessage[] | AgentHistoryMessage[] }>(
     `${await rootForConversation(
       conversationId,
@@ -115,7 +155,9 @@ async function sendMessage({
   files,
   messageSource,
   editorContext,
+  hosted,
 }: {
+  hosted?: HostedChatSubmission;
   conversationId: string;
   content: string;
   runId?: string;
@@ -127,6 +169,35 @@ async function sendMessage({
     selectedStepName?: string;
   };
 }): Promise<{ conversationId: string; runId?: string }> {
+  if (hosted) {
+    hosted.assertCurrent();
+    const result = await hostedChatRequest<{
+      conversationId: string;
+      runId: string;
+    }>(
+      hosted.scope,
+      `${SYD_ROOT}/conversations/${conversationId}/messages`,
+      {
+        method: 'POST',
+        data: {
+          content,
+          editorContext,
+          messageSource,
+          hostedProjectId: hosted.projectId,
+          hostedPayer: hosted.payer,
+        },
+      },
+      true,
+    );
+    hosted.assertCurrent();
+    if (
+      result.conversationId !== conversationId ||
+      typeof result.runId !== 'string' ||
+      result.runId.length !== 21
+    )
+      throw new HostedChatError('send');
+    return result;
+  }
   return api.post<{ conversationId: string; runId?: string }>(
     `${await rootForConversation(
       conversationId,
@@ -155,7 +226,16 @@ async function approveToolCall({
   });
 }
 
-async function cancelConversation(conversationId: string): Promise<void> {
+async function cancelConversation(
+  conversationId: string,
+  scope?: HostedChatScope,
+): Promise<void> {
+  if (scope)
+    return hostedChatRequest(
+      scope,
+      `${SYD_ROOT}/conversations/${conversationId}/cancel`,
+      { method: 'POST' },
+    );
   return api.post<void>(
     `${await rootForConversation(
       conversationId,
@@ -203,7 +283,14 @@ async function getPickerConnections({
 
 async function getPendingGate(
   conversationId: string,
+  scope?: HostedChatScope,
 ): Promise<PendingGate | null> {
+  if (scope)
+    return hostedChatRequest(
+      scope,
+      `${SYD_ROOT}/conversations/${conversationId}/pending-gate`,
+      { method: 'GET' },
+    );
   return api.get(
     `${await rootForConversation(
       conversationId,

@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { securityAccess } from '../../core/security/authorization/fastify-security'
 import { hostingConfiguration } from '../../hosting/hosting-configuration'
 import { hostedCopilotPayer } from '../../hosting/hosting-copilot'
+import { hostingFail } from '../../hosting/hosting-transactions'
 import { mcpUtils } from '../../mcp/tools/mcp-utils'
 import { assertCreditsAndAppSumoNotExceeded } from '../../platform/billing-provider'
 import { jobQueue, JobType } from '../../workers/job-queue/job-queue'
@@ -24,16 +25,17 @@ async function sendMessage({ platformId, userId, id, body, log, tokenVersion }: 
     if (editor && editor.projectId !== conversation.projectId) await sydCopilotContext.assertProjectSwitchKeepsKey({ platformId, fromProjectId: conversation.projectId ?? null, toProjectId: editor.projectId, log })
     await assertAgentMessageRateLimitNotExceeded({ platformId, userId, log })
     const projects = await sydCopilotContext.getUserProjects({ platformId, userId, log })
-    const projectId = sydCopilotContext.selectRunProject({ conversationProjectId: editor?.projectId ?? conversation.projectId ?? null, projects })
     const hosted = hostingConfiguration.getServiceMode() === 'hosted'
+    const projectId = hosted && body.hostedProjectId ? body.hostedProjectId : sydCopilotContext.selectRunProject({ conversationProjectId: editor?.projectId ?? conversation.projectId ?? null, projects })
+    if (hosted && (!projectId || !projects.some(project => project.id === projectId) || (body.hostedProjectId && ((conversation.projectId && conversation.projectId !== projectId) || (editor && editor.projectId !== projectId))))) hostingFail('HOSTING_PROJECT_ACCESS_DENIED')
     const payer = hosted ? await hostedCopilotPayer({ platformId, projectId: projectId!, provider: body.hostedPayer?.type === 'byok' ? AIProviderName.DEEPSEEK : AIProviderName.ACTIVEPIECES, configId: body.hostedPayer?.type === 'byok' ? body.hostedPayer.configId : undefined }) : undefined
     if (hosted && body.files?.length) throw new Error('HOSTING_TOOL_NOT_METERED')
     if (!hosted) await sydCopilotContext.assertRunProviderConfigured({ platformId, scope: sydCopilotContext.runScopeOrThrow({ projectId }), log })
     await assertCreditsAndAppSumoNotExceeded({ platformId, log })
     const runId = hostingConfiguration.getServiceMode() === 'hosted' ? apId() : body.runId ?? apId()
     const claim = await sydCopilotContext.claimConversationForRun({ platformId, userId, conversationId: id, runId })
-    if (editor && editor.projectId !== conversation.projectId) {
-        const changed = await sydCopilotContext.conversationRepo().update({ id, platformId, userId, activeRunId: runId, source: AgentRunSource.CHAT }, { projectId: editor.projectId })
+    if ((editor || (hosted && body.hostedProjectId)) && projectId !== conversation.projectId) {
+        const changed = await sydCopilotContext.conversationRepo().update({ id, platformId, userId, activeRunId: runId, source: AgentRunSource.CHAT }, { projectId })
         if (!changed.affected) throw new ActivepiecesError({ code: ErrorCode.AGENT_RUN_SUPERSEDED, params: { message: 'This message was replaced by a newer one' } })
     }
     if (claim.preemptedRunId) {
@@ -131,7 +133,7 @@ const handlers = {
     instructMemory: async ({ request }: { request: HandlerRequest<InstructMemoryRoute>, reply: FastifyReply }) => sydMemoryEditor.applyInstruction({ ...actor(request), instruction: request.body.instruction, log: request.log }),
 }
 
-const SydSendMessageRequest = SendAgentMessageRequest.safeExtend({ hostedPayer: z.discriminatedUnion('type', [z.strictObject({ type: z.literal('managed') }), z.strictObject({ type: z.literal('byok'), configId: z.string().length(21) })]).optional(), editorContext: z.object({ flowId: z.string(), flowVersionId: z.string(), selectedStepName: z.string().optional() }).optional() })
+const SydSendMessageRequest = SendAgentMessageRequest.safeExtend({ hostedProjectId: z.string().length(21).optional(), hostedPayer: z.discriminatedUnion('type', [z.strictObject({ type: z.literal('managed') }), z.strictObject({ type: z.literal('byok'), configId: z.string().length(21) })]).optional(), editorContext: z.object({ flowId: z.string(), flowVersionId: z.string(), selectedStepName: z.string().optional() }).optional() })
 type SydSendMessageRequest = z.infer<typeof SydSendMessageRequest>
 
 const register: FastifyPluginAsyncZod = async (app) => {

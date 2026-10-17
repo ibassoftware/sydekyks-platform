@@ -17,6 +17,11 @@ import {
 import { useAdminControlClicks } from './platform/use-admin-control-clicks';
 import { useAdminPageViewed } from './platform/use-admin-page-viewed';
 
+const HostedClientsPage = React.lazy(() =>
+  import('@/features/hosted-operator/clients-page').then((m) => ({
+    default: m.HostedClientsPage,
+  })),
+);
 const SettingsBilling = React.lazy(() =>
   import('./platform/billing').then((m) => ({ default: m.BillingPlanTab })),
 );
@@ -315,6 +320,18 @@ export const platformRoutes = [
         <PageTitle titleKey="General">
           <SuspenseWrapper>
             <GeneralPage />
+          </SuspenseWrapper>
+        </PageTitle>
+      </PlatformLayout>
+    ),
+  },
+  {
+    path: '/platform/billing/clients',
+    element: (
+      <PlatformLayout>
+        <PageTitle titleKey="Client usage">
+          <SuspenseWrapper>
+            <HostedClientsPage />
           </SuspenseWrapper>
         </PageTitle>
       </PlatformLayout>

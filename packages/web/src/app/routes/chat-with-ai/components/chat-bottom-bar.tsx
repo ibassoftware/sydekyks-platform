@@ -1,5 +1,5 @@
 import { t } from 'i18next';
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 
 import { chatStoreSelectors } from '@/features/chat/lib/chat-store';
 import { useChatStoreContext } from '@/features/chat/lib/chat-store-context';
@@ -9,6 +9,11 @@ import {
   ChatUIMessage,
   chatPartUtils,
 } from '@/features/chat/lib/chat-types';
+import { useHostedChatPayer } from '@/features/hosted-chat/hosted-chat-provider';
+import {
+  HostedChatSelector,
+  HostedChatBillingNote,
+} from '@/features/hosted-chat/hosted-chat-selector';
 import { cn } from '@/lib/utils';
 
 import {
@@ -39,6 +44,12 @@ export function ChatBottomBar({
   banner,
   recede,
 }: ChatBottomBarProps) {
+  const hostedChat = useHostedChatPayer();
+  const previousStreaming = useRef(isStreaming);
+  useEffect(() => {
+    if (previousStreaming.current && !isStreaming) hostedChat?.refresh();
+    previousStreaming.current = isStreaming;
+  }, [isStreaming, hostedChat]);
   const [composerEngaged, setComposerEngaged] = useState(false);
   const pendingActionPreview = useChatStoreContext((s) =>
     chatStoreSelectors.pendingActionPreview({
@@ -135,6 +146,8 @@ export function ChatBottomBar({
         <ChatInput
           isStreaming={activeCard ? false : isStreaming}
           onSend={handleSend}
+          sendDisabled={Boolean(hostedChat && !hostedChat.ready)}
+          attachmentsAllowed={!hostedChat}
           onStop={onStop}
           onInputChange={onInputChange}
           minimalUntilFocus={recede === true && !activeCard}
@@ -145,7 +158,9 @@ export function ChatBottomBar({
               : placeholder ?? t('Reply...')
           }
           rightActions={
-            hideModelSelector === true ? null : (
+            hostedChat ? (
+              <HostedChatSelector disabled={isStreaming} />
+            ) : hideModelSelector === true ? null : (
               <ChatModelSelector
                 selectedModel={selectedModel}
                 onModelChange={onModelChange}
@@ -153,6 +168,7 @@ export function ChatBottomBar({
             )
           }
         />
+        <HostedChatBillingNote />
       </div>
     </div>
   );

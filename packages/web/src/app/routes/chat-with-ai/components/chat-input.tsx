@@ -30,8 +30,12 @@ export function ChatInput({
   rightActions,
   minimalUntilFocus = false,
   onFocusChange,
+  sendDisabled = false,
+  attachmentsAllowed = true,
 }: {
   isStreaming: boolean;
+  sendDisabled?: boolean;
+  attachmentsAllowed?: boolean;
   onSend: (text: string, files?: File[]) => void;
   onStop?: () => void;
   onInputChange?: (hasInput: boolean) => void;
@@ -100,7 +104,11 @@ export function ChatInput({
   }, [isRecording, cancelRecording]);
 
   const handleSubmit = useCallback(() => {
-    if (!isStreaming && (value.trim() || attachedFiles.length > 0)) {
+    if (
+      !sendDisabled &&
+      !isStreaming &&
+      (value.trim() || attachedFiles.length > 0)
+    ) {
       onSend(
         value.trim(),
         attachedFiles.length > 0 ? attachedFiles : undefined,
@@ -108,18 +116,25 @@ export function ChatInput({
       setValue('');
       setAttachedFiles([]);
     }
-  }, [isStreaming, value, attachedFiles, onSend]);
+  }, [sendDisabled, isStreaming, value, attachedFiles, onSend]);
 
-  const handleFilesAdded = useCallback((files: File[]) => {
-    setAttachedFiles((prev) => [...prev, ...files]);
-  }, []);
+  const handleFilesAdded = useCallback(
+    (files: File[]) => {
+      if (attachmentsAllowed) setAttachedFiles((prev) => [...prev, ...files]);
+    },
+    [attachmentsAllowed],
+  );
 
   const canSend = value.trim().length > 0 || attachedFiles.length > 0;
 
   const showToolbar = !minimalUntilFocus || focused || value.trim().length > 0;
 
   return (
-    <FileUpload onFilesAdded={handleFilesAdded} multiple>
+    <FileUpload
+      onFilesAdded={handleFilesAdded}
+      multiple
+      disabled={!attachmentsAllowed}
+    >
       <PromptInput
         isLoading={isStreaming}
         value={value}
@@ -175,6 +190,7 @@ export function ChatInput({
           </div>
         ) : (
           <PromptInputTextarea
+            aria-label={t('Chat message')}
             autoFocus={!minimalUntilFocus}
             placeholder={placeholder ?? t('Tell me what you need...')}
             className={cn(
@@ -194,13 +210,15 @@ export function ChatInput({
         {showToolbar && (
           <PromptInputActions className="flex items-center justify-between">
             <div className="flex items-center gap-1">
-              <PromptInputAction tooltip={t('Attach files')}>
-                <FileUploadTrigger asChild>
-                  <div className="flex h-9 w-9 sm:h-7 sm:w-7 cursor-pointer items-center justify-center rounded-full text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12">
-                    <Paperclip className="size-4" />
-                  </div>
-                </FileUploadTrigger>
-              </PromptInputAction>
+              {attachmentsAllowed && (
+                <PromptInputAction tooltip={t('Attach files')}>
+                  <FileUploadTrigger asChild>
+                    <div className="flex h-9 w-9 sm:h-7 sm:w-7 cursor-pointer items-center justify-center rounded-full text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12">
+                      <Paperclip className="size-4" />
+                    </div>
+                  </FileUploadTrigger>
+                </PromptInputAction>
+              )}
               {leftActions}
             </div>
             <div className="flex items-center gap-1">
@@ -211,6 +229,7 @@ export function ChatInput({
                     variant="default"
                     size="icon"
                     className="h-9 w-9 sm:h-7 sm:w-7 rounded-full"
+                    aria-label={t('Stop response')}
                     onClick={onStop}
                   >
                     <Square className="size-3 fill-current" />
@@ -234,15 +253,17 @@ export function ChatInput({
                     size="icon"
                     className="h-9 w-9 sm:h-7 sm:w-7 rounded-full"
                     onClick={handleSubmit}
-                    disabled={isStreaming}
+                    aria-label={t('Send message')}
+                    disabled={sendDisabled || isStreaming}
                   >
-                    <ArrowUp className="size-4" />
+                    <ArrowUp aria-hidden="true" className="size-4" />
                   </Button>
                 </PromptInputAction>
               ) : isVoiceSupported ? (
                 <PromptInputAction tooltip={t('Voice input')}>
                   <button
                     type="button"
+                    aria-label={t('Voice input')}
                     onClick={startRecording}
                     className="flex h-9 w-9 sm:h-7 sm:w-7 cursor-pointer items-center justify-center rounded-full text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12"
                   >
@@ -256,9 +277,10 @@ export function ChatInput({
                     size="icon"
                     className="h-9 w-9 sm:h-7 sm:w-7 rounded-full"
                     onClick={handleSubmit}
+                    aria-label={t('Send message')}
                     disabled={true}
                   >
-                    <ArrowUp className="size-4" />
+                    <ArrowUp aria-hidden="true" className="size-4" />
                   </Button>
                 </PromptInputAction>
               )}

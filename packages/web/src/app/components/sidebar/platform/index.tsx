@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/sidebar-shadcn';
 import { PLATFORM_FEATURES } from '@/features/billing';
 import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
+import { useHostedOperatorAccess } from '@/features/hosted-operator/operator-api';
 import { useAuthorization } from '@/hooks/authorization-hooks';
 import { flagsHooks } from '@/hooks/flags-hooks';
 import { platformHooks } from '@/hooks/platform-hooks';
@@ -53,6 +54,7 @@ export function PlatformSidebar() {
   const { platform } = platformHooks.useCurrentPlatform();
   const { data: edition } = flagsHooks.useFlag<ApEdition>(ApFlagId.EDITION);
   const hostedBilling = useHostedBillingEnabled();
+  const operator = useHostedOperatorAccess();
   const { checkAccess } = useAuthorization();
   const defaultRoute = determineDefaultRoute({
     checkAccess,
@@ -263,6 +265,18 @@ export function PlatformSidebar() {
           label: t('Billing & subscription'),
           icon: ReceiptIcon,
           locked: edition === ApEdition.COMMUNITY && !hostedBilling,
+          ...(operator.allowed
+            ? {
+                subItems: [
+                  {
+                    to: '/platform/billing',
+                    label: t('My workspace'),
+                    end: true,
+                  },
+                  { to: '/platform/billing/clients', label: t('Client usage') },
+                ],
+              }
+            : {}),
         },
         {
           to: '/platform/usage',
