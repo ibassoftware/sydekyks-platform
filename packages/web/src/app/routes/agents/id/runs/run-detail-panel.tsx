@@ -41,6 +41,7 @@ import {
 } from '@/features/agents/agent-timeline/timeline-blocks';
 import { agentsQueries } from '@/features/agents/hooks/agents-hooks';
 import { agentRunUtils } from '@/features/agents/lib/agent-run-utils';
+import { ProtectedFileLink } from '@/features/hosted-files/protected-file';
 import { projectCollectionUtils } from '@/features/projects';
 import { authenticationSession } from '@/lib/authentication-session';
 import { formatUtils } from '@/lib/format-utils';
@@ -184,15 +185,20 @@ const Part = ({ part, index }: { part: PersistedAgentPart; index: number }) => {
   ) {
     return (
       <TimelineItem icon={<Paperclip className="h-4 w-4 text-gray-11" />}>
-        <a
+        <ProtectedFileLink
           href={part.url}
+          download={
+            part.type === PersistedAgentPartType.FILE
+              ? part.fileName
+              : undefined
+          }
           target="_blank"
           rel="noreferrer"
           className="flex items-center gap-1 py-3 text-sm hover:underline"
         >
           <span className="min-w-0 truncate">{partLabel(part)}</span>
           <ArrowUpRight size={12} className="shrink-0" />
-        </a>
+        </ProtectedFileLink>
       </TimelineItem>
     );
   }

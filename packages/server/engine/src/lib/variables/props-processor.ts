@@ -5,6 +5,7 @@ import { AppConnectionValue, AUTHENTICATION_PROPERTY_NAME, PropertySettings } fr
 import { dynamicPropKeys } from '../helper/dynamic-prop-keys'
 import { processors } from './processors'
 import { arrayZipperProcessor } from './processors/array-zipper'
+import { HostedFileProcessorContext } from './processors/types'
 
 type PropsValidationError = {
     [key: string]: string[] | PropsValidationError | PropsValidationError[]
@@ -17,6 +18,7 @@ export const propsProcessor = {
         auth: PieceAuthProperty | PieceAuthProperty[] | undefined,
         requireAuth: boolean,
         propertySettings: Record<string, PropertySettings>,
+        hostedFiles?: HostedFileProcessorContext,
     ): Promise<{ processedInput: StaticPropsValue<PiecePropertyMap>, errors: PropsValidationError }> => {
         let dynamaicPropertiesSchema: Record<string, InputPropertyMap> | undefined = undefined
         if (Object.keys(propertySettings).length > 0) {
@@ -34,6 +36,7 @@ export const propsProcessor = {
                     undefined,
                     false,
                     {},
+                    hostedFiles,
                 )
                 processedInput[AUTHENTICATION_PROPERTY_NAME] = authProcessedInput
                 if (Object.keys(authErrors).length > 0) {
@@ -56,6 +59,7 @@ export const propsProcessor = {
                         undefined,
                         false,
                         {},
+                        hostedFiles,
                     )
                     processedInput[key] = itemProcessedInput
                     if (Object.keys(itemErrors).length > 0) {
@@ -74,6 +78,7 @@ export const propsProcessor = {
                         undefined,
                         false,
                         {},
+                        hostedFiles,
                     )
                     processedArray.push(itemProcessedInput)
                     processedErrors.push(itemErrors)
@@ -91,7 +96,7 @@ export const propsProcessor = {
             }
             const processor = processors[property.type]
             if (processor) {
-                processedInput[key] = await processor(property, processedInput[key])
+                processedInput[key] = await processor(property, processedInput[key], hostedFiles)
             }
 
             const shouldValidate = key !== AUTHENTICATION_PROPERTY_NAME && property.type !== PropertyType.MARKDOWN

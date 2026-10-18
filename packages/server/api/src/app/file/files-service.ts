@@ -6,6 +6,7 @@ import { domainHelper } from '../helper/domain-helper'
 import { JwtAudience, JwtSignAlgorithm, jwtUtils } from '../helper/jwt-utils'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
 
 const executionRetentionInDays = system.getNumberOrThrow(AppSystemProp.EXECUTION_DATA_RETENTION_DAYS)
 
@@ -23,10 +24,11 @@ export const filesService = {
             payload: {
                 fileId: params.fileId,
                 fileType: params.fileType,
+                ...(hostingConfiguration.getServiceMode() === 'hosted' ? { hostingFileRead: 1, platformId: params.platformId } : {}),
             },
             key: await jwtUtils.getJwtSecret(),
             algorithm: JwtSignAlgorithm.HS256,
-            expiresInSeconds: dayjs.duration(executionRetentionInDays, 'days').asSeconds(),
+            expiresInSeconds: hostingConfiguration.getServiceMode() === 'hosted' && params.fileType !== FileType.PLATFORM_ASSET && params.fileType !== FileType.USER_PROFILE_PICTURE ? 300 : dayjs.duration(executionRetentionInDays, 'days').asSeconds(),
             audience: JwtAudience.FILE_READ,
         })
         return domainHelper.getPublicApiUrl({

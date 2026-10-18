@@ -7,6 +7,16 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ImageDialog } from '@/features/chat/chat-message/image-dialog';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
+import {
+  fetchProtectedFile,
+  ProtectedFileLink,
+  useProtectedFileUrl,
+} from '@/features/hosted-files/protected-file';
+import {
+  assertAuthSession,
+  useHostedAuthSession,
+} from '@/features/hosted-onboarding/auth-session';
 
 import { DocumentPreview } from './previews/document-preview';
 import { HtmlPreview } from './previews/html-preview';
@@ -80,17 +90,27 @@ function FileChip({ file }: { file: FileProducedEvent }) {
           {size ? ` · ${size}` : ''}
         </p>
       </div>
-      <a href={file.url} download target="_blank" rel="noreferrer">
+      <ProtectedFileLink
+        href={file.url}
+        download={file.fileName}
+        target="_blank"
+        rel="noreferrer"
+      >
         <Button variant="ghost" size="icon-sm">
           <Download className="size-4" />
         </Button>
-      </a>
+      </ProtectedFileLink>
     </motion.div>
   );
 }
 
 export function ProducedFileCard({ file }: { file: FileProducedEvent }) {
   const [viewerOpen, setViewerOpen] = useState(false);
+  const session = useHostedAuthSession();
+  const hosted = useHostedBillingEnabled();
+  const imageUrl = useProtectedFileUrl(
+    file.mediaType.startsWith('image/') ? file.url : '',
+  );
   const kind = previewUtils.detectFileKind(file.mediaType, file.fileName);
   const canPreview =
     kind !== 'image' && kind !== 'binary' && file.byteSize <= MAX_PREVIEW_BYTES;
@@ -100,11 +120,12 @@ export function ProducedFileCard({ file }: { file: FileProducedEvent }) {
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ['chat-produced-file', file.fileId],
-    queryFn: async () => {
-      const response = await fetch(file.url);
-      if (!response.ok) throw new Error('Failed to load file');
-      return response.text();
+    queryKey: ['chat-produced-file', session.epoch, hosted, file.fileId],
+    queryFn: async ({ signal }) => {
+      const response = await fetchProtectedFile(file.url, signal, hosted);
+      const text = await response.text();
+      assertAuthSession(session);
+      return text;
     },
     enabled: canPreview,
     staleTime: Infinity,
@@ -128,24 +149,29 @@ export function ProducedFileCard({ file }: { file: FileProducedEvent }) {
             onClick={() => setViewerOpen(true)}
             className="block w-full cursor-pointer"
           >
-            <img src={file.url} alt={label} className="h-auto w-full" />
+            <img src={imageUrl} alt={label} className="h-auto w-full" />
           </button>
           <div className="flex items-center justify-between gap-2 p-2">
             <p className="min-w-0 truncate text-xs text-gray-11">
               {label}
               {size ? ` · ${size}` : ''}
             </p>
-            <a href={file.url} download target="_blank" rel="noreferrer">
+            <ProtectedFileLink
+              href={file.url}
+              download={file.fileName}
+              target="_blank"
+              rel="noreferrer"
+            >
               <Button variant="ghost" size="icon-sm">
                 <Download className="size-4" />
               </Button>
-            </a>
+            </ProtectedFileLink>
           </div>
         </motion.div>
         <ImageDialog
           open={viewerOpen}
           onOpenChange={setViewerOpen}
-          imageUrl={file.url}
+          imageUrl={imageUrl ?? ''}
         />
       </>
     );

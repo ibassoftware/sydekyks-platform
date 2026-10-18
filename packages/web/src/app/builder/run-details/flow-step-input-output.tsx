@@ -26,6 +26,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AgentTimeline } from '@/features/agents';
 import { flowRunUtils } from '@/features/flow-runs';
+import { ProtectedFileLink } from '@/features/hosted-files/protected-file';
 import { piecesHooks } from '@/features/pieces';
 import { flagsHooks } from '@/hooks/flags-hooks';
 import { formatUtils } from '@/lib/format-utils';
@@ -373,15 +374,15 @@ const SlicedOutputDownload = ({
       </span>
     </div>
     <Button asChild variant="outline" size="sm" className="w-fit gap-2">
-      <a
+      <ProtectedFileLink
         href={slicedOutputRef.url}
         target="_blank"
         rel="noopener noreferrer"
-        download
+        download="output.json"
       >
         <Download className="w-4 h-4" />
         {t('Download output')}
-      </a>
+      </ProtectedFileLink>
     </Button>
   </div>
 );

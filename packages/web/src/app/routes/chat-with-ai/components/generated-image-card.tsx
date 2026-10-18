@@ -6,9 +6,14 @@ import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { ImageDialog } from '@/features/chat/chat-message/image-dialog';
+import {
+  ProtectedFileLink,
+  useProtectedFileUrl,
+} from '@/features/hosted-files/protected-file';
 
 export function GeneratedImageCard({ image }: { image: ImageGeneratedEvent }) {
   const [viewerOpen, setViewerOpen] = useState(false);
+  const imageUrl = useProtectedFileUrl(image.url);
   const caption = image.caption ?? image.prompt ?? t('Generated image');
 
   return (
@@ -24,21 +29,26 @@ export function GeneratedImageCard({ image }: { image: ImageGeneratedEvent }) {
           onClick={() => setViewerOpen(true)}
           className="block w-full cursor-pointer"
         >
-          <img src={image.url} alt={caption} className="h-auto w-full" />
+          <img src={imageUrl} alt={caption} className="h-auto w-full" />
         </button>
         <div className="flex items-center justify-between gap-2 p-2">
           <p className="min-w-0 truncate text-xs text-gray-11">{caption}</p>
-          <a href={image.url} download target="_blank" rel="noreferrer">
+          <ProtectedFileLink
+            href={image.url}
+            download
+            target="_blank"
+            rel="noreferrer"
+          >
             <Button variant="ghost" size="icon-sm">
               <Download className="size-4" />
             </Button>
-          </a>
+          </ProtectedFileLink>
         </div>
       </motion.div>
       <ImageDialog
         open={viewerOpen}
         onOpenChange={setViewerOpen}
-        imageUrl={image.url}
+        imageUrl={imageUrl ?? ''}
       />
     </>
   );

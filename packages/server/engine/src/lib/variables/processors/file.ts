@@ -1,22 +1,22 @@
 import { Readable } from 'node:stream'
 import { isBase64, isNil, isString } from '@activepieces/core-utils'
 import { ApFile, ApStreamingFile, PropertyType } from '@activepieces/pieces-framework'
-import { ProcessorFn } from './types'
+import { HostedFileProcessorContext, ProcessorFn } from './types'
 
-export const fileProcessor: ProcessorFn = async (property, urlOrBase64) => {
+export const fileProcessor: ProcessorFn = async (property, urlOrBase64, hostedFiles) => {
     if (isNil(urlOrBase64) || !isString(urlOrBase64)) {
         return null
     }
     const streaming = property.type === PropertyType.FILE && property.streaming === true
     try {
         if (streaming) {
-            return await handleStreamingFile(urlOrBase64)
+            return await handleStreamingFile(urlOrBase64, hostedFiles)
         }
         const file = handleBase64File(urlOrBase64)
         if (!isNil(file)) {
             return file
         }
-        return await handleUrlFile(urlOrBase64)
+        return await handleUrlFile(urlOrBase64, hostedFiles)
     }
     catch (e) {
         console.error(e)
@@ -50,8 +50,8 @@ function handleBase64File(propertyValue: string): ApFile | null {
     )
 }
 
-async function handleUrlFile(path: string): Promise<ApFile | null> {
-    const fileResponse = await fetch(path)
+async function handleUrlFile(path: string, hostedFiles?: HostedFileProcessorContext): Promise<ApFile | null> {
+    const fileResponse = await fetchFile(path, hostedFiles)
     // A 4xx/5xx body is the server's error page, not the file. handleStreamingFile
     // already refuses one.
     if (!fileResponse.ok) {
@@ -68,7 +68,7 @@ async function handleUrlFile(path: string): Promise<ApFile | null> {
     )
 }
 
-async function handleStreamingFile(propertyValue: string): Promise<ApStreamingFile | null> {
+async function handleStreamingFile(propertyValue: string, hostedFiles?: HostedFileProcessorContext): Promise<ApStreamingFile | null> {
     const parsed = parseBase64File(propertyValue)
     if (!isNil(parsed)) {
         return {
@@ -79,7 +79,7 @@ async function handleStreamingFile(propertyValue: string): Promise<ApStreamingFi
         }
     }
 
-    const fileResponse = await fetch(propertyValue)
+    const fileResponse = await fetchFile(propertyValue, hostedFiles)
     if (!fileResponse.ok || isNil(fileResponse.body)) {
         await fileResponse.body?.cancel()
         return null
@@ -103,6 +103,23 @@ async function handleStreamingFile(propertyValue: string): Promise<ApStreamingFi
     }
 }
 
+
+// Private hosted file references are redeemed by the current scoped engine.
+// Never attach that credential to arbitrary piece inputs or follow redirects.
+async function fetchFile(value: string, hostedFiles?: HostedFileProcessorContext): Promise<Response> {
+    if (hostedFiles) {
+        const requested = new URL(value)
+        for (const base of [hostedFiles.publicApiUrl, hostedFiles.internalApiUrl]) {
+            const prefix = new URL('v1/files/', base)
+            if (requested.origin !== prefix.origin || !requested.pathname.startsWith(prefix.pathname)) continue
+            const fileId = requested.pathname.slice(prefix.pathname.length)
+            if (!/^[a-zA-Z0-9_-]{21}$/.test(fileId)) continue
+            const internal = new URL(`v1/files/${fileId}`, hostedFiles.internalApiUrl)
+            return fetch(internal, { headers: { Authorization: `Bearer ${hostedFiles.engineToken}` }, redirect: 'error' })
+        }
+    }
+    return fetch(value)
+}
 
 function extensionFromFilename(filename: string): string | undefined {
     const parts = filename.split('.')

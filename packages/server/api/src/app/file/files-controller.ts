@@ -10,6 +10,8 @@ import { accessTokenManager } from '../authentication/lib/access-token-manager'
 import { securityAccess } from '../core/security/authorization/fastify-security'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { authorizeHostedFile, isPublicHostedFile } from '../hosting/hosting-file-access'
 import { fileService, getDownloadName } from './file.service'
 import { enforceByteLimit, ENGINE_WRITABLE_FILE_TYPES, filesService, fileTransportHeaders } from './files-service'
 import { signedFileTransport } from './signed-file-transport'
@@ -111,14 +113,34 @@ export const filesController: FastifyPluginAsyncZod = async (app) => {
         },
         schema: {
             params: z.object({ fileId: ApId }),
-            querystring: FileTransportQueryParams,
+            querystring: FileTransportQueryParams.partial(),
         },
     }, async (request, reply) => {
         const { fileId } = request.params
         const { token } = request.query
-        const projectId = await authorizeRead({ token, fileId, log: request.log })
-        const file = await fileService(request.log).getFileOrThrow({ fileId, projectId })
-        const redirected = await signedFileTransport.maybeRedirectToS3Get({
+        const hosted = hostingConfiguration.getServiceMode() === 'hosted'
+        const file = hosted
+            ? await fileService(request.log).getFileOrThrow({ fileId })
+            : await fileService(request.log).getFileOrThrow({ fileId, projectId: await authorizeRead({ token, fileId, log: request.log }) })
+        let engineRead = false
+        if (hosted) {
+            // Internal engine transport uses its scoped engine token in the query;
+            // browsers supply their current USER bearer header, never a read URL alone.
+            const principal = request.principal.type === PrincipalType.USER || request.principal.type === PrincipalType.ENGINE
+                ? request.principal
+                : token ? await tryVerifyEnginePrincipal(token, request.log) : null
+            engineRead = principal?.type === PrincipalType.ENGINE
+            if (isPublicHostedFile(file.type) && (principal || (token && await tryVerifyReadToken(token, fileId)))) {
+                // Logos/profile pictures are intentionally public assets.
+            }
+            else {
+                if (!principal) throw new ActivepiecesError({ code: ErrorCode.AUTHORIZATION, params: { message: 'A current workspace session is required to read this file.' } })
+                await authorizeHostedFile({ principal, file, log: request.log })
+            }
+            void reply.header('Cache-Control', 'private, no-store').header('Vary', 'Authorization')
+        }
+        // An S3 redirect would create a second bearer link surviving role revocation.
+        const redirected = (!hosted || isPublicHostedFile(file.type)) && !engineRead && await signedFileTransport.maybeRedirectToS3Get({
             reply,
             log: request.log,
             file,
@@ -171,6 +193,7 @@ function isInlineSafeMimeType(mimeType: string): boolean {
 }
 
 async function authorizeRead({ token, fileId, log }: AuthorizeReadParams): Promise<string | undefined> {
+    if (!token) throw new ActivepiecesError({ code: ErrorCode.INVALID_BEARER_TOKEN, params: { message: 'A file token is required.' } })
     const readToken = await tryVerifyReadToken(token, fileId)
     if (readToken) {
         return undefined
@@ -255,7 +278,7 @@ function parseStringHeader(value: unknown): string | undefined {
 }
 
 type AuthorizeReadParams = {
-    token: string
+    token?: string
     fileId: string
     log: import('fastify').FastifyBaseLogger
 }

@@ -1,6 +1,8 @@
 import { FileIcon, VideoIcon } from 'lucide-react';
 import React from 'react';
 
+import { ProtectedFileLink } from '@/features/hosted-files/protected-file';
+
 interface FileMessageProps {
   content: string;
   mimeType?: string;
@@ -16,7 +18,7 @@ export const FileMessage: React.FC<FileMessageProps> = ({
 }) => {
   const isVideo = mimeType?.startsWith('video/');
   return (
-    <a
+    <ProtectedFileLink
       className="p-2 w-80 rounded-lg border px-2 max-w-full hover:bg-gray-3 transition-colors cursor-pointer"
       href={content}
       download={fileName ?? 'file'}
@@ -42,6 +44,6 @@ export const FileMessage: React.FC<FileMessageProps> = ({
           )}
         </div>
       </div>
-    </a>
+    </ProtectedFileLink>
   );
 };
