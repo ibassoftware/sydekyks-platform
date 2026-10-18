@@ -1,0 +1,140 @@
+import { randomBytes } from 'node:crypto'
+import { apId } from '@activepieces/core-utils'
+import { DataSource } from 'typeorm'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { UserIdentityEntity } from '../../../../src/app/authentication/user-identity/user-identity-entity'
+import { commonProperties } from '../../../../src/app/database/database-connection'
+import { getMigrations } from '../../../../src/app/database/postgres-connection'
+import { FlagEntity } from '../../../../src/app/flags/flag.entity'
+import { HostingAiAllowanceChangeEntity } from '../../../../src/app/hosting/hosting-ai-allowance-entities'
+import { createHostedAiAllowance } from '../../../../src/app/hosting/hosting-ai-allowance'
+import { HostingGrantEntity } from '../../../../src/app/hosting/hosting-entities'
+import { INSTALLATION_MODE_FLAG_ID } from '../../../../src/app/hosting/hosting-installation'
+import { createHostedLedger } from '../../../../src/app/hosting/hosting-ledger'
+import { createHostedOnboarding } from '../../../../src/app/hosting/hosting-onboarding'
+import { createHostedTraining } from '../../../../src/app/hosting/hosting-training'
+import { HostingActor } from '../../../../src/app/hosting/hosting-transactions'
+import { bootstrapHostedOperator } from '../../../helpers/hosting-fixtures'
+
+if (!process.env['HOSTING_TEST_POSTGRES_PORT']) throw new Error('Set explicit HOSTING_TEST_POSTGRES_PORT for the disposable CI database')
+const schema = `hosting_allowance_${randomBytes(6).toString('hex')}`
+const ds = new DataSource({ type: 'postgres', host: '127.0.0.1', port: Number(process.env['HOSTING_TEST_POSTGRES_PORT']), username: process.env['HOSTING_TEST_POSTGRES_USER'] ?? 'sydekyks_ci', password: process.env['HOSTING_TEST_POSTGRES_PASSWORD'] ?? 'disposable-ci-only', database: process.env['HOSTING_TEST_POSTGRES_DATABASE'] ?? 'sydekyks_ci', schema, extra: { options: `-c search_path=${schema},public` }, migrations: getMigrations(), ...commonProperties })
+let actor: HostingActor, client: Awaited<ReturnType<typeof makeClient>>
+const onboarding = createHostedOnboarding({ dataSource: ds, subjectSecret: 'synthetic-allowance-race-subject-at-least32characters' })
+const allowance = createHostedAiAllowance({ dataSource: ds }), ledger = createHostedLedger({ dataSource: ds }), training = createHostedTraining({ dataSource: ds })
+async function identity() {
+    const id = apId()
+    await ds.getRepository(UserIdentityEntity).insert({ id, email: `${id}@test.invalid`, verified: true, provider: 'EMAIL', password: 'unused', firstName: 'Race', lastName: 'Fixture', tokenVersion: 'initial' })
+    return id
+}
+async function makeClient() {
+    const identityId = await identity(), tenant = await onboarding.provision({ identityId, name: 'Race client', operator: actor })
+    return { ...tenant, identityId, actor: { identityId, platformId: tenant.platformId, tokenVersion: tenant.tokenVersion } }
+}
+async function activate() {
+    const enrollmentId = apId()
+    await training.activate({ actor, platformId: client.platformId, identityId: client.identityId, enrollmentId, receiptId: apId(), tier: 'core' })
+    return enrollmentId
+}
+async function root() {
+    const reservation = await ledger.reserveExecution({ actor: client.actor, projectId: client.projectId!, key: apId(), payer: 'managed' })
+    const claim = await ledger.claimExecution({ actor: client.actor, reservationId: reservation.id })
+    return { reservation, dispatchId: claim.dispatchId! }
+}
+async function holdAccount() {
+    const runner = ds.createQueryRunner()
+    await runner.connect(); await runner.startTransaction()
+    await runner.query('SELECT id FROM hosting_account WHERE id=$1 FOR UPDATE', [client.platformId])
+    return async () => { try { await runner.commitTransaction() } finally { await runner.release() } }
+}
+beforeAll(async () => {
+    await ds.initialize()
+    await ds.query('CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public')
+    const runner = ds.createQueryRunner()
+    try { await runner.createSchema(schema, true) }
+    finally { await runner.release() }
+    await ds.runMigrations({ transaction: 'each' })
+})
+afterAll(async () => { if (ds.isInitialized) { await ds.query(`DROP SCHEMA "${schema}" CASCADE`); await ds.destroy() } })
+afterEach(() => vi.unstubAllEnvs())
+beforeEach(async () => {
+    vi.stubEnv('AP_SERVICE_MODE', 'hosted')
+    vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', '')
+    await ds.query(`TRUNCATE ${ds.entityMetadatas.map(entity => `"${schema}"."${entity.tableName}"`).join(',')} CASCADE`)
+    await ds.getRepository(FlagEntity).insert({ id: INSTALLATION_MODE_FLAG_ID, value: { schemaVersion: 1, serviceMode: 'hosted' } })
+    const id = await identity(), home = await bootstrapHostedOperator(ds, onboarding, id)
+    vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', id)
+    actor = { identityId: id, platformId: home.platformId, tokenVersion: home.tokenVersion }
+    client = await makeClient()
+})
+
+describe('PostgreSQL allowance serialization', () => {
+    it('serializes a zero cap against reservation and preserves any reservation that won first', async () => {
+        await activate()
+        const execution = await root(), unlock = await holdAccount()
+        let completed = 0
+        const cap = allowance.save({ actor, input: { platformId: client.platformId, expectedRevision: 0, requestKey: 'race:cap', monthlyCredits: 0 } }).finally(() => { completed++ })
+        const reserve = ledger.reserveManagedCall({ actor: client.actor, rootReservationId: execution.reservation.id, key: 'race:reservation', maxCostMicroUsd: 1000000n }).finally(() => { completed++ })
+        try {
+            await new Promise(resolve => setTimeout(resolve, 30))
+            expect(completed).toBe(0)
+        }
+        finally { await unlock() }
+        const [saved, held] = await Promise.allSettled([cap, reserve])
+        expect(saved.status).toBe('fulfilled')
+        if (held.status === 'fulfilled') {
+            const claim = await ledger.claimManagedCall({ actor: client.actor, reservationId: held.value.id })
+            expect(claim.claimed).toBe(true)
+            await ledger.settleManagedCall({ platformId: client.platformId, reservationId: held.value.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 500000n })
+        }
+        else expect(String(held.reason)).toContain('CREDITS_EXHAUSTED')
+        const view = await allowance.read({ actor, platformId: client.platformId })
+        expect(view.period).toMatchObject({ amountMicroUsd: '0', reservedMicroUsd: '0', consumedMicroUsd: held.status === 'fulfilled' ? '500000' : '0', availableMicroUsd: '0' })
+        await ledger.finishExecution({ platformId: client.platformId, reservationId: execution.reservation.id, dispatchId: execution.dispatchId })
+    })
+    it('serializes receipt revocation against allowance changes without reviving grants or losing held calls', async () => {
+        const enrollmentId = await activate(), execution = await root()
+        const held = await ledger.reserveManagedCall({ actor: client.actor, rootReservationId: execution.reservation.id, key: 'held', maxCostMicroUsd: 500000n }), claim = await ledger.claimManagedCall({ actor: client.actor, reservationId: held.id })
+        const unlock = await holdAccount()
+        const cap = allowance.save({ actor, input: { platformId: client.platformId, expectedRevision: 0, requestKey: 'race:refund-cap', monthlyCredits: 7000 } })
+        const refund = training.revoke({ actor, enrollmentId })
+        await unlock()
+        const results = await Promise.allSettled([cap, refund])
+        expect(results.map(result => result.status)).toEqual(['fulfilled', 'fulfilled'])
+        const trainingGrants = (await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId, meter: 'managed_ai' })).filter(grant => grant.sourceKey.startsWith('training:'))
+        expect(trainingGrants.every(grant => grant.revokedAt !== null)).toBe(true)
+        expect((await allowance.read({ actor, platformId: client.platformId })).period).toBeNull()
+        await ledger.settleManagedCall({ platformId: client.platformId, reservationId: held.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 100000n })
+        expect(await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: held.grantId })).toMatchObject({ consumed: 100000n, reserved: 0n, revokedAt: expect.any(Date) })
+        await ledger.finishExecution({ platformId: client.platformId, reservationId: execution.reservation.id, dispatchId: execution.dispatchId })
+    })
+    it('rolls back one of two different clients using the same actor/request key concurrently', async () => {
+        const other = await makeClient(), createRunner = ds.createQueryRunner.bind(ds)
+        let arrived = 0, release!: () => void
+        const gate = new Promise<void>(resolve => { release = resolve })
+        // Synchronize only the two SQL inserts after real auth/revision checks;
+        // PostgreSQL's actual unique index arbitrates the idempotency collision.
+        const spy = vi.spyOn(ds, 'createQueryRunner').mockImplementation((...args) => {
+            const runner = createRunner(...args), query = runner.query.bind(runner)
+            runner.query = async (sql, ...rest) => {
+                if (/^INSERT INTO .*hosting_ai_allowance_change/.test(sql)) {
+                    if (++arrived === 2) release()
+                    await gate
+                }
+                return query(sql, ...rest)
+            }
+            return runner
+        })
+        try {
+            const outcomes = await Promise.allSettled([client.platformId, other.platformId].map((platformId, i) => allowance.save({ actor, input: { platformId, expectedRevision: 0, requestKey: 'race:shared-key', monthlyCredits: 7000 + i } })))
+            expect(outcomes.filter(value => value.status === 'fulfilled')).toHaveLength(1)
+            const failed = outcomes.find(value => value.status === 'rejected') as PromiseRejectedResult
+            expect(String(failed.reason)).toContain('IDEMPOTENCY_CONFLICT')
+            expect(await ds.getRepository(HostingAiAllowanceChangeEntity).count()).toBe(1)
+            const views = await Promise.all([client.platformId, other.platformId].map(platformId => allowance.read({ actor, platformId })))
+            expect(views.map(view => view.revision).sort()).toEqual([0, 1])
+            expect(views.every(view => view.period?.amountMicroUsd === '1000000')).toBe(true)
+        }
+        finally { release(); spy.mockRestore() }
+    })
+})
