@@ -11,12 +11,13 @@ import { networkUtils } from '../helper/network-utils'
 import { userService } from '../user/user-service'
 import { hostingAccessController } from './hosting-access-controller'
 import { hostingAiAllowanceController } from './hosting-ai-allowance-controller'
-import { hostingPartnerAdminController } from './hosting-partner-admin-controller'
 import { resendHostedVerification } from './hosting-auth-policy'
 import { hostingConfiguration } from './hosting-configuration'
 import { hostingLearningController } from './hosting-learning-controller'
 import { hostingOnboardingController } from './hosting-onboarding-controller'
 import { hostingOperatorController } from './hosting-operator-controller'
+import { hostingPartnerAdminController } from './hosting-partner-admin-controller'
+import { hostingPartnerSetupController, hostingPartnerSetupPublicController } from './hosting-partner-setup-controller'
 import { hostingPricingController } from './hosting-pricing-controller'
 import { hostingServices } from './hosting-services'
 import { hostingStripeController } from './hosting-stripe-controller'
@@ -27,6 +28,8 @@ export const hostingController: FastifyPluginAsyncZod = async app => {
     await app.register(hostingAccessController, { prefix: '/operator' })
     await app.register(hostingAiAllowanceController, { prefix: '/operator/ai-allowance' })
     await app.register(hostingPartnerAdminController, { prefix: '/operator/partners' })
+    await app.register(hostingPartnerSetupController, { prefix: '/operator/partner-setup' })
+    await app.register(hostingPartnerSetupPublicController, { prefix: '/partner-setup' })
     await app.register(hostingLearningController, { prefix: '/operator' })
     await app.register(hostingOperatorController, { prefix: '/operator' })
     await app.register(hostingPricingController, { prefix: '/operator/ai-pricing' })

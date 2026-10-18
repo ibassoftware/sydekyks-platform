@@ -108,8 +108,9 @@ async function usable(manager: EntityManager, token: string) {
     // Issuance/reissue and redemption always lock target identity first.
     const identity = await manager.getRepository(UserIdentityEntity).findOne({ where: { id: found.identityId }, lock: { mode: 'pessimistic_write' } })
     const link = await manager.getRepository(HostingPartnerSetupTokenEntity).findOne({ where: { id: found.id, tokenDigest: digest }, lock: { mode: 'pessimistic_write' } })
+    const binding = await manager.getRepository(HostingPartnerSetupBindingEntity).findOneBy({ id: found.identityId })
     const now = await tx.now(manager)
-    if (!identity || !link || link.usedAt || link.revokedAt || link.expiresAt <= now || identity.email !== link.identityEmail || (identity.tokenVersion ?? null) !== link.identityTokenVersion) hostingFail('HOSTING_SETUP_LINK_UNAVAILABLE')
+    if (!binding || binding.revision !== link?.revision || !identity || !link || link.usedAt || link.revokedAt || link.expiresAt <= now || identity.email !== link.identityEmail || (identity.tokenVersion ?? null) !== link.identityTokenVersion) hostingFail('HOSTING_SETUP_LINK_UNAVAILABLE')
     await assertUnusedIdentity(manager, identity.id, link.operatorIdentityId)
     await assertHostingOperator({ manager, actor: { identityId: link.operatorIdentityId, platformId: link.operatorPlatformId, tokenVersion: link.operatorTokenVersion } })
     return { link, identity }
