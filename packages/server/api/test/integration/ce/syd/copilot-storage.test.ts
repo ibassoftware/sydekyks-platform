@@ -1,5 +1,5 @@
 import { apId } from '@activepieces/core-utils'
-import { AgentConversation, AgentConversationStatus, AgentRunSource, PersistedAgentMessage, PersistedAgentPartType, PersistedAgentRole } from '@activepieces/shared'
+import { AgentConversationStatus, AgentRunSource, PersistedAgentMessage, PersistedAgentPartType, PersistedAgentRole } from '@activepieces/shared'
 import Fastify from 'fastify'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { initializeDatabase } from '../../../../src/app/database'
@@ -7,17 +7,21 @@ import { backgroundMigrationRunner } from '../../../../src/app/database/backgrou
 import { databaseConnection } from '../../../../src/app/database/database-connection'
 import { getMigrations } from '../../../../src/app/database/postgres-connection'
 import { sydApprovalGate } from '../../../../src/app/syd/copilot/approval-gate'
-import { sydCopilotContext } from '../../../../src/app/syd/copilot/copilot-context'
 import { sydConversationService } from '../../../../src/app/syd/copilot/conversation-service'
 import { sydConversationUsage } from '../../../../src/app/syd/copilot/conversation-usage'
+import { sydCopilotContext } from '../../../../src/app/syd/copilot/copilot-context'
 import { SydConversationEntity } from '../../../../src/app/syd/copilot/models/conversation.entity'
 import { mockAndSaveBasicSetup } from '../../../helpers/mocks'
 
 const log = Fastify().log
 const service = sydConversationService(log)
 
-beforeAll(async () => { await initializeDatabase({ runMigrations: false }) })
-afterAll(async () => { await databaseConnection().destroy() })
+beforeAll(async () => {
+    await initializeDatabase({ runMigrations: false }) 
+})
+afterAll(async () => {
+    await databaseConnection().destroy() 
+})
 
 async function context() {
     const fixture = await mockAndSaveBasicSetup()
@@ -28,12 +32,24 @@ describe('Syd CHAT persistence', () => {
     it('registers owned CHAT storage and the release migrations without schema drift', async () => {
         const ds = databaseConnection()
         const runner = ds.createQueryRunner()
-        expect(getMigrations().map((Migration) => new Migration().name)).toEqual(['SydekyksInitialSchema1880000000000', 'SydekyksUpstream1031881000000000', 'SydekyksUpstreamOctober211882000000000'])
+        expect(getMigrations().map((Migration) => new Migration().name)).toEqual([
+            'SydekyksInitialSchema1880000000000', 'SydekyksUpstream1031881000000000', 'SydekyksUpstreamOctober211882000000000',
+            'SydekyksHostingLedger1882000000000', 'SydekyksHostingDispatch1883000000000',
+            'SydekyksHostingSegments1884000000000', 'SydekyksHostingModelCalls1885000000000',
+            'SydekyksHostingStripe1886000000000', 'SydekyksHostingAccess1887000000000',
+            'SydekyksLearning1888000000000', 'SydekyksTrainingGrants1889000000000',
+            'SydekyksManagedPricing1890000000000',
+        ])
         for (const table of ['syd_conversation', 'syd_user_memory', 'syd_personalization']) expect(await runner.hasTable(table)).toBe(true)
         expect(await runner.hasColumn('platform_model_tier', 'isFast')).toBe(true)
         expect(await runner.hasColumn('platform_configuration', 'aiSpecificModelsVisible')).toBe(true)
         await backgroundMigrationRunner.run({ dataSource: ds, log })
-        expect((await ds.driver.createSchemaBuilder().log()).upQueries).toEqual([])
+        // Hosted migrations also install composite constraints absent from ORM
+        // metadata. This regression protects the CHAT-owned storage schema.
+        const ownedTables = ['syd_conversation', 'syd_user_memory', 'syd_personalization', 'syd_chat_managed_agent', 'syd_agent_conversation', 'platform_model_tier', 'platform_configuration']
+        const ownedObjects = [...ownedTables, ...(await runner.getTables(ownedTables)).flatMap(table => table.indices.map(index => index.name))]
+        const changes = (await ds.driver.createSchemaBuilder().log()).upQueries
+        expect(changes.filter(change => ownedObjects.some(name => change.query.includes(`"${name}"`)))).toEqual([])
         await runner.release()
     })
 

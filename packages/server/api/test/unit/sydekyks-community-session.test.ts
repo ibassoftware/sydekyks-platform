@@ -7,7 +7,8 @@ const services = vi.hoisted(() => ({ decode: vi.fn(), user: vi.fn(), identity: v
 vi.mock('../../src/app/helper/jwt-utils', () => ({ jwtUtils: { getJwtSecret: async () => 'synthetic-test-secret', decodeAndVerify: services.decode } }))
 vi.mock('../../src/app/user/user-service', () => ({ userService: () => ({ getOneOrFail: services.user }) }))
 vi.mock('../../src/app/authentication/user-identity/user-identity-service', () => ({ userIdentityService: () => ({ getOneOrFail: services.identity, updateLastLoggedInPlatformId: services.updatePlatform }) }))
-vi.mock('../../src/app/helper/system/system', () => ({ system: {} }))
+vi.mock('../../src/app/helper/system/system', () => ({ system: { get: () => undefined } }))
+vi.mock('../../src/app/database/database-connection', () => ({ databaseConnection: vi.fn() }))
 
 const principal = { id: 'user-1', type: PrincipalType.USER, platform: { id: 'platform-1' }, tokenVersion: 'session-1' }
 const user = { id: principal.id, identityId: 'identity-1', platformId: 'platform-1', platformRole: PlatformRole.ADMIN, status: UserStatus.ACTIVE }

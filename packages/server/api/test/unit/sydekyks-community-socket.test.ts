@@ -7,7 +7,9 @@ import { websocketService } from '../../src/app/core/websockets.service'
 import { flowModule } from '../../src/app/flows/flow.module'
 
 const services = vi.hoisted(() => ({ app: vi.fn(), principal: vi.fn(), permissions: vi.fn(), testFlow: vi.fn() }))
-vi.mock('../../src/app/server', () => ({ get app() { return services.app() } }))
+vi.mock('../../src/app/server', () => ({ get app() {
+    return services.app() 
+} }))
 vi.mock('../../src/app/authentication/lib/access-token-manager', () => ({ accessTokenManager: () => ({ verifyPrincipal: services.principal }) }))
 vi.mock('../../src/app/sydekyks-community/project-access', () => ({ communityAuthorization: { getUserPermissions: services.permissions } }))
 vi.mock('../../src/app/flows/flow/flow-version.controller', () => ({ flowVersionController: async () => undefined }))
@@ -47,7 +49,9 @@ beforeEach(async () => {
         await app.close()
     }
 })
-afterEach(async () => { await closeServer() })
+afterEach(async () => {
+    await closeServer() 
+})
 
 async function connectClient(): Promise<string> {
     const response = await fetch(url)
@@ -77,7 +81,7 @@ describe('Socket.IO execution authorization', () => {
         const sessionUrl = await connectClient()
         await emitTestFlow(sessionUrl)
         await expect.poll(() => services.testFlow.mock.calls.length).toBe(1)
-        expect(services.testFlow).toHaveBeenCalledWith({ projectId: 'project-1', flowVersionId: 'version-1', triggeredBy: principal.id })
+        expect(services.testFlow).toHaveBeenCalledWith({ projectId: 'project-1', flowVersionId: 'version-1', triggeredBy: principal.id, hostedOrigin: { type: 'user', userId: principal.id, tokenVersion: null } })
     })
     it('disconnects a passive subscriber when project access is revoked', async () => {
         await connectClient()
