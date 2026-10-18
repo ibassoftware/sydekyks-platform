@@ -149,6 +149,14 @@ export function PlatformSidebar() {
           locked: !platform.plan.aiProvidersEnabled,
           tier: PLATFORM_FEATURES.aiProviders.tier,
           subItems: [
+            ...(operator.allowed
+              ? [
+                  {
+                    to: '/platform/managed-ai',
+                    label: t('Sydekyks managed default'),
+                  },
+                ]
+              : []),
             { to: '/platform/ai', label: t('Providers'), end: true },
             { to: '/platform/ai/capabilities', label: t('Capabilities') },
           ],

@@ -55,7 +55,11 @@ import { KeyStatusBadge, keyStatusText } from './key-status';
 import { ProjectSwatch } from './project-selection-panel';
 import { ProviderLogo } from './provider-logo';
 
-export function ProvidersTab() {
+export function ProvidersTab({
+  managedDefaultShown = false,
+}: {
+  managedDefaultShown?: boolean;
+}) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<
@@ -210,14 +214,16 @@ export function ProvidersTab() {
   const page = (
     <>
       <AdminPageHeader
-        title={t('Providers')}
+        title={managedDefaultShown ? t('Separate provider keys (BYOK)') : t('Providers')}
         badge={
           <span className="text-sm tabular-nums text-gray-11">
             {configs.length}
           </span>
         }
         description={
-          configs.length === 0
+          managedDefaultShown
+            ? t('These optional provider keys have their own models and project access. They do not set or replace the Sydekyks managed default above.')
+            : configs.length === 0
             ? t(
                 'Connect a provider to turn on chat, agents, and AI steps across your platform.',
               )
@@ -246,7 +252,7 @@ export function ProvidersTab() {
       {isProvidersError ? (
         <DataFetchErrorState entity={t('AI providers')} onRetry={refetch} />
       ) : configs.length === 0 ? (
-        <EmptyProviders onConnect={openConnect} />
+        <EmptyProviders onConnect={openConnect} managedDefaultShown={managedDefaultShown} />
       ) : (
         <>
           {locked && <LockedProvidersAlert />}
@@ -587,8 +593,10 @@ function ProjectChips({
 
 function EmptyProviders({
   onConnect,
+  managedDefaultShown = false,
 }: {
   onConnect: (provider?: AIProviderName) => void;
+  managedDefaultShown?: boolean;
 }) {
   const recommended = RECOMMENDED_PROVIDERS.map((provider) =>
     SUPPORTED_AI_PROVIDERS.find((info) => info.provider === provider),

@@ -15,6 +15,7 @@ import {
   saveAiSettings,
   useAiSettings,
 } from './ai-settings-api';
+import { managedAiNextStep } from './managed-ai-entry';
 import { operatorClientsQuery, useHostedOperatorAccess } from './operator-api';
 
 type Access = ReturnType<typeof useHostedOperatorAccess>;
@@ -364,6 +365,22 @@ function SettingsEditor({
             : 'No effective key configured'}
         </dd>
       </dl>
+      {!isClient && state.mode === 'set' && (
+        <p className="mb-4 max-w-3xl text-sm leading-6">
+          This saved configuration is already the global Sydekyks default.
+          Clients inherit it unless they have an explicit override.
+        </p>
+      )}
+      {!isClient && !state.effective.managedAvailable && (
+        <p className="mb-4 max-w-3xl text-sm leading-6">
+          {managedAiNextStep(state)}
+        </p>
+      )}
+      {state.effective.reason && (
+        <p className="mb-4 max-w-3xl text-sm leading-6 text-gray-11">
+          {state.effective.reason}
+        </p>
+      )}
       <form className="max-w-3xl space-y-5" onSubmit={save} autoComplete="off">
         <div>
           <label className="block text-sm font-medium" htmlFor="managed-mode">

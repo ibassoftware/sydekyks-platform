@@ -1,3 +1,6 @@
+import { HostedManagedAiEntry } from '@/features/hosted-operator/managed-ai-entry';
+import { useHostedOperatorAccess } from '@/features/hosted-operator/operator-api';
+
 import { CapabilitiesTab } from './capabilities-tab';
 import { ProvidersTab } from './providers-tab';
 import { TiersTab } from './tiers-tab';
@@ -7,12 +10,14 @@ export default function AIProvidersPage({ section }: AIProvidersPageProps) {
 }
 
 function AICenter({ section }: { section: AISection }) {
+  const operator = useHostedOperatorAccess();
   return (
     <div className="flex w-full flex-1 min-h-0 flex-col overflow-auto">
       <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-8 py-6">
         {section === 'providers' ? (
           <div className="flex flex-1 flex-col">
-            <ProvidersTab />
+            <HostedManagedAiEntry access={operator} />
+            <ProvidersTab managedDefaultShown={operator.allowed} />
           </div>
         ) : section === 'tiers' ? (
           <TiersTab />
