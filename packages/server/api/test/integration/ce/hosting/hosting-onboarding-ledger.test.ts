@@ -54,11 +54,13 @@ async function identity({ email = `${apId()}@example.com`, verified = true }: { 
     await ds.getRepository(UserIdentityEntity).insert({ id, email, password: 'unused-test-hash', provider: 'EMAIL', firstName: 'Test', lastName: 'Owner', verified, tokenVersion: 'initial' })
     return id
 }
-async function tenant() {
+async function tenant(ordinaryAdmin = false) {
     const identityId = await identity()
+    const previousAllowlist = process.env['AP_HOSTED_OPERATOR_IDENTITY_IDS'] ?? ''
     const value = await bootstrapHostedOperator(ds, onboarding, identityId)
+    if (ordinaryAdmin) vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', previousAllowlist)
     if (!value.projectId) throw new Error('Missing project')
-    return { ...value, projectId: value.projectId, actor: { platformId: value.platformId, identityId } }
+    return { ...value, projectId: value.projectId, actor: { platformId: value.platformId, identityId, ...(ordinaryAdmin ? { tokenVersion: value.tokenVersion } : {}) } }
 }
 async function running(payer: 'managed' | 'byok' = 'managed') {
     const value = await tenant()
@@ -130,14 +132,14 @@ describe('hosted tenant onboarding', () => {
         await expect(rotated.provision({ identityId: replacement, name: 'Again' })).rejects.toThrow('HOSTING_SUBJECT_KEY_CHANGED')
     })
     it('does not renew an expired trial or allow trial invitations', async () => {
-        const value = await tenant()
+        const value = await tenant(true)
         await expect(onboarding.invite({ actor: value.actor, email: 'invite@example.com', role: PlatformRole.MEMBER })).rejects.toThrow('HOSTING_RESOURCE_LIMIT')
         await ds.getRepository(HostingAccountEntity).update({ id: value.platformId }, { validUntil: new Date(0) })
         expect((await onboarding.provision({ identityId: value.actor.identityId, name: 'Again' })).platformId).toBe(value.platformId)
         await expect(ledger.reserveExecution({ actor: value.actor, projectId: value.projectId, key: 'expired', payer: 'byok' })).rejects.toThrow('HOSTING_ENTITLEMENT_EXPIRED')
     })
     it('reserves the last seat/project atomically and accepts only the addressed verified identity', async () => {
-        const value = await tenant()
+        const value = await tenant(true)
         await ds.getRepository(HostingAccountEntity).update({ id: value.platformId }, { planId: 'starter', status: 'active' })
         const invitation = await onboarding.invite({ actor: value.actor, email: 'one@example.com', role: PlatformRole.MEMBER })
         const invites = await Promise.allSettled(['two', 'three', 'four'].map(name => onboarding.invite({ actor: value.actor, email: `${name}@example.com`, role: PlatformRole.MEMBER })))
@@ -156,7 +158,7 @@ describe('hosted tenant onboarding', () => {
         }
     })
     it('reactivates a member at the project limit and rotates sessions/revokes MCP grants', async () => {
-        const value = await tenant()
+        const value = await tenant(true)
         await ds.getRepository(HostingAccountEntity).update({ id: value.platformId }, { planId: 'starter' })
         const member = await identity({ email: 'member@example.com' })
         const invitation = await onboarding.invite({ actor: value.actor, email: 'member@example.com', role: PlatformRole.MEMBER })
@@ -172,10 +174,11 @@ describe('hosted tenant onboarding', () => {
         const reinvite = await onboarding.invite({ actor: value.actor, email: 'member@example.com', role: PlatformRole.OPERATOR })
         expect((await onboarding.acceptInvitation({ identityId: member, token: reinvite.token })).projectId).toBe(joined.projectId)
         expect(await ds.getRepository(ProjectEntity).countBy({ platformId: value.platformId })).toBe(3)
-        await expect(onboarding.changeMember({ actor: value.actor, userId: value.userId, deactivate: true })).rejects.toThrow('HOSTING_OWNER_REQUIRED')
+        await expect(onboarding.changeMember({ actor: value.actor, userId: value.userId, deactivate: true })).rejects.toThrow('HOSTING_MEMBER_PROTECTED')
+        expect(await ds.getRepository(UserEntity).findOneBy({ id: value.userId })).toMatchObject({ status: UserStatus.ACTIVE, platformRole: PlatformRole.ADMIN })
     })
     it('serializes accept/revoke races and denies cross-tenant or personal-project access', async () => {
-        const value = await tenant()
+        const value = await tenant(true)
         const other = await tenant()
         await expect(onboarding.selectTenant({ actor: { identityId: other.actor.identityId, platformId: value.platformId } })).rejects.toThrow('HOSTING_ACCESS_DENIED')
         await expect(ledger.reserveExecution({ actor: other.actor, projectId: value.projectId, key: 'cross', payer: 'byok' })).rejects.toThrow('HOSTING_PROJECT_ACCESS_DENIED')

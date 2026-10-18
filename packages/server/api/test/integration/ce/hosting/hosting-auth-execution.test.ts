@@ -88,6 +88,7 @@ afterAll(async () => {
     vi.unstubAllEnvs()
 })
 beforeEach(async () => {
+    vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', '')
     await ds.query(`TRUNCATE ${ds.entityMetadatas.map(entity => `"${schema}"."${entity.tableName}"`).join(', ')} CASCADE`)
     await ds.getRepository(FlagEntity).insert({ id: INSTALLATION_MODE_FLAG_ID, value: { schemaVersion: 1, serviceMode: 'hosted' } })
     sendOtp.mockReset()
@@ -99,7 +100,10 @@ async function identity(verified = true) {
 }
 async function tenant() {
     const identityId = await identity()
+    const previousAllowlist = process.env['AP_HOSTED_OPERATOR_IDENTITY_IDS'] ?? ''
     const result = await bootstrapHostedOperator(ds, onboarding, identityId)
+    // Bootstrap creates the fixture; ordinary tenant authority is used below.
+    vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', previousAllowlist)
     if (!result.projectId) throw new Error('Missing project')
     const token = await accessTokenManager(app.log).generateToken({ id: result.userId, platform: { id: result.platformId }, type: PrincipalType.USER, tokenVersion: result.tokenVersion })
     return { ...result, projectId: result.projectId, identityId, token, headers: { authorization: `Bearer ${token}` }, actor: { identityId, platformId: result.platformId, tokenVersion: result.tokenVersion } }
@@ -193,21 +197,39 @@ describe('authenticated hosted onboarding', () => {
         expect((await app.inject({ url: '/api/v1/hosting/balance', headers: first.headers })).statusCode).toBe(200)
         const denied = await app.inject({ method: 'POST', url: '/api/v1/authentication/switch-platform', headers: other.headers, payload: { platformId: first.platformId } })
         expect(denied.statusCode).toBeGreaterThanOrEqual(400)
-        const spoof = await app.inject({ method: 'POST', url: '/api/v1/hosting/invitations', headers: first.headers, payload: { email: 'member@example.com', role: PlatformRole.ADMIN, platformId: other.platformId } })
+        // Legacy mutation routes cannot bypass issuer-bound invitations.
+        for (const [method, url, payload] of [
+            ['POST', '/api/v1/hosting/invitations', { email: 'member@example.com', role: PlatformRole.MEMBER }],
+            ['POST', '/api/v1/hosting/invitations/accept', { token: 'x'.repeat(43) }],
+            ['PATCH', `/api/v1/hosting/members/${first.userId}`, { role: PlatformRole.MEMBER }],
+            ['DELETE', `/api/v1/hosting/invitations/${apId()}`, undefined],
+        ] as const) {
+            const closed = await app.inject({ method, url, headers: first.headers, ...(payload ? { payload } : {}) })
+            expect(closed.statusCode, closed.body).toBe(403)
+            expect(closed.json().code).toBe('HOSTING_TENANT_MEMBERS_REQUIRED')
+        }
+        const current = (await app.inject({ url: '/api/v1/hosting/tenant-members', headers: first.headers })).json()
+        const input = { email: 'member@example.com', role: PlatformRole.MEMBER, expectedRevision: current.revision, expectedState: current.stateHash, requestKey: 'fixture-member-invite' }
+        const spoof = await app.inject({ method: 'POST', url: '/api/v1/hosting/tenant-members/invite', headers: first.headers, payload: { ...input, platformId: other.platformId } })
         expect(spoof.statusCode).toBe(400)
-        const invited = await app.inject({ method: 'POST', url: '/api/v1/hosting/invitations', headers: first.headers, payload: { email: 'member@example.com', role: PlatformRole.MEMBER } })
+        const invited = await app.inject({ method: 'POST', url: '/api/v1/hosting/tenant-members/invite', headers: first.headers, payload: input })
         expect(invited.statusCode, invited.body).toBe(200)
-        const memberId = await identity()
-        await ds.getRepository(UserIdentityEntity).update({ id: memberId }, { email: 'member@example.com' })
-        const token = await accessTokenManager(app.log).generateToken({ id: memberId, type: PrincipalType.ONBOARDING, tokenVersion: 'initial' })
-        const accepted = await app.inject({ method: 'POST', url: '/api/v1/hosting/invitations/accept', headers: { authorization: `Bearer ${token}` }, payload: { token: invited.json().token } })
+        const capability = new URLSearchParams(new URL(invited.json().setupUrl).hash.slice(1)).get('token')
+        const acceptInput = { token: capability, password: 'Chosen-member-password-71!', fullName: 'Member Fixture' }
+        const identitySpoof = await app.inject({ method: 'POST', url: '/api/v1/hosting/tenant-join/redeem', payload: { ...acceptInput, identityId: other.identityId } })
+        expect(identitySpoof.statusCode).toBe(403)
+        const accepted = await app.inject({ method: 'POST', url: '/api/v1/hosting/tenant-join/redeem', payload: acceptInput })
         expect(accepted.statusCode, accepted.body).toBe(200)
         const member = accepted.json()
-        expect(member.platformRole).toBe(PlatformRole.MEMBER)
-        const attempt = await app.inject({ method: 'PATCH', url: `/api/v1/hosting/members/${first.userId}`, headers: { authorization: `Bearer ${member.token}` }, payload: { role: PlatformRole.MEMBER } })
+        expect(member.platformRole).toBe(PlatformRole.MEMBER); expect(member.platformId).toBe(first.platformId)
+        const updated = (await app.inject({ url: '/api/v1/hosting/tenant-members', headers: first.headers })).json()
+        const mutation = { userId: first.userId, role: PlatformRole.MEMBER, expectedRevision: updated.revision, expectedState: updated.stateHash, requestKey: 'member-cannot-demote-owner' }
+        const attempt = await app.inject({ method: 'POST', url: '/api/v1/hosting/tenant-members/change', headers: { authorization: `Bearer ${member.token}` }, payload: mutation })
         expect(attempt.statusCode).toBe(403)
-        await app.inject({ method: 'PATCH', url: `/api/v1/hosting/members/${member.id}`, headers: first.headers, payload: { deactivate: true } })
+        const deactivate = await app.inject({ method: 'POST', url: '/api/v1/hosting/tenant-members/change', headers: first.headers, payload: { userId: member.id, deactivate: true, expectedRevision: updated.revision, expectedState: updated.stateHash, requestKey: 'owner-deactivates-member' } })
+        expect(deactivate.statusCode, deactivate.body).toBe(200)
         expect((await app.inject({ url: '/api/v1/hosting/balance', headers: { authorization: `Bearer ${member.token}` } })).statusCode).toBeGreaterThanOrEqual(400)
+        expect(sendOtp).not.toHaveBeenCalled()
     })
     it('cannot mint a replacement session from a stale transaction receipt', async () => {
         const value = await tenant()
@@ -217,11 +239,16 @@ describe('authenticated hosted onboarding', () => {
     })
     it('uses DB MCP revocation immediately and rejects grantless hosted tokens', async () => {
         const value = await tenant()
-        const internal = await mcpOAuthTokenService.issueInternalAccessToken({ userId: value.userId, platformId: value.platformId, projectId: value.projectId })
+        await ds.getRepository(HostingAccountEntity).update({ id: value.platformId }, { planId: 'starter' })
+        const identityId = await identity(), recipient = await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: identityId })
+        const invitation = await onboarding.invite({ actor: value.actor, email: recipient.email, role: PlatformRole.MEMBER })
+        const member = await onboarding.acceptInvitation({ identityId, token: invitation.token })
+        if (!member.projectId) throw new Error('Missing invited member project')
+        const internal = await mcpOAuthTokenService.issueInternalAccessToken({ userId: member.userId, platformId: member.platformId, projectId: member.projectId })
         expect((await mcpOAuthTokenService.authenticate({ token: internal, log: app.log })).status).toBe('invalid')
-        const token = await mcpOAuthTokenService.exchangeCode({ userId: value.userId, projectId: value.projectId, platformId: value.platformId, clientId: 'test-client', redirectUris: [], scopes: [], codeVerifier: 'plain-verifier', codeChallenge: createHash('sha256').update('plain-verifier').digest('base64url'), codeChallengeMethod: 'S256' })
+        const token = await mcpOAuthTokenService.exchangeCode({ userId: member.userId, projectId: member.projectId, platformId: member.platformId, clientId: 'test-client', redirectUris: [], scopes: [], codeVerifier: 'plain-verifier', codeChallenge: createHash('sha256').update('plain-verifier').digest('base64url'), codeChallengeMethod: 'S256' })
         expect((await mcpOAuthTokenService.authenticate({ token: token.access_token, log: app.log })).status).toBe('ok')
-        await onboarding.changeMember({ actor: value.actor, userId: value.userId, role: PlatformRole.ADMIN })
+        await onboarding.changeMember({ actor: value.actor, userId: member.userId, role: PlatformRole.OPERATOR })
         expect((await mcpOAuthTokenService.authenticate({ token: token.access_token, log: app.log })).status).toBe('invalid')
     })
 })
