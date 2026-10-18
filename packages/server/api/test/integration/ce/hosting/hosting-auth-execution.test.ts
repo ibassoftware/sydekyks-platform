@@ -1,45 +1,50 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { apId } from '@activepieces/core-utils'
-import { AgentRunSource, EngineResponseStatus, OtpType, ExecuteAgentRunJobData, ExecuteFlowJobData, ExecutionType, FlowRunStatus, FlowVersionState, LATEST_JOB_DATA_SCHEMA_VERSION, PlatformRole, PrincipalType, RunEnvironment, StreamStepProgress, UserIdentityProvider, WorkerJobType } from '@activepieces/shared'
+import { AgentRunSource, EngineResponseStatus, ExecuteAgentRunJobData, ExecuteFlowJobData, ExecutionType, FileType, FlowRunStatus, FlowVersionState, LATEST_JOB_DATA_SCHEMA_VERSION, OtpType, PlatformRole, PrincipalType, RunEnvironment, StreamStepProgress, UserIdentityProvider, WorkerJobType } from '@activepieces/shared'
+import { Job } from 'bullmq'
 import fastify, { FastifyInstance } from 'fastify'
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
 import { DataSource } from 'typeorm'
-import { Job } from 'bullmq'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { authenticationController } from '../../../../src/app/authentication/authentication.controller'
-import { otpService } from '../../../../src/app/authentication/otp/otp-service'
 import { authenticationUtils } from '../../../../src/app/authentication/authentication-utils'
+import { authenticationController } from '../../../../src/app/authentication/authentication.controller'
 import { accessTokenManager } from '../../../../src/app/authentication/lib/access-token-manager'
+import { otpService } from '../../../../src/app/authentication/otp/otp-service'
 import { UserIdentityEntity } from '../../../../src/app/authentication/user-identity/user-identity-entity'
 import { authenticationMiddleware } from '../../../../src/app/core/security/v2/authn/authentication-middleware'
 import { authorizationMiddleware } from '../../../../src/app/core/security/v2/authz/authorization-middleware'
 import { commonProperties } from '../../../../src/app/database/database-connection'
 import { getMigrations } from '../../../../src/app/database/postgres-connection'
+import { FileEntity } from '../../../../src/app/file/file.entity'
 import { FlagEntity } from '../../../../src/app/flags/flag.entity'
 import { FlowEntity } from '../../../../src/app/flows/flow/flow.entity'
 import { FlowRunEntity } from '../../../../src/app/flows/flow-run/flow-run-entity'
 import { FlowVersionEntity } from '../../../../src/app/flows/flow-version/flow-version-entity'
 import { errorHandler } from '../../../../src/app/helper/error-handler'
+import { jwtUtils } from '../../../../src/app/helper/jwt-utils'
 import { hostingController } from '../../../../src/app/hosting/hosting-controller'
 import { HostingDispatchEntity } from '../../../../src/app/hosting/hosting-dispatch-entity'
-import { HostingAccountEntity, HostingGrantEntity, HostingLedgerEntity, HostingReservationEntity } from '../../../../src/app/hosting/hosting-entities'
+import { HostingAccountEntity, HostingGrantEntity, HostingReservationEntity } from '../../../../src/app/hosting/hosting-entities'
 import { createHostedExecution } from '../../../../src/app/hosting/hosting-execution'
 import { INSTALLATION_MODE_FLAG_ID } from '../../../../src/app/hosting/hosting-installation'
-import { createHostedOnboarding } from '../../../../src/app/hosting/hosting-onboarding'
 import { createHostedLedger } from '../../../../src/app/hosting/hosting-ledger'
+import { createHostedOnboarding } from '../../../../src/app/hosting/hosting-onboarding'
 import { hostingServices } from '../../../../src/app/hosting/hosting-services'
 import { hostingTransactions } from '../../../../src/app/hosting/hosting-transactions'
-import { jwtUtils } from '../../../../src/app/helper/jwt-utils'
 import { mcpOAuthTokenService } from '../../../../src/app/mcp/oauth/token/mcp-oauth-token.service'
 import { platformController } from '../../../../src/app/platform/platform.controller'
 import { platformUtils } from '../../../../src/app/platform/platform.utils'
 import { SydConversationEntity } from '../../../../src/app/syd/copilot/models/conversation.entity'
-import { UserEntity } from '../../../../src/app/user/user-entity'
 import { jobBroker } from '../../../../src/app/workers/job-queue/job-broker'
 import { jobQueue, JobType } from '../../../../src/app/workers/job-queue/job-queue'
+import { bootstrapHostedOperator } from '../../../helpers/hosting-fixtures'
+
+vi.mock('../../../../src/app/hosting/hosting-pricing-source', async importOriginal => ({ ...await importOriginal<typeof import('../../../../src/app/hosting/hosting-pricing-source')>(), fetchOfficialPricing: async () => {
+    throw new Error('Offline CI source')
+} }))
 
 const { sendOtp } = vi.hoisted(() => ({ sendOtp: vi.fn() }))
-vi.mock('../../../../src/app/sydekyks-community/email', () => ({ emailService: () => ({ sendOtp }) }))
+vi.mock('../../../../src/app/sydekyks-community/email', () => ({ emailService: () => ({ sendOtp }), smtpEmailSender: () => ({ isSmtpConfigured: () => false }) }))
 const schema = `hosting_wiring_${randomBytes(6).toString('hex')}`
 const ds = new DataSource({ type: 'postgres', host: '127.0.0.1', port: Number(process.env['HOSTING_TEST_POSTGRES_PORT'] ?? '55439'), username: process.env['HOSTING_TEST_POSTGRES_USER'] ?? 'hosting_tests', password: process.env['HOSTING_TEST_POSTGRES_PASSWORD'] ?? 'disposable-only', database: process.env['HOSTING_TEST_POSTGRES_DATABASE'] ?? 'hosting_tests', schema, extra: { options: `-c search_path=${schema},public` }, migrations: getMigrations(), ...commonProperties })
 const execution = createHostedExecution({ dataSource: ds })
@@ -51,8 +56,12 @@ beforeAll(async () => {
     await ds.initialize()
     await ds.query('CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public')
     const runner = ds.createQueryRunner()
-    try { await runner.createSchema(schema, true) }
-    finally { await runner.release() }
+    try {
+        await runner.createSchema(schema, true)
+    }
+    finally {
+        await runner.release()
+    }
     await ds.runMigrations({ transaction: 'each' })
     previousConnection = Reflect.get(globalThis, '__AP_DB_CONNECTION__')
     Reflect.set(globalThis, '__AP_DB_CONNECTION__', ds)
@@ -69,9 +78,13 @@ beforeAll(async () => {
     await app.ready()
 })
 afterAll(async () => {
-    if (app) { await jobBroker(app.log).close(); await jobQueue(app.log).close(); await app.close() }
+    if (app) {
+        await jobBroker(app.log).close(); await jobQueue(app.log).close(); await app.close()
+    }
     Reflect.set(globalThis, '__AP_DB_CONNECTION__', previousConnection)
-    if (ds.isInitialized) { await ds.query(`DROP SCHEMA "${schema}" CASCADE`); await ds.destroy() }
+    if (ds.isInitialized) {
+        await ds.query(`DROP SCHEMA "${schema}" CASCADE`); await ds.destroy()
+    }
     vi.unstubAllEnvs()
 })
 beforeEach(async () => {
@@ -86,7 +99,7 @@ async function identity(verified = true) {
 }
 async function tenant() {
     const identityId = await identity()
-    const result = await onboarding.provision({ identityId, name: 'Tenant' })
+    const result = await bootstrapHostedOperator(ds, onboarding, identityId)
     if (!result.projectId) throw new Error('Missing project')
     const token = await accessTokenManager(app.log).generateToken({ id: result.userId, platform: { id: result.platformId }, type: PrincipalType.USER, tokenVersion: result.tokenVersion })
     return { ...result, projectId: result.projectId, identityId, token, headers: { authorization: `Bearer ${token}` }, actor: { identityId, platformId: result.platformId, tokenVersion: result.tokenVersion } }
@@ -97,6 +110,7 @@ async function flow() {
     await ds.getRepository(FlowEntity).insert({ id: flowId, projectId: value.projectId, externalId: apId() })
     await ds.getRepository(FlowVersionEntity).insert({ id: flowVersionId, flowId, displayName: 'Hosted test', connectionIds: [], agentIds: [], valid: true, state: FlowVersionState.LOCKED, notes: [] })
     const data: ExecuteFlowJobData = { schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, platformId: value.platformId, projectId: value.projectId, jobType: WorkerJobType.EXECUTE_FLOW, flowId, flowVersionId, runId, environment: RunEnvironment.TESTING, executionType: ExecutionType.BEGIN, streamStepProgress: StreamStepProgress.NONE, logsFileId: apId(), payload: { type: 'inline', value: null } }
+    await ds.getRepository(FileEntity).insert({ id: data.logsFileId, platformId: value.platformId, projectId: value.projectId, type: FileType.FLOW_RUN_LOG, location: 'DB', data: Buffer.from('{}') })
     await ds.getRepository(FlowRunEntity).insert({ id: runId, flowId, flowVersionId, projectId: value.projectId, triggeredBy: value.userId, environment: RunEnvironment.TESTING, status: FlowRunStatus.QUEUED, tags: [], steps: {} })
     return { ...value, data, delivery: { queueName: `hosting-${schema}`, jobId: runId, data }, origin: { type: 'user' as const, userId: value.userId, tokenVersion: value.tokenVersion } }
 }
@@ -124,6 +138,8 @@ describe('authenticated hosted onboarding', () => {
         const request = () => app.inject({ method: 'POST', url: '/api/v1/platforms', headers: { authorization: `Bearer ${token}` }, payload: { name: 'Tenant' } })
         expect((await request()).statusCode).toBeGreaterThanOrEqual(400)
         await ds.getRepository(UserIdentityEntity).update({ id: identityId }, { verified: true })
+        expect((await request()).statusCode).toBeGreaterThanOrEqual(400)
+        vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', identityId)
         const response = await request()
         expect(response.statusCode, response.body).toBe(200)
         const result = response.json()
@@ -139,22 +155,12 @@ describe('authenticated hosted onboarding', () => {
         const email = `${apId()}@example.com`.toLowerCase()
         const response = await app.inject({ method: 'POST', url: '/api/v1/authentication/sign-up', payload: { email, password: 'Valid-password123!', firstName: 'Test', lastName: 'User', newsLetter: false, trackEvents: false } })
         expect(response.statusCode, response.body).toBeGreaterThanOrEqual(400)
-        expect((await ds.getRepository(UserIdentityEntity).findOneByOrFail({ email })).verified).toBe(false)
-        expect(sendOtp).toHaveBeenCalledTimes(1)
+        expect(response.statusCode, response.body).toBe(403)
+        expect(await ds.getRepository(UserIdentityEntity).existsBy({ email })).toBe(false)
+        expect(sendOtp).not.toHaveBeenCalled()
         expect(await ds.getRepository(HostingAccountEntity).count()).toBe(1)
-        const proof = { email, code: sendOtp.mock.calls[0][0].otp, newPassword: 'Owner-password456!' }
-        const verified = await app.inject({ method: 'POST', url: '/api/v1/hosting/verify-email', payload: proof })
-        expect(verified.statusCode, verified.body).toBe(200)
-        expect(verified.json().verified).toBe(true)
-        expect(await ds.getRepository(HostingAccountEntity).count()).toBe(2)
-        expect((await app.inject({ method: 'POST', url: '/api/v1/hosting/verify-email', payload: proof })).statusCode).toBeGreaterThanOrEqual(400)
-        const oldPassword = await app.inject({ method: 'POST', url: '/api/v1/authentication/sign-in', payload: { email, password: 'Valid-password123!' } })
-        expect(oldPassword.statusCode).toBeGreaterThanOrEqual(400)
-        const signedIn = await app.inject({ method: 'POST', url: '/api/v1/authentication/sign-in', payload: { email, password: proof.newPassword } })
-        expect(signedIn.statusCode, signedIn.body).toBe(200)
-        expect(signedIn.json().platformId).toBe(verified.json().platformId)
     })
-    it('recovers unverified identities after consumed proof plus database failure without revealing account existence', async () => {
+    it('recovers email proof after a database failure while refusing public pilot provisioning', async () => {
         const identityId = await identity(false)
         const stored = await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: identityId })
         await otpService(app.log).createAndSend({ platformId: null, email: stored.email, type: OtpType.EMAIL_VERIFICATION })
@@ -164,14 +170,22 @@ describe('authenticated hosted onboarding', () => {
             const failed = await app.inject({ method: 'POST', url: '/api/v1/hosting/verify-email', payload: { email: stored.email, code: old, newPassword: 'Owner-password456!' } })
             expect(failed.statusCode).toBe(500)
         }
-        finally { await ds.query('ALTER TABLE user_identity DROP CONSTRAINT test_fail_verify') }
+        finally {
+            await ds.query('ALTER TABLE user_identity DROP CONSTRAINT test_fail_verify')
+        }
         const resend = await app.inject({ method: 'POST', url: '/api/v1/hosting/verification-code', payload: { email: stored.email } })
         const absent = await app.inject({ method: 'POST', url: '/api/v1/hosting/verification-code', payload: { email: 'absent@example.com' } })
-        expect([resend.statusCode, absent.statusCode]).toEqual([204, 204])
+        expect([resend.statusCode, absent.statusCode], resend.body + absent.body).toEqual([403, 403])
+        expect(sendOtp).toHaveBeenCalledTimes(1)
+        // Delivery is unavailable publicly; a trusted fixture issues a new OTP
+        // to exercise retry after the failed proof transaction.
+        await otpService(app.log).createAndSend({ platformId: null, email: stored.email, type: OtpType.EMAIL_VERIFICATION })
         expect(sendOtp).toHaveBeenCalledTimes(2)
         const result = await app.inject({ method: 'POST', url: '/api/v1/hosting/verify-email', payload: { email: stored.email, code: sendOtp.mock.calls[1][0].otp, newPassword: 'Owner-password456!' } })
-        expect(result.statusCode, result.body).toBe(200)
-        expect(await ds.getRepository(HostingAccountEntity).count()).toBe(1)
+        expect(result.statusCode, result.body).toBe(403)
+        expect(result.json().code).toBe('HOSTING_OPERATOR_PROVISIONING_REQUIRED')
+        expect((await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: identityId })).verified).toBe(true)
+        expect(await ds.getRepository(HostingAccountEntity).count()).toBe(0)
     })
     it('scopes invitations, selection and balances to authenticated membership and refuses identity spoofing', async () => {
         const first = await tenant(), other = await tenant()
@@ -279,22 +293,26 @@ describe('durable hosted execution coordinator', () => {
         await expect(execution.admit({ ...value.delivery, queueToken: 'a' })).rejects.toThrow('HOSTING_JOB_PROVENANCE_REQUIRED')
         await expect(execution.prepare(value.delivery)).rejects.toThrow('HOSTING_JOB_PROVENANCE_REQUIRED')
         await expect(execution.prepare({ ...value.delivery, data: { ...value.data, jobType: WorkerJobType.EXECUTE_POLLING, triggerType: 'PIECE_TRIGGER' } })).rejects.toThrow()
-        await expect(jobQueue(app.log).add({ id: apId(), type: JobType.ONE_TIME, data: { ...value.data, executionType: ExecutionType.RESUME, resumeReason: 'RETRY' } })).rejects.toThrow('HOSTING_SEGMENT_COORDINATOR_REQUIRED')
+        await expect(jobQueue(app.log).add({ id: apId(), type: JobType.ONE_TIME, data: { ...value.data, executionType: ExecutionType.RESUME, resumeReason: 'RETRY' } })).rejects.toThrow('HOSTING_WAITPOINT_REQUIRED')
     })
     it('rolls back reservation and binding admission together when a write fails', async () => {
         const value = await flow()
         await execution.prepare({ ...value.delivery, origin: value.origin })
-        await ds.query("ALTER TABLE hosting_dispatch ADD CONSTRAINT test_fail_admit CHECK (state <> 'admitted') NOT VALID")
-        try { await expect(execution.admit({ ...value.delivery, queueToken: 'a' })).rejects.toThrow() }
-        finally { await ds.query('ALTER TABLE hosting_dispatch DROP CONSTRAINT test_fail_admit') }
+        await ds.query('ALTER TABLE hosting_dispatch ADD CONSTRAINT test_fail_admit CHECK (state <> \'admitted\') NOT VALID')
+        try {
+            await expect(execution.admit({ ...value.delivery, queueToken: 'a' })).rejects.toThrow()
+        }
+        finally {
+            await ds.query('ALTER TABLE hosting_dispatch DROP CONSTRAINT test_fail_admit')
+        }
         expect(await ds.getRepository(HostingReservationEntity).countBy({ platformId: value.platformId })).toBe(0)
         expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(0)
         await expect(hostingTransactions.run({ dataSource: ds, manager: ds.manager, fn: async () => true })).rejects.toThrow('HOSTING_TRANSACTION_REQUIRED')
     })
-    it('holds paused and internal-error outcomes for explicit recovery', async () => {
+    it('refuses uncheckpointed pause and holds internal errors for explicit recovery', async () => {
         const value = await started()
-        await execution.flowReceipt({ admissionId: value.admissionId, projectId: value.projectId, runId: value.data.runId, status: FlowRunStatus.PAUSED })
-        await execution.complete({ ...value.fence, status: EngineResponseStatus.OK })
+        await expect(execution.flowReceipt({ admissionId: value.admissionId, projectId: value.projectId, runId: value.data.runId, status: FlowRunStatus.PAUSED })).rejects.toThrow('HOSTING_CHECKPOINT_REQUIRED')
+        await execution.complete({ ...value.fence, status: EngineResponseStatus.INTERNAL_ERROR })
         expect((await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ admissionId: value.admissionId })).state).toBe('uncertain')
         expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(1)
     })
@@ -348,9 +366,9 @@ describe('durable hosted execution coordinator', () => {
     it('uses persisted CHAT ownership/run and denies duplicate roots on a fresh queue id', async () => {
         const value = await chat()
         await execution.prepare({ ...value.delivery, origin: value.origin })
-        await expect(execution.prepare({ ...value.delivery, jobId: apId(), origin: value.origin })).rejects.toThrow('HOSTING_SEGMENT_COORDINATOR_REQUIRED')
+        await expect(execution.prepare({ ...value.delivery, jobId: apId(), origin: value.origin })).rejects.toThrow(/idx_hosting_dispatch_root|HOSTING_SEGMENT_COORDINATOR_REQUIRED/)
         const other = await tenant()
-        await expect(execution.prepare({ ...value.delivery, jobId: apId(), data: { ...value.data, userId: other.userId }, origin: { ...value.origin, userId: other.userId } })).rejects.toThrow('HOSTING_JOB_PROVENANCE_REQUIRED')
+        await expect(execution.prepare({ ...value.delivery, jobId: apId(), data: { ...value.data, userId: other.userId }, origin: { ...value.origin, userId: other.userId } })).rejects.toThrow('HOSTING_ACCESS_DENIED')
         const admissionId = await execution.admit({ ...value.delivery, queueToken: 'chat' })
         expect(await execution.start({ ...value.delivery, admissionId, queueToken: 'chat', connectionId: 'socket-chat' })).toBe(true)
         await execution.complete({ ...value.delivery, admissionId, queueToken: 'chat', connectionId: 'socket-chat', status: EngineResponseStatus.OK })
@@ -360,7 +378,7 @@ describe('durable hosted execution coordinator', () => {
         const value = await flow()
         await expect(execution.prepare({ ...value.delivery, origin: { type: 'scheduled' } })).rejects.toThrow('HOSTING_JOB_PROVENANCE_REQUIRED')
         await ds.getRepository(FlowRunEntity).update({ id: value.data.runId }, { parentRunId: apId() })
-        await expect(execution.prepare({ ...value.delivery, origin: value.origin })).rejects.toThrow('HOSTING_NESTED_COORDINATOR_REQUIRED')
+        await expect(execution.prepare({ ...value.delivery, origin: value.origin })).rejects.toThrow('HOSTING_AUTHENTICATED_NESTED_CALL_REQUIRED')
     })
     it('keeps execution charged and completed after Redis acknowledgement failure and redelivery', async () => {
         const value = await chat()
@@ -371,8 +389,12 @@ describe('durable hosted execution coordinator', () => {
         if (!delivered) throw new Error('Missing delivery')
         expect(await jobBroker(app.log).startJob(delivered, 'socket-ack')).toBe(true)
         const ack = vi.spyOn(Job.prototype, 'moveToCompleted').mockRejectedValueOnce(new Error('synthetic ack failure'))
-        try { await jobBroker(app.log).completeJob({ ...delivered, status: EngineResponseStatus.OK }, 'socket-ack') }
-        finally { ack.mockRestore() }
+        try {
+            await jobBroker(app.log).completeJob({ ...delivered, status: EngineResponseStatus.OK }, 'socket-ack')
+        }
+        finally {
+            ack.mockRestore()
+        }
         expect((await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ admissionId: delivered.admissionId })).state).toBe('completed')
         expect(await jobBroker(app.log).startJob(delivered, 'socket-ack')).toBe(false)
         await jobBroker(app.log).completeJob({ ...delivered, status: EngineResponseStatus.OK }, 'socket-ack')
@@ -386,7 +408,9 @@ describe('durable hosted execution coordinator', () => {
         await queue.add(value.delivery.jobId, value.data, { jobId: value.delivery.jobId })
         const adapter = createHostedExecution({ dataSource: ds })
         const originalAdmission = adapter.admit.bind(adapter)
-        const admit = vi.spyOn(adapter, 'admit').mockImplementationOnce(async params => { await originalAdmission(params); throw new Error('synthetic connection loss after commit') })
+        const admit = vi.spyOn(adapter, 'admit').mockImplementationOnce(async params => {
+            await originalAdmission(params); throw new Error('synthetic connection loss after commit')
+        })
         const factory = vi.spyOn(hostingServices, 'execution').mockReturnValue(adapter)
         try {
             const delivered = await jobBroker(app.log).poll(queue.name, 'socket-recovery')
@@ -396,17 +420,25 @@ describe('durable hosted execution coordinator', () => {
             await jobBroker(app.log).completeJob({ ...delivered, status: EngineResponseStatus.OK }, 'socket-recovery')
             expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ platformId: value.platformId, meter: 'execution' })).consumed).toBe(1n)
         }
-        finally { factory.mockRestore(); admit.mockRestore(); await queue.obliterate({ force: true }) }
+        finally {
+            factory.mockRestore(); admit.mockRestore(); await queue.obliterate({ force: true })
+        }
     })
     it('rechecks callback admission after waiting for the account lock during rebind', async () => {
         const value = await flow()
         await execution.prepare({ ...value.delivery, origin: value.origin })
         const old = await execution.admit({ ...value.delivery, queueToken: 'old' })
         let enter = () => {}, unblock = () => {}
-        const entered = new Promise<void>(resolve => { enter = resolve })
-        const gate = new Promise<void>(resolve => { unblock = resolve })
+        const entered = new Promise<void>(resolve => {
+            enter = resolve
+        })
+        const gate = new Promise<void>(resolve => {
+            unblock = resolve
+        })
         const lock = hostingTransactions.account
-        const barrier = vi.spyOn(hostingTransactions, 'account').mockImplementationOnce(async params => { enter(); await gate; return lock(params) })
+        const barrier = vi.spyOn(hostingTransactions, 'account').mockImplementationOnce(async params => {
+            enter(); await gate; return lock(params)
+        })
         const receipt = execution.flowReceipt({ admissionId: old, projectId: value.projectId, runId: value.data.runId, status: FlowRunStatus.SUCCEEDED })
         const denied = expect(receipt).rejects.toThrow('HOSTING_DISPATCH_FENCE_MISMATCH')
         try {
@@ -417,7 +449,9 @@ describe('durable hosted execution coordinator', () => {
             unblock()
             await denied
         }
-        finally { unblock(); barrier.mockRestore() }
+        finally {
+            unblock(); barrier.mockRestore()
+        }
     })
     it('keeps a started broker delivery uncertain on disconnect without returning it to the queue', async () => {
         const value = await chat()

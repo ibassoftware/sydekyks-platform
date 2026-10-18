@@ -1,3 +1,5 @@
+import { apVersionUtil } from '@activepieces/server-utils'
+import { HOSTED_RUNTIME_CAPABILITIES, HOSTED_RUNTIME_PROFILE } from '@activepieces/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { values } = vi.hoisted(() => ({ values: new Map<string, string>() }))
@@ -17,6 +19,7 @@ describe('hosting configuration', () => {
         values.set('EXECUTION_MODE', 'SANDBOX_CODE_ONLY')
         values.set('HOSTED_STRIPE_SECRET_KEY', 'sk_test_disposable')
         values.set('HOSTED_STRIPE_WEBHOOK_SECRET', 'whsec_disposable')
+        values.set('HOSTED_OPERATOR_IDENTITY_IDS', 'testoperatoridentity1')
     }
 
     it('requires no hosting configuration for existing self-hosted installations', () => {
@@ -39,16 +42,23 @@ describe('hosting configuration', () => {
         hostedDefaults()
         values.set('HOSTED_STRIPE_SECRET_KEY', key)
         expect(() => hostingConfiguration.validate()).toThrow('live billing is disabled')
-        try { hostingConfiguration.validate() }
+        try {
+            hostingConfiguration.validate()
+        }
         catch (error) {
             if (key) expect(String(error)).not.toContain(key)
         }
     })
 
-    it('validates test configuration but does not enable unfinished hosted execution', () => {
+    it('permits only validated bounded hosted configuration', () => {
         hostedDefaults()
         expect(hostingConfiguration.validate()).toBe('hosted')
-        expect(() => hostingConfiguration.assertRuntimeAvailable({ mode: 'hosted' })).toThrow('HOSTED_IMPLEMENTATION_INCOMPLETE')
+        expect(() => hostingConfiguration.assertRuntimeAvailable({ mode: 'hosted' })).not.toThrow()
+        const workerProps = { serviceMode: 'hosted', accountingProtocol: 1, runtimeProfile: HOSTED_RUNTIME_PROFILE, capabilities: [...HOSTED_RUNTIME_CAPABILITIES], version: apVersionUtil.getCurrentRelease(), EXECUTION_MODE: 'SANDBOX_CODE_ONLY' }
+        expect(hostingWorkerGate.isCompatible({ workerProps })).toBe(true)
+        expect(hostingWorkerGate.isCompatible({ workerProps: { ...workerProps, version: 'obsolete' } })).toBe(false)
+        values.delete('HOSTED_OPERATOR_IDENTITY_IDS')
+        expect(() => hostingConfiguration.validate()).toThrow('operator identity allowlist')
     })
 
     it('withholds all hosted work even from a worker claiming future protocol support', () => {

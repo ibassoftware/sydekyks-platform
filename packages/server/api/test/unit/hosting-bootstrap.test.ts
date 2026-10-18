@@ -35,10 +35,10 @@ describe('hosting bootstrap', () => {
         expect(runtime).not.toHaveBeenCalled()
     })
 
-    it('checks installation mode before refusing unfinished hosted execution', async () => {
+    it('checks installation mode before final hosted runtime validation', async () => {
         validate.mockReturnValue('hosted')
-        runtime.mockImplementation(() => { throw new Error('HOSTED_IMPLEMENTATION_INCOMPLETE') })
-        await expect(hostingBootstrap.verify()).rejects.toThrow('HOSTED_IMPLEMENTATION_INCOMPLETE')
+        runtime.mockImplementation(() => { throw new Error('unsafe hosted runtime configuration') })
+        await expect(hostingBootstrap.verify()).rejects.toThrow('unsafe hosted runtime configuration')
         expect(verify).toHaveBeenCalledWith({ dataSource: { name: 'disposable' }, mode: 'hosted' })
         expect(verify.mock.invocationCallOrder[0]).toBeLessThan(runtime.mock.invocationCallOrder[0])
     })

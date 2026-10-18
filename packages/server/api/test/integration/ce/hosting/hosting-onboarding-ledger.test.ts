@@ -2,13 +2,11 @@ import { randomBytes } from 'node:crypto'
 import { apId } from '@activepieces/core-utils'
 import { PlatformRole, UserStatus } from '@activepieces/shared'
 import { DataSource } from 'typeorm'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { UserIdentityEntity } from '../../../../src/app/authentication/user-identity/user-identity-entity'
 import { commonProperties } from '../../../../src/app/database/database-connection'
-import { SydekyksInitialSchema1880000000000 } from '../../../../src/app/database/migration/postgres/1880000000000-SydekyksInitialSchema'
-import { SydekyksUpstream1031881000000000 } from '../../../../src/app/database/migration/postgres/1881000000000-SydekyksUpstream103'
 import { SydekyksHostingLedger1882000000000 } from '../../../../src/app/database/migration/postgres/1882000000000-SydekyksHostingLedger'
-import { SydekyksHostingDispatch1883000000000 } from '../../../../src/app/database/migration/postgres/1883000000000-SydekyksHostingDispatch'
+import { getMigrations } from '../../../../src/app/database/postgres-connection'
 import { FlagEntity } from '../../../../src/app/flags/flag.entity'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingEligibilityEntity, HostingGrantEntity, HostingInvitationEntity, HostingLedgerEntity, HostingOutboxEntity, HostingReservationEntity } from '../../../../src/app/hosting/hosting-entities'
 import { INSTALLATION_MODE_FLAG_ID } from '../../../../src/app/hosting/hosting-installation'
@@ -18,6 +16,7 @@ import { McpOAuthTokenEntity } from '../../../../src/app/mcp/oauth/token/mcp-oau
 import { PlatformEntity } from '../../../../src/app/platform/platform.entity'
 import { ProjectEntity } from '../../../../src/app/project/project-entity'
 import { UserEntity } from '../../../../src/app/user/user-entity'
+import { bootstrapHostedOperator } from '../../../helpers/hosting-fixtures'
 
 const schema = `hosting_ledger_${randomBytes(6).toString('hex')}`
 const ds = new DataSource({ type: 'postgres', host: '127.0.0.1', port: Number(process.env['HOSTING_TEST_POSTGRES_PORT'] ?? '55439'), username: process.env['HOSTING_TEST_POSTGRES_USER'] ?? 'hosting_tests', password: process.env['HOSTING_TEST_POSTGRES_PASSWORD'] ?? 'disposable-only', database: process.env['HOSTING_TEST_POSTGRES_DATABASE'] ?? 'hosting_tests', schema, extra: { options: `-c search_path=${schema},public` }, ...commonProperties })
@@ -32,16 +31,20 @@ beforeAll(async () => {
     await runner.createSchema(schema, true)
     try {
         await runner.startTransaction()
-        await new SydekyksInitialSchema1880000000000().up(runner)
-        await new SydekyksUpstream1031881000000000().up(runner)
-        await migration.up(runner)
-        await new SydekyksHostingDispatch1883000000000().up(runner)
+        for (const Migration of getMigrations()) await new Migration().up(runner)
         await runner.commitTransaction()
     }
-    finally { if (runner.isTransactionActive) await runner.rollbackTransaction(); await runner.release() }
+    finally {
+        if (runner.isTransactionActive) await runner.rollbackTransaction(); await runner.release()
+    }
 })
-afterAll(async () => { if (ds.isInitialized) { await ds.query(`DROP SCHEMA "${schema}" CASCADE`); await ds.destroy() } })
+afterAll(async () => {
+    if (ds.isInitialized) {
+        await ds.query(`DROP SCHEMA "${schema}" CASCADE`); await ds.destroy()
+    }
+})
 beforeEach(async () => {
+    vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', '')
     await ds.query(`TRUNCATE ${ds.entityMetadatas.map(entity => `"${schema}"."${entity.tableName}"`).join(', ')} CASCADE`)
     await ds.getRepository(FlagEntity).insert({ id: INSTALLATION_MODE_FLAG_ID, value: { schemaVersion: 1, serviceMode: 'hosted' } })
 })
@@ -53,7 +56,7 @@ async function identity({ email = `${apId()}@example.com`, verified = true }: { 
 }
 async function tenant() {
     const identityId = await identity()
-    const value = await onboarding.provision({ identityId, name: 'Hosted test' })
+    const value = await bootstrapHostedOperator(ds, onboarding, identityId)
     if (!value.projectId) throw new Error('Missing project')
     return { ...value, projectId: value.projectId, actor: { platformId: value.platformId, identityId } }
 }
@@ -75,7 +78,7 @@ async function managed() {
 describe('hosted tenant onboarding', () => {
     it('provisions concurrent verified retries once with trial grants and no card requirement', async () => {
         const identityId = await identity()
-        const outcomes = await Promise.all(Array.from({ length: 8 }, () => onboarding.provision({ identityId, name: 'Tenant' })))
+        const outcomes = await Promise.all(Array.from({ length: 8 }, () => bootstrapHostedOperator(ds, onboarding, identityId, 'Tenant')))
         expect(new Set(outcomes.map(value => value.platformId)).size).toBe(1)
         expect(outcomes.filter(value => value.created)).toHaveLength(1)
         expect(await ds.getRepository(PlatformEntity).count()).toBe(1)
@@ -91,18 +94,22 @@ describe('hosted tenant onboarding', () => {
     })
     it('rejects unverified identities, self-hosted installation and stale sessions', async () => {
         const identityId = await identity({ verified: false })
-        await expect(onboarding.provision({ identityId, name: 'Tenant' })).rejects.toThrow('HOSTING_VERIFIED_IDENTITY_REQUIRED')
+        await expect(bootstrapHostedOperator(ds, onboarding, identityId, 'Tenant')).rejects.toThrow('HOSTING_VERIFIED_IDENTITY_REQUIRED')
         await ds.getRepository(UserIdentityEntity).update({ id: identityId }, { verified: true })
-        await onboarding.provision({ identityId, name: 'Tenant', expectedTokenVersion: 'initial' })
+        await bootstrapHostedOperator(ds, onboarding, identityId, 'Tenant')
         await expect(onboarding.provision({ identityId, name: 'Tenant', expectedTokenVersion: 'initial' })).rejects.toThrow('HOSTING_SESSION_EXPIRED')
         await ds.getRepository(FlagEntity).update({ id: INSTALLATION_MODE_FLAG_ID }, { value: { schemaVersion: 1, serviceMode: 'self_hosted' } })
-        await expect(onboarding.provision({ identityId, name: 'Tenant' })).rejects.toThrow('HOSTED_INSTALLATION_REQUIRED')
+        await expect(bootstrapHostedOperator(ds, onboarding, identityId, 'Tenant')).rejects.toThrow('HOSTED_INSTALLATION_REQUIRED')
     })
     it('rolls back the whole account when the transactional outbox fails', async () => {
         const identityId = await identity()
         await ds.query('ALTER TABLE hosting_outbox ADD CONSTRAINT test_reject_event CHECK (false) NOT VALID')
-        try { await expect(onboarding.provision({ identityId, name: 'Tenant' })).rejects.toThrow() }
-        finally { await ds.query('ALTER TABLE hosting_outbox DROP CONSTRAINT test_reject_event') }
+        try {
+            await expect(bootstrapHostedOperator(ds, onboarding, identityId, 'Tenant')).rejects.toThrow()
+        }
+        finally {
+            await ds.query('ALTER TABLE hosting_outbox DROP CONSTRAINT test_reject_event')
+        }
         expect(await ds.getRepository(PlatformEntity).count()).toBe(0)
         expect(await ds.getRepository(HostingEligibilityEntity).count()).toBe(0)
         expect(await ds.getRepository(HostingGrantEntity).count()).toBe(0)
@@ -278,7 +285,9 @@ describe('hosted credit and liability ledger', () => {
             await runner.commitTransaction()
             await outcome
         }
-        finally { if (runner.isTransactionActive) await runner.rollbackTransaction(); await runner.release() }
+        finally {
+            if (runner.isTransactionActive) await runner.rollbackTransaction(); await runner.release()
+        }
     })
     it('enforces the last managed grant unit and rejects conflicting call retries', async () => {
         const value = await running()
@@ -327,15 +336,23 @@ describe('hosted credit and liability ledger', () => {
     it('rolls back settlement and release when their ledger entries fail', async () => {
         const value = await managed()
         await ds.query('ALTER TABLE hosting_ledger ADD CONSTRAINT test_reject_settle CHECK (false) NOT VALID')
-        try { await expect(ledger.settleManagedCall({ ...value.callFence, actualCostMicroUsd: 40n })).rejects.toThrow() }
-        finally { await ds.query('ALTER TABLE hosting_ledger DROP CONSTRAINT test_reject_settle') }
+        try {
+            await expect(ledger.settleManagedCall({ ...value.callFence, actualCostMicroUsd: 40n })).rejects.toThrow()
+        }
+        finally {
+            await ds.query('ALTER TABLE hosting_ledger DROP CONSTRAINT test_reject_settle')
+        }
         expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: value.call.grantId })).reserved).toBe(100n)
         expect((await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: value.call.id })).state).toBe('running')
         await ledger.settleManagedCall({ ...value.callFence, actualCostMicroUsd: 0n })
         const unsent = await ledger.reserveManagedCall({ actor: value.actor, rootReservationId: value.root.id, key: 'rollback-release', maxCostMicroUsd: 50n })
         await ds.query('ALTER TABLE hosting_ledger ADD CONSTRAINT test_reject_release CHECK (false) NOT VALID')
-        try { await expect(ledger.releaseUnsent({ actor: value.actor, reservationId: unsent.id })).rejects.toThrow() }
-        finally { await ds.query('ALTER TABLE hosting_ledger DROP CONSTRAINT test_reject_release') }
+        try {
+            await expect(ledger.releaseUnsent({ actor: value.actor, reservationId: unsent.id })).rejects.toThrow()
+        }
+        finally {
+            await ds.query('ALTER TABLE hosting_ledger DROP CONSTRAINT test_reject_release')
+        }
         expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: unsent.grantId })).reserved).toBe(50n)
         expect((await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: unsent.id })).state).toBe('reserved')
     })
@@ -353,7 +370,8 @@ describe('hosted credit and liability ledger', () => {
     })
     it('enforces last execution credit with spare concurrency', async () => {
         const value = await tenant()
-        await ds.getRepository(HostingAccountEntity).update({ id: value.platformId }, { planId: 'team' })
+        await ds.getRepository(HostingAccountEntity).update({ id: value.platformId }, { planId: 'team', status: 'active' })
+        await ds.getRepository(HostingGrantEntity).update({ platformId: value.platformId }, { sourceKey: 'stripe:synthetic-team-period' })
         await ds.getRepository(HostingGrantEntity).update({ platformId: value.platformId, meter: 'execution' }, { amount: 1n })
         const outcomes = await Promise.allSettled(Array.from({ length: 6 }, (_, i) => ledger.reserveExecution({ actor: value.actor, projectId: value.projectId, key: `credit:${i}`, payer: 'managed' })))
         expect(outcomes.filter(result => result.status === 'fulfilled')).toHaveLength(1)
@@ -392,8 +410,12 @@ describe('hosted credit and liability ledger', () => {
     it('rolls back balance/slot changes if immutable ledger insertion fails', async () => {
         const value = await tenant()
         await ds.query('ALTER TABLE hosting_ledger ADD CONSTRAINT test_reject_entry CHECK (false) NOT VALID')
-        try { await expect(ledger.reserveExecution({ actor: value.actor, projectId: value.projectId, key: 'atomic', payer: 'managed' })).rejects.toThrow() }
-        finally { await ds.query('ALTER TABLE hosting_ledger DROP CONSTRAINT test_reject_entry') }
+        try {
+            await expect(ledger.reserveExecution({ actor: value.actor, projectId: value.projectId, key: 'atomic', payer: 'managed' })).rejects.toThrow()
+        }
+        finally {
+            await ds.query('ALTER TABLE hosting_ledger DROP CONSTRAINT test_reject_entry')
+        }
         expect(await ds.getRepository(HostingReservationEntity).count()).toBe(0)
         expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(0)
         expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ platformId: value.platformId, meter: 'execution' })).reserved).toBe(0n)
@@ -404,16 +426,28 @@ describe('additive hosting migration', () => {
     it('rolls back empty tables without modifying self-hosted records and can reapply', async () => {
         const identityId = await identity()
         const runner = ds.createQueryRunner()
-        try { await runner.startTransaction(); await new SydekyksHostingDispatch1883000000000().down(runner); await migration.down(runner); await migration.up(runner); await new SydekyksHostingDispatch1883000000000().up(runner); await runner.commitTransaction() }
-        finally { if (runner.isTransactionActive) await runner.rollbackTransaction(); await runner.release() }
+        const additions = getMigrations().slice(2)
+        try {
+            await runner.startTransaction()
+            for (const Migration of [...additions].reverse()) await new Migration().down(runner)
+            for (const Migration of additions) await new Migration().up(runner)
+            await runner.commitTransaction()
+        }
+        finally {
+            if (runner.isTransactionActive) await runner.rollbackTransaction(); await runner.release()
+        }
         expect(await ds.getRepository(UserIdentityEntity).existsBy({ id: identityId })).toBe(true)
         expect(await ds.getRepository(FlagEntity).existsBy({ id: INSTALLATION_MODE_FLAG_ID })).toBe(true)
     })
     it('refuses rollback that would erase financial or eligibility evidence', async () => {
         const value = await tenant()
         const runner = ds.createQueryRunner()
-        try { await runner.startTransaction(); await expect(migration.down(runner)).rejects.toThrow('HOSTING_ROLLBACK_REQUIRES_EMPTY_TABLES'); await runner.rollbackTransaction() }
-        finally { await runner.release() }
+        try {
+            await runner.startTransaction(); await expect(migration.down(runner)).rejects.toThrow('HOSTING_ROLLBACK_REQUIRES_EMPTY_TABLES'); await runner.rollbackTransaction()
+        }
+        finally {
+            await runner.release()
+        }
         expect(await ds.getRepository(HostingAccountEntity).existsBy({ id: value.platformId })).toBe(true)
         expect(await ds.getRepository(HostingEligibilityEntity).count()).toBe(1)
     })

@@ -11,8 +11,15 @@ describe('hosted plan catalog', () => {
         expect(hostingCatalog.dailyTrialOperatorCostLimitMicroUsd).toBe(10_000_000)
     })
 
-    it.each(['trial', 'starter', 'team'] as const)('includes BYOK in %s', (planId) => {
+    it.each(['trial', 'training', 'starter', 'team'] as const)('includes BYOK in %s', (planId) => {
         expect(hostingCatalog.getPlan({ planId }).byokEnabled).toBe(true)
+    })
+
+    it('bounds training to fixed30day periods and two or three grants', () => {
+        expect(hostingCatalog.trainingPeriodDays).toBe(30)
+        expect(hostingCatalog.trainingPeriods).toEqual({ core: 2, launch: 3 })
+        expect(hostingCatalog.getPlan({ planId: 'training' }).aiCredits).toBe(5000)
+        expect(Object.isFrozen(hostingCatalog.trainingPeriods)).toBe(true)
     })
 
     it('does not permit changing the catalog or a shared plan object', () => {

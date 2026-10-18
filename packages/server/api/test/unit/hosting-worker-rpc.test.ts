@@ -1,4 +1,5 @@
-import { WorkerMachineHealthcheckRequest, WorkerProps } from '@activepieces/shared'
+import { apVersionUtil } from '@activepieces/server-utils'
+import { HOSTED_RUNTIME_CAPABILITIES, HOSTED_RUNTIME_PROFILE, WorkerMachineHealthcheckRequest, WorkerProps } from '@activepieces/shared'
 import fastify from 'fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -49,6 +50,18 @@ describe('connection-bound hosting worker gates', () => {
         await expect(createHandlers(log, null, 'socket-a').startJob(job)).resolves.toBe(true)
         expect(start).toHaveBeenCalledWith(job, 'socket-a')
         await expect(createHandlers(log).startJob(job)).resolves.toBe(false)
+        expect(start).toHaveBeenCalledTimes(1)
+    })
+
+    it('admits the exact pilot declaration and fences a revoked connection', async () => {
+        vi.stubEnv('AP_SERVICE_MODE', 'hosted')
+        const props: WorkerProps = { serviceMode: 'hosted', accountingProtocol: 1, runtimeProfile: HOSTED_RUNTIME_PROFILE, capabilities: [...HOSTED_RUNTIME_CAPABILITIES], version: apVersionUtil.getCurrentRelease(), EXECUTION_MODE: 'SANDBOX_CODE_ONLY' }
+        const abort = new AbortController()
+        const rpc = createHandlers(log, null, 'socket-pilot', props, abort.signal)
+        await expect(rpc.startJob(job)).resolves.toBe(true)
+        expect(start).toHaveBeenCalledWith(job, 'socket-pilot')
+        abort.abort()
+        await expect(rpc.startJob(job)).resolves.toBe(false)
         expect(start).toHaveBeenCalledTimes(1)
     })
 
