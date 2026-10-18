@@ -20,14 +20,15 @@ import { FlowVersionEntity } from '../flows/flow-version/flow-version-entity'
 import { FolderEntity } from '../flows/folder/folder.entity'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
-import { LMS_ENTITIES } from '../lms/lms-entities'
-import { HostingDispatchEntity } from '../hosting/hosting-dispatch-entity'
 import { HOSTING_ACCESS_ENTITIES } from '../hosting/hosting-access-entities'
+import { HostingDispatchEntity } from '../hosting/hosting-dispatch-entity'
 import { HOSTING_ENTITIES } from '../hosting/hosting-entities'
 import { HostingModelCallEntity } from '../hosting/hosting-model-call-entity'
 import { HOSTING_STRIPE_ENTITIES } from '../hosting/hosting-stripe-entities'
+import { HostingTrainingEntity } from '../hosting/hosting-training-entity'
 import { KnowledgeBaseChunkEntity } from '../knowledge-base/knowledge-base-chunk.entity'
 import { KnowledgeBaseFileEntity } from '../knowledge-base/knowledge-base-file.entity'
+import { LMS_ENTITIES } from '../lms/lms-entities'
 import { McpActivityEntity } from '../mcp/activity/mcp-activity-entity'
 import { McpServerEntity } from '../mcp/mcp-entity'
 import { McpOAuthClientEntity } from '../mcp/oauth/client/mcp-oauth-client.entity'
@@ -73,6 +74,7 @@ function getEntities(): EntitySchema<unknown>[] {
         ...HOSTING_STRIPE_ENTITIES,
         HostingDispatchEntity,
         HostingModelCallEntity,
+        HostingTrainingEntity,
         TriggerEventEntity,
         AppEventRoutingEntity,
         FileEntity,

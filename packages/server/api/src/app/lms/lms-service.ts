@@ -7,6 +7,7 @@ import { UserIdentityEntity } from '../authentication/user-identity/user-identit
 import { databaseConnection } from '../database/database-connection'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
+import { HostingActor } from '../hosting/hosting-transactions'
 import { UserEntity } from '../user/user-entity'
 import { LmsCertificate, LmsCertificateEntity, LmsCourse, LmsCourseEntity, LmsEnrollment, LmsEnrollmentEntity, LmsExamAttempt, LmsExamAttemptEntity } from './lms-entities'
 import { Question } from './lms-schema'
@@ -19,7 +20,7 @@ export class LmsError extends Error {
 export const fail = (message: string, status = 403): never => {
     throw new LmsError(message, status) 
 }
-export type LmsActor = { identityId: string, operator: boolean }
+export type LmsActor = HostingActor & { operator: boolean }
 export async function lmsActor(manager: EntityManager, request: FastifyRequest): Promise<LmsActor> {
     if (request.principal.type !== PrincipalType.USER) return fail('LMS_USER_REQUIRED')
     const principal = request.principal
@@ -28,7 +29,7 @@ export async function lmsActor(manager: EntityManager, request: FastifyRequest):
     const identity = await manager.getRepository(UserIdentityEntity).findOneBy({ id: user.identityId })
     if (!identity?.verified || (identity.tokenVersion ?? null) !== (principal.tokenVersion ?? null)) return fail('LMS_SESSION_EXPIRED')
     const allowed = (system.get(AppSystemProp.HOSTED_OPERATOR_IDENTITY_IDS) ?? '').split(',').map(value => value.trim()).filter(value => /^[a-zA-Z0-9_-]{21}$/.test(value))
-    return { identityId: identity.id, operator: allowed.includes(identity.id) && user.platformRole === PlatformRole.ADMIN }
+    return { identityId: identity.id, platformId: principal.platform.id, tokenVersion: principal.tokenVersion ?? null, operator: allowed.includes(identity.id) && user.platformRole === PlatformRole.ADMIN }
 }
 export async function lmsTransaction<T>(request: FastifyRequest, fn: (manager: EntityManager, actor: LmsActor, now: Date) => Promise<T>): Promise<T> {
     return databaseConnection().transaction(async manager => {

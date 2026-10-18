@@ -1,10 +1,13 @@
 import { ActivepiecesError, apId } from '@activepieces/core-utils'
 import { PrincipalType } from '@activepieces/shared'
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { IsNull } from 'typeorm'
 import { z } from 'zod'
 import { UserIdentityEntity } from '../authentication/user-identity/user-identity-entity'
 import { securityAccess } from '../core/security/authorization/fastify-security'
 import { databaseConnection } from '../database/database-connection'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { createLearningFulfillment } from '../hosting/hosting-learning-fulfillment'
 import { PlatformEntity } from '../platform/platform.entity'
 import { foundingCourseDraft } from './lms-content'
 import { LmsCertificateEntity, LmsCourseEntity, LmsEnrollmentEntity, LmsExamAttemptEntity } from './lms-entities'
@@ -156,16 +159,20 @@ export const lmsController: FastifyPluginAsyncZod = async app => {
     }))
     app.post('/operator/enrollments/:id/revoke', { config, schema: { params: enrollmentParams } }, async request => lmsTransaction(request, async (manager, actor, now) => {
         requireOperator(actor)
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            await createLearningFulfillment({ dataSource: databaseConnection(), manager }).revoke({ actor, enrollmentId: request.params.id })
+            return { revoked: true }
+        }
         const enrollment = await manager.getRepository(LmsEnrollmentEntity).findOne({ where: { id: request.params.id }, lock: { mode: 'pessimistic_write' } })
         if (!enrollment) return fail('LMS_ENROLLMENT_NOT_FOUND', 404)
         enrollment.status = 'revoked'
         await manager.getRepository(LmsEnrollmentEntity).save(enrollment)
-        await manager.getRepository(LmsCertificateEntity).update({ enrollmentId: enrollment.id }, { revokedAt: now })
+        await manager.getRepository(LmsCertificateEntity).update({ enrollmentId: enrollment.id, revokedAt: IsNull() }, { revokedAt: now })
         return { revoked: true }
     }))
     app.post('/operator/certificates/:id/revoke', { config, schema: { params: enrollmentParams } }, async request => lmsTransaction(request, async (manager, actor, now) => {
         requireOperator(actor)
-        await manager.getRepository(LmsCertificateEntity).update({ id: request.params.id }, { revokedAt: now })
+        await manager.getRepository(LmsCertificateEntity).update({ id: request.params.id, revokedAt: IsNull() }, { revokedAt: now })
         return { revoked: true }
     }))
     app.get('/certificates/:token', { config: { security: securityAccess.public(), rateLimit: { max: 30, timeWindow: '1 minute' } }, schema: { params: z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }) } }, async (request, reply) => {

@@ -6,6 +6,7 @@ import {
   LogOut,
   UserCogIcon,
   BriefcaseBusiness,
+  GraduationCap,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -109,6 +110,12 @@ export function SidebarUser() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
+              <DropdownMenuItem asChild>
+                <Link to="/learn">
+                  <GraduationCap className="w-4 h-4 mr-2" />
+                  {t('Learning & certification')}
+                </Link>
+              </DropdownMenuItem>
               {workspaces.allowed && (
                 <DropdownMenuItem asChild>
                   <Link to="/partners/workspaces">

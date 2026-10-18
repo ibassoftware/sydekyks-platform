@@ -9,9 +9,10 @@ import { securityAccess } from '../core/security/authorization/fastify-security'
 import { authnRateLimit, emailCodeRateLimit } from '../core/security/rate-limit'
 import { networkUtils } from '../helper/network-utils'
 import { userService } from '../user/user-service'
+import { hostingAccessController } from './hosting-access-controller'
 import { resendHostedVerification } from './hosting-auth-policy'
 import { hostingConfiguration } from './hosting-configuration'
-import { hostingAccessController } from './hosting-access-controller'
+import { hostingLearningController } from './hosting-learning-controller'
 import { hostingOnboardingController } from './hosting-onboarding-controller'
 import { hostingOperatorController } from './hosting-operator-controller'
 import { hostingServices } from './hosting-services'
@@ -21,6 +22,7 @@ import { HostingActor, HostingError } from './hosting-transactions'
 export const hostingController: FastifyPluginAsyncZod = async app => {
     if (hostingConfiguration.getServiceMode() !== 'hosted') return
     await app.register(hostingAccessController, { prefix: '/operator' })
+    await app.register(hostingLearningController, { prefix: '/operator' })
     await app.register(hostingOperatorController, { prefix: '/operator' })
     await app.register(hostingOnboardingController, { prefix: '/onboarding' })
     await app.register(hostingStripeController, { prefix: '/billing' })

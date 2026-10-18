@@ -1,5 +1,6 @@
 import { ApEdition, ApFlagId } from '@activepieces/shared';
 import { t } from 'i18next';
+import { GraduationCap } from 'lucide-react';
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -68,6 +69,11 @@ export function PlatformSidebar() {
     {
       label: t('Platform'),
       items: [
+        {
+          to: '/learn',
+          label: t('Learning & certification'),
+          icon: GraduationCap,
+        },
         ...(workspaces.allowed
           ? [
               {
