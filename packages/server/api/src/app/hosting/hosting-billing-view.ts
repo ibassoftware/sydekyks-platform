@@ -64,14 +64,14 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
                 schemaVersion: 1, platformId: account.id, userId: user.id, catalogVersion: account.catalogVersion, serverTime: now.toISOString(), environment: 'test',
                 planId: account.planId, status: account.status, entitlementState: paused ? 'paused' : account.validUntil <= now ? 'expired' : account.planId === 'trial' ? 'trial' : account.planId === 'training' ? 'training' : 'paid', validUntil: account.validUntil.toISOString(), trialEndsAt: account.trialEndsAt.toISOString(), billingHold: account.billingHold ?? false, subscriptionStatus: bound?.subscriptionStatus ?? null, planChangesEnabled: false,
                 notice: account.status === 'suspended' ? 'account_paused' : account.billingHold && !ended ? 'billing_review' : bound?.lastError ? 'billing_delayed' : null,
-                meters: { execution: meter(current, now), managedAi: meter(managed, now), previousPeriodHeldMicroUsd: previousHeld.toString() }, usage: { ...usage, activeExecutions: account.activeExecutions }, limits: { ...hostingCatalog.getPlan({ planId: account.planId }), aiCredits: effectiveAiCredits, byokEnabled: true }, plans, portal: { enabled: portalReason === null, reason: portalReason, continuing: false },
+                meters: { execution: meter(current, now, !paused && account.validUntil > now), managedAi: meter(managed, now, !paused && account.validUntil > now), previousPeriodHeldMicroUsd: previousHeld.toString() }, usage: { ...usage, activeExecutions: account.activeExecutions }, limits: { ...hostingCatalog.getPlan({ planId: account.planId }), aiCredits: effectiveAiCredits, byokEnabled: true }, plans, portal: { enabled: portalReason === null, reason: portalReason, continuing: false },
             })
         } })
     } }
 }
-function meter(grant: HostingGrant | undefined, now: Date) {
+function meter(grant: HostingGrant | undefined, now: Date, spendable: boolean) {
     if (!grant) return { state: 'missing', amount: '0', consumed: '0', reserved: '0', available: '0', validFrom: null, validUntil: null }
     const active = !grant.revokedAt && grant.validFrom <= now && grant.validUntil > now
     const remaining = grant.amount - grant.consumed - grant.reserved
-    return { state: grant.revokedAt ? 'revoked' : active ? 'active' : 'expired', amount: grant.amount.toString(), consumed: grant.consumed.toString(), reserved: grant.reserved.toString(), available: active && remaining > 0n ? remaining.toString() : '0', validFrom: grant.validFrom.toISOString(), validUntil: grant.validUntil.toISOString() }
+    return { state: grant.revokedAt ? 'revoked' : active ? 'active' : 'expired', amount: grant.amount.toString(), consumed: grant.consumed.toString(), reserved: grant.reserved.toString(), available: spendable && active && remaining > 0n ? remaining.toString() : '0', validFrom: grant.validFrom.toISOString(), validUntil: grant.validUntil.toISOString() }
 }
