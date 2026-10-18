@@ -215,7 +215,9 @@ function SettingsEditor({
 }) {
   const cache = useQueryClient();
   const isClient = state.scopePlatformId !== null;
-  const [mode, setMode] = useState(state.mode);
+  const [mode, setMode] = useState(
+    !isClient && state.mode === 'inherit' ? 'set' : state.mode,
+  );
   const [model, setModel] = useState<'inherit' | ManagedModel>(
     state.model ?? (isClient ? 'inherit' : 'deepseek-flash'),
   );
