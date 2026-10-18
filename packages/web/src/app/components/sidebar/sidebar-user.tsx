@@ -1,8 +1,14 @@
 import { isNil } from '@activepieces/core-utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { t } from 'i18next';
-import { ChevronsUpDown, LogOut, UserCogIcon } from 'lucide-react';
+import {
+  ChevronsUpDown,
+  LogOut,
+  UserCogIcon,
+  BriefcaseBusiness,
+} from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { UserAvatar } from '@/components/custom/user-avatar';
 import { useEmbedding } from '@/components/providers/embed-provider';
@@ -21,6 +27,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar-shadcn';
+import { useOperationalWorkspaces } from '@/features/hosted-operator/workspaces-api';
 import { userHooks } from '@/hooks/user-hooks';
 import { authenticationSession } from '@/lib/authentication-session';
 import { cn } from '@/lib/utils';
@@ -32,6 +39,7 @@ export function SidebarUser() {
   const { embedState } = useEmbedding();
   const { data: user } = userHooks.useCurrentUser();
   const queryClient = useQueryClient();
+  const workspaces = useOperationalWorkspaces();
   const { state } = useSidebar();
   const isCollapsed = state === 'collapsed';
   if (!user || embedState.isEmbedded) {
@@ -101,6 +109,14 @@ export function SidebarUser() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
+              {workspaces.allowed && (
+                <DropdownMenuItem asChild>
+                  <Link to="/partners/workspaces">
+                    <BriefcaseBusiness className="w-4 h-4 mr-2" />
+                    {t('Client workspaces')}
+                  </Link>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => setAccountSettingsOpen(true)}>
                 <UserCogIcon className="w-4 h-4 mr-2" />
                 {t('Account Settings')}

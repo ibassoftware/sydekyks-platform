@@ -6,6 +6,7 @@ import { RouteLoadingBar } from '@/components/custom/route-loading-bar';
 import { Error, Success } from '@/features/billing';
 import { HostedBillingReturn } from '@/features/hosted-billing/billing-return';
 
+import { AllowOnlyLoggedInUserOnlyGuard } from '../components/allow-logged-in-user-only-guard';
 import { PlatformLayout } from '../components/platform-layout';
 
 import { LegacyPathRedirect } from './platform/legacy-path-redirect';
@@ -17,6 +18,11 @@ import {
 import { useAdminControlClicks } from './platform/use-admin-control-clicks';
 import { useAdminPageViewed } from './platform/use-admin-page-viewed';
 
+const PartnerWorkspacesPage = React.lazy(() =>
+  import('@/features/hosted-operator/workspaces-page').then((m) => ({
+    default: m.PartnerWorkspacesPage,
+  })),
+);
 const HostedClientsPage = React.lazy(() =>
   import('@/features/hosted-operator/clients-page').then((m) => ({
     default: m.HostedClientsPage,
@@ -323,6 +329,18 @@ export const platformRoutes = [
           </SuspenseWrapper>
         </PageTitle>
       </PlatformLayout>
+    ),
+  },
+  {
+    path: '/partners/workspaces',
+    element: (
+      <AllowOnlyLoggedInUserOnlyGuard>
+        <PageTitle titleKey="Client workspaces">
+          <SuspenseWrapper>
+            <PartnerWorkspacesPage />
+          </SuspenseWrapper>
+        </PageTitle>
+      </AllowOnlyLoggedInUserOnlyGuard>
     ),
   },
   {

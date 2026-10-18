@@ -1,19 +1,20 @@
 import { apId } from '@activepieces/core-utils'
 import { PlatformRole, UserIdentity, UserStatus } from '@activepieces/shared'
-import { DataSource, EntityManager } from 'typeorm'
+import { DataSource, EntityManager, In } from 'typeorm'
 import { UserIdentityEntity } from '../authentication/user-identity/user-identity-entity'
 import { McpOAuthTokenEntity } from '../mcp/oauth/token/mcp-oauth-token.entity'
+import { PlatformEntity } from '../platform/platform.entity'
 import { UserEntity } from '../user/user-entity'
 import { HostingAccessMembership, HostingAccessMembershipEntity, HostingAccessRole, HostingAccessRoleEntity } from './hosting-access-entities'
-import { assertHostingOperator, hasOperationalAccess, operationalExternalId } from './hosting-access-policy'
+import { assertHostingOperator, hasOperationalAccess, isOperationalUser, operationalExternalId } from './hosting-access-policy'
 import { HostingAccountEntity } from './hosting-entities'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 type AssignmentParams = { actor: HostingActor, platformId: string, identityId: string }
 type RoleParams = { actor: HostingActor, identityId: string, role: HostingAccessRole['role'], active: boolean }
 type EntryParams = { actor: HostingActor, platformId: string }
-type OperationalTenant = { platformId: string, userId: string, projectId: string, tokenVersion: string | null }
-type WorkspaceList = { role: HostingAccessRole['role'] | null, workspaces: { platformId: string }[] }
+type OperationalTenant = { platformId: string, userId: string, projectId: string | null, tokenVersion: string | null }
+type WorkspaceList = { platformId: string, userId: string, role: HostingAccessRole['role'] | null, workspaces: { platformId: string, name: string }[] }
 type HostedAccessService = {
     setRole(params: RoleParams): Promise<void>
     assignPartner(params: AssignmentParams): Promise<HostingAccessMembership>
@@ -68,6 +69,14 @@ export function createHostedAccess({ dataSource }: { dataSource: DataSource }): 
             const account = await tx.account({ manager, platformId })
             const role = await manager.getRepository(HostingAccessRoleEntity).findOneBy({ id: actor.identityId, active: true })
             if (!role) hostingFail('HOSTING_OPERATIONAL_ACCESS_DENIED')
+            // Preserve independent customer/home memberships instead of converting
+            // an existing administrator into an operational service account.
+            const independent = await manager.getRepository(UserEntity).findOneBy({ platformId, identityId: actor.identityId, status: UserStatus.ACTIVE })
+            if (independent && !isOperationalUser(independent)) {
+                await tx.member({ manager, actor: { ...actor, platformId } })
+                await tx.event({ manager, platformId, event: 'operational.workspace.entered', payload: { actorIdentityId: actor.identityId, actorUserId: independent.id, role: role.role, access: 'existing_membership' } })
+                return { platformId, userId: independent.id, projectId: null, tokenVersion: identity.tokenVersion ?? null }
+            }
             const membership = role.role === 'team'
                 ? await materialize(manager, actor, platformId, role)
                 : await manager.getRepository(HostingAccessMembershipEntity).findOneBy({ platformId, identityId: actor.identityId, role: 'partner', active: true })
@@ -81,14 +90,20 @@ export function createHostedAccess({ dataSource }: { dataSource: DataSource }): 
 
     async function list({ actor }: { actor: HostingActor }): Promise<WorkspaceList> {
         return tx.run({ dataSource, fn: async manager => {
-            await tx.member({ manager, actor })
+            const user = await tx.member({ manager, actor })
             const role = await manager.getRepository(HostingAccessRoleEntity).findOneBy({ id: actor.identityId, active: true })
-            if (!role) return { role: null, workspaces: [] }
+            if (!role) return { platformId: actor.platformId, userId: user.id, role: null, workspaces: [] }
             // Bounded operator pilot: no unbounded client list in a tenant-facing response.
             const rows = role.role === 'team'
                 ? await manager.getRepository(HostingAccountEntity).find({ order: { created: 'DESC' }, take: 100 })
                 : await manager.getRepository(HostingAccessMembershipEntity).find({ where: { identityId: actor.identityId, role: 'partner', active: true }, order: { created: 'DESC' }, take: 100 })
-            return { role: role.role, workspaces: rows.map(row => ({ platformId: 'platformId' in row ? row.platformId : row.id })) }
+            const independent = role.role === 'partner' ? await manager.getRepository(UserEntity).find({ where: { identityId: actor.identityId, status: UserStatus.ACTIVE }, take: 100 }) : []
+            const platformIds = [...new Set([
+                ...rows.map(row => 'platformId' in row ? row.platformId : row.id),
+                ...independent.filter(member => !isOperationalUser(member) && member.platformId).map(member => member.platformId as string),
+            ])].slice(0, 100)
+            const platforms = platformIds.length ? await manager.getRepository(PlatformEntity).findBy({ id: In(platformIds) }) : []
+            return { platformId: actor.platformId, userId: user.id, role: role.role, workspaces: platforms.map(platform => ({ platformId: platform.id, name: platform.name })) }
         } })
     }
     return { setRole, assignPartner, unassignPartner, enter, list }

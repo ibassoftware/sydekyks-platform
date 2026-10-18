@@ -40,6 +40,7 @@ import {
 import { PLATFORM_FEATURES } from '@/features/billing';
 import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import { useHostedOperatorAccess } from '@/features/hosted-operator/operator-api';
+import { useOperationalWorkspaces } from '@/features/hosted-operator/workspaces-api';
 import { useAuthorization } from '@/hooks/authorization-hooks';
 import { flagsHooks } from '@/hooks/flags-hooks';
 import { platformHooks } from '@/hooks/platform-hooks';
@@ -55,6 +56,7 @@ export function PlatformSidebar() {
   const { data: edition } = flagsHooks.useFlag<ApEdition>(ApFlagId.EDITION);
   const hostedBilling = useHostedBillingEnabled();
   const operator = useHostedOperatorAccess();
+  const workspaces = useOperationalWorkspaces();
   const { checkAccess } = useAuthorization();
   const defaultRoute = determineDefaultRoute({
     checkAccess,
@@ -66,6 +68,15 @@ export function PlatformSidebar() {
     {
       label: t('Platform'),
       items: [
+        ...(workspaces.allowed
+          ? [
+              {
+                to: '/partners/workspaces',
+                label: t('Client workspaces'),
+                icon: CommandCenterIcon,
+              },
+            ]
+          : []),
         {
           to: '/platform/projects',
           label: t('Projects'),
