@@ -159,7 +159,7 @@ describe('operator learning workspace repair', () => {
     })
     it('requires an owned workspace on new hosted HTTP enrollments and returns useful operator metadata', async () => {
         await ds.getRepository(LmsEnrollmentEntity).delete({ id: enrollment.id })
-        const body = { identityId: learner.identityId, courseId, package: 'core', paymentReference: `synthetic-http-receipt-${apId()}`, paymentVerified: true }
+        const body = { accessType: 'partner_training', identityId: learner.identityId, courseId, package: 'core', paymentReference: `synthetic-http-receipt-${apId()}`, paymentVerified: true }
         const auth = await headers()
         const missing = await app.inject({ method: 'POST', url: '/api/v1/lms/operator/enroll', headers: auth, payload: body })
         expect(missing.statusCode, missing.body).toBe(403)
@@ -168,12 +168,12 @@ describe('operator learning workspace repair', () => {
         expect(wrong.statusCode, wrong.body).toBe(403)
         const created = await app.inject({ method: 'POST', url: '/api/v1/lms/operator/enroll', headers: auth, payload: { ...body, workspacePlatformId: learner.platformId } })
         expect(created.statusCode, created.body).toBe(200)
-        const rows = await app.inject({ url: '/api/v1/lms/operator/enrollments', headers: auth })
+        const rows = await app.inject({ url: `/api/v1/lms/operator/enrollments?courseId=${courseId}`, headers: auth })
         expect(rows.statusCode, rows.body).toBe(200)
         expect(rows.json()).toHaveLength(1)
         expect(rows.json()[0]).toMatchObject({ identityId: learner.identityId, workspacePlatformId: learner.platformId, learnerEmail: `${learner.identityId}@test.invalid`, workspaceName: 'Synthetic learner workspace', training: null })
         await fulfillment().activate({ actor, enrollmentId: created.json().id })
-        const active = await app.inject({ url: '/api/v1/lms/operator/enrollments', headers: auth })
+        const active = await app.inject({ url: `/api/v1/lms/operator/enrollments?courseId=${courseId}`, headers: auth })
         expect(active.json()[0].training).toMatchObject({ activated: true, revoked: false })
     })
     it('authenticates workspace repair HTTP calls and returns409 on stale linkage', async () => {

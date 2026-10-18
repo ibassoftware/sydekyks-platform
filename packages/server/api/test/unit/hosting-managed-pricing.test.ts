@@ -19,6 +19,8 @@ import { ManagedSecretEntity, PricingObservationEntity } from '../../src/app/hos
 import { parseOfficialPricing, PRICING_CALENDAR, pricingBand } from '../../src/app/hosting/hosting-pricing-source'
 import { createHostedTraining } from '../../src/app/hosting/hosting-training'
 import { HostingActor, hostingTransactions as tx } from '../../src/app/hosting/hosting-transactions'
+import { foundingCourseDraft } from '../../src/app/lms/lms-content'
+import { LmsCourseEntity, LmsEnrollmentEntity } from '../../src/app/lms/lms-entities'
 import { bootstrapHostedOperator, migratedHostedPGlite } from '../helpers/hosting-fixtures'
 
 const html = readFileSync(new URL('../fixtures/hosting-official-pricing.html', import.meta.url), 'utf8')
@@ -122,7 +124,10 @@ describe('managed pricing and operator settings', () => {
     it('cancels known-unsent calls on key rotation, pins running credentials and keeps BYOK independent', async () => {
         await saveManagedSettings({ dataSource: ds, actor, input })
         await approve()
-        await createHostedTraining({ dataSource: ds }).activate({ actor, platformId: actor.platformId, identityId: actor.identityId, enrollmentId: apId(), receiptId: 'synthetic-paid-receipt', tier: 'core' })
+        const enrollmentId = apId(), courseId = apId(), now = new Date()
+        await ds.getRepository(LmsCourseEntity).insert({ id: courseId, slug: `synthetic-${courseId}`, ownerPlatformId: null, audience: 'partner', certificationMode: 'partner', revision: 1, status: 'published', content: foundingCourseDraft, reviewedBy: actor.identityId, reviewedAt: now })
+        await ds.getRepository(LmsEnrollmentEntity).insert({ id: enrollmentId, courseId, identityId: actor.identityId, grantPlatformId: null, accessType: 'partner_training', package: 'core', paymentReference: 'synthetic-paid-receipt', workspacePlatformId: actor.platformId, startsAt: now, accessUntil: new Date(now.getTime() + 365 * 86400000), assessmentUntil: new Date(now.getTime() + 90 * 86400000), status: 'active', completedLessons: [], assignment: null, practicalReviews: [], enrolledBy: actor.identityId })
+        await createHostedTraining({ dataSource: ds }).activate({ actor, platformId: actor.platformId, identityId: actor.identityId, enrollmentId, receiptId: 'synthetic-paid-receipt', tier: 'core' })
         const ledger = createHostedLedger({ dataSource: ds })
         async function admitted(payer: 'managed' | 'byok') {
             const reservation = await ledger.reserveExecution({ actor, projectId, key: apId(), payer })

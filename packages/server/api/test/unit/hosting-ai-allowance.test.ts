@@ -16,6 +16,8 @@ import { HostingStripeBindingEntity, HostingStripeCommandEntity, HostingStripePe
 import { readStripePolicy } from '../../src/app/hosting/hosting-stripe-policy'
 import { createHostedTraining } from '../../src/app/hosting/hosting-training'
 import { HostingActor } from '../../src/app/hosting/hosting-transactions'
+import { foundingCourseDraft } from '../../src/app/lms/lms-content'
+import { LmsCourseEntity, LmsEnrollmentEntity } from '../../src/app/lms/lms-entities'
 import { bootstrapHostedOperator, migratedHostedPGlite } from '../helpers/hosting-fixtures'
 
 const supplier = vi.hoisted(() => ({ snapshot: vi.fn() }))
@@ -38,6 +40,9 @@ async function makeClient() {
 }
 async function training() {
     const binding = { actor, platformId: client.platformId, identityId: client.identityId, enrollmentId: apId(), receiptId: apId(), tier: 'core' as const }
+    const courseId = apId(), now = new Date()
+    await ds.getRepository(LmsCourseEntity).insert({ id: courseId, slug: `synthetic-${courseId}`, ownerPlatformId: null, audience: 'partner', certificationMode: 'partner', revision: 1, status: 'published', content: foundingCourseDraft, reviewedBy: actor.identityId, reviewedAt: now })
+    await ds.getRepository(LmsEnrollmentEntity).insert({ id: binding.enrollmentId, courseId, identityId: binding.identityId, grantPlatformId: null, accessType: 'partner_training', package: binding.tier, paymentReference: binding.receiptId, workspacePlatformId: binding.platformId, startsAt: now, accessUntil: new Date(now.getTime() + 365 * 86400000), assessmentUntil: new Date(now.getTime() + 90 * 86400000), status: 'active', completedLessons: [], assignment: null, practicalReviews: [], enrolledBy: actor.identityId })
     await createHostedTraining({ dataSource: ds }).activate(binding)
     return binding
 }
