@@ -50,7 +50,7 @@ export const HostedChatOptions = z.object({
   projectId: z.string().length(21),
   conversationId: z.string().length(21).nullable(),
   model: z.object({
-    id: z.literal('deepseek-flash'),
+    id: z.literal('sydekyks'),
     label: z.string().max(80),
   }),
   managedAvailable: z.boolean(),

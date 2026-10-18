@@ -22,7 +22,7 @@ export function HostedChatSelector({ disabled }: { disabled: boolean }) {
   const selectedKey = chat.options?.keys.find((key) => key.id === keyId);
   const label =
     chat.payer?.type === 'managed'
-      ? t('Managed credits')
+      ? t('Sydekyks credits')
       : chat.payer?.type === 'byok'
       ? selectedKey
         ? t('BYOK · {name}', { name: selectedKey.name })
@@ -49,7 +49,7 @@ export function HostedChatSelector({ disabled }: { disabled: boolean }) {
         side="top"
         className="w-80 max-w-[calc(100vw-1.5rem)]"
       >
-        <DropdownMenuLabel>{t('Pay for DeepSeek Flash')}</DropdownMenuLabel>
+        <DropdownMenuLabel>{t('AI billing')}</DropdownMenuLabel>
         <DropdownMenuRadioGroup
           value={
             chat.payer?.type === 'managed'
@@ -72,7 +72,7 @@ export function HostedChatSelector({ disabled }: { disabled: boolean }) {
             className="items-start py-3"
           >
             <span className="min-w-0">
-              <span className="block font-medium">{t('Managed credits')}</span>
+              <span className="block font-medium">{t('Sydekyks credits')}</span>
               <span className="block text-xs text-gray-11">
                 {t(
                   chat.options?.managedAvailable

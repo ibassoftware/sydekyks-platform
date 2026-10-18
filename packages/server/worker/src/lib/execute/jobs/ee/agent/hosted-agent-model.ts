@@ -15,10 +15,10 @@ export function hostedAgentFailureMessage(message: string): string {
 }
 
 export function createHostedAgentModel({ ctx, config }: { ctx: JobContext, config: NonNullable<AgentConfigResponse['hosted']> }) {
-    if (!ctx.admissionId || config.protocol !== 1 || config.model !== 'deepseek-flash') throw new Error('HOSTING_AI_SEGMENT_DENIED')
+    if (!ctx.admissionId || config.protocol !== 1 || config.model !== (config.payer.type === 'managed' ? 'sydekyks' : 'deepseek-flash')) throw new Error('HOSTING_AI_SEGMENT_DENIED')
     let sequence = 0
     return createOpenAICompatible({
-        name: 'hosted-deepseek', baseURL: `${ctx.internalApiUrl.replace(/\/$/, '')}/v1/hosting/ai/copilot`, includeUsage: true,
+        name: 'sydekyks', baseURL: `${ctx.internalApiUrl.replace(/\/$/, '')}/v1/hosting/ai/copilot`, includeUsage: true,
         fetch: async (_url, init) => {
             if (typeof init?.body !== 'string') throw new Error('HOSTING_AI_REQUEST_INVALID')
             const wire = JSON.parse(init.body)

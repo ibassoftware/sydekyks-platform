@@ -2,6 +2,7 @@ import { HostedBillingActionReason, HostedBillingOverview, hostingCatalog } from
 import { DataSource, Not } from 'typeorm'
 import { hostingResourceUsage } from './hosting-billing-resources'
 import { HostingGrant, HostingGrantEntity } from './hosting-entities'
+import { hostingGrantMatchesPlan } from './hosting-plan-grants'
 import { HostingStripeBindingEntity, HostingStripeCommandEntity, StripeCommand } from './hosting-stripe-entities'
 import { readStripePolicy, stripeDigest } from './hosting-stripe-policy'
 import { HostingActor, hostingTransactions as tx } from './hosting-transactions'
@@ -17,7 +18,7 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
             const open = commands.filter(value => value.state !== 'closed')
             const usage = await hostingResourceUsage(manager, account.id, now)
             const grants = await manager.getRepository(HostingGrantEntity).find({ where: { platformId: account.id }, order: { validFrom: 'DESC', id: 'ASC' } })
-            const candidates = grants.filter(value => value.meter === 'execution' && value.sourceKey.startsWith(account.planId === 'trial' ? 'trial:' : 'stripe:') && value.validFrom <= now)
+            const candidates = grants.filter(value => value.meter === 'execution' && hostingGrantMatchesPlan(value, account.planId) && value.validFrom <= now)
             const current = candidates.find(value => value.validUntil > now) ?? candidates[0]
             const managed = grants.find(value => value.meter === 'managed_ai' && value.sourceKey === current?.sourceKey)
             let policy: ReturnType<typeof readStripePolicy> | null = null
@@ -59,7 +60,7 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
             const previousHeld = grants.filter(value => value.meter === 'managed_ai' && value.id !== managed?.id).reduce((sum, value) => sum + value.reserved, 0n)
             return HostedBillingOverview.parse({
                 schemaVersion: 1, platformId: account.id, userId: user.id, catalogVersion: account.catalogVersion, serverTime: now.toISOString(), environment: 'test',
-                planId: account.planId, status: account.status, entitlementState: paused ? 'paused' : account.validUntil <= now ? 'expired' : account.planId === 'trial' ? 'trial' : 'paid', validUntil: account.validUntil.toISOString(), trialEndsAt: account.trialEndsAt.toISOString(), billingHold: account.billingHold ?? false, subscriptionStatus: bound?.subscriptionStatus ?? null, planChangesEnabled: false,
+                planId: account.planId, status: account.status, entitlementState: paused ? 'paused' : account.validUntil <= now ? 'expired' : account.planId === 'trial' ? 'trial' : account.planId === 'training' ? 'training' : 'paid', validUntil: account.validUntil.toISOString(), trialEndsAt: account.trialEndsAt.toISOString(), billingHold: account.billingHold ?? false, subscriptionStatus: bound?.subscriptionStatus ?? null, planChangesEnabled: false,
                 notice: account.status === 'suspended' ? 'account_paused' : account.billingHold && !ended ? 'billing_review' : bound?.lastError ? 'billing_delayed' : null,
                 meters: { execution: meter(current, now), managedAi: meter(managed, now), previousPeriodHeldMicroUsd: previousHeld.toString() }, usage: { ...usage, activeExecutions: account.activeExecutions }, limits: { ...hostingCatalog.getPlan({ planId: account.planId }), byokEnabled: true }, plans, portal: { enabled: portalReason === null, reason: portalReason, continuing: false },
             })

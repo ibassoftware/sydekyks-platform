@@ -327,6 +327,8 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                     ? t('Trial active until {date}.', {
                         date: date(status.validUntil),
                       })
+                    : status.entitlementState === 'training'
+                    ? t('Training access through {date}.', { date: date(status.validUntil) })
                     : status.entitlementState === 'paid'
                     ? t('Paid access through {date}.', {
                         date: date(status.validUntil),
@@ -493,7 +495,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
               <h3 className="font-medium">{t('DeepSeek and your own key')}</h3>
               <p className="mt-2 leading-relaxed text-gray-11">
                 {t(
-                  'BYOK is included in every plan, including the trial. It uses execution runs but no managed AI credits; your provider bills you separately. Hosted AI currently supports DeepSeek.',
+                  'BYOK is included in every plan, including the trial. It uses execution runs but no managed AI credits; your provider bills you separately. Managed AI is provided by Sydekyks. BYOK currently supports DeepSeek.',
                 )}
               </p>
             </div>

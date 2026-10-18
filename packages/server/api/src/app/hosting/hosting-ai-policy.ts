@@ -3,7 +3,9 @@ import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { hostingFail } from './hosting-transactions'
 
+export const HOSTED_MANAGED_MODEL = 'sydekyks'
 export const HOSTED_DEEPSEEK_MODEL = 'deepseek-flash'
+export const HOSTED_DEEPSEEK_PRO_MODEL = 'deepseek-v4-pro'
 export const HOSTED_DEEPSEEK_ENDPOINT = 'https://api.deepseek.com/chat/completions'
 export const HOSTED_AI_CONTEXT_TOKENS = 1_048_576
 export const HOSTED_AI_MAX_OUTPUT = 4096
@@ -19,7 +21,7 @@ const message = z.discriminatedUnion('role', [
 export const HostedAiRequest = z.strictObject({
     callKey: z.string().regex(/^[a-zA-Z0-9_.:-]{1,100}$/), attempt: z.number().int().min(0).max(2).default(0),
     payer: z.discriminatedUnion('type', [z.strictObject({ type: z.literal('managed') }), z.strictObject({ type: z.literal('byok'), configId: z.string().length(21) })]),
-    model: z.literal(HOSTED_DEEPSEEK_MODEL), messages: z.array(message).min(1).max(64),
+    model: z.enum([HOSTED_MANAGED_MODEL, HOSTED_DEEPSEEK_MODEL, HOSTED_DEEPSEEK_PRO_MODEL]), messages: z.array(message).min(1).max(64),
     max_tokens: z.number().int().min(1).max(HOSTED_AI_MAX_OUTPUT).default(1024), temperature: z.number().min(0).max(2).optional(),
     response_format: z.strictObject({ type: z.enum(['text', 'json_object']) }).optional(),
     tools: z.array(z.strictObject({ type: z.literal('function'), function: z.strictObject({ name: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/), description: z.string().max(2048).optional(), parameters: z.record(z.string(), z.unknown()) }) })).max(16).optional(),
@@ -30,7 +32,7 @@ export type HostedAiInput = z.infer<typeof HostedAiRequest>
 const rate = z.number().int().min(0).max(1_000_000_000)
 const rates = z.strictObject({ cacheHit: rate, cacheMiss: rate.positive(), output: rate.positive() })
 export const HostedAiQuote = z.strictObject({
-    version: z.string().regex(/^[a-zA-Z0-9_.:-]{1,100}$/), model: z.literal(HOSTED_DEEPSEEK_MODEL),
+    version: z.string().regex(/^[a-zA-Z0-9_.:-]{1,100}$/), model: z.enum([HOSTED_DEEPSEEK_MODEL, HOSTED_DEEPSEEK_PRO_MODEL]),
     validFrom: z.iso.datetime(), validUntil: z.iso.datetime(), rates, ceiling: rates,
 })
 export type HostedAiPrice = z.infer<typeof HostedAiQuote>

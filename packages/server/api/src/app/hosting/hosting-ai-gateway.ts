@@ -2,14 +2,14 @@ import { createHash } from 'node:crypto'
 import { Readable } from 'node:stream'
 import { StringDecoder } from 'node:string_decoder'
 import { AIProviderName, apId } from '@activepieces/core-utils'
-import { safeHttp } from '@activepieces/server-utils'
 import { AgentConversationStatus, AgentRunSource, WorkerJobType } from '@activepieces/shared'
 import { DataSource, EntityManager, In, LessThanOrEqual } from 'typeorm'
 import { z } from 'zod'
 import { sydApprovalGate } from '../syd/copilot/approval-gate'
 import { SydConversationEntity } from '../syd/copilot/models/conversation.entity'
 import { hostedAiCredential } from './hosting-ai-credentials'
-import { HOSTED_AI_CONTEXT_TOKENS, HOSTED_AI_MAX_CALLS, HOSTED_AI_TIMEOUT_MS, HOSTED_DEEPSEEK_ENDPOINT, hostedAiCost, HostedAiInput, HostedAiQuote, HostedAiRequest, readHostedAiQuote } from './hosting-ai-policy'
+import { HOSTED_AI_CONTEXT_TOKENS, HOSTED_AI_MAX_CALLS, HOSTED_AI_TIMEOUT_MS, HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL, hostedAiCost, HostedAiInput, HostedAiQuote, HostedAiRequest, readHostedAiQuote } from './hosting-ai-policy'
+import { deepseekHostedProvider, HostedAiProvider, hostedModelCatalog } from './hosting-ai-provider'
 import { createHostedStreamParser, settledCompletionStream } from './hosting-ai-stream'
 import { HostingDispatch, HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingAccountEntity, HostingGrantEntity, HostingReservationEntity } from './hosting-entities'
@@ -22,16 +22,20 @@ const usageSchema = z.object({ prompt_tokens: number, completion_tokens: number,
 const completionSchema = z.object({ id: z.string().max(256), model: z.string().max(128), created: z.number().int(), object: z.literal('chat.completion'), choices: z.array(z.object({ index: z.literal(0), finish_reason: z.enum(['stop', 'length', 'tool_calls', 'content_filter']), message: z.object({ role: z.literal('assistant'), content: z.string().nullable(), tool_calls: z.array(z.object({ id: z.string(), type: z.literal('function'), function: z.object({ name: z.string(), arguments: z.string() }) })).optional() }) })).length(1), usage: usageSchema })
 type Scope = { admissionId: string, platformId: string, projectId: string }
 
-export function createHostedAiGateway({ dataSource }: { dataSource: DataSource }) {
+export function createHostedAiGateway({ dataSource, provider = deepseekHostedProvider }: { dataSource: DataSource, provider?: HostedAiProvider }) {
     async function dispatch({ scope, request, stream = false, signal }: { scope: Scope, request: HostedAiInput, stream?: boolean, signal?: AbortSignal }): Promise<Record<string, unknown> | Readable> {
-        const input = HostedAiRequest.parse(request)
+        const submitted = HostedAiRequest.parse(request)
+        if (submitted.model !== (submitted.payer.type === 'managed' ? HOSTED_MANAGED_MODEL : HOSTED_DEEPSEEK_MODEL)) hostingFail('HOSTING_AI_MODEL_DENIED')
+        const input = { ...submitted, model: submitted.payer.type === 'managed' ? readHostedAiQuote(new Date()).model : HOSTED_DEEPSEEK_MODEL }
         if (Buffer.byteLength(JSON.stringify(input)) > 65536) hostingFail('HOSTING_AI_REQUEST_LIMIT')
-        const hash = digest({ payer: input.payer, model: input.model, messages: input.messages, max_tokens: input.max_tokens, temperature: input.temperature, response_format: input.response_format, tools: input.tools, tool_choice: input.tool_choice })
+        const hash = digest({ provider: provider.id, endpoint: provider.endpoint, accountingVersion: hostedModelCatalog[input.model].accountingVersion, payer: input.payer, model: input.model, messages: input.messages, max_tokens: input.max_tokens, temperature: input.temperature, response_format: input.response_format, tools: input.tools, tool_choice: input.tool_choice })
         const prepared = await tx.run({ dataSource, fn: async manager => {
             const day = (await tx.now(manager)).toISOString().slice(0, 10)
             if (input.payer.type === 'managed') await lockHostedBudget({ manager, day, create: true })
-            await tx.account({ manager, platformId: scope.platformId })
+            const account = await tx.account({ manager, platformId: scope.platformId })
+            if (!hostedModelCatalog[input.model].allowedPlans.includes(account.planId)) hostingFail('HOSTING_AI_MODEL_PLAN_DENIED')
             const { segment, root } = await current({ manager, scope })
+            if (root.payer !== input.payer.type) hostingFail('HOSTING_AI_PAYER_CONFLICT')
             if (segment.payload?.jobType === WorkerJobType.EXECUTE_AGENT_RUN) {
                 const job = segment.payload
                 const byok = job.provider === AIProviderName.DEEPSEEK
@@ -50,11 +54,14 @@ export function createHostedAiGateway({ dataSource }: { dataSource: DataSource }
             if (await manager.getRepository(HostingModelCallEntity).existsBy({ platformId: scope.platformId, rootReservationId: root.id, state: In(['prepared', 'running']) })) hostingFail('HOSTING_AI_CONCURRENCY_LIMIT')
             const now = await tx.now(manager)
             const quote = input.payer.type === 'managed' ? readHostedAiQuote(now) : null
+            if (quote && quote.model !== input.model) hostingFail('HOSTING_AI_PRICE_CHANGED')
+            const capabilities = hostedModelCatalog[input.model].capabilities
+            if ((input.tools?.length && !capabilities.tools) || (input.response_format?.type === 'json_object' && !capabilities.json) || (stream && !capabilities.stream)) hostingFail('HOSTING_AI_CAPABILITY_DENIED')
             const id = apId()
             const reservation = quote ? await createHostedLedger({ dataSource, manager }).reserveManagedCall({ actor: actorOf(segment), rootReservationId: root.id, key: `model:${id}`, maxCostMicroUsd: hostedAiCost({ hit: 0, miss: HOSTED_AI_CONTEXT_TOKENS, output: input.max_tokens, prices: quote.ceiling }), expectedDay: day }) : null
-            return manager.getRepository(HostingModelCallEntity).save(manager.getRepository(HostingModelCallEntity).create({ id, platformId: scope.platformId, projectId: scope.projectId, segmentId: segment.id, rootReservationId: root.id, admissionId: scope.admissionId, identityId: segment.identityId, callKey: input.callKey, attempt: input.attempt, requestHash: hash, payer: input.payer.type, configId: input.payer.type === 'byok' ? input.payer.configId : null, credentialFingerprint: credential.fingerprint, model: input.model, endpoint: HOSTED_DEEPSEEK_ENDPOINT, state: 'prepared', reservationId: reservation?.id ?? null, budgetDay: reservation?.day ?? null, quote, leaseUntil: new Date(now.getTime() + HOSTED_AI_TIMEOUT_MS + 5000) }))
+            return manager.getRepository(HostingModelCallEntity).save(manager.getRepository(HostingModelCallEntity).create({ id, platformId: scope.platformId, projectId: scope.projectId, segmentId: segment.id, rootReservationId: root.id, admissionId: scope.admissionId, identityId: segment.identityId, callKey: input.callKey, attempt: input.attempt, requestHash: hash, payer: input.payer.type, configId: input.payer.type === 'byok' ? input.payer.configId : null, credentialFingerprint: credential.fingerprint, model: input.model, endpoint: provider.endpoint, state: 'prepared', reservationId: reservation?.id ?? null, budgetDay: reservation?.day ?? null, quote, leaseUntil: new Date(now.getTime() + HOSTED_AI_TIMEOUT_MS + 5000) }))
         } })
-        if (prepared.state === 'settled' && prepared.response) return stream ? Readable.from(settledCompletionStream(prepared.response)) : prepared.response
+        if (prepared.state === 'settled' && prepared.response) return stream ? Readable.from(settledCompletionStream(publicResponse(prepared.response, prepared))) : publicResponse(prepared.response, prepared)
         if (prepared.state !== 'prepared') hostingFail('HOSTING_AI_OUTCOME_UNAVAILABLE')
         const claim = await tx.run({ dataSource, fn: async manager => {
             await lockCallBudget({ manager, call: prepared })
@@ -83,7 +90,7 @@ export function createHostedAiGateway({ dataSource }: { dataSource: DataSource }
         } })
         if (claim.denied || !claim.apiKey || !claim.fence) hostingFail(claim.denied ?? 'HOSTING_AI_OUTCOME_UNAVAILABLE')
         try {
-            const response = await safeHttp.axios.request<unknown>({ method: 'POST', url: HOSTED_DEEPSEEK_ENDPOINT, headers: { Authorization: `Bearer ${claim.apiKey}`, 'Content-Type': 'application/json' }, data: { model: input.model, messages: input.messages, max_tokens: input.max_tokens, temperature: input.temperature, response_format: input.response_format, tools: input.tools, tool_choice: input.tool_choice, thinking: { type: 'disabled' }, stream, ...(stream ? { stream_options: { include_usage: true } } : {}) }, responseType: stream ? 'stream' : 'json', signal, timeout: HOSTED_AI_TIMEOUT_MS, maxRedirects: 0, maxContentLength: 2 * 1024 * 1024, maxBodyLength: 65536, validateStatus: () => true })
+            const response = await provider.complete({ request: input, apiKey: claim.apiKey, stream, signal })
             if (response.status !== 200) {
                 if (stream && response.data instanceof Readable) response.data.destroy()
                 hostingFail('HOSTING_AI_PROVIDER_OUTCOME_UNKNOWN')
@@ -96,14 +103,14 @@ export function createHostedAiGateway({ dataSource }: { dataSource: DataSource }
                         const parser = createHostedStreamParser(input.model)
                         const decoder = new StringDecoder('utf8')
                         for await (const bytes of upstream) {
-                            for (const text of parser.push(decoder.write(Buffer.from(bytes)))) yield text
+                            for (const text of parser.push(decoder.write(Buffer.from(bytes)))) yield publicChunk(text, prepared)
                         }
-                        for (const text of parser.push(decoder.end())) yield text
+                        for (const text of parser.push(decoder.end())) yield publicChunk(text, prepared)
                         const completion = completionSchema.parse(parser.finish())
                         validateUsage(completion.usage)
                         const saved = await settle({ callId: prepared.id, fence: claim.fence!, response: completion, maxOutput: input.max_tokens })
                         settled = true
-                        for (const text of settledCompletionStream(saved, true)) yield text
+                        for (const text of settledCompletionStream(publicResponse(saved, prepared), true)) yield publicChunk(text, prepared)
                     }
                     catch {
                         throw new HostingError('HOSTING_AI_OUTCOME_UNCERTAIN')
@@ -118,7 +125,7 @@ export function createHostedAiGateway({ dataSource }: { dataSource: DataSource }
             if (!parsed.success || parsed.data.model !== input.model) hostingFail('HOSTING_AI_USAGE_UNVERIFIED')
             const usage = parsed.data.usage
             validateUsage(usage)
-            return await settle({ callId: prepared.id, fence: claim.fence, response: parsed.data, maxOutput: input.max_tokens })
+            return publicResponse(await settle({ callId: prepared.id, fence: claim.fence, response: parsed.data, maxOutput: input.max_tokens }), prepared)
         }
         catch {
             await markUncertain({ callId: prepared.id, fence: claim.fence })
@@ -233,4 +240,12 @@ function canonical(value: unknown): string {
 
 function validateUsage(usage: z.infer<typeof usageSchema>): void {
     if (usage.prompt_tokens !== usage.prompt_cache_hit_tokens + usage.prompt_cache_miss_tokens || usage.total_tokens !== usage.prompt_tokens + usage.completion_tokens) hostingFail('HOSTING_AI_USAGE_UNVERIFIED')
+}
+
+function publicResponse(response: Record<string, unknown>, call: Pick<HostingModelCall, 'id' | 'payer'>): Record<string, unknown> {
+    return call.payer === 'managed' ? { ...response, id: `sydekyks-${call.id}`, model: HOSTED_MANAGED_MODEL } : response
+}
+function publicChunk(text: string, call: Pick<HostingModelCall, 'id' | 'payer'>): string {
+    if (call.payer !== 'managed' || text.trim() === 'data: [DONE]') return text
+    return `data: ${JSON.stringify(publicResponse(JSON.parse(text.slice(6).trim()), call))}\n\n`
 }

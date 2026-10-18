@@ -6,7 +6,7 @@ import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { SydConversationEntity } from '../syd/copilot/models/conversation.entity'
 import { HostedKeyAuth } from './hosting-ai-credentials'
-import { HOSTED_DEEPSEEK_MODEL, readHostedAiQuote } from './hosting-ai-policy'
+import { HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL, readHostedAiQuote } from './hosting-ai-policy'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 import { readHostedCredits } from './hosting-usage'
 
@@ -26,6 +26,6 @@ export async function hostedChatOptions({ manager, actor, userId, projectId: req
     }
     const account = await tx.account({ manager, platformId: actor.platformId })
     const credits = await readHostedCredits(manager, account, await tx.now(manager))
-    return { credits, platformId: actor.platformId, userId, requestedProjectId, projectId, conversationId: conversationId ?? null, model: { id: HOSTED_DEEPSEEK_MODEL, label: 'DeepSeek Flash' }, managedAvailable,
+    return { credits, platformId: actor.platformId, userId, requestedProjectId, projectId, conversationId: conversationId ?? null, model: { id: HOSTED_MANAGED_MODEL, label: 'Sydekyks' }, managedAvailable,
         keys: rows.filter(row => !Object.keys(row.config).length && aiKeyScope.rowAllowsScope({ row, scope: { type: 'project', projectId } }) && aiKeyScope.keyOffersModel({ key: row, modelId: HOSTED_DEEPSEEK_MODEL })).map(row => ({ id: row.id, name: row.displayName })) }
 }

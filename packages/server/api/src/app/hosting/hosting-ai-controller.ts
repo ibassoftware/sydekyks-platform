@@ -4,7 +4,7 @@ import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { securityAccess } from '../core/security/authorization/fastify-security'
 import { authnRateLimit } from '../core/security/rate-limit'
-import { HOSTED_AI_TIMEOUT_MS, HOSTED_DEEPSEEK_MODEL, HostedAiRequest } from './hosting-ai-policy'
+import { HOSTED_AI_TIMEOUT_MS, HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL, HostedAiRequest } from './hosting-ai-policy'
 import { hostingConfiguration } from './hosting-configuration'
 import { assertHostedCopilotModel } from './hosting-copilot'
 import { hostingServices } from './hosting-services'
@@ -12,7 +12,7 @@ import { hostingFail } from './hosting-transactions'
 
 const stepSchema = z.strictObject({
     callKey: z.string(), action: z.enum([AiStepAction.ASK_AI, AiStepAction.SUMMARIZE_TEXT, AiStepAction.CLASSIFY_TEXT]),
-    provider: z.enum([AIProviderName.ACTIVEPIECES, AIProviderName.DEEPSEEK]), providerConfigId: z.string().optional(), modelId: z.literal(HOSTED_DEEPSEEK_MODEL),
+    provider: z.enum([AIProviderName.ACTIVEPIECES, AIProviderName.DEEPSEEK]), providerConfigId: z.string().optional(), modelId: z.enum([HOSTED_MANAGED_MODEL, HOSTED_DEEPSEEK_MODEL]),
     prompt: z.string().max(32768).optional(), text: z.string().max(32768).optional(), categories: z.array(z.string().min(1).max(256)).min(1).max(100).optional(),
     conversation: z.array(z.strictObject({ role: z.enum(['system', 'user', 'assistant']), content: z.string().max(32768) })).max(32).optional(),
     maxOutputTokens: z.number().int().min(1).max(4096).optional(), temperature: z.number().min(0).max(2).optional(),

@@ -5,7 +5,7 @@ import { AIProviderEntity } from '../ai/ai-provider-entity'
 import { databaseConnection } from '../database/database-connection'
 import { sydApprovalGate } from '../syd/copilot/approval-gate'
 import { SydConversationEntity } from '../syd/copilot/models/conversation.entity'
-import { HOSTED_DEEPSEEK_MODEL, HostedAiInput } from './hosting-ai-policy'
+import { HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL, HostedAiInput } from './hosting-ai-policy'
 import { hostingConfiguration } from './hosting-configuration'
 import { HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
@@ -72,7 +72,7 @@ export function protectHostedCopilotRpc(handlers: WorkerToApiContract, connectio
 export async function assertHostedCopilotModel({ admissionId, request }: { admissionId: string, request: HostedAiInput }) {
     const { segment, data } = await hostedCopilotScope({ admissionId, spending: true })
     const payer = await hostedCopilotPayer({ platformId: segment.platformId, projectId: segment.projectId, provider: data.provider, configId: data.providerConfigId })
-    if (request.model !== HOSTED_DEEPSEEK_MODEL || JSON.stringify(payer) !== JSON.stringify(request.payer) || !request.callKey.startsWith('copilot:') || request.attempt !== 0) hostingFail('HOSTING_AI_PAYER_CONFLICT')
+    if (request.model !== (payer.type === 'managed' ? HOSTED_MANAGED_MODEL : HOSTED_DEEPSEEK_MODEL) || JSON.stringify(payer) !== JSON.stringify(request.payer) || !request.callKey.startsWith('copilot:') || request.attempt !== 0) hostingFail('HOSTING_AI_PAYER_CONFLICT')
     // A preceding uncertain call cannot be disguised as a fresh continuation.
     if (await databaseConnection().getRepository(HostingModelCallEntity).existsBy({ segmentId: segment.id, state: 'uncertain' })) hostingFail('HOSTING_AI_OUTCOME_UNCERTAIN')
     return segment

@@ -119,6 +119,8 @@ export function HostedBillingView({
                   'Trial ends {date}. The trial has a time limit and limited allowances; there is no ongoing free hosted plan.',
                   { date: date(info.trialEndsAt) },
                 )
+              : info.planId === 'training'
+              ? t('Training access ends {date}. Credits refresh every 30 days during included access, with no rollover.', { date: date(info.validUntil) })
               : t(
                   'Paid through {date}. Allowances shown below belong to the displayed period.',
                   { date: date(info.validUntil) },
@@ -203,7 +205,7 @@ export function HostedBillingView({
             </h3>
             <p className="mt-1 text-gray-11">
               {t(
-                'BYOK is included in the trial, Starter and Team. BYOK runs use your execution allowance, but no managed AI credits. Your provider bills its usage separately. Hosted AI currently supports DeepSeek.',
+                'BYOK is included in Training, Starter, Team and the trial. BYOK runs use your execution allowance, but no managed AI credits. Your provider bills its usage separately. Managed AI is provided by Sydekyks. BYOK currently supports DeepSeek.',
               )}
             </p>
           </div>
@@ -415,6 +417,8 @@ function price(
 function planName(id: HostedBillingOverview['planId']) {
   return id === 'trial'
     ? t('Limited trial')
+    : id === 'training'
+    ? t('Training')
     : id === 'starter'
     ? t('Starter')
     : t('Team');
@@ -422,6 +426,8 @@ function planName(id: HostedBillingOverview['planId']) {
 function stateName(state: HostedBillingOverview['entitlementState']) {
   return state === 'trial'
     ? t('Trial active')
+    : state === 'training'
+    ? t('Training access')
     : state === 'paid'
     ? t('Paid access')
     : state === 'paused'

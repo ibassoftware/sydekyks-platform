@@ -7,7 +7,7 @@ import { aiToolConfigService } from '../../../ai/ai-tool-config-service'
 import { appConnectionService } from '../../../app-connection/app-connection-service/app-connection-service'
 import { system } from '../../../helper/system/system'
 import { AppSystemProp } from '../../../helper/system/system-props'
-import { HOSTED_AI_MAX_OUTPUT, HOSTED_DEEPSEEK_MODEL } from '../../../hosting/hosting-ai-policy'
+import { HOSTED_AI_MAX_OUTPUT, HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL } from '../../../hosting/hosting-ai-policy'
 import { hostingConfiguration } from '../../../hosting/hosting-configuration'
 import { hostedCopilotPayer } from '../../../hosting/hosting-copilot'
 import { hostedCopilotPrompt } from '../../../hosting/hosting-copilot-prompt'
@@ -44,7 +44,8 @@ export const sydCopilotConfigRpc = (log: FastifyBaseLogger) => ({
         if (editor && editor.projectId !== selectedProjectId) throw new ActivepiecesError({ code: ErrorCode.AUTHORIZATION, params: { message: 'The editor and conversation belong to different command centers' } })
         const scope = sydCopilotContext.runScopeOrThrow({ projectId: selectedProjectId })
         const payer = hosted ? await hostedCopilotPayer({ platformId, projectId: selectedProjectId!, provider: input.provider, configId: input.providerConfigId }) : undefined
-        const credentials = hosted ? { provider: AIProviderName.DEEPSEEK as const, auth: {}, config: {}, platformId, configId: input.providerConfigId ?? '', modelScope: 'selected' as const, modelIds: [HOSTED_DEEPSEEK_MODEL] } : await sydCopilotContext.resolveRunProvider({ platformId, scope, provider: input.provider, providerConfigId: input.providerConfigId, log })
+        const hostedModel = payer?.type === 'managed' ? HOSTED_MANAGED_MODEL : HOSTED_DEEPSEEK_MODEL
+        const credentials = hosted ? { provider: (payer?.type === 'managed' ? AIProviderName.ACTIVEPIECES : AIProviderName.DEEPSEEK), auth: {}, config: {}, platformId, configId: input.providerConfigId ?? '', modelScope: 'selected' as const, modelIds: [hostedModel] } : await sydCopilotContext.resolveRunProvider({ platformId, scope, provider: input.provider, providerConfigId: input.providerConfigId, log })
         const [mcp, memory, user, platform, personalization, agentsEnabled] = await Promise.all([
             hosted ? Promise.resolve({ mcpServerUrl: null, mcpToken: null }) : sydCopilotMcp.getCredentials({ platformId, userId, log }), sydCopilotContext.getUserMemory({ platformId, userId }),
             userService(log).getMetaInformation({ id: userId }), tryCatch(() => platformService(log).getOneOrThrow(platformId)),
@@ -59,10 +60,10 @@ export const sydCopilotConfigRpc = (log: FastifyBaseLogger) => ({
         const emailEnabled = !hosted && active && sydEmailRpc(log).isSmtpConfigured()
         const agentsAvailable = active && agentsEnabled
         const selectedModel = input.modelName ?? conversation.modelName ?? null
-        const tier = hosted ? { id: 'hosted-deepseek', modelId: HOSTED_DEEPSEEK_MODEL, thinkingBudget: 0 } : sydChatModelSelection.resolveTier({ tierId: selectedModel, surface: 'chat' })
+        const tier = hosted ? { id: 'sydekyks', modelId: hostedModel, thinkingBudget: 0 } : sydChatModelSelection.resolveTier({ tierId: selectedModel, surface: 'chat' })
         const modelParams: Parameters<typeof sydCopilotContext.resolveFastModelId>[0] = { platformId, providerConfig: credentials, scope, surface: 'chat', log }
-        const modelId = hosted ? HOSTED_DEEPSEEK_MODEL : await sydCopilotContext.resolveModelId({ ...modelParams, selectedModel })
-        const fastModelId = hosted ? HOSTED_DEEPSEEK_MODEL : await sydCopilotContext.resolveFastModelId({ ...modelParams, fallbackModelId: modelId })
+        const modelId = hosted ? hostedModel : await sydCopilotContext.resolveModelId({ ...modelParams, selectedModel })
+        const fastModelId = hosted ? hostedModel : await sydCopilotContext.resolveFastModelId({ ...modelParams, fallbackModelId: modelId })
         const references = files?.length && selectedProjectId ? await sydConversationFiles.persistAgentAttachments({ files, projectId: selectedProjectId, platformId, conversationId, log }) : []
         const userContent = await sydConversationFiles.buildUserContentWithFiles({ text: userMessage, files, attachmentNote: sydConversationFiles.buildAttachmentNote(references) })
         const runId = input.runId ?? conversation.activeRunId ?? undefined
@@ -93,10 +94,10 @@ export const sydCopilotConfigRpc = (log: FastifyBaseLogger) => ({
             state = await sydConversationCompaction.compactMessages({ messages: history, existingSummary: state.summary, summarizedUpToIndex: state.summarizedUpToIndex, provider: credentials.provider, reservedTokens: payloadReserve, model: aiUtils.createModel({ credentials, modelId }), log })
             await sydRunOperations.updateConversationForRun({ conversationId, platformId, runId, updates: state })
         }
-        return { ...(hosted && payer ? { hosted: { protocol: 1 as const, model: HOSTED_DEEPSEEK_MODEL, payer } } : {}), credentials, providerConfigId: credentials.configId, modelId, fastModelId, resolvedModelName: sydChatModelSelection.conversationModelName({ provider: credentials.provider, modelId, surface: 'chat' }),
+        return { ...(hosted && payer ? { hosted: { protocol: 1 as const, model: hostedModel, payer } } : {}), credentials, providerConfigId: credentials.configId, modelId, fastModelId, resolvedModelName: hosted && payer?.type === 'managed' ? HOSTED_MANAGED_MODEL : sydChatModelSelection.conversationModelName({ provider: credentials.provider, modelId, surface: 'chat' }),
             ...(imageModelId ? { imageModelId } : {}), ...(chosen.search ? { searchCredentials: chosen.search.credentials, searchModelId: chosen.search.modelId } : {}), ...(chosen.image ? { imageCredentials: chosen.image.credentials } : {}),
             systemPrompt, messages: sydConversationCompaction.buildCompactedPayload({ messages: history, ...state, provider: credentials.provider, reservedTokens: payloadReserve }), allMessages, previousUiMessages,
-            tier: { id: hosted ? 'hosted-deepseek' : tier.id, modelId: hosted ? HOSTED_DEEPSEEK_MODEL : tier.modelId, thinkingBudget: hosted ? 0 : tier.thinkingBudget }, mcpCredentials: mcp.mcpServerUrl && mcp.mcpToken ? { mcpServerUrl: mcp.mcpServerUrl, mcpToken: mcp.mcpToken } : null,
+            tier: { id: hosted ? 'sydekyks' : tier.id, modelId: hosted ? hostedModel : tier.modelId, thinkingBudget: hosted ? 0 : tier.thinkingBudget }, mcpCredentials: mcp.mcpServerUrl && mcp.mcpToken ? { mcpServerUrl: mcp.mcpServerUrl, mcpToken: mcp.mcpToken } : null,
             projects: (hosted ? projects.filter(project => project.id === selectedProjectId) : projects).map(({ id, displayName, type }) => ({ id, displayName, type })), guides: { ...sydCopilotPrompt.guides, ...input.promptOverride?.guides }, aiTools, emailEnabled, agentsAvailable, userEmail: user.email, source: AgentRunSource.CHAT,
         }
     },

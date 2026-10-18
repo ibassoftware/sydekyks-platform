@@ -13,7 +13,7 @@ import { encryptUtils } from '../helper/encryption'
 import { ProjectEntity } from '../project/project-entity'
 import { UserEntity } from '../user/user-entity'
 import { HostedKeyAuth, hostedKeyModels, hostedKeyResponse } from './hosting-ai-credentials'
-import { HOSTED_DEEPSEEK_MODEL } from './hosting-ai-policy'
+import { HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL } from './hosting-ai-policy'
 import { hostedChatOptions } from './hosting-chat-options'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
@@ -28,11 +28,11 @@ export const hostingProviderController: FastifyPluginAsyncZod = async app => {
         return run(request, async (manager, actor) => hostedChatOptions({ manager, actor, userId: request.principal.id, ...request.query }), false)
     })
     app.get('/configs', { config: admin }, async request => run(request, async manager => (await manager.getRepository(AIProviderEntity).findBy({ platformId: request.principal.platform.id, provider: AIProviderName.DEEPSEEK })).map(hostedKeyResponse)))
-    app.get('/tiers', { config: user }, async request => run(request, async () => ({ flow: { tiers: [{ id: HOSTED_DEEPSEEK_MODEL, label: 'DeepSeek Flash', modelId: HOSTED_DEEPSEEK_MODEL }], defaultTierId: HOSTED_DEEPSEEK_MODEL }, chat: { tiers: [], defaultTierId: '' } }), false))
+    app.get('/tiers', { config: user }, async request => run(request, async () => ({ flow: { tiers: [{ id: HOSTED_MANAGED_MODEL, label: 'Sydekyks', modelId: HOSTED_MANAGED_MODEL }], defaultTierId: HOSTED_MANAGED_MODEL }, chat: { tiers: [], defaultTierId: '' } }), false))
     app.get('/', { config: projectUser, schema: { querystring: z.object({ projectId: z.string().optional() }) } }, async request => run(request, async (manager, actor) => {
         await tx.member({ manager, actor, projectId: request.projectId })
         const rows = await manager.getRepository(AIProviderEntity).findBy({ platformId: actor.platformId, provider: AIProviderName.DEEPSEEK, status: 'active' })
-        return [{ provider: AIProviderName.ACTIVEPIECES, name: 'Managed DeepSeek', enabledForChat: false, keys: [] }, { provider: AIProviderName.DEEPSEEK, name: 'DeepSeek', enabledForChat: false, keys: rows.filter(row => aiKeyScope.rowAllowsScope({ row, scope: { type: 'project', projectId: request.projectId } }) && aiKeyScope.keyOffersModel({ key: row, modelId: HOSTED_DEEPSEEK_MODEL })).map(row => ({ id: row.id, name: row.displayName })) }]
+        return [{ provider: AIProviderName.ACTIVEPIECES, name: 'Sydekyks', enabledForChat: false, keys: [] }, { provider: AIProviderName.DEEPSEEK, name: 'DeepSeek', enabledForChat: false, keys: rows.filter(row => aiKeyScope.rowAllowsScope({ row, scope: { type: 'project', projectId: request.projectId } }) && aiKeyScope.keyOffersModel({ key: row, modelId: HOSTED_DEEPSEEK_MODEL })).map(row => ({ id: row.id, name: row.displayName })) }]
     }, false))
     app.get('/configs/:id/models', { config: admin, schema: { params: idParams } }, async request => run(request, async (_manager, actor) => hostedKeyModels({ platformId: actor.platformId, configId: request.params.id })))
     app.get('/:provider/models', { config: projectUser, schema: { params: z.object({ provider: z.enum([AIProviderName.DEEPSEEK, AIProviderName.ACTIVEPIECES]) }), querystring: z.object({ projectId: z.string().optional(), configId: z.string().optional() }) } }, async request => run(request, async (manager, actor) => {
@@ -43,7 +43,7 @@ export const hostingProviderController: FastifyPluginAsyncZod = async app => {
             const row = await manager.getRepository(AIProviderEntity).findOneBy({ id: request.query.configId, platformId: actor.platformId, provider: AIProviderName.DEEPSEEK, status: 'active' })
             if (!row || !aiKeyScope.rowAllowsScope({ row, scope: { type: 'project', projectId: request.projectId } }) || !aiKeyScope.keyOffersModel({ key: row, modelId: HOSTED_DEEPSEEK_MODEL })) hostingFail('HOSTING_BYOK_SCOPE_DENIED')
         }
-        return hostedKeyModels({ platformId: actor.platformId })
+        return request.params.provider === AIProviderName.ACTIVEPIECES ? [{ id: HOSTED_MANAGED_MODEL, name: 'Sydekyks', type: 'text' }] : hostedKeyModels({ platformId: actor.platformId })
     }, false))
     app.post('/', { config: admin, schema: { body: z.strictObject({ ...common, provider: z.literal(AIProviderName.DEEPSEEK), auth: HostedKeyAuth }) } }, async request => {
         const auth = await encryptUtils.encryptObject(request.body.auth)

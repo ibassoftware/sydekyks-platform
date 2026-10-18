@@ -107,7 +107,9 @@ export function AIModelSelector({
         return 0;
       })
       .flatMap((entry) =>
-        entry.keys.map((key) => ({
+        entry.provider === AIProviderName.ACTIVEPIECES && entry.keys.length === 0
+          ? [{ provider: entry.provider, configId: '', label: entry.name }]
+          : entry.keys.map((key) => ({
           provider: entry.provider,
           configId: key.id,
           label:
