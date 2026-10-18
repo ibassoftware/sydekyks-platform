@@ -17,6 +17,8 @@ import { UserRoundPlusIcon } from '@/components/icons/user-round-plus';
 import { Button } from '@/components/ui/button';
 import { internalErrorToast } from '@/components/ui/sonner';
 import { useSeatLimitGuard } from '@/features/billing';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
+import { TenantMembersPage } from '@/features/hosted-operator/tenant-members-page';
 import { InviteUserDialog } from '@/features/members';
 import {
   platformUserHooks,
@@ -40,6 +42,10 @@ export type UserRowData =
     };
 
 export default function UsersPage() {
+  const hosted = useHostedBillingEnabled();
+  return hosted ? <TenantMembersPage /> : <SelfHostedUsersPage />;
+}
+function SelfHostedUsersPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const {
     isOutOfSeats,

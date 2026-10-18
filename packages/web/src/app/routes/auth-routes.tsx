@@ -1,6 +1,7 @@
 import { PageTitle } from '@/app/components/page-title';
 import { VerifyEmail } from '@/features/authentication';
 import { PartnerSetupPage } from '@/features/hosted-operator/partner-setup-page';
+import { TenantJoinPage } from '@/features/hosted-operator/tenant-join-page';
 import { AcceptInvitation } from '@/features/members';
 
 import { ChangePasswordPage } from './change-password';
@@ -10,6 +11,14 @@ import { SignInPage } from './sign-in';
 import { SignUpPage } from './sign-up';
 
 export const authRoutes = [
+  {
+    path: '/tenant-join',
+    element: (
+      <PageTitle titleKey="Join workspace">
+        <TenantJoinPage />
+      </PageTitle>
+    ),
+  },
   {
     path: '/partner-setup',
     element: (

@@ -14,6 +14,7 @@ export const PartnerCandidate = z.object({
   firstName: z.string(),
   lastName: z.string(),
   verified: z.boolean(),
+  admissionSource: z.enum(['tenant_admin', 'operator', 'email', 'pending']),
   verificationMethod: z.enum(['operator', 'email', 'pending']),
   emailOwnershipVerified: z.boolean(),
   role: z.enum(['partner', 'team']).nullable(),
