@@ -295,6 +295,15 @@ export function PlatformSidebar() {
               }
             : {}),
         },
+        ...(operator.allowed
+          ? [
+              {
+                to: '/platform/managed-ai',
+                label: t('Managed AI settings'),
+                icon: SparklesIcon,
+              },
+            ]
+          : []),
         {
           to: '/platform/usage',
           label: t('Usage'),

@@ -18,6 +18,11 @@ import {
 import { useAdminControlClicks } from './platform/use-admin-control-clicks';
 import { useAdminPageViewed } from './platform/use-admin-page-viewed';
 
+const ManagedAiSettingsPage = React.lazy(() =>
+  import('@/features/hosted-operator/ai-settings-page').then((m) => ({
+    default: m.ManagedAiSettingsPage,
+  })),
+);
 const PartnerWorkspacesPage = React.lazy(() =>
   import('@/features/hosted-operator/workspaces-page').then((m) => ({
     default: m.PartnerWorkspacesPage,
@@ -122,6 +127,18 @@ const AI_TAB_PATHS = {
 const PIECES_TAB_PATHS = { pieces: '', 'piece-sets': 'piece-sets' };
 
 export const platformRoutes = [
+  {
+    path: '/platform/managed-ai',
+    element: (
+      <PlatformLayout>
+        <PageTitle titleKey="Managed AI settings">
+          <SuspenseWrapper>
+            <ManagedAiSettingsPage />
+          </SuspenseWrapper>
+        </PageTitle>
+      </PlatformLayout>
+    ),
+  },
   { path: '/settings/billing', element: <HostedBillingReturn /> },
   {
     path: '/platform',
