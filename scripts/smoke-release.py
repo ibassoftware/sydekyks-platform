@@ -14,7 +14,7 @@ import urllib.request
 
 POSTGRES = 'pgvector/pgvector:0.8.1-pg16-trixie@sha256:1e4956185a7fd9306a41ee759a7b4329c4faf9a2bb91a1d01437310c97002433'
 REDIS = 'redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499'
-PREVIOUS = 'ibassoftware/sydekyks:1.0.7@sha256:8b83bff1f5020b118ce05d26ee80a62c40efe6aa1a9f557353e354e9bdbee1e2'
+PREVIOUS = 'ibassoftware/sydekyks:1.0.8@sha256:1d8ba2c1fc6b4f632e69374eca81892b188c01ca9369123019fca39ed13ad2cf'
 
 
 def docker(*args, check=True):
@@ -88,7 +88,7 @@ def exercise(image, upgrade=False):
                 base = 'http://127.0.0.1:' + port
                 return base, wait_for_app(base)
 
-            print('Testing ' + ('upgrade from 1.0.7' if upgrade else 'fresh installation'), flush=True)
+            print('Testing ' + ('upgrade from 1.0.8' if upgrade else 'fresh installation'), flush=True)
             base, flags = start(PREVIOUS if upgrade else image)
             email = 'release-smoke@example.com'
             status, owner = request(base, '/api/v1/authentication/sign-up', {

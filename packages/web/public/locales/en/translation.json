@@ -3442,5 +3442,12 @@
   "Wait for queued, running or paused missions to finish before archiving this command center.": "Wait for queued, running or paused missions to finish before archiving this command center.",
   "Your Personal Command Center cannot be archived.": "Your Personal Command Center cannot be archived.",
   "Name cannot contain periods or slashes": "Name cannot contain periods or slashes",
-  "Select {color} color": "Select {color} color"
+  "Select {color} color": "Select {color} color",
+  "Create in": "Create in",
+  "Create manually": "Create manually",
+  "Create with AI": "Create with AI",
+  "Describe the task for your agent": "Describe the task for your Sydekyk",
+  "Could not create your agent. Try again with Create manually. Your instructions can be entered in Configure.": "Could not create your Sydekyk. Try again with Create manually. Your instructions can be entered in Configure.",
+  "Set instructions, choose a model and add tools in Configure. Review and publish before using your agent in a Mission.": "Set instructions, choose a model and add gadgets in Configure. Review and publish before using your Sydekyk in a Mission.",
+  "Return to agent setup to create manually. Your task will be kept.": "Return to Sydekyk setup to create manually. Your task will be kept."
 }

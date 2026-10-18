@@ -1,3 +1,4 @@
+import { isObject } from '@activepieces/core-utils';
 import {
   AgentListSort,
   AgentSummary,
@@ -14,7 +15,7 @@ import {
   SearchX,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useDebounce } from 'use-debounce';
 
 import { LockedFeatureGuard } from '@/app/components/locked-feature-guard';
@@ -110,10 +111,16 @@ const AgentsPage = () => {
 };
 
 const AgentsPageContent = () => {
+  const { state: locationState } = useLocation();
   const [search, setSearch] = useState('');
   const [layout, setLayout] = useState<'grid' | 'list'>('grid');
   const [sort, setSort] = useState<AgentListSort>(AgentListSort.UPDATED);
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPrompt] = useState(() =>
+    isObject(locationState) && typeof locationState.agentTask === 'string'
+      ? locationState.agentTask
+      : '',
+  );
+  const [creationProjectId, setCreationProjectId] = useState<string>();
   const [viewProjectId, setViewProjectId] = useState<string>(ALL_PROJECTS);
   const navigate = useNavigate();
   const { project } = projectCollectionUtils.useCurrentProject();
@@ -122,6 +129,8 @@ const AgentsPageContent = () => {
   const agentsAvailable = useAgentsAvailable();
   const chatEnabled = platform.plan.chatEnabled;
   const projectFiltered = viewProjectId !== ALL_PROJECTS;
+  const targetProjectId =
+    creationProjectId ?? (projectFiltered ? viewProjectId : project.id);
   const [debouncedSearch] = useDebounce(search.trim(), 300);
   const {
     data,
@@ -146,7 +155,9 @@ const AgentsPageContent = () => {
 
   const createAgent = agentsMutations.useCreateAgent({
     onSuccess: (agent) =>
-      navigate(`/projects/${agent.projectId}/agents/${agent.id}`),
+      navigate(`/projects/${agent.projectId}/agents/${agent.id}`, {
+        state: { configure: true },
+      }),
     onError: () => undefined,
   });
 
@@ -164,12 +175,13 @@ const AgentsPageContent = () => {
     if (trimmed.length === 0) {
       return;
     }
-    if (projectFiltered && viewProjectId !== project.id) {
-      projectCollectionUtils.setCurrentProject(viewProjectId);
+    if (targetProjectId !== project.id) {
+      projectCollectionUtils.setCurrentProject(targetProjectId);
     }
     navigate(CHAT_ROUTE, {
       state: {
         prompt: t('Build me an agent for this: {task}', { task: trimmed }),
+        agentTask: trimmed,
       },
     });
   };
@@ -178,7 +190,11 @@ const AgentsPageContent = () => {
     if (createAgent.isPending) {
       return;
     }
-    createAgent.mutate(blankAgentUtils.request({ projectId }));
+    const request = blankAgentUtils.request({ projectId });
+    createAgent.mutate({
+      ...request,
+      draft: { ...request.draft, instructions: prompt.trim() },
+    });
   };
 
   const projectDotColorFor = (agent: AgentSummary) =>
@@ -208,7 +224,7 @@ const AgentsPageContent = () => {
       {showsHero && (
         <section
           className={cn(
-            'flex flex-col items-center gap-2 px-12 pt-8',
+            'flex flex-col items-center gap-2 px-5 pt-8 sm:px-12',
             firstRun &&
               'relative flex-1 justify-center gap-3 overflow-hidden py-16',
           )}
@@ -251,32 +267,65 @@ const AgentsPageContent = () => {
                   "An agent is an assistant with instructions and tools. Describe the job and I'll write both.",
                 )}
           </p>
+          {projectOptions.length > 1 && (
+            <div className="mt-3 flex max-w-full items-center gap-2 text-sm">
+              <span id="agent-creation-project">{t('Create in')}</span>
+              <select
+                aria-labelledby="agent-creation-project"
+                value={targetProjectId}
+                onChange={(event) => setCreationProjectId(event.target.value)}
+                className="min-w-0 max-w-64 rounded-md border border-gray-6 bg-gray-1 px-3 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gray-8"
+              >
+                {projectOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {createAgent.isError && (
+            <p
+              role="alert"
+              className="mt-3 max-w-lg text-center text-sm text-danger-11"
+            >
+              {t(
+                'Could not create your agent. Try again with Create manually. Your instructions can be entered in Configure.',
+              )}
+            </p>
+          )}
           {!chatEnabled ? (
             <NewBlankAgentButton
               projects={allProjects ?? []}
+              projectId={targetProjectId}
               pending={createAgent.isPending}
               onCreate={createBlankAgent}
               variant="default"
               className="mt-6 gap-2"
               icon={<Plus size={16} />}
-              label={t('New agent')}
+              label={t('Create manually')}
             />
           ) : (
             <>
               <div
                 className={cn(
-                  'mt-4 flex min-h-14 w-full max-w-[680px] items-end gap-3.5 rounded-[28px] border border-gray-6 bg-gray-3 ps-5 pe-2 py-2 transition-colors',
+                  'mt-4 flex min-h-14 w-full max-w-[680px] flex-col items-stretch gap-3.5 rounded-[28px] border border-gray-6 bg-gray-3 ps-5 pe-2 py-2 transition-colors sm:flex-row sm:items-end',
                   firstRun &&
-                    'relative mt-6 max-w-[632px] flex-col items-stretch gap-4 rounded-xl bg-gray-1 px-[18px] pb-[14px] pt-[18px] shadow-[0_2px_12px_rgba(0,0,0,0.06)]',
+                    'relative mt-6 max-w-[632px] flex-col items-stretch gap-4 rounded-xl bg-gray-1 px-[18px] pb-[14px] pt-[18px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:flex-col sm:items-stretch',
                 )}
               >
                 <Textarea
+                  aria-label={t('Describe the task for your agent')}
                   value={prompt}
                   minRows={1}
                   maxRows={8}
                   onChange={(event) => setPrompt(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
+                    if (
+                      event.key === 'Enter' &&
+                      !event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
                       event.preventDefault();
                       askChat();
                     }
@@ -289,19 +338,17 @@ const AgentsPageContent = () => {
                       : t('Draft weekly launch posts and file them in Notion…')
                   }
                   className={cn(
-                    'min-h-10 resize-none border-0 bg-transparent px-0 py-2.5 text-base leading-5 shadow-none focus-visible:ring-0 placeholder:text-gray-11',
+                    'min-h-10 min-w-0 resize-none border-0 bg-transparent px-0 py-2.5 text-base leading-5 shadow-none focus-visible:ring-0 placeholder:text-gray-11',
                     firstRun && 'min-h-11 px-1 py-1 text-[15px] leading-[22px]',
                   )}
                 />
                 <div className={cn(firstRun && 'flex justify-end')}>
                   <Button
-                    size="icon"
                     onClick={() => askChat()}
-                    className={cn(
-                      'size-10 shrink-0 rounded-full',
-                      firstRun && 'size-9',
-                    )}
+                    disabled={prompt.trim().length === 0}
+                    className="shrink-0 gap-2"
                   >
+                    {t('Create with AI')}
                     <ArrowUp size={16} strokeWidth={2.2} />
                   </Button>
                 </div>
@@ -351,18 +398,24 @@ const AgentsPageContent = () => {
                       ))}
                 </div>
               </div>
-              {firstRun && (
+              <div className="mt-4 flex flex-col items-center gap-2">
                 <NewBlankAgentButton
                   projects={allProjects ?? []}
+                  projectId={targetProjectId}
                   pending={createAgent.isPending}
                   onCreate={createBlankAgent}
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  className="mt-4 gap-2 text-gray-11"
+                  className="gap-2"
                   icon={<Plus size={15} />}
-                  label={t('Start from scratch')}
+                  label={t('Create manually')}
                 />
-              )}
+                <p className="max-w-md text-center text-sm text-gray-11">
+                  {t(
+                    'Set instructions, choose a model and add tools in Configure. Review and publish before using your agent in a Mission.',
+                  )}
+                </p>
+              </div>
             </>
           )}
         </section>
@@ -375,7 +428,7 @@ const AgentsPageContent = () => {
       }) && (
         <section
           className={cn(
-            'flex w-full flex-col gap-5 px-12 pb-12 pt-11',
+            'flex w-full flex-col gap-5 px-5 pb-12 pt-11 sm:px-12',
             !chatEnabled && 'pt-8',
           )}
         >
@@ -393,7 +446,7 @@ const AgentsPageContent = () => {
                 </span>
               )}
             </div>
-            <div className="ms-auto flex items-center gap-3">
+            <div className="ms-auto flex w-full flex-wrap items-center gap-3 xl:w-auto">
               <div className="flex h-8 w-[180px] shrink-0 items-center gap-2 rounded-full border border-gray-6 bg-gray-3 px-3">
                 <Search size={14} className="shrink-0 text-gray-11" />
                 <input
@@ -470,6 +523,7 @@ const AgentsPageContent = () => {
               </div>
               <NewBlankAgentButton
                 projects={allProjects ?? []}
+                projectId={targetProjectId}
                 pending={createAgent.isPending}
                 onCreate={createBlankAgent}
                 size="sm"
@@ -481,7 +535,7 @@ const AgentsPageContent = () => {
           </div>
 
           {isLoading ? (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
               {[0, 1, 2].map((index) => (
                 <Skeleton key={index} className="h-[151px] rounded-[19px]" />
               ))}
@@ -506,7 +560,7 @@ const AgentsPageContent = () => {
               onOpen={openAgent}
             />
           ) : (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
               {agents.map((agent: AgentSummary) => (
                 <AgentCard
                   key={agent.id}

@@ -33,7 +33,8 @@ export const sydAgentController: FastifyPluginAsyncZod = async (app) => {
         const old = await service.getOneOrThrow(scope)
         const draft = request.body.draft ? sydAgentSecrets.restoreDraft({ incoming: request.body.draft, stored: old.draft }) : undefined
         const updated = await service.update({ ...scope, request: { ...request.body, ...(draft ? { draft } : {}) } })
-        const result = request.body.goLive !== false && updated.published ? await service.publish(scope) : updated
+        const shouldPublish = request.body.goLive === true || (request.body.goLive !== false && updated.published !== null)
+        const result = shouldPublish ? await service.publish(scope) : updated
         sydAgentSideEffects.changed({ request, agent: result, action: ApplicationEventName.AGENT_UPDATED })
         return sydAgentSecrets.redact(result)
     })

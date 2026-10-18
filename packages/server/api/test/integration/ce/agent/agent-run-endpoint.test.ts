@@ -1,9 +1,11 @@
 import { AIProviderName, apId } from '@activepieces/core-utils'
+import { FlowRunStatus, FlowVersionState } from '@activepieces/shared'
 import { FastifyInstance } from 'fastify'
 import { StatusCodes } from 'http-status-codes'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { accessTokenManager } from '../../../../src/app/authentication/lib/access-token-manager'
-import { mockAndSaveAIProvider } from '../../../helpers/mocks'
+import { databaseConnection } from '../../../../src/app/database/database-connection'
+import { createMockFlow, createMockFlowRun, createMockFlowVersion, createMockWaitpoint, mockAndSaveAIProvider } from '../../../helpers/mocks'
 import { createTestContext, TestContext } from '../../../helpers/test-context'
 import { setupTestEnvironment, teardownTestEnvironment } from '../../../helpers/test-setup'
 
@@ -33,8 +35,21 @@ async function engineTokenFor(ctx: TestContext, jobId: string): Promise<string> 
     })
 }
 
+async function waitingMission(ctx: TestContext): Promise<{ flowRunId: string, waitpointId: string }> {
+    const flow = createMockFlow({ projectId: ctx.project.id })
+    const version = createMockFlowVersion({ flowId: flow.id, state: FlowVersionState.DRAFT })
+    const run = createMockFlowRun({ projectId: ctx.project.id, flowId: flow.id, flowVersionId: version.id, status: FlowRunStatus.PAUSED, finishTime: undefined })
+    const waitpoint = createMockWaitpoint({ projectId: ctx.project.id, flowRunId: run.id, status: 'PENDING' })
+    const manager = databaseConnection().manager
+    await manager.getRepository('flow').save(flow)
+    await manager.getRepository('flow_version').save(version)
+    await manager.getRepository('flow_run').save(run)
+    await manager.getRepository('waitpoint').save(waitpoint)
+    return { flowRunId: run.id, waitpointId: waitpoint.id }
+}
+
 describe('community edition: POST /v1/agents/runs', () => {
-    it('starts an agent step configured with its own tools, the only way a community install can run one', async () => {
+    it('starts an inline agent only for an existing Mission waitpoint', async () => {
         const ctx = await contextThatCanRunAgents()
         const engineToken = await engineTokenFor(ctx, 'ce-inline-run')
 
@@ -44,8 +59,7 @@ describe('community edition: POST /v1/agents/runs', () => {
             headers: { authorization: `Bearer ${engineToken}` },
             body: {
                 instruction: 'send the summary',
-                flowRunId: apId(),
-                waitpointId: apId(),
+                ...await waitingMission(ctx),
                 tools: [{
                     type: 'PIECE',
                     toolName: 'send_email',
@@ -81,8 +95,7 @@ describe('community edition: POST /v1/agents/runs', () => {
             headers: { authorization: `Bearer ${engineToken}` },
             body: {
                 instruction: 'summarise the thread',
-                flowRunId: apId(),
-                waitpointId: apId(),
+                ...await waitingMission(ctx),
                 provider: AIProviderName.OPENAI,
                 modelName: 'gpt-4o',
             },

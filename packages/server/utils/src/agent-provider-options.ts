@@ -5,6 +5,8 @@ import { SystemModelMessage } from 'ai'
 
 function buildProviderOptions({ provider, tier, modelId, disableThinking = false }: { provider: AIProviderName, tier: { id: string, thinkingBudget: number }, modelId: string, disableThinking?: boolean }): SharedV3ProviderOptions {
     switch (provider) {
+        case AIProviderName.OPENAI:
+            return { openai: { store: false, include: ['reasoning.encrypted_content'] } }
         case AIProviderName.ANTHROPIC:
         case AIProviderName.BEDROCK:
             return { anthropic: { thinking: disableThinking ? { type: 'disabled' } : { type: 'enabled', budgetTokens: tier.thinkingBudget } } }

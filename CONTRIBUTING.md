@@ -28,7 +28,7 @@ The supported release installation uses the root `docker-compose.yml` and the [D
 Build the application with the pinned release recipe:
 
 ```sh
-docker buildx build --platform linux/amd64,linux/arm64 --build-arg SYDEKYKS_RELEASE_VERSION=1.0.8 --build-arg SYDEKYKS_SOURCE_REVISION="$(git rev-parse HEAD)" --tag sydekyks:local --output type=oci,dest=sydekyks-local.oci.tar --file Dockerfile.release .
+docker buildx build --platform linux/amd64,linux/arm64 --build-arg SYDEKYKS_RELEASE_VERSION=1.0.9 --build-arg SYDEKYKS_SOURCE_REVISION="$(git rev-parse HEAD)" --tag sydekyks:local --output type=oci,dest=sydekyks-local.oci.tar --file Dockerfile.release .
 ```
 
 Submit a pull request describing the behavior changed, validation performed, and any upgrade impact. Preserve authentication, workspace isolation, retained notices, and unrestricted access to implemented features. Never introduce imports from the excluded upstream enterprise directories.
