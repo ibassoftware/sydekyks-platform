@@ -96,7 +96,7 @@ export function hostedChatErrorText(kind: HostedChatError['kind']) {
     case 'send':
       return 'The send outcome could not be confirmed. Refresh the conversation before sending again; another send may use Credits.';
     default:
-      return 'Could not refresh chat billing. Check your connection and refresh the options.';
+      return 'AI options are currently unavailable. Refresh or contact your workspace administrator.';
   }
 }
 export function assertHostedChatScope(scope: HostedChatScope) {
