@@ -14,6 +14,8 @@ import { createHostedLedger } from '../../../../src/app/hosting/hosting-ledger'
 import { createHostedOnboarding } from '../../../../src/app/hosting/hosting-onboarding'
 import { createHostedTraining } from '../../../../src/app/hosting/hosting-training'
 import { HostingActor } from '../../../../src/app/hosting/hosting-transactions'
+import { foundingCourseDraft } from '../../../../src/app/lms/lms-content'
+import { LmsCourseEntity, LmsEnrollmentEntity } from '../../../../src/app/lms/lms-entities'
 import { bootstrapHostedOperator } from '../../../helpers/hosting-fixtures'
 
 if (!process.env['HOSTING_TEST_POSTGRES_PORT']) throw new Error('Set explicit HOSTING_TEST_POSTGRES_PORT for the disposable CI database')
@@ -32,8 +34,10 @@ async function makeClient() {
     return { ...tenant, identityId, actor: { identityId, platformId: tenant.platformId, tokenVersion: tenant.tokenVersion } }
 }
 async function activate() {
-    const enrollmentId = apId()
-    await training.activate({ actor, platformId: client.platformId, identityId: client.identityId, enrollmentId, receiptId: apId(), tier: 'core' })
+    const enrollmentId = apId(), courseId = apId(), receiptId = apId(), now = new Date()
+    await ds.getRepository(LmsCourseEntity).insert({ id: courseId, slug: `synthetic-${courseId}`, ownerPlatformId: null, audience: 'partner', certificationMode: 'partner', revision: 1, status: 'published', content: foundingCourseDraft, reviewedBy: actor.identityId, reviewedAt: now })
+    await ds.getRepository(LmsEnrollmentEntity).insert({ id: enrollmentId, courseId, identityId: client.identityId, grantPlatformId: null, accessType: 'partner_training', package: 'core', paymentReference: receiptId, workspacePlatformId: client.platformId, startsAt: now, accessUntil: new Date(now.getTime() + 365 * 86400000), assessmentUntil: new Date(now.getTime() + 90 * 86400000), status: 'active', completedLessons: [], assignment: null, practicalReviews: [], enrolledBy: actor.identityId })
+    await training.activate({ actor, platformId: client.platformId, identityId: client.identityId, enrollmentId, receiptId, tier: 'core' })
     return enrollmentId
 }
 async function root() {
