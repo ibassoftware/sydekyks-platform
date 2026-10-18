@@ -4,8 +4,8 @@ import { DataSource } from 'typeorm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { UserIdentityEntity } from '../../src/app/authentication/user-identity/user-identity-entity'
 import { FlagEntity } from '../../src/app/flags/flag.entity'
-import { HostingAiAllowanceChangeEntity } from '../../src/app/hosting/hosting-ai-allowance-entities'
 import { createHostedAiAllowance } from '../../src/app/hosting/hosting-ai-allowance'
+import { HostingAiAllowanceChangeEntity } from '../../src/app/hosting/hosting-ai-allowance-entities'
 import { createHostedBillingView } from '../../src/app/hosting/hosting-billing-view'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrantEntity, HostingLedgerEntity } from '../../src/app/hosting/hosting-entities'
 import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
@@ -61,8 +61,12 @@ async function paid() {
     }
     return { snapshot, period, recover, command, end }
 }
-beforeAll(async () => { ds = await migratedHostedPGlite() })
-afterAll(async () => { if (ds?.isInitialized) await ds.destroy() })
+beforeAll(async () => {
+    ds = await migratedHostedPGlite()
+})
+afterAll(async () => {
+    if (ds?.isInitialized) await ds.destroy()
+})
 afterEach(() => vi.unstubAllEnvs())
 beforeEach(async () => {
     vi.stubEnv('AP_SERVICE_MODE', 'hosted')

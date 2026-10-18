@@ -6,8 +6,8 @@ import { UserIdentityEntity } from '../../../../src/app/authentication/user-iden
 import { commonProperties } from '../../../../src/app/database/database-connection'
 import { getMigrations } from '../../../../src/app/database/postgres-connection'
 import { FlagEntity } from '../../../../src/app/flags/flag.entity'
-import { HostingAiAllowanceChangeEntity } from '../../../../src/app/hosting/hosting-ai-allowance-entities'
 import { createHostedAiAllowance } from '../../../../src/app/hosting/hosting-ai-allowance'
+import { HostingAiAllowanceChangeEntity } from '../../../../src/app/hosting/hosting-ai-allowance-entities'
 import { HostingGrantEntity } from '../../../../src/app/hosting/hosting-entities'
 import { INSTALLATION_MODE_FLAG_ID } from '../../../../src/app/hosting/hosting-installation'
 import { createHostedLedger } from '../../../../src/app/hosting/hosting-ledger'
@@ -45,17 +45,32 @@ async function holdAccount() {
     const runner = ds.createQueryRunner()
     await runner.connect(); await runner.startTransaction()
     await runner.query('SELECT id FROM hosting_account WHERE id=$1 FOR UPDATE', [client.platformId])
-    return async () => { try { await runner.commitTransaction() } finally { await runner.release() } }
+    return async () => {
+        try {
+            await runner.commitTransaction()
+        }
+        finally {
+            await runner.release()
+        }
+    }
 }
 beforeAll(async () => {
     await ds.initialize()
     await ds.query('CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public')
     const runner = ds.createQueryRunner()
-    try { await runner.createSchema(schema, true) }
-    finally { await runner.release() }
+    try {
+        await runner.createSchema(schema, true)
+    }
+    finally {
+        await runner.release()
+    }
     await ds.runMigrations({ transaction: 'each' })
 })
-afterAll(async () => { if (ds.isInitialized) { await ds.query(`DROP SCHEMA "${schema}" CASCADE`); await ds.destroy() } })
+afterAll(async () => {
+    if (ds.isInitialized) {
+        await ds.query(`DROP SCHEMA "${schema}" CASCADE`); await ds.destroy()
+    }
+})
 afterEach(() => vi.unstubAllEnvs())
 beforeEach(async () => {
     vi.stubEnv('AP_SERVICE_MODE', 'hosted')
@@ -73,13 +88,19 @@ describe('PostgreSQL allowance serialization', () => {
         await activate()
         const execution = await root(), unlock = await holdAccount()
         let completed = 0
-        const cap = allowance.save({ actor, input: { platformId: client.platformId, expectedRevision: 0, requestKey: 'race:cap', monthlyCredits: 0 } }).finally(() => { completed++ })
-        const reserve = ledger.reserveManagedCall({ actor: client.actor, rootReservationId: execution.reservation.id, key: 'race:reservation', maxCostMicroUsd: 1000000n }).finally(() => { completed++ })
+        const cap = allowance.save({ actor, input: { platformId: client.platformId, expectedRevision: 0, requestKey: 'race:cap', monthlyCredits: 0 } }).finally(() => {
+            completed++
+        })
+        const reserve = ledger.reserveManagedCall({ actor: client.actor, rootReservationId: execution.reservation.id, key: 'race:reservation', maxCostMicroUsd: 1000000n }).finally(() => {
+            completed++
+        })
         try {
             await new Promise(resolve => setTimeout(resolve, 30))
             expect(completed).toBe(0)
         }
-        finally { await unlock() }
+        finally {
+            await unlock()
+        }
         const [saved, held] = await Promise.allSettled([cap, reserve])
         expect(saved.status).toBe('fulfilled')
         if (held.status === 'fulfilled') {
@@ -111,7 +132,9 @@ describe('PostgreSQL allowance serialization', () => {
     it('rolls back one of two different clients using the same actor/request key concurrently', async () => {
         const other = await makeClient(), createRunner = ds.createQueryRunner.bind(ds)
         let arrived = 0, release!: () => void
-        const gate = new Promise<void>(resolve => { release = resolve })
+        const gate = new Promise<void>(resolve => {
+            release = resolve
+        })
         // Synchronize only the two SQL inserts after real auth/revision checks;
         // PostgreSQL's actual unique index arbitrates the idempotency collision.
         const spy = vi.spyOn(ds, 'createQueryRunner').mockImplementation((...args) => {
@@ -135,6 +158,8 @@ describe('PostgreSQL allowance serialization', () => {
             expect(views.map(view => view.revision).sort()).toEqual([0, 1])
             expect(views.every(view => view.period?.amountMicroUsd === '1000000')).toBe(true)
         }
-        finally { release(); spy.mockRestore() }
+        finally {
+            release(); spy.mockRestore()
+        }
     })
 })
