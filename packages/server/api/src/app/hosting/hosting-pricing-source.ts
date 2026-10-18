@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto'
-import { safeHttp } from '@activepieces/server-utils'
 import { z } from 'zod'
 import { HOSTED_DEEPSEEK_MODEL, HOSTED_DEEPSEEK_PRO_MODEL } from './hosting-ai-policy'
+import { PricingSource, pricingSourceDate, PricingSourceValidation } from './hosting-pricing-http'
+export { createOfficialPricingFetcher, fetchOfficialPricing, HOSTED_PRICING_URL, PRICING_FRESH_MS, PricingFetcher, PricingHttpTransport, PricingSource, PricingSourceValidation } from './hosting-pricing-http'
 import { hostingFail } from './hosting-transactions'
 
-export const HOSTED_PRICING_URL = 'https://api-docs.deepseek.com/quick_start/pricing/'
-export const PRICING_FRESH_MS = 10 * 60_000
 export const PRICING_REFRESH_MS = 5 * 60_000
 export const PRICING_CALENDAR = Object.freeze({
     version: 'cn-state-council-2026-q4-v1', schedule: 'Peak: Monday–Friday 01:00–04:00 and 06:00–10:00 UTC, excluding Chinese public holidays. All other times are off-peak.', from: '2026-10-18T00:00:00.000Z', until: '2027-01-01T00:00:00.000Z', holidays: [] as string[],
@@ -21,22 +20,9 @@ export const PricingTerms = z.strictObject({
     table: z.array(z.array(z.string().max(1000)).length(5)).min(10).max(40),
 })
 export type PricingTerms = z.infer<typeof PricingTerms>
-export type PricingSource = { html: string, date: string | undefined, age: string | undefined }
-export type PricingFetcher = (signal?: AbortSignal) => Promise<PricingSource>
-export const fetchOfficialPricing: PricingFetcher = async signal => {
-    const response = await safeHttp.axios.request<string>({
-        method: 'GET', url: HOSTED_PRICING_URL, responseType: 'text', signal, timeout: 10_000, maxRedirects: 0,
-        maxContentLength: 512 * 1024, maxBodyLength: 0, validateStatus: () => true,
-        headers: { Accept: 'text/html', 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' },
-    })
-    if (response.status !== 200 || typeof response.data !== 'string' || !String(response.headers['content-type'] ?? '').toLowerCase().includes('text/html')) hostingFail('HOSTING_PRICING_SOURCE_UNAVAILABLE')
-    return { html: response.data, date: response.headers['date'], age: response.headers['age'] }
-}
-export function parseOfficialPricing(source: PricingSource, now: Date): { terms: PricingTerms, termsHash: string, contentHash: string, sourceAt: Date } {
-    if (Buffer.byteLength(source.html) > 512 * 1024 || !source.date || !Number.isFinite(Date.parse(source.date))) hostingFail('HOSTING_PRICING_SOURCE_INVALID')
-    const age = source.age === undefined ? 0 : /^\d+$/.test(source.age) ? Number(source.age) : Number.NaN
-    const sourceAt = new Date(Math.min(Date.parse(source.date), now.getTime() - age * 1000))
-    if (!Number.isSafeInteger(age) || age < 0 || sourceAt.getTime() > now.getTime() + 30_000 || now.getTime() - sourceAt.getTime() > PRICING_FRESH_MS) hostingFail('HOSTING_PRICING_SOURCE_STALE')
+export function parseOfficialPricing(source: PricingSource, now: Date): { terms: PricingTerms, termsHash: string, contentHash: string, sourceAt: Date, sourceValidation: PricingSourceValidation | null } {
+    if (Buffer.byteLength(source.html) > 512 * 1024) hostingFail('HOSTING_PRICING_SOURCE_INVALID')
+    const sourceAt = pricingSourceDate(source, now)
     const html = source.html.replace(/<!--[^]*?-->|<script\b[^]*?<\/script\s*>|<style\b[^]*?<\/style\s*>/gi, '')
     const text = clean(html)
     const schedule = 'Off-peak rates are half of the peak rates. Peak hours are 01:00 - 04:00 and 06:00 - 10:00 UTC, Monday through Friday, excluding Chinese public holidays. All other hours are off-peak, including weekends and Chinese public holidays in full.'
@@ -98,7 +84,7 @@ export function parseOfficialPricing(source: PricingSource, now: Date): { terms:
         return { peak, offPeak, version: versions[column] }
     }
     const terms = PricingTerms.parse({ parserVersion: 'deepseek-html-v1', schedule: 'weekdays-utc-01-04-06-10-except-cn-holidays', models: { [HOSTED_DEEPSEEK_MODEL]: extract(3), [HOSTED_DEEPSEEK_PRO_MODEL]: extract(4) }, table: grid })
-    return { terms, termsHash: hash(terms), contentHash: hash(source.html), sourceAt }
+    return { terms, termsHash: hash(terms), contentHash: hash(source.html), sourceAt, sourceValidation: source.sourceValidation ?? null }
 }
 export function pricingBand(now: Date): 'peak' | 'offPeak' {
     const weekday = now.getUTCDay(), hour = now.getUTCHours()

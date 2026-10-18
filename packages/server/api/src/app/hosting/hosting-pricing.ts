@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { assertHostingOperator } from './hosting-access-policy'
 import { HOSTED_AI_TIMEOUT_MS, HostedAiPrice, validateHostedAiQuote } from './hosting-ai-policy'
 import { ManagedModel, PricingApprovalEntity, PricingObservation, PricingObservationEntity, PricingState, PricingStateEntity } from './hosting-pricing-entities'
-import { fetchOfficialPricing, HOSTED_PRICING_URL, parseOfficialPricing, PRICING_CALENDAR, PRICING_FRESH_MS, pricingBand, pricingBandBounds, PricingFetcher, PricingTerms } from './hosting-pricing-source'
+import { fetchOfficialPricing, HOSTED_PRICING_URL, parseOfficialPricing, PRICING_CALENDAR, PRICING_FRESH_MS, pricingBand, pricingBandBounds, PricingFetcher, PricingSourceValidation, PricingTerms } from './hosting-pricing-source'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 const STATE_ID = 'managed-pricing-v1'
@@ -38,7 +38,7 @@ export function createHostedPricing({ dataSource, fetchSource = fetchOfficialPri
                 result = await manager.getRepository(PricingObservationEntity).save({ id: apId(), fence, state: 'verified', ...parsed, observedAt: now, reason: null })
             }
             catch {
-                result = await manager.getRepository(PricingObservationEntity).save({ id: apId(), fence, state: 'error', terms: null, termsHash: null, contentHash: null, observedAt: now, sourceAt: null, reason: 'Official pricing could not be freshly verified. Check the source and retry.' })
+                result = await manager.getRepository(PricingObservationEntity).save({ id: apId(), fence, state: 'error', terms: null, termsHash: null, contentHash: null, observedAt: now, sourceAt: null, sourceValidation: PricingSourceValidation.safeParse(source?.sourceValidation).data ?? null, reason: 'Official pricing could not be freshly verified. Check the source and retry.' })
             }
             // An older/expired worker may record evidence but cannot overwrite a
             // newer failure or confirmation from another API process.
