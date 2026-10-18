@@ -79,6 +79,41 @@ const agentRoutes = [
   },
 ];
 
+const LearningPage = lazyWithRetry(
+  () =>
+    import('@/features/lms/learning-page').then((m) => ({
+      default: m.LearningPage,
+    })),
+  'partner-learning',
+);
+const CertificatePage = lazyWithRetry(
+  () =>
+    import('@/features/lms/certificate-page').then((m) => ({
+      default: m.CertificatePage,
+    })),
+  'certificate-verification',
+);
+const learningRoutes = [
+  {
+    path: '/learn',
+    element: (
+      <AllowOnlyLoggedInUserOnlyGuard>
+        <Suspense fallback={<RouteLoadingBar />}>
+          <LearningPage />
+        </Suspense>
+      </AllowOnlyLoggedInUserOnlyGuard>
+    ),
+  },
+  {
+    path: '/learn/verify/:token',
+    element: (
+      <Suspense fallback={<RouteLoadingBar />}>
+        <CertificatePage />
+      </Suspense>
+    ),
+  },
+];
+
 const CrashTestPage = import.meta.env.DEV
   ? lazy(() =>
       import('../routes/crash-test').then((m) => ({
@@ -103,6 +138,7 @@ const devRoutes =
 
 const routes = [
   ...devRoutes,
+  ...learningRoutes,
   ...publicRoutes,
   ...projectRoutes,
   ...authRoutes,

@@ -47,6 +47,7 @@ import { systemSnapshot } from './helper/system-snapshot'
 import { validateEnvPropsOnStartup } from './helper/system-validator'
 import { shutdownTelemetry } from './helper/telemetry.utils'
 import { hostingBootstrap } from './hosting/hosting-bootstrap'
+import { lmsController } from './lms/lms-controller'
 import { hostingController } from './hosting/hosting-controller'
 import { knowledgeBaseModule } from './knowledge-base/knowledge-base.module'
 import { mcpActivityController } from './mcp/activity/mcp-activity-controller'
@@ -197,6 +198,7 @@ export const setupApp = async (app: FastifyInstance): Promise<FastifyInstance> =
     await app.register(appEventRoutingModule)
     await app.register(authenticationModule)
     await app.register(hostingController, { prefix: '/v1/hosting' })
+    await app.register(lmsController, { prefix: '/v1/lms' })
     await app.register(triggerModule)
     await app.register(platformModule)
     await app.register(piecesReportModule)

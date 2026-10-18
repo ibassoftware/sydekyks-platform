@@ -20,6 +20,7 @@ import { FlowVersionEntity } from '../flows/flow-version/flow-version-entity'
 import { FolderEntity } from '../flows/folder/folder.entity'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
+import { LMS_ENTITIES } from '../lms/lms-entities'
 import { HostingDispatchEntity } from '../hosting/hosting-dispatch-entity'
 import { HOSTING_ACCESS_ENTITIES } from '../hosting/hosting-access-entities'
 import { HOSTING_ENTITIES } from '../hosting/hosting-entities'
@@ -66,6 +67,7 @@ const databaseType = system.get(AppSystemProp.DB_TYPE)
 
 function getEntities(): EntitySchema<unknown>[] {
     return [
+        ...LMS_ENTITIES,
         ...HOSTING_ENTITIES,
         ...HOSTING_ACCESS_ENTITIES,
         ...HOSTING_STRIPE_ENTITIES,
