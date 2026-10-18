@@ -1,0 +1,151 @@
+import { apId } from '@activepieces/core-utils'
+import { PlatformRole, UserStatus } from '@activepieces/shared'
+import { DataSource } from 'typeorm'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { UserIdentityEntity } from '../../src/app/authentication/user-identity/user-identity-entity'
+import { FlagEntity } from '../../src/app/flags/flag.entity'
+import { createHostedAccess } from '../../src/app/hosting/hosting-access'
+import { HostingAccessMembershipEntity, HostingAccessRoleEntity } from '../../src/app/hosting/hosting-access-entities'
+import { hasOperationalAccess } from '../../src/app/hosting/hosting-access-policy'
+import { HostingAccountEntity } from '../../src/app/hosting/hosting-entities'
+import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
+import { createHostedOnboarding } from '../../src/app/hosting/hosting-onboarding'
+import { createHostedPartnerAdmin, PartnerAssignmentInput, PartnerDecisionInput } from '../../src/app/hosting/hosting-partner-admin'
+import { HostingPartnerAdminCommandEntity } from '../../src/app/hosting/hosting-partner-admin-entities'
+import { HostingActor, hostingTransactions } from '../../src/app/hosting/hosting-transactions'
+import { UserEntity } from '../../src/app/user/user-entity'
+import { bootstrapHostedOperator, migratedHostedPGlite } from '../helpers/hosting-fixtures'
+
+// Persisted synthetic identities are inputs to this service-level regression.
+// Normal signup/OTP delivery is covered separately through the disposable HTTP
+// acceptance fixture; no test fabricates a verified identity in that journey.
+let ds: DataSource, operator: HostingActor, target: string
+let onboarding: ReturnType<typeof createHostedOnboarding>
+const admin = () => createHostedPartnerAdmin({ dataSource: ds, onboarding })
+const access = () => createHostedAccess({ dataSource: ds })
+async function identity(verified = true) {
+    const id = apId()
+    await ds.getRepository(UserIdentityEntity).insert({ id, email: `${id}@test.invalid`, provider: 'EMAIL', password: 'unused-service-fixture', verified, firstName: 'Partner', lastName: 'Fixture', tokenVersion: 'initial' })
+    return id
+}
+async function candidate(identityId = target) {
+    const identity = await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: identityId })
+    const result = (await admin().lookup({ actor: operator, email: identity.email })).candidate
+    if (!result) throw new Error('Fixture lookup missing')
+    return result
+}
+async function decision(active: boolean, key = apId(), identityId = target) {
+    const current = await candidate(identityId)
+    return admin().mutate({ actor: operator, identityId, input: { active, requestKey: key, expectedRevision: current.revision, expectedState: current.stateHash } })
+}
+async function assignment(platformId: string, assigned: boolean, key = apId()) {
+    const current = await candidate()
+    return admin().mutate({ actor: operator, identityId: target, input: { platformId, assigned, requestKey: key, expectedRevision: current.revision, expectedState: current.stateHash } })
+}
+async function client() {
+    const identityId = await identity(), home = await onboarding.provision({ identityId, name: 'Client fixture', operator })
+    return { identityId, ...home, actor: { identityId, platformId: home.platformId, tokenVersion: home.tokenVersion } }
+}
+beforeAll(async () => {
+    ds = await migratedHostedPGlite() 
+})
+afterAll(async () => {
+    if (ds?.isInitialized) await ds.destroy() 
+})
+afterEach(() => vi.unstubAllEnvs())
+beforeEach(async () => {
+    vi.stubEnv('AP_SERVICE_MODE', 'hosted')
+    await ds.query(`TRUNCATE ${ds.entityMetadatas.map(entity => `"${entity.tableName}"`).join(',')} CASCADE`)
+    await ds.getRepository(FlagEntity).insert({ id: INSTALLATION_MODE_FLAG_ID, value: { schemaVersion: 1, serviceMode: 'hosted' } })
+    onboarding = createHostedOnboarding({ dataSource: ds, subjectSecret: 'synthetic-partner-service-fixture-at-least32' })
+    const operatorId = await identity(), home = await bootstrapHostedOperator(ds, onboarding, operatorId)
+    vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', operatorId)
+    operator = { identityId: operatorId, platformId: home.platformId, tokenVersion: home.tokenVersion }
+    target = await identity()
+})
+
+describe('operator partner administration', () => {
+    it('looks up exact normalized email without approving unverified, operator or team identities', async () => {
+        const account = await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: target })
+        expect((await admin().lookup({ actor: operator, email: ` ${account.email.toUpperCase()} ` })).candidate?.identityId).toBe(target)
+        expect((await admin().lookup({ actor: operator, email: 'missing@test.invalid' })).candidate).toBeNull()
+        const unverified = await identity(false)
+        await expect(decision(true, apId(), unverified)).rejects.toThrow('VERIFIED_IDENTITY_REQUIRED')
+        await expect(decision(true, apId(), operator.identityId)).rejects.toThrow('IDENTITY_PROTECTED')
+        await access().setRole({ actor: operator, identityId: target, role: 'team', active: false })
+        await expect(decision(true)).rejects.toThrow('IDENTITY_PROTECTED')
+        expect(await ds.getRepository(HostingPartnerAdminCommandEntity).count()).toBe(0)
+    })
+    it('provisions a verified new account home and approves only Partner, without client assignments', async () => {
+        const approved = await decision(true)
+        expect(approved.candidate).toMatchObject({ role: 'partner', active: true, revision: 1, signInAvailable: true, assignments: [] })
+        expect(approved.candidate.workspaces).toHaveLength(1)
+        const account = await ds.getRepository(HostingAccountEntity).findOneByOrFail({ ownerIdentityId: target })
+        const user = await ds.getRepository(UserEntity).findOneByOrFail({ platformId: account.id, identityId: target })
+        expect(user).toMatchObject({ platformRole: PlatformRole.ADMIN, status: UserStatus.ACTIVE, externalId: null })
+        expect(await ds.getRepository(HostingAccessMembershipEntity).countBy({ identityId: target })).toBe(0)
+    })
+    it('rejects client administrators and stale operators without exposing the directory or mutating access', async () => {
+        const ordinary = await client(), current = await candidate()
+        for (const actor of [ordinary.actor, { ...operator, tokenVersion: 'stale' }]) {
+            await expect(admin().lookup({ actor, email: `${target}@test.invalid` })).rejects.toThrow('OPERATOR_REQUIRED')
+            await expect(admin().list({ actor })).rejects.toThrow('OPERATOR_REQUIRED')
+            await expect(admin().mutate({ actor, identityId: target, input: { active: true, requestKey: apId(), expectedRevision: current.revision, expectedState: current.stateHash } })).rejects.toThrow('OPERATOR_REQUIRED')
+        }
+        expect(await ds.getRepository(HostingAccessRoleEntity).existsBy({ id: target })).toBe(false)
+    })
+    it('uses revision and role/membership state CAS, idempotency and immutable command history', async () => {
+        const current = await candidate(), input = { active: true, requestKey: 'approve-once', expectedRevision: current.revision, expectedState: current.stateHash }
+        await admin().mutate({ actor: operator, identityId: target, input })
+        expect((await admin().mutate({ actor: operator, identityId: target, input })).replayed).toBe(true)
+        expect(await ds.getRepository(HostingPartnerAdminCommandEntity).count()).toBe(1)
+        await expect(admin().mutate({ actor: operator, identityId: target, input: { ...input, active: false } })).rejects.toThrow('IDEMPOTENCY_CONFLICT')
+        await expect(admin().mutate({ actor: operator, identityId: target, input: { ...input, requestKey: 'stale-revision' } })).rejects.toThrow('REVISION_CONFLICT')
+        const beforeLegacy = await candidate()
+        await access().setRole({ actor: operator, identityId: target, role: 'partner', active: false })
+        await expect(admin().mutate({ actor: operator, identityId: target, input: { active: true, requestKey: 'stale-state', expectedRevision: beforeLegacy.revision, expectedState: beforeLegacy.stateHash } })).rejects.toThrow('REVISION_CONFLICT')
+        const command = await ds.getRepository(HostingPartnerAdminCommandEntity).findOneByOrFail({ identityId: target })
+        await expect(ds.getRepository(HostingPartnerAdminCommandEntity).update({ id: command.id }, { action: 'deactivate' })).rejects.toThrow('HISTORY_IMMUTABLE')
+    })
+    it('assigns without client invitation and revokes operational tokens while preserving independent home access', async () => {
+        await decision(true)
+        const home = await ds.getRepository(UserEntity).findOneByOrFail({ identityId: target, platformRole: PlatformRole.ADMIN }), customer = await client()
+        await assignment(customer.platformId, true)
+        let identity = await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: target })
+        const partnerActor = { identityId: target, platformId: home.platformId!, tokenVersion: identity.tokenVersion ?? null }
+        const entry = await access().enter({ actor: partnerActor, platformId: customer.platformId })
+        const user = await ds.getRepository(UserEntity).findOneByOrFail({ id: entry.userId })
+        expect(user.platformRole).toBe(PlatformRole.OPERATOR)
+        expect(await hasOperationalAccess({ manager: ds.manager, user })).toBe(true)
+        await expect(access().enter({ actor: customer.actor, platformId: home.platformId! })).rejects.toThrow('OPERATIONAL_ACCESS_DENIED')
+        await assignment(customer.platformId, false)
+        await expect(hostingTransactions.run({ dataSource: ds, fn: manager => hostingTransactions.member({ manager, actor: { ...partnerActor, platformId: customer.platformId }, projectId: customer.projectId!, write: true }) })).rejects.toThrow('ACCESS_DENIED')
+        expect(await ds.getRepository(UserEntity).findOneByOrFail({ id: user.id })).toMatchObject({ status: UserStatus.INACTIVE })
+        expect(await ds.getRepository(UserEntity).findOneByOrFail({ id: home.id })).toEqual(home)
+        await assignment(customer.platformId, true)
+        identity = await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: target })
+        const tokenBefore = identity.tokenVersion
+        await decision(false)
+        expect((await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: target })).tokenVersion).not.toBe(tokenBefore)
+        expect(await ds.getRepository(HostingAccessMembershipEntity).countBy({ identityId: target, active: true })).toBe(0)
+        expect(await ds.getRepository(UserEntity).findOneByOrFail({ id: home.id })).toEqual(home)
+    })
+    it('preserves an independent joined membership without inventing ownership or another trial', async () => {
+        const customer = await client(), userId = apId(), count = await ds.getRepository(HostingAccountEntity).count()
+        await ds.getRepository(UserEntity).insert({ id: userId, identityId: target, platformId: customer.platformId, platformRole: PlatformRole.MEMBER, status: UserStatus.ACTIVE })
+        const before = await ds.getRepository(UserEntity).findOneByOrFail({ id: userId })
+        const result = await decision(true)
+        expect(result.candidate).toMatchObject({ active: true, signInAvailable: true, workspaces: [], assignments: [] })
+        expect(await ds.getRepository(UserEntity).findOneByOrFail({ id: userId })).toEqual(before)
+        expect(await ds.getRepository(HostingAccountEntity).count()).toBe(count)
+        const current = await candidate()
+        await expect(admin().mutate({ actor: operator, identityId: target, input: { platformId: customer.platformId, assigned: true, requestKey: 'independent-guard', expectedRevision: current.revision, expectedState: current.stateHash } })).rejects.toThrow('EXISTING_CLIENT_MEMBERSHIP')
+        expect(await ds.getRepository(HostingPartnerAdminCommandEntity).count()).toBe(1)
+    })
+    it('bounds mutation inputs and does not accept browser-supplied roles or identities', () => {
+        const base = { expectedRevision: 0, expectedState: 'a'.repeat(64), requestKey: 'bounded', active: true }
+        expect(PartnerDecisionInput.safeParse({ ...base, role: 'team' }).success).toBe(false)
+        expect(PartnerDecisionInput.safeParse({ ...base, expectedRevision: -1 }).success).toBe(false)
+        expect(PartnerAssignmentInput.safeParse({ ...base, platformId: apId(), assigned: true }).success).toBe(false)
+    })
+})
