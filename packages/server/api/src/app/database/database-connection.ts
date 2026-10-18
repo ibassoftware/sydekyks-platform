@@ -22,6 +22,7 @@ import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { HOSTING_ACCESS_ENTITIES } from '../hosting/hosting-access-entities'
 import { HOSTING_AI_ALLOWANCE_ENTITIES } from '../hosting/hosting-ai-allowance-entities'
+import { HOSTING_PARTNER_ADMIN_ENTITIES } from '../hosting/hosting-partner-admin-entities'
 import { HostingDispatchEntity } from '../hosting/hosting-dispatch-entity'
 import { HOSTING_ENTITIES } from '../hosting/hosting-entities'
 import { HostingModelCallEntity } from '../hosting/hosting-model-call-entity'
@@ -74,6 +75,7 @@ function getEntities(): EntitySchema<unknown>[] {
         ...HOSTING_ENTITIES,
         ...HOSTING_ACCESS_ENTITIES,
         ...HOSTING_AI_ALLOWANCE_ENTITIES,
+        ...HOSTING_PARTNER_ADMIN_ENTITIES,
         ...HOSTING_STRIPE_ENTITIES,
         ...HOSTING_PRICING_ENTITIES,
         HostingDispatchEntity,
