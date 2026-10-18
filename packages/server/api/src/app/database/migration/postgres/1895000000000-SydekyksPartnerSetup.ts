@@ -12,7 +12,12 @@ export class SydekyksPartnerSetup1895000000000 implements Migration {
         await runner.query('CREATE FUNCTION hosting_partner_setup_history_guard() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF TG_OP=\'DELETE\' THEN RAISE EXCEPTION \'HOSTING_SETUP_HISTORY_IMMUTABLE\'; END IF; IF (to_jsonb(NEW)-\'usedAt\'-\'revokedAt\'-\'updated\') IS DISTINCT FROM (to_jsonb(OLD)-\'usedAt\'-\'revokedAt\'-\'updated\') OR (OLD."usedAt" IS NOT NULL AND NEW."usedAt" IS DISTINCT FROM OLD."usedAt") OR (OLD."revokedAt" IS NOT NULL AND NEW."revokedAt" IS DISTINCT FROM OLD."revokedAt") THEN RAISE EXCEPTION \'HOSTING_SETUP_HISTORY_IMMUTABLE\'; END IF; RETURN NEW; END $$')
         await runner.query('CREATE TRIGGER setup_history_guard BEFORE UPDATE OR DELETE ON hosting_partner_setup_token FOR EACH ROW EXECUTE FUNCTION hosting_partner_setup_history_guard()')
     }
-    async down(_runner: QueryRunner): Promise<void> {
-        throw new Error('HOSTING_SETUP_ROLLBACK_REQUIRES_BACKUP_RESTORE')
+    async down(runner: QueryRunner): Promise<void> {
+        await runner.query('LOCK TABLE hosting_partner_setup_binding, hosting_partner_setup_token IN ACCESS EXCLUSIVE MODE')
+        const rows: unknown = await runner.query('SELECT id FROM hosting_partner_setup_binding UNION ALL SELECT id FROM hosting_partner_setup_token LIMIT 1')
+        if (!Array.isArray(rows) || rows.length > 0) throw new Error('HOSTING_SETUP_ROLLBACK_REQUIRES_BACKUP_RESTORE')
+        await runner.query('DROP TABLE hosting_partner_setup_token')
+        await runner.query('DROP TABLE hosting_partner_setup_binding')
+        await runner.query('DROP FUNCTION hosting_partner_setup_history_guard()')
     }
 }
