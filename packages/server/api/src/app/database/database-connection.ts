@@ -24,6 +24,7 @@ import { HOSTING_ACCESS_ENTITIES } from '../hosting/hosting-access-entities'
 import { HostingDispatchEntity } from '../hosting/hosting-dispatch-entity'
 import { HOSTING_ENTITIES } from '../hosting/hosting-entities'
 import { HostingModelCallEntity } from '../hosting/hosting-model-call-entity'
+import { HOSTING_PRICING_ENTITIES } from '../hosting/hosting-pricing-entities'
 import { HOSTING_STRIPE_ENTITIES } from '../hosting/hosting-stripe-entities'
 import { HostingTrainingEntity } from '../hosting/hosting-training-entity'
 import { KnowledgeBaseChunkEntity } from '../knowledge-base/knowledge-base-chunk.entity'
@@ -72,6 +73,7 @@ function getEntities(): EntitySchema<unknown>[] {
         ...HOSTING_ENTITIES,
         ...HOSTING_ACCESS_ENTITIES,
         ...HOSTING_STRIPE_ENTITIES,
+        ...HOSTING_PRICING_ENTITIES,
         HostingDispatchEntity,
         HostingModelCallEntity,
         HostingTrainingEntity,
