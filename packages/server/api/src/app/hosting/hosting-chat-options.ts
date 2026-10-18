@@ -2,11 +2,10 @@ import { AIProviderName } from '@activepieces/core-utils'
 import { EntityManager } from 'typeorm'
 import { aiKeyScope } from '../ai/ai-key-scope'
 import { AIProviderEntity } from '../ai/ai-provider-entity'
-import { system } from '../helper/system/system'
-import { AppSystemProp } from '../helper/system/system-props'
 import { SydConversationEntity } from '../syd/copilot/models/conversation.entity'
-import { HostedKeyAuth } from './hosting-ai-credentials'
-import { HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL, readHostedAiQuote } from './hosting-ai-policy'
+import { HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL } from './hosting-ai-policy'
+import { readManagedConfiguration } from './hosting-managed-settings'
+import { readApprovedPricing } from './hosting-pricing'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 import { readHostedCredits } from './hosting-usage'
 
@@ -18,8 +17,11 @@ export async function hostedChatOptions({ manager, actor, userId, projectId: req
     const rows = await manager.getRepository(AIProviderEntity).find({ where: { platformId: actor.platformId, provider: AIProviderName.DEEPSEEK, status: 'active' }, order: { displayName: 'ASC', id: 'ASC' } })
     let managedAvailable = false
     try {
-        readHostedAiQuote(await tx.now(manager))
-        managedAvailable = HostedKeyAuth.safeParse({ apiKey: system.get(AppSystemProp.HOSTED_DEEPSEEK_API_KEY) }).success
+        const managed = await readManagedConfiguration(manager, actor.platformId)
+        if (!managed.disabled && managed.model && managed.secretId) {
+            await readApprovedPricing(manager, await tx.now(manager), managed.model)
+            managedAvailable = true
+        }
     }
     catch {
         // Configuration availability only; never probe a provider or disclose its credentials.

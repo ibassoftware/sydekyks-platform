@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { sydApprovalGate } from '../syd/copilot/approval-gate'
 import { SydConversationEntity } from '../syd/copilot/models/conversation.entity'
 import { hostedAiCredential } from './hosting-ai-credentials'
-import { HOSTED_AI_CONTEXT_TOKENS, HOSTED_AI_MAX_CALLS, HOSTED_AI_TIMEOUT_MS, HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL, hostedAiCost, HostedAiInput, HostedAiQuote, HostedAiRequest, readHostedAiQuote } from './hosting-ai-policy'
+import { HOSTED_AI_CONTEXT_TOKENS, HOSTED_AI_MAX_CALLS, HOSTED_AI_TIMEOUT_MS, HOSTED_DEEPSEEK_MODEL, HOSTED_DEEPSEEK_PRO_MODEL, HOSTED_MANAGED_MODEL, hostedAiCost, HostedAiInput, HostedAiQuote, HostedAiRequest } from './hosting-ai-policy'
 import { deepseekHostedProvider, HostedAiProvider, hostedModelCatalog } from './hosting-ai-provider'
 import { hostedPublicChunk, hostedPublicResponse } from './hosting-ai-public'
 import { createHostedStreamParser, settledCompletionStream } from './hosting-ai-stream'
@@ -16,6 +16,7 @@ import { HostingDispatch, HostingDispatchEntity } from './hosting-dispatch-entit
 import { HostingAccountEntity, HostingGrantEntity, HostingReservationEntity } from './hosting-entities'
 import { createHostedLedger, lockHostedBudget } from './hosting-ledger'
 import { HostingModelCall, HostingModelCallEntity } from './hosting-model-call-entity'
+import { assertPreparedPricing, readApprovedPricing } from './hosting-pricing'
 import { HostingError, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 const number = z.number().int().min(0).max(10_000_000)
@@ -27,14 +28,13 @@ export function createHostedAiGateway({ dataSource, provider = deepseekHostedPro
     async function dispatch({ scope, request, stream = false, signal }: { scope: Scope, request: HostedAiInput, stream?: boolean, signal?: AbortSignal }): Promise<Record<string, unknown> | Readable> {
         const submitted = HostedAiRequest.parse(request)
         if (submitted.model !== (submitted.payer.type === 'managed' ? HOSTED_MANAGED_MODEL : HOSTED_DEEPSEEK_MODEL)) hostingFail('HOSTING_AI_MODEL_DENIED')
-        const input = { ...submitted, model: submitted.payer.type === 'managed' ? readHostedAiQuote(new Date()).model : HOSTED_DEEPSEEK_MODEL }
-        if (Buffer.byteLength(JSON.stringify(input)) > 65536) hostingFail('HOSTING_AI_REQUEST_LIMIT')
-        const hash = digest({ provider: provider.id, endpoint: provider.endpoint, accountingVersion: hostedModelCatalog[input.model].accountingVersion, payer: input.payer, model: input.model, messages: input.messages, max_tokens: input.max_tokens, temperature: input.temperature, response_format: input.response_format, tools: input.tools, tool_choice: input.tool_choice })
+        if (Buffer.byteLength(JSON.stringify(submitted)) > 65536) hostingFail('HOSTING_AI_REQUEST_LIMIT')
+
         const prepared = await tx.run({ dataSource, fn: async manager => {
+            const input = submitted
             const day = (await tx.now(manager)).toISOString().slice(0, 10)
             if (input.payer.type === 'managed') await lockHostedBudget({ manager, day, create: true })
             const account = await tx.account({ manager, platformId: scope.platformId })
-            if (!hostedModelCatalog[input.model].allowedPlans.includes(account.planId)) hostingFail('HOSTING_AI_MODEL_PLAN_DENIED')
             const { segment, root } = await current({ manager, scope })
             if (root.payer !== input.payer.type) hostingFail('HOSTING_AI_PAYER_CONFLICT')
             if (segment.payload?.jobType === WorkerJobType.EXECUTE_AGENT_RUN) {
@@ -44,6 +44,10 @@ export function createHostedAiGateway({ dataSource, provider = deepseekHostedPro
                 if (await manager.getRepository(HostingModelCallEntity).existsBy({ rootReservationId: root.id, state: 'uncertain' })) hostingFail('HOSTING_AI_OUTCOME_UNCERTAIN')
             }
             const credential = await hostedAiCredential({ manager, ...scope, payer: input.payer, model: input.model })
+            const resolvedModel = input.payer.type === 'managed' ? credential.model : HOSTED_DEEPSEEK_MODEL
+            if (resolvedModel !== HOSTED_DEEPSEEK_MODEL && resolvedModel !== HOSTED_DEEPSEEK_PRO_MODEL) hostingFail('HOSTING_AI_MODEL_DENIED')
+            if (!hostedModelCatalog[resolvedModel].allowedPlans.includes(account.planId)) hostingFail('HOSTING_AI_MODEL_PLAN_DENIED')
+            const hash = digest({ provider: provider.id, endpoint: provider.endpoint, accountingVersion: hostedModelCatalog[resolvedModel].accountingVersion, payer: input.payer, model: resolvedModel, messages: input.messages, max_tokens: input.max_tokens, temperature: input.temperature, response_format: input.response_format, tools: input.tools, tool_choice: input.tool_choice })
             const existing = await manager.getRepository(HostingModelCallEntity).findOneBy({ segmentId: segment.id, callKey: input.callKey, attempt: input.attempt })
             if (existing) {
                 if (existing.requestHash !== hash || existing.credentialFingerprint !== credential.fingerprint || existing.admissionId !== scope.admissionId) hostingFail('HOSTING_IDEMPOTENCY_CONFLICT')
@@ -54,14 +58,15 @@ export function createHostedAiGateway({ dataSource, provider = deepseekHostedPro
             if (await manager.getRepository(HostingModelCallEntity).countBy({ platformId: scope.platformId, rootReservationId: root.id }) >= HOSTED_AI_MAX_CALLS) hostingFail('HOSTING_AI_CALL_LIMIT')
             if (await manager.getRepository(HostingModelCallEntity).existsBy({ platformId: scope.platformId, rootReservationId: root.id, state: In(['prepared', 'running']) })) hostingFail('HOSTING_AI_CONCURRENCY_LIMIT')
             const now = await tx.now(manager)
-            const quote = input.payer.type === 'managed' ? readHostedAiQuote(now) : null
-            if (quote && quote.model !== input.model) hostingFail('HOSTING_AI_PRICE_CHANGED')
-            const capabilities = hostedModelCatalog[input.model].capabilities
+            const quote = input.payer.type === 'managed' ? await readApprovedPricing(manager, now, resolvedModel) : null
+            if (quote && quote.model !== resolvedModel) hostingFail('HOSTING_AI_PRICE_CHANGED')
+            const capabilities = hostedModelCatalog[resolvedModel].capabilities
             if ((input.tools?.length && !capabilities.tools) || (input.response_format?.type === 'json_object' && !capabilities.json) || (stream && !capabilities.stream)) hostingFail('HOSTING_AI_CAPABILITY_DENIED')
             const id = apId()
             const reservation = quote ? await createHostedLedger({ dataSource, manager }).reserveManagedCall({ actor: actorOf(segment), rootReservationId: root.id, key: `model:${id}`, maxCostMicroUsd: hostedAiCost({ hit: 0, miss: HOSTED_AI_CONTEXT_TOKENS, output: input.max_tokens, prices: quote.ceiling }), expectedDay: day }) : null
-            return manager.getRepository(HostingModelCallEntity).save(manager.getRepository(HostingModelCallEntity).create({ id, platformId: scope.platformId, projectId: scope.projectId, segmentId: segment.id, rootReservationId: root.id, admissionId: scope.admissionId, identityId: segment.identityId, callKey: input.callKey, attempt: input.attempt, requestHash: hash, payer: input.payer.type, configId: input.payer.type === 'byok' ? input.payer.configId : null, credentialFingerprint: credential.fingerprint, model: input.model, endpoint: provider.endpoint, state: 'prepared', reservationId: reservation?.id ?? null, budgetDay: reservation?.day ?? null, quote, leaseUntil: new Date(now.getTime() + HOSTED_AI_TIMEOUT_MS + 5000) }))
+            return manager.getRepository(HostingModelCallEntity).save(manager.getRepository(HostingModelCallEntity).create({ id, platformId: scope.platformId, projectId: scope.projectId, segmentId: segment.id, rootReservationId: root.id, admissionId: scope.admissionId, identityId: segment.identityId, callKey: input.callKey, attempt: input.attempt, requestHash: hash, payer: input.payer.type, configId: input.payer.type === 'byok' ? input.payer.configId : null, credentialFingerprint: credential.fingerprint, model: resolvedModel, endpoint: provider.endpoint, state: 'prepared', reservationId: reservation?.id ?? null, budgetDay: reservation?.day ?? null, quote, leaseUntil: new Date(now.getTime() + HOSTED_AI_TIMEOUT_MS + 5000) }))
         } })
+        const input = { ...submitted, model: prepared.model as typeof HOSTED_DEEPSEEK_MODEL | typeof HOSTED_DEEPSEEK_PRO_MODEL }
         if (prepared.state === 'settled' && prepared.response) return stream ? Readable.from(settledCompletionStream(hostedPublicResponse(prepared.response, prepared))) : hostedPublicResponse(prepared.response, prepared)
         if (prepared.state !== 'prepared') hostingFail('HOSTING_AI_OUTCOME_UNAVAILABLE')
         const claim = await tx.run({ dataSource, fn: async manager => {
@@ -75,7 +80,7 @@ export function createHostedAiGateway({ dataSource, provider = deepseekHostedPro
                 if (segment.id !== call.segmentId || call.leaseUntil <= await tx.now(manager)) hostingFail('HOSTING_AI_ADMISSION_EXPIRED')
                 const credential = await hostedAiCredential({ manager, ...scope, payer: input.payer, model: input.model })
                 if (credential.fingerprint !== call.credentialFingerprint) hostingFail('HOSTING_AI_CREDENTIAL_CHANGED')
-                if (call.quote && digest(readHostedAiQuote(await tx.now(manager))) !== digest(call.quote)) hostingFail('HOSTING_AI_PRICE_CHANGED')
+                if (call.quote) await assertPreparedPricing(manager, HostedAiQuote.parse(call.quote), await tx.now(manager))
                 const ledgerClaim = call.reservationId ? await createHostedLedger({ dataSource, manager }).claimManagedCall({ actor: actorOf(segment), reservationId: call.reservationId }) : null
                 if (ledgerClaim && !ledgerClaim.claimed) hostingFail('HOSTING_AI_ADMISSION_EXPIRED')
                 const fence = apId()
@@ -147,8 +152,11 @@ export function createHostedAiGateway({ dataSource, provider = deepseekHostedPro
             let cost: bigint | null = null
             if (call.quote) {
                 const quote = HostedAiQuote.parse(call.quote)
+                // Provider creation is integer seconds: its represented millisecond
+                // interval may overlap a fresh quote's fractional start. The full
+                // observed send/settlement interval still must fit exactly.
                 const createdAt = response.created * 1000
-                if (!call.sentAt || call.sentAt < new Date(quote.validFrom) || now > new Date(quote.validUntil) || createdAt < new Date(quote.validFrom).getTime() || createdAt > new Date(quote.validUntil).getTime() || createdAt < call.sentAt.getTime() - 5000 || createdAt > now.getTime() + 5000) hostingFail('HOSTING_AI_TARIFF_UNCERTAIN')
+                if (!call.sentAt || call.sentAt < new Date(quote.validFrom) || now > new Date(quote.validUntil) || createdAt + 999 < new Date(quote.validFrom).getTime() || createdAt > new Date(quote.validUntil).getTime() || createdAt < call.sentAt.getTime() - 5000 || createdAt > now.getTime() + 5000) hostingFail('HOSTING_AI_TARIFF_UNCERTAIN')
                 cost = hostedAiCost({ hit: response.usage.prompt_cache_hit_tokens, miss: response.usage.prompt_cache_miss_tokens, output: response.usage.completion_tokens, prices: quote.rates })
                 await createHostedLedger({ dataSource, manager }).settleManagedCall({ platformId: call.platformId, reservationId: required(call.reservationId), dispatchId: required(call.dispatchId), actualCostMicroUsd: cost })
             }

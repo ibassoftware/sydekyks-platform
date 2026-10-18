@@ -3,6 +3,7 @@ import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { hostingFail } from './hosting-transactions'
 
+export const HostedKeyAuth = z.strictObject({ apiKey: z.string().min(16).max(512).regex(/^\S+$/) })
 export const HOSTED_MANAGED_MODEL = 'sydekyks'
 export const HOSTED_DEEPSEEK_MODEL = 'deepseek-flash'
 export const HOSTED_DEEPSEEK_PRO_MODEL = 'deepseek-v4-pro'
@@ -45,6 +46,10 @@ export function readHostedAiQuote(now: Date): HostedAiPrice {
     catch {
         hostingFail('HOSTING_AI_PRICE_REQUIRED')
     }
+    return validateHostedAiQuote(value, now)
+}
+
+export function validateHostedAiQuote(value: unknown, now: Date): HostedAiPrice {
     const parsed = HostedAiQuote.safeParse(value)
     if (!parsed.success) hostingFail('HOSTING_AI_PRICE_REQUIRED')
     const quote = parsed.data

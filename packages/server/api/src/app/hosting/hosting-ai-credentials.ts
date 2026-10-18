@@ -1,23 +1,18 @@
 import { AIProviderModelType, AIProviderName } from '@activepieces/core-utils'
 import { EntityManager } from 'typeorm'
-import { z } from 'zod'
 import { aiKeyScope } from '../ai/ai-key-scope'
 import { AIProviderEntity, AIProviderSchema } from '../ai/ai-provider-entity'
 import { databaseConnection } from '../database/database-connection'
 import { encryptUtils } from '../helper/encryption'
-import { system } from '../helper/system/system'
-import { AppSystemProp } from '../helper/system/system-props'
-import { HOSTED_DEEPSEEK_MODEL, HostedAiInput } from './hosting-ai-policy'
+import { HOSTED_DEEPSEEK_MODEL, HostedAiInput, HostedKeyAuth } from './hosting-ai-policy'
+import { managedCredential } from './hosting-managed-settings'
 import { hostingFail } from './hosting-transactions'
 
-export const HostedKeyAuth = z.strictObject({ apiKey: z.string().min(16).max(512).regex(/^\S+$/) })
+export { HostedKeyAuth } from './hosting-ai-policy'
 
-export async function hostedAiCredential({ manager, platformId, projectId, payer, model }: { manager: EntityManager, platformId: string, projectId: string, payer: HostedAiInput['payer'], model: string }): Promise<{ apiKey: string, fingerprint: string }> {
+export async function hostedAiCredential({ manager, platformId, projectId, payer, model }: { manager: EntityManager, platformId: string, projectId: string, payer: HostedAiInput['payer'], model: string }): Promise<{ apiKey: string, fingerprint: string, model?: string }> {
     if (payer.type === 'managed') {
-        const key = system.get(AppSystemProp.HOSTED_DEEPSEEK_API_KEY)
-        const parsed = HostedKeyAuth.safeParse({ apiKey: key })
-        if (!parsed.success) hostingFail('HOSTING_MANAGED_AI_UNAVAILABLE')
-        return { apiKey: parsed.data.apiKey, fingerprint: await encryptUtils.hmacString(`deepseek:managed:${parsed.data.apiKey}`) }
+        return managedCredential(manager, platformId)
     }
     const row = await manager.getRepository(AIProviderEntity).findOneBy({ id: payer.configId, platformId })
     if (!row || row.provider !== AIProviderName.DEEPSEEK || row.status !== 'active' || !aiKeyScope.rowAllowsScope({ row, scope: { type: 'project', projectId } }) || !aiKeyScope.keyOffersModel({ key: row, modelId: model }) || Object.keys(row.config).length) hostingFail('HOSTING_BYOK_SCOPE_DENIED')
