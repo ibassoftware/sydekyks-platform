@@ -1,13 +1,13 @@
-import { hostingCatalog, UserStatus } from '@activepieces/shared'
+import { hostingCatalog } from '@activepieces/shared'
 import { EntityManager } from 'typeorm'
 import { ProjectEntity } from '../project/project-entity'
-import { UserEntity } from '../user/user-entity'
+import { hostedCustomerSeatCount } from './hosting-access-policy'
 import { HostingInvitationEntity } from './hosting-entities'
 
 export async function hostingResourceUsage(manager: EntityManager, platformId: string, now: Date) {
     const invitations = await manager.getRepository(HostingInvitationEntity).findBy({ platformId, status: 'pending' })
     const pending = invitations.filter(value => value.expiresAt > now)
-    const users = await manager.getRepository(UserEntity).countBy({ platformId, status: UserStatus.ACTIVE })
+    const users = await hostedCustomerSeatCount(manager, platformId)
     const projects = await manager.getRepository(ProjectEntity).countBy({ platformId })
     return { users, projects, pendingUsers: pending.length, pendingProjects: pending.reduce((sum, value) => sum + value.projectUnits, 0) }
 }

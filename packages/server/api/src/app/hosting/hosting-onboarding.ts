@@ -8,6 +8,7 @@ import { McpOAuthTokenEntity } from '../mcp/oauth/token/mcp-oauth-token.entity'
 import { PlatformEntity } from '../platform/platform.entity'
 import { ProjectEntity } from '../project/project-entity'
 import { UserEntity } from '../user/user-entity'
+import { hostedCustomerSeatCount, isOperationalUser } from './hosting-access-policy'
 import { HostingAccount, HostingAccountEntity, HostingEligibilityEntity, HostingGrantEntity, HostingInvitationEntity, HostingLedgerEntity, HostingPolicyEntity } from './hosting-entities'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
@@ -22,9 +23,9 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
         if (existing.subjectKeyFingerprint !== fingerprint) hostingFail('HOSTING_SUBJECT_KEY_CHANGED')
     }
 
-    async function provision({ identityId, name, expectedTokenVersion, names }: ProvisionParams): Promise<ProvisionedTenant> {
+    async function provision({ identityId, name, expectedTokenVersion, names, manager: existingManager }: ProvisionParams): Promise<ProvisionedTenant> {
         assertName(name)
-        return tx.run({ dataSource, fn: async manager => {
+        return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             await policy(manager)
             const identity = await lockedIdentity({ manager, identityId })
             if (expectedTokenVersion !== undefined && (identity.tokenVersion ?? null) !== expectedTokenVersion) hostingFail('HOSTING_SESSION_EXPIRED')
@@ -39,7 +40,7 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
             }
             const joined = await manager.getRepository(UserEntity).find({ where: { identityId, status: UserStatus.ACTIVE }, order: { created: 'ASC' } })
             for (const user of joined) {
-                if (!user.platformId || !await manager.getRepository(HostingAccountEntity).existsBy({ id: user.platformId })) continue
+                if (isOperationalUser(user) || !user.platformId || !await manager.getRepository(HostingAccountEntity).existsBy({ id: user.platformId })) continue
                 const project = await manager.getRepository(ProjectEntity).findOneBy({ platformId: user.platformId, ownerId: user.id })
                 return { platformId: user.platformId, userId: user.id, projectId: project?.id ?? null, created: false, tokenVersion: identity.tokenVersion ?? null }
             }
@@ -87,6 +88,7 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
             if (existingIdentity && await manager.getRepository(UserEntity).existsBy({ identityId: existingIdentity.id, platformId: actor.platformId, status: UserStatus.ACTIVE })) hostingFail('HOSTING_MEMBER_ALREADY_EXISTS')
             await manager.getRepository(HostingInvitationEntity).update({ platformId: actor.platformId, subject: subject(email), status: 'pending' }, { status: 'revoked' })
             const previous = existingIdentity ? await manager.getRepository(UserEntity).findOneBy({ identityId: existingIdentity.id, platformId: account.id }) : null
+            if (previous && isOperationalUser(previous)) hostingFail('HOSTING_OPERATOR_ASSIGNMENT_REQUIRED')
             const projectUnits = previous && await manager.getRepository(ProjectEntity).existsBy({ platformId: account.id, ownerId: previous.id }) ? 0 : 1
             await capacity({ manager, account, now, addUsers: 1, addProjects: projectUnits })
             const token = randomBytes(32).toString('base64url')
@@ -119,6 +121,7 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
             tx.assertActive({ account, now })
             await manager.getRepository(HostingInvitationEntity).update({ id: invitation.id }, { status: 'accepted', acceptedIdentityId: identityId })
             const previous = await manager.getRepository(UserEntity).findOneBy({ platformId: account.id, identityId })
+            if (previous && isOperationalUser(previous)) hostingFail('HOSTING_OPERATOR_ASSIGNMENT_REQUIRED')
             const project = previous ? await manager.getRepository(ProjectEntity).findOneBy({ platformId: account.id, ownerId: previous.id }) : null
             const alreadyActive = previous?.status === UserStatus.ACTIVE
             await capacity({ manager, account, now, addUsers: alreadyActive ? 0 : 1, addProjects: project ? 0 : 1 })
@@ -137,6 +140,7 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
         await tx.run({ dataSource, fn: async manager => {
             const peek = await manager.getRepository(UserEntity).findOneBy({ id: userId, platformId: actor.platformId })
             if (!peek) hostingFail('HOSTING_ACCESS_DENIED')
+            if (isOperationalUser(peek)) hostingFail('HOSTING_OPERATOR_ASSIGNMENT_REQUIRED')
             await lockedIdentity({ manager, identityId: peek.identityId })
             await tx.account({ manager, platformId: actor.platformId })
             const platform = await lockPlatform({ manager, platformId: actor.platformId })
@@ -178,7 +182,7 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
 async function capacity({ manager, account, now, addUsers, addProjects }: { manager: EntityManager, account: HostingAccount, now: Date, addUsers: number, addProjects: number }): Promise<void> {
     const plan = hostingCatalog.getPlan({ planId: account.planId })
     const pending = await manager.getRepository(HostingInvitationEntity).findBy({ platformId: account.id, status: 'pending', expiresAt: MoreThan(now) })
-    const users = await manager.getRepository(UserEntity).countBy({ platformId: account.id, status: UserStatus.ACTIVE })
+    const users = await hostedCustomerSeatCount(manager, account.id)
     const projects = await manager.getRepository(ProjectEntity).countBy({ platformId: account.id })
     if (users + pending.length + addUsers > plan.users || projects + pending.reduce((sum, invitation) => sum + invitation.projectUnits, 0) + addProjects > plan.projects) hostingFail('HOSTING_RESOURCE_LIMIT')
 }
@@ -208,5 +212,5 @@ function assertName(name: string): void {
     if (typeof name !== 'string' || name.trim().length < 1 || name.length > 120) hostingFail('HOSTING_INVALID_NAME')
 }
 
-type ProvisionParams = { identityId: string, name: string, expectedTokenVersion?: string | null, names?: { firstName: string, lastName: string } }
+type ProvisionParams = { manager?: EntityManager, identityId: string, name: string, expectedTokenVersion?: string | null, names?: { firstName: string, lastName: string } }
 export type ProvisionedTenant = { platformId: string, userId: string, projectId: string | null, created: boolean, tokenVersion: string | null }

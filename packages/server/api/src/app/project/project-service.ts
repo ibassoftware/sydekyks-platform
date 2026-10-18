@@ -2,8 +2,10 @@ import { ActivepiecesError, ApId, apId, assertNotNullOrUndefined, ErrorCode, isN
 import { ColorName, PlatformRole, Project, ProjectIcon, ProjectType, UserStatus } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { Brackets, EntityManager, IsNull, Not, ObjectLiteral, SelectQueryBuilder } from 'typeorm'
+import { databaseConnection } from '../database/database-connection'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
+import { hasOperationalAccess, isOperationalUser } from '../hosting/hosting-access-policy'
 import { hostingConfiguration } from '../hosting/hosting-configuration'
 import { hostingFail } from '../hosting/hosting-transactions'
 import { userRepo, userService } from '../user/user-service'
@@ -225,6 +227,10 @@ export async function applyProjectsAccessFilters<T extends ObjectLiteral>(
     const user = await userRepo().findOneBy({ id: userId, platformId, status: UserStatus.ACTIVE })
     if (!user) {
         queryBuilder.andWhere('1 = 0')
+        return
+    }
+    if (hostingConfiguration.getServiceMode() === 'hosted' && isOperationalUser(user)) {
+        if (!await hasOperationalAccess({ manager: databaseConnection().manager, user })) queryBuilder.andWhere('1 = 0')
         return
     }
     const seesTeamProjects = user.platformRole === PlatformRole.ADMIN || user.platformRole === PlatformRole.OPERATOR

@@ -182,6 +182,7 @@ export const userService = (log: FastifyBaseLogger) => ({
         })
     },
     async removeFromPlatform({ id, platformId }: DeleteParams): Promise<void> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_TENANT_SERVICE_REQUIRED')
         await assertNotPlatformOwner({ id, platformId, log })
         const user = await this.getOneOrFail({ id })
         if (await projectService(log).getOneByOwnerAndPlatform({ ownerId: id, platformId })) throw new ActivepiecesError({ code: ErrorCode.VALIDATION, params: { message: 'Deactivate this user to preserve their project data' } })

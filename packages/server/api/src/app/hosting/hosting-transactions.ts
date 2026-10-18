@@ -6,6 +6,7 @@ import { UserIdentityEntity } from '../authentication/user-identity/user-identit
 import { FlagEntity } from '../flags/flag.entity'
 import { ProjectEntity } from '../project/project-entity'
 import { UserEntity } from '../user/user-entity'
+import { hasOperationalAccess, isOperationalUser } from './hosting-access-policy'
 import { HostingAccount, HostingAccountEntity, HostingGrant, HostingLedgerEntity, HostingOutboxEntity, HostingReservation } from './hosting-entities'
 import { INSTALLATION_MODE_FLAG_ID } from './hosting-installation'
 
@@ -34,10 +35,13 @@ async function member({ manager, actor, admin = false, projectId, write = false 
     const identity = await manager.getRepository(UserIdentityEntity).findOneBy({ id: actor.identityId })
     const user = await manager.getRepository(UserEntity).findOneBy({ platformId: actor.platformId, identityId: actor.identityId, status: UserStatus.ACTIVE })
     if (!identity?.verified || (actor.tokenVersion !== undefined && (identity.tokenVersion ?? null) !== actor.tokenVersion) || !user || (admin && user.platformRole !== PlatformRole.ADMIN)) hostingFail('HOSTING_ACCESS_DENIED')
+    const operational = isOperationalUser(user)
+    const operationalAllowed = operational && await hasOperationalAccess({ manager, user })
+    if (operational && !operationalAllowed) hostingFail('HOSTING_OPERATIONAL_ACCESS_DENIED')
     if (projectId) {
         const project = await manager.getRepository(ProjectEntity).findOneBy({ id: projectId, platformId: actor.platformId })
-        if (!project || (project.type === 'PERSONAL' && project.ownerId !== user.id)) hostingFail('HOSTING_PROJECT_ACCESS_DENIED')
-        if (project.ownerId !== user.id && user.platformRole !== PlatformRole.ADMIN && (write || user.platformRole !== PlatformRole.OPERATOR)) hostingFail('HOSTING_PROJECT_ACCESS_DENIED')
+        if (!project || (project.type === 'PERSONAL' && project.ownerId !== user.id && !operationalAllowed)) hostingFail('HOSTING_PROJECT_ACCESS_DENIED')
+        if (!operationalAllowed && project.ownerId !== user.id && user.platformRole !== PlatformRole.ADMIN && (write || user.platformRole !== PlatformRole.OPERATOR)) hostingFail('HOSTING_PROJECT_ACCESS_DENIED')
     }
     return user
 }

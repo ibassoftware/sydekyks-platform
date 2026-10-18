@@ -11,6 +11,7 @@ import { networkUtils } from '../helper/network-utils'
 import { userService } from '../user/user-service'
 import { resendHostedVerification } from './hosting-auth-policy'
 import { hostingConfiguration } from './hosting-configuration'
+import { hostingAccessController } from './hosting-access-controller'
 import { hostingOnboardingController } from './hosting-onboarding-controller'
 import { hostingOperatorController } from './hosting-operator-controller'
 import { hostingServices } from './hosting-services'
@@ -19,6 +20,7 @@ import { HostingActor, HostingError } from './hosting-transactions'
 
 export const hostingController: FastifyPluginAsyncZod = async app => {
     if (hostingConfiguration.getServiceMode() !== 'hosted') return
+    await app.register(hostingAccessController, { prefix: '/operator' })
     await app.register(hostingOperatorController, { prefix: '/operator' })
     await app.register(hostingOnboardingController, { prefix: '/onboarding' })
     await app.register(hostingStripeController, { prefix: '/billing' })

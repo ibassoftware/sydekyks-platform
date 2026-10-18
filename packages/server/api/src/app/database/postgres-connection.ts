@@ -21,7 +21,9 @@ import { SydekyksHostingModelCalls1885000000000 } from './migration/postgres/188
 
 import { SydekyksHostingStripe1886000000000 } from './migration/postgres/1886000000000-SydekyksHostingStripe'
 
-export const getMigrations = () => [SydekyksInitialSchema1880000000000, SydekyksUpstream1031881000000000, SydekyksUpstreamOctober211882000000000, SydekyksHostingLedger1882000000000, SydekyksHostingDispatch1883000000000, SydekyksHostingSegments1884000000000, SydekyksHostingModelCalls1885000000000, SydekyksHostingStripe1886000000000]
+import { SydekyksHostingAccess1887000000000 } from './migration/postgres/1887000000000-SydekyksHostingAccess'
+
+export const getMigrations = () => [SydekyksInitialSchema1880000000000, SydekyksUpstream1031881000000000, SydekyksUpstreamOctober211882000000000, SydekyksHostingLedger1882000000000, SydekyksHostingDispatch1883000000000, SydekyksHostingSegments1884000000000, SydekyksHostingModelCalls1885000000000, SydekyksHostingStripe1886000000000, SydekyksHostingAccess1887000000000]
 
 function getSslConfig() {
     return system.getBoolean(AppSystemProp.POSTGRES_USE_SSL) ? { rejectUnauthorized: true } : false

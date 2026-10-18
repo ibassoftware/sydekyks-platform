@@ -21,6 +21,7 @@ import { FolderEntity } from '../flows/folder/folder.entity'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { HostingDispatchEntity } from '../hosting/hosting-dispatch-entity'
+import { HOSTING_ACCESS_ENTITIES } from '../hosting/hosting-access-entities'
 import { HOSTING_ENTITIES } from '../hosting/hosting-entities'
 import { HostingModelCallEntity } from '../hosting/hosting-model-call-entity'
 import { HOSTING_STRIPE_ENTITIES } from '../hosting/hosting-stripe-entities'
@@ -66,6 +67,7 @@ const databaseType = system.get(AppSystemProp.DB_TYPE)
 function getEntities(): EntitySchema<unknown>[] {
     return [
         ...HOSTING_ENTITIES,
+        ...HOSTING_ACCESS_ENTITIES,
         ...HOSTING_STRIPE_ENTITIES,
         HostingDispatchEntity,
         HostingModelCallEntity,

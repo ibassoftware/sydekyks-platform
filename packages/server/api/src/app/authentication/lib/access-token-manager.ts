@@ -2,9 +2,11 @@ import { ActivepiecesError, apId, ErrorCode, PlatformId, ProjectId } from '@acti
 import { ALL_PRINCIPAL_TYPES, EnginePrincipal, Principal, PrincipalType, UserStatus, WorkerPrincipal } from '@activepieces/shared'
 import dayjs from 'dayjs'
 import { FastifyBaseLogger } from 'fastify'
+import { databaseConnection } from '../../database/database-connection'
 import { jwtUtils } from '../../helper/jwt-utils'
 import { system } from '../../helper/system/system'
 import { AppSystemProp } from '../../helper/system/system-props'
+import { hasOperationalAccess, isOperationalUser } from '../../hosting/hosting-access-policy'
 import { hostingConfiguration } from '../../hosting/hosting-configuration'
 import { userService } from '../../user/user-service'
 import { userIdentityService } from '../user-identity/user-identity-service'
@@ -115,6 +117,9 @@ async function assertUserSession(log: FastifyBaseLogger, decoded: Principal | Pr
                 message: 'The session has expired or the user is not verified.',
             },
         })
+    }
+    if (hostingConfiguration.getServiceMode() === 'hosted' && isOperationalUser(user) && !await hasOperationalAccess({ manager: databaseConnection().manager, user })) {
+        throw new ActivepiecesError({ code: ErrorCode.SESSION_EXPIRED, params: { message: 'Operational workspace access has been revoked.' } })
     }
     if (identity.lastLoggedInPlatformId !== decoded.platform.id) {
         await userIdentityService(log).updateLastLoggedInPlatformId({ id: identity.id, lastLoggedInPlatformId: decoded.platform.id })
