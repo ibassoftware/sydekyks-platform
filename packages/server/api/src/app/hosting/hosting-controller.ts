@@ -10,6 +10,7 @@ import { authnRateLimit, emailCodeRateLimit } from '../core/security/rate-limit'
 import { networkUtils } from '../helper/network-utils'
 import { userService } from '../user/user-service'
 import { hostingAccessController } from './hosting-access-controller'
+import { hostingAiAllowanceController } from './hosting-ai-allowance-controller'
 import { resendHostedVerification } from './hosting-auth-policy'
 import { hostingConfiguration } from './hosting-configuration'
 import { hostingLearningController } from './hosting-learning-controller'
@@ -23,6 +24,7 @@ import { HostingActor, HostingError } from './hosting-transactions'
 export const hostingController: FastifyPluginAsyncZod = async app => {
     if (hostingConfiguration.getServiceMode() !== 'hosted') return
     await app.register(hostingAccessController, { prefix: '/operator' })
+    await app.register(hostingAiAllowanceController, { prefix: '/operator/ai-allowance' })
     await app.register(hostingLearningController, { prefix: '/operator' })
     await app.register(hostingOperatorController, { prefix: '/operator' })
     await app.register(hostingPricingController, { prefix: '/operator/ai-pricing' })
