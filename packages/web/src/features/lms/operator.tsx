@@ -479,7 +479,7 @@ export function LmsOperator({ scope }: { scope: number }) {
                 </p>
               )}
               {learner?.verified && (
-                <p className="text-sm">
+                <p className="break-words text-sm">
                   Verified learner: {learner.firstName} {learner.lastName} ·{' '}
                   {learner.email}
                 </p>
@@ -618,7 +618,7 @@ export function LmsOperator({ scope }: { scope: number }) {
           </label>
           {delivery && (
             <div className="space-y-4">
-              <p className="text-sm">
+              <p className="break-words text-sm">
                 Receipt: {delivery.paymentReference} ·{' '}
                 {delivery.package === 'core'
                   ? 'Core: 60 days'
@@ -825,9 +825,10 @@ function ReviewForm({
 }) {
   return (
     <div className="mt-5 max-w-3xl space-y-4">
-      <p className="text-sm text-gray-11">
-        Enrollment {enrollment.id} · Receipt {enrollment.paymentReference} ·{' '}
-        {enrollment.practicalReviews.length} of 2 practical assessments used
+      <p className="break-words text-sm text-gray-11">
+        {enrollment.learnerEmail || 'Learner enrollment'} · Receipt{' '}
+        {enrollment.paymentReference} · {enrollment.practicalReviews.length} of
+        2 practical assessments used
       </p>
       {enrollment.assignment ? (
         <details open>
