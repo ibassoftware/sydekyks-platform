@@ -1,6 +1,6 @@
 import { isNil } from '@activepieces/core-utils'
 import { apVersionUtil } from '@activepieces/server-utils'
-import { ApEdition, ApFlagId, ExecutionMode, Flag } from '@activepieces/shared'
+import { ApEdition, ApFlagId, ExecutionMode, Flag, HOSTED_RUNTIME_CAPABILITIES, HOSTED_RUNTIME_PROFILE } from '@activepieces/shared'
 import dayjs from 'dayjs'
 import { FastifyBaseLogger } from 'fastify'
 import { In } from 'typeorm'
@@ -69,6 +69,8 @@ export const flagService = (log: FastifyBaseLogger) => ({
         const currentVersion = apVersionUtil.getCurrentRelease()
         flags.push(
             { id: ApFlagId.SERVICE_MODE, value: hostingConfiguration.getServiceMode(), created, updated },
+            { id: ApFlagId.HOSTED_RUNTIME_PROFILE, value: hostingConfiguration.getServiceMode() === 'hosted' ? HOSTED_RUNTIME_PROFILE : null, created, updated },
+            { id: ApFlagId.HOSTED_RUNTIME_CAPABILITIES, value: hostingConfiguration.getServiceMode() === 'hosted' ? HOSTED_RUNTIME_CAPABILITIES : [], created, updated },
             {
                 id: ApFlagId.ENVIRONMENT,
                 value: system.get(AppSystemProp.ENVIRONMENT),
@@ -83,8 +85,7 @@ export const flagService = (log: FastifyBaseLogger) => ({
             },
             {
                 id: ApFlagId.AGENTS_CONFIGURED,
-                // TODO (@abuaboud): add new check
-                value: true,
+                value: hostingConfiguration.getServiceMode() !== 'hosted',
                 created,
                 updated,
             },
