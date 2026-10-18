@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 import { operatorClientsQuery, useHostedOperatorAccess } from './operator-api';
+import { PartnerSetupControls } from './partner-setup-controls';
 import {
   assignPartner,
   decidePartner,
@@ -37,7 +38,7 @@ function failure(error: unknown) {
       );
     if (error.code === 'HOSTING_VERIFIED_IDENTITY_REQUIRED')
       return t(
-        'Email verification is required. Ask this person to verify their account, then find it again.',
+        'Account setup is required. Share a private setup link or ask this person to complete email verification, then find the account again.',
       );
     if (error.kind === 'denied' || error.kind === 'session')
       return t(
@@ -165,7 +166,7 @@ function PartnerSession({ access }: { access: Access }) {
         <h1 className="text-xl font-semibold">{t('Partners')}</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-11">
           {t(
-            'Approve verified accounts, then assign the client workspaces they can support. Partner access is a separate operator decision from course enrollment or certification.',
+            'Approve eligible accounts, then assign the client workspaces they can support. Partner access is a separate operator decision from course enrollment or certification.',
           )}
         </p>
       </header>
@@ -191,12 +192,12 @@ function PartnerSession({ access }: { access: Access }) {
             </h2>
             <p className="mt-2 text-sm leading-6 text-gray-11">
               {t(
-                'Find an existing account by its exact email. For a new account, share the signup link and ask the person to complete email verification first. They can then wait for your approval; they do not need to sign up again.',
+                'Find an existing account by its exact email. For a new account, create a one-time setup link below. The recipient chooses a password without email delivery; you approve partner access afterward.',
               )}
             </p>
             <p className="mt-2 text-sm leading-6 text-gray-11">
               {t(
-                'This page does not send invitations. New accounts require working email verification; if it is unavailable, configure it before sharing the signup link.',
+                'No email is sent by this page. Secure signup with email verification remains available when email delivery is configured.',
               )}
             </p>
             <p className="mt-3 text-sm">
@@ -248,11 +249,28 @@ function PartnerSession({ access }: { access: Access }) {
             {searched && !candidate && !busy && !error && (
               <p className="text-sm">
                 {t(
-                  'No account was found. Share the secure signup link, then search again after email verification.',
+                  'No account was found. Create a private setup link below, or use secure signup if email verification is available.',
                 )}
               </p>
             )}
           </div>
+          {searched &&
+            !error &&
+            (!candidate ||
+              (!candidate.verified &&
+                candidate.editable &&
+                candidate.role === null)) && (
+              <PartnerSetupControls
+                key={candidate?.email ?? email.trim().toLowerCase()}
+                session={access.session}
+                email={candidate?.email ?? email.trim().toLowerCase()}
+                onChanged={() => {
+                  void client.invalidateQueries({
+                    queryKey: ['hosted-partners', access.session.epoch],
+                  });
+                }}
+              />
+            )}
           {candidate && (
             <section
               aria-labelledby="partner-account-heading"
@@ -270,9 +288,12 @@ function PartnerSession({ access }: { access: Access }) {
                     {candidate.email}
                   </p>
                   <p className="mt-2 text-sm">
-                    {candidate.verified
+                    {candidate.verificationMethod === 'operator'
+                      ? t('Operator admitted')
+                      : candidate.verificationMethod === 'email' &&
+                        candidate.emailOwnershipVerified
                       ? t('Email verified')
-                      : t('Email verification pending')}
+                      : t('Account setup pending')}
                     {' · '}
                     {candidate.role === 'partner'
                       ? candidate.active
@@ -295,7 +316,7 @@ function PartnerSession({ access }: { access: Access }) {
               {!candidate.verified ? (
                 <p className="mt-4 text-sm">
                   {t(
-                    'Approval is unavailable until this person verifies their email through the secure signup flow.',
+                    'Approval is unavailable until this person completes a private setup link or secure email verification.',
                   )}
                 </p>
               ) : !candidate.editable ? (
@@ -612,7 +633,7 @@ function PartnerSession({ access }: { access: Access }) {
               !list.data?.partners.length && (
                 <p className="mt-4 text-sm text-gray-11">
                   {t(
-                    'No partners on this page. Find a verified account above to approve your first partner.',
+                    'No partners on this page. Find an eligible account above to approve your first partner.',
                   )}
                 </p>
               )}

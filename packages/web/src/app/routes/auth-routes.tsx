@@ -1,5 +1,6 @@
 import { PageTitle } from '@/app/components/page-title';
 import { VerifyEmail } from '@/features/authentication';
+import { PartnerSetupPage } from '@/features/hosted-operator/partner-setup-page';
 import { AcceptInvitation } from '@/features/members';
 
 import { ChangePasswordPage } from './change-password';
@@ -9,6 +10,14 @@ import { SignInPage } from './sign-in';
 import { SignUpPage } from './sign-up';
 
 export const authRoutes = [
+  {
+    path: '/partner-setup',
+    element: (
+      <PageTitle titleKey="Set up your account">
+        <PartnerSetupPage />
+      </PageTitle>
+    ),
+  },
   {
     path: '/forget-password',
     element: (

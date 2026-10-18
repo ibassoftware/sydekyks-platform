@@ -129,7 +129,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
             <p className="mt-2 text-sm leading-relaxed text-gray-11">
               {approvalPending
                 ? t(
-                    'Your email is verified. Ask the Sydekyks team to approve this email for pilot access, then sign in again. You do not need to create another account.',
+                    'Your account is ready. Ask the Sydekyks team to approve this account for pilot access, then sign in again. You do not need to create another account.',
                   )
                 : ready && status
                 ? t(
@@ -141,7 +141,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                   )
                 : details
                 ? t(
-                    'Your email is verified. Add your name to continue. New pilot workspace access requires Sydekyks approval; existing memberships and trial eligibility are checked on the server.',
+                    'Your account is ready. Add your name to continue. New pilot workspace access requires Sydekyks approval; existing memberships and trial eligibility are checked on the server.',
                   )
                 : verification
                 ? t(

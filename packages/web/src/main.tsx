@@ -1,3 +1,4 @@
+import './lib/partner-setup-secret';
 import './polyfills';
 import { StrictMode } from 'react';
 import * as ReactDOM from 'react-dom/client';

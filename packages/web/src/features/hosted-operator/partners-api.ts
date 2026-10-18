@@ -14,6 +14,8 @@ export const PartnerCandidate = z.object({
   firstName: z.string(),
   lastName: z.string(),
   verified: z.boolean(),
+  verificationMethod: z.enum(['operator', 'email', 'pending']),
+  emailOwnershipVerified: z.boolean(),
   role: z.enum(['partner', 'team']).nullable(),
   active: z.boolean(),
   revision: z.number().int().nonnegative(),
