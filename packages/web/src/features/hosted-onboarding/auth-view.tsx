@@ -276,11 +276,10 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                     <p className="text-sm text-gray-11">
                       {offer
                         ? t(
-                            'If eligible, your {days}-day trial includes {runs} executions and {credits} managed AI credits. The trial expires after this period, and usage is limited by these allowances. There is no ongoing free hosted tier.',
+                            'If eligible, your {days}-day trial includes {credits} Credits. Managed AI is subject to service limits. The trial expires after this period; there is no ongoing free hosted tier.',
                             {
                               days: offer.trialDays,
-                              runs: offer.trial.executions.toLocaleString(),
-                              credits: offer.trial.aiCredits.toLocaleString(),
+                              credits: offer.trial.executions.toLocaleString(),
                             },
                           )
                         : t('Review the trial details before continuing.')}{' '}
@@ -477,12 +476,8 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                   value={t('{days} days', { days: offer.trialDays })}
                 />
                 <Term
-                  label={t('Execution runs')}
+                  label={t('Credits')}
                   value={offer.trial.executions.toLocaleString()}
-                />
-                <Term
-                  label={t('Managed AI credits')}
-                  value={offer.trial.aiCredits.toLocaleString()}
                 />
                 <Term
                   label={t('Workspace capacity')}
@@ -494,10 +489,10 @@ export function HostedAuthView(props: HostedAuthViewProps) {
               </dl>
             )}
             <div className="border-t pt-5">
-              <h3 className="font-medium">{t('DeepSeek and your own key')}</h3>
+              <h3 className="font-medium">{t('Bring your own key')}</h3>
               <p className="mt-2 leading-relaxed text-gray-11">
                 {t(
-                  'BYOK is included in every plan, including the trial. It uses execution runs but no managed AI credits; your provider bills you separately. Managed AI is provided by Sydekyks. BYOK currently supports DeepSeek.',
+                  'BYOK is included in every plan and uses Credits. Your provider bills AI usage separately. Managed AI is provided by Sydekyks and is subject to service limits. BYOK currently supports DeepSeek.',
                 )}
               </p>
             </div>

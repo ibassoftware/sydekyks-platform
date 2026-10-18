@@ -33,6 +33,7 @@ export const HostedCredits = z.object({
   ai: HostedCreditMeter,
   previousHeldAi: creditQuantity,
 });
+export const HostedCustomerCredits = HostedCredits.pick({ execution: true });
 export function formatHostedCredits(value: string, scale = '1') {
   const n = BigInt(value),
     d = BigInt(scale),
@@ -43,7 +44,7 @@ export function formatHostedCredits(value: string, scale = '1') {
   return `${(n / d).toLocaleString()}${fraction ? `.${fraction}` : ''}`;
 }
 export const HostedChatOptions = z.object({
-  credits: HostedCredits,
+  credits: HostedCustomerCredits,
   platformId: z.string().length(21),
   userId: z.string().length(21),
   requestedProjectId: z.string().length(21),
@@ -83,17 +84,17 @@ export function hostedChatErrorText(kind: HostedChatError['kind']) {
     case 'denied':
       return 'Chat billing is unavailable for this workspace. Check your access or switch workspaces.';
     case 'selection':
-      return 'Choose managed credits or a DeepSeek key before sending.';
+      return 'Choose Sydekyks or an available BYOK key before sending.';
     case 'key':
-      return 'This DeepSeek key is no longer available. Choose another billing option.';
+      return 'This BYOK key is no longer available. Choose another AI provider.';
     case 'project':
       return 'This conversation belongs to a different project. Reopen it or start a new chat.';
     case 'credits':
-      return 'Your hosted allowance is unavailable or exhausted. Check your billing before sending again.';
+      return 'This request is unavailable under the workspace limits. Check billing or contact your workspace administrator.';
     case 'context':
-      return 'This conversation exceeds the current chat limits. Start a new chat with a shorter message. No execution was charged for this send.';
+      return 'This conversation exceeds the current chat limits. Start a new chat with a shorter message. No Credits were charged for this send.';
     case 'send':
-      return 'The send outcome could not be confirmed. Refresh the conversation before sending again; another send may use another execution.';
+      return 'The send outcome could not be confirmed. Refresh the conversation before sending again; another send may use Credits.';
     default:
       return 'Could not refresh chat billing. Check your connection and refresh the options.';
   }

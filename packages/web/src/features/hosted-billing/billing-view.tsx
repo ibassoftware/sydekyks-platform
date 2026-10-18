@@ -1,7 +1,6 @@
 import {
-  HOSTED_MICRO_USD_PER_CREDIT,
   HostedBillingActionReason,
-  HostedBillingOverview,
+  HostedCustomerBillingOverview,
 } from '@activepieces/shared';
 import { t } from 'i18next';
 import { ExternalLink, RefreshCw } from 'lucide-react';
@@ -13,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 
 type Props = {
-  overview: HostedBillingOverview;
+  overview: HostedCustomerBillingOverview;
   stale: boolean;
   refreshing: boolean;
   pending: string | null;
@@ -180,35 +179,22 @@ export function HostedBillingView({
             </h2>
             <p className="mt-1 text-sm text-gray-11">
               {t(
-                'Execution runs and managed AI credits have separate balances. Held amounts are reserved for work in progress.',
+                'Credits cover workflow runs and chat. Held Credits are reserved for work in progress. Managed AI remains subject to service limits.',
               )}
             </p>
           </div>
           <Allowance
-            title={t('Execution runs')}
+            title={t('Credits')}
             meter={info.meters.execution}
             format={quantity}
           />
-          <Allowance
-            title={t('Managed AI credits')}
-            meter={info.meters.managedAi}
-            format={credits}
-          />
-          {BigInt(info.meters.previousPeriodHeldMicroUsd) > 0n && (
-            <p className="text-sm text-gray-11">
-              {t(
-                '{credits} managed AI credits remain held from earlier periods. They are separate from the balance above.',
-                { credits: credits(info.meters.previousPeriodHeldMicroUsd) },
-              )}
-            </p>
-          )}
           <div className="rounded-lg bg-gray-2 p-4 text-sm">
             <h3 className="font-medium">
               {t('Bring your own key on every plan')}
             </h3>
             <p className="mt-1 text-gray-11">
               {t(
-                'BYOK is included in Training, Starter, Team and the trial. BYOK runs use your execution allowance, but no managed AI credits. Your provider bills its usage separately. Managed AI is provided by Sydekyks. BYOK currently supports DeepSeek.',
+                'BYOK is included in every plan and uses Credits. Your provider bills AI usage separately. Managed AI is provided by Sydekyks. BYOK currently supports DeepSeek.',
               )}
             </p>
           </div>
@@ -248,13 +234,8 @@ export function HostedBillingView({
                     })}
                   </li>
                   <li>
-                    {t('{runs} execution runs', {
-                      runs: quantity(String(plan.limits.executions)),
-                    })}
-                  </li>
-                  <li>
-                    {t('{credits} managed AI credits', {
-                      credits: quantity(String(plan.limits.aiCredits)),
+                    {t('{credits} Credits', {
+                      credits: quantity(String(plan.limits.executions)),
                     })}
                   </li>
                   <li>
@@ -263,6 +244,7 @@ export function HostedBillingView({
                     })}
                   </li>
                   <li>{t('BYOK included')}</li>
+                  <li>{t('Managed AI is subject to service limits')}</li>
                 </ul>
                 <div className="mt-auto space-y-2">
                   <Button
@@ -333,7 +315,7 @@ function Allowance({
   format,
 }: {
   title: string;
-  meter: HostedBillingOverview['meters']['execution'];
+  meter: HostedCustomerBillingOverview['meters']['execution'];
   format: (value: string) => string;
 }) {
   return (
@@ -392,21 +374,8 @@ function date(value: string) {
 function quantity(value: string) {
   return BigInt(value).toLocaleString();
 }
-function credits(value: string) {
-  const amount = BigInt(value);
-  const whole = amount / HOSTED_MICRO_USD_PER_CREDIT;
-  const fraction = (amount % HOSTED_MICRO_USD_PER_CREDIT)
-    .toString()
-    .padStart(3, '0')
-    .replace(/0+$/, '');
-  const separator =
-    new Intl.NumberFormat()
-      .formatToParts(1.1)
-      .find((part) => part.type === 'decimal')?.value ?? '.';
-  return `${whole.toLocaleString()}${fraction ? separator + fraction : ''}`;
-}
 function price(
-  value: NonNullable<HostedBillingOverview['plans'][number]['price']>,
+  value: NonNullable<HostedCustomerBillingOverview['plans'][number]['price']>,
 ) {
   const formatter = new Intl.NumberFormat(undefined, {
     style: 'currency',
@@ -417,7 +386,7 @@ function price(
       10 ** (formatter.resolvedOptions().maximumFractionDigits ?? 2),
   );
 }
-function planName(id: HostedBillingOverview['planId']) {
+function planName(id: HostedCustomerBillingOverview['planId']) {
   return id === 'trial'
     ? t('Limited trial')
     : id === 'training'
@@ -426,7 +395,7 @@ function planName(id: HostedBillingOverview['planId']) {
     ? t('Starter')
     : t('Team');
 }
-function stateName(state: HostedBillingOverview['entitlementState']) {
+function stateName(state: HostedCustomerBillingOverview['entitlementState']) {
   return state === 'trial'
     ? t('Trial active')
     : state === 'training'

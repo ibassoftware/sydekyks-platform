@@ -144,9 +144,7 @@ function HostedChatProvider({
   if (
     !selectionError &&
     query.data &&
-    (BigInt(query.data.credits.execution.available) === 0n ||
-      (payer?.type === 'managed' &&
-        BigInt(query.data.credits.ai.available) === 0n))
+    BigInt(query.data.credits.execution.available) === 0n
   )
     selectionError = new HostedChatError('credits');
   const ready = !denied && !query.isFetching && !query.error && !selectionError;

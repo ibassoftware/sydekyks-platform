@@ -1,4 +1,4 @@
-import { HostedBillingOverview } from '@activepieces/shared';
+import { HostedCustomerBillingOverview } from '@activepieces/shared';
 
 import { api } from '@/lib/api';
 
@@ -43,7 +43,7 @@ export const hostedBillingApi = {
     const raw = await safeRequest(session, () =>
       api.get<unknown>('/v1/hosting/billing/overview', undefined, { signal }),
     );
-    const parsed = HostedBillingOverview.safeParse(raw);
+    const parsed = HostedCustomerBillingOverview.safeParse(raw);
     if (!parsed.success) throw new BillingError('unavailable');
     if (
       parsed.data.platformId !== session?.platformId ||
