@@ -42,7 +42,7 @@
             },
             "sourceCode": {
               "packageJson": "{}",
-              "code": "export const code = async (inputs) => ({ brief: `Business: ${inputs.business}. Problem: ${inputs.problem}.` });"
+              "code": "export const code = async (inputs) => {\nconst boundedText = (name, limit) => {\n  const value = inputs[name];\n  if (typeof value !== 'string' || value.trim().length === 0 || value.length > limit) {\n    throw new Error(`${name} must be non-empty text of at most ${limit} characters.`);\n  }\n  return value;\n};\nconst business = boundedText('business', 160);\nconst problem = boundedText('problem', 2000);\nreturn { brief: `Business: ${business}. Problem: ${problem}.` };\n};"
             },
             "errorHandlingOptions": {}
           },

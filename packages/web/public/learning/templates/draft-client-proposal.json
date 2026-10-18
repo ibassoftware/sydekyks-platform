@@ -43,7 +43,7 @@
             },
             "sourceCode": {
               "packageJson": "{}",
-              "code": "export const code = async (inputs) => ({ scope: inputs.scope, monthlyValue: inputs.hoursPerWeek * inputs.hourlyRate * 4 });"
+              "code": "export const code = async (inputs) => {\nif (typeof inputs.scope !== 'string' || inputs.scope.trim().length === 0 || inputs.scope.length > 4000) {\n  throw new Error('scope must be non-empty text of at most 4000 characters.');\n}\nconst finiteNonnegative = (name) => {\n  const value = inputs[name];\n  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {\n    throw new Error(`${name} must be a finite number greater than or equal to zero.`);\n  }\n  return value;\n};\nconst monthlyValue = finiteNonnegative('hoursPerWeek') * finiteNonnegative('hourlyRate') * 4;\nif (!Number.isFinite(monthlyValue)) {\n  throw new Error('The calculated monthly value must be finite. Use smaller input values.');\n}\nreturn { scope: inputs.scope, monthlyValue };\n};"
             },
             "errorHandlingOptions": {}
           },
