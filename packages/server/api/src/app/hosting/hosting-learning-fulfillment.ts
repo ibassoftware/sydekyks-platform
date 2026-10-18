@@ -1,4 +1,5 @@
 import { DataSource, EntityManager, IsNull } from 'typeorm'
+import { UserIdentityEntity } from '../authentication/user-identity/user-identity-entity'
 import { LmsCertificateEntity, LmsEnrollmentEntity } from '../lms/lms-entities'
 import { assertHostingOperator } from './hosting-access-policy'
 import { createHostedTraining } from './hosting-training'
@@ -15,6 +16,7 @@ type LearningTrainingActivation = {
     revoked: boolean
 }
 type LearningFulfillment = {
+    bindWorkspace(input: { actor: HostingActor, enrollmentId: string, workspacePlatformId: string, expectedWorkspacePlatformId: string | null }): Promise<{ enrollmentId: string, workspacePlatformId: string }>
     activate(input: { actor: HostingActor, enrollmentId: string }): Promise<LearningTrainingActivation>
     revoke(input: { actor: HostingActor, enrollmentId: string }): Promise<void>
 }
@@ -24,6 +26,23 @@ const days = (from: Date, count: number): Date => new Date(from.getTime() + coun
 // Operator-assisted pilot fulfillment. Read the trusted enrollment from our own
 // database; no caller-supplied recipient, package, receipt or credit amount is used.
 export function createLearningFulfillment({ dataSource, manager: existingManager }: { dataSource: DataSource, manager?: EntityManager }): LearningFulfillment {
+    async function bindWorkspace({ actor, enrollmentId, workspacePlatformId, expectedWorkspacePlatformId }: { actor: HostingActor, enrollmentId: string, workspacePlatformId: string, expectedWorkspacePlatformId: string | null }) {
+        return tx.run({ dataSource, manager: existingManager, fn: async manager => {
+            await assertHostingOperator({ manager, actor })
+            // Match activation/revocation lock order: enrollment, then account.
+            const enrollment = await manager.getRepository(LmsEnrollmentEntity).findOne({ where: { id: enrollmentId }, lock: { mode: 'pessimistic_write' } })
+            const now = await tx.now(manager)
+            if (!enrollment || enrollment.status !== 'active' || enrollment.startsAt > now || enrollment.accessUntil <= now || enrollment.assessmentUntil <= now) hostingFail('HOSTING_LEARNING_ENROLLMENT_UNAVAILABLE')
+            if (await manager.getRepository(HostingTrainingEntity).existsBy({ enrollmentId })) hostingFail('HOSTING_LEARNING_WORKSPACE_LOCKED')
+            await assertLearningWorkspaceOwner(manager, enrollment.identityId, workspacePlatformId)
+            await assertHostingOperator({ manager, actor })
+            if (enrollment.workspacePlatformId === workspacePlatformId) return { enrollmentId, workspacePlatformId }
+            if (enrollment.workspacePlatformId !== expectedWorkspacePlatformId) hostingFail('HOSTING_LEARNING_WORKSPACE_CHANGED')
+            await manager.getRepository(LmsEnrollmentEntity).update({ id: enrollmentId }, { workspacePlatformId })
+            await tx.event({ manager, platformId: actor.platformId, event: 'learning.workspace.bound', payload: { enrollmentId, previousWorkspacePlatformId: enrollment.workspacePlatformId, workspacePlatformId, operatorIdentityId: actor.identityId } })
+            return { enrollmentId, workspacePlatformId }
+        } })
+    }
     async function activate({ actor, enrollmentId }: { actor: HostingActor, enrollmentId: string }): Promise<LearningTrainingActivation> {
         return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             await assertHostingOperator({ manager, actor })
@@ -74,5 +93,10 @@ export function createLearningFulfillment({ dataSource, manager: existingManager
         } })
     }
 
-    return { activate, revoke }
+    return { activate, revoke, bindWorkspace }
+}
+
+export async function assertLearningWorkspaceOwner(manager: EntityManager, identityId: string, platformId: string): Promise<void> {
+    const account = await tx.account({ manager, platformId })
+    if (account.ownerIdentityId !== identityId || !await manager.getRepository(UserIdentityEntity).existsBy({ id: identityId, verified: true })) hostingFail('HOSTING_TRAINING_RECIPIENT_MISMATCH')
 }

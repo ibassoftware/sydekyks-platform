@@ -4,7 +4,7 @@ export const HostedOnboardingOffer = z.object({
     catalogVersion: z.string(),
     emailCodesAvailable: z.boolean(),
     trialDays: z.number().int().positive(),
-    trial: z.object({ users: z.number().int().positive(), projects: z.number().int().positive(), executions: z.number().int().positive(), concurrency: z.number().int().positive(), aiCredits: z.number().int().nonnegative(), byokEnabled: z.literal(true) }),
+    trial: z.object({ users: z.number().int().positive(), projects: z.number().int().positive(), executions: z.number().int().positive(), concurrency: z.number().int().positive(), byokEnabled: z.literal(true) }),
 })
 export type HostedOnboardingOffer = z.infer<typeof HostedOnboardingOffer>
 export const HostedOnboardingStatus = z.object({

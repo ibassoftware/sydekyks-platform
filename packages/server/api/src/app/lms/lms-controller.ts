@@ -1,13 +1,15 @@
 import { ActivepiecesError, apId } from '@activepieces/core-utils'
 import { PrincipalType } from '@activepieces/shared'
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
-import { IsNull } from 'typeorm'
+import { In, IsNull } from 'typeorm'
 import { z } from 'zod'
 import { UserIdentityEntity } from '../authentication/user-identity/user-identity-entity'
 import { securityAccess } from '../core/security/authorization/fastify-security'
 import { databaseConnection } from '../database/database-connection'
 import { hostingConfiguration } from '../hosting/hosting-configuration'
-import { createLearningFulfillment } from '../hosting/hosting-learning-fulfillment'
+import { assertLearningWorkspaceOwner, createLearningFulfillment } from '../hosting/hosting-learning-fulfillment'
+import { HostingTrainingEntity } from '../hosting/hosting-training-entity'
+import { HostingError } from '../hosting/hosting-transactions'
 import { PlatformEntity } from '../platform/platform.entity'
 import { foundingCourseDraft } from './lms-content'
 import { LmsCertificateEntity, LmsCourseEntity, LmsEnrollmentEntity, LmsExamAttemptEntity } from './lms-entities'
@@ -26,6 +28,7 @@ export const lmsController: FastifyPluginAsyncZod = async app => {
     })
     app.setErrorHandler((error, _request, reply) => {
         if (error instanceof LmsError) return reply.code(error.status).send({ code: error.message })
+        if (error instanceof HostingError) return reply.code(error.message === 'HOSTING_LEARNING_WORKSPACE_CHANGED' ? 409 : 403).send({ code: error.message })
         if (error instanceof ActivepiecesError) return reply.code(403).send({ code: error.error.code })
         if (error instanceof z.ZodError || (typeof error === 'object' && error !== null && 'validation' in error)) return reply.code(400).send({ code: 'LMS_INVALID_REQUEST' })
         if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505') return reply.code(409).send({ code: 'LMS_RECORD_CONFLICT' })
@@ -119,7 +122,22 @@ export const lmsController: FastifyPluginAsyncZod = async app => {
     }))
     app.get('/operator/enrollments', { config }, async request => lmsTransaction(request, async (manager, actor) => {
         requireOperator(actor)
-        return manager.getRepository(LmsEnrollmentEntity).find({ order: { created: 'DESC' }, take: 100 })
+        const enrollments = await manager.getRepository(LmsEnrollmentEntity).find({ order: { created: 'DESC' }, take: 100 })
+        if (!enrollments.length) return []
+        const identities = await manager.getRepository(UserIdentityEntity).find({ where: { id: In([...new Set(enrollments.map(row => row.identityId))]) }, select: { id: true, email: true } })
+        const workspaceIds = [...new Set(enrollments.flatMap(row => row.workspacePlatformId ? [row.workspacePlatformId] : []))]
+        const workspaces = workspaceIds.length ? await manager.getRepository(PlatformEntity).find({ where: { id: In(workspaceIds) }, select: { id: true, name: true } }) : []
+        const training = hostingConfiguration.getServiceMode() === 'hosted' ? await manager.getRepository(HostingTrainingEntity).findBy({ enrollmentId: In(enrollments.map(row => row.id)) }) : []
+        return enrollments.map(row => {
+            const delivery = training.find(item => item.enrollmentId === row.id)
+            return { ...row, learnerEmail: identities.find(identity => identity.id === row.identityId)?.email ?? null, workspaceName: workspaces.find(workspace => workspace.id === row.workspacePlatformId)?.name ?? null,
+                training: delivery ? { activated: true, startsAt: delivery.startsAt.toISOString(), endsAt: delivery.endsAt.toISOString(), revoked: !!delivery.revokedAt } : null }
+        })
+    }))
+    app.post('/operator/enrollments/:id/workspace', { config, schema: { params: enrollmentParams, body: z.strictObject({ workspacePlatformId: id, expectedWorkspacePlatformId: id.nullable() }) } }, async request => lmsTransaction(request, async (manager, actor) => {
+        requireOperator(actor)
+        if (hostingConfiguration.getServiceMode() !== 'hosted') fail('LMS_HOSTED_WORKSPACE_REQUIRED')
+        return createLearningFulfillment({ dataSource: databaseConnection(), manager }).bindWorkspace({ actor, enrollmentId: request.params.id, ...request.body })
     }))
     app.post('/operator/enroll', { config, schema: { body: z.object({ identityId: id, courseId: id, package: z.enum(['core', 'launch']), paymentReference: z.string().trim().min(3).max(160), workspacePlatformId: id.optional(), paymentVerified: z.literal(true) }).strict() } }, async request => lmsTransaction(request, async (manager, actor, now) => {
         requireOperator(actor)
@@ -128,6 +146,10 @@ export const lmsController: FastifyPluginAsyncZod = async app => {
         if (!course) return fail('LMS_COURSE_NOT_PUBLISHED')
         const identity = await manager.getRepository(UserIdentityEntity).findOneBy({ id: body.identityId, verified: true })
         if (!identity) fail('LMS_VERIFIED_IDENTITY_REQUIRED')
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            if (!body.workspacePlatformId) return fail('LMS_WORKSPACE_REQUIRED')
+            await assertLearningWorkspaceOwner(manager, body.identityId, body.workspacePlatformId)
+        }
         if (body.workspacePlatformId && !await manager.getRepository(PlatformEntity).existsBy({ id: body.workspacePlatformId })) fail('LMS_WORKSPACE_NOT_FOUND', 404)
         const existing = await manager.getRepository(LmsEnrollmentEntity).findOneBy({ paymentReference: body.paymentReference })
         if (existing) {
