@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { t } from 'i18next';
 import { Ellipsis, Pencil, Trash2 } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { PlusIcon } from '@/components/icons/plus';
@@ -46,6 +46,11 @@ export function ChatWithAIPage() {
       ? location.state.prompt
       : undefined;
   const [initialPrompt, setInitialPrompt] = useState(handedOverPrompt);
+  const [agentTask, setAgentTask] = useState(() =>
+    isObject(location.state) && typeof location.state.agentTask === 'string'
+      ? location.state.agentTask
+      : undefined,
+  );
   const [resetKey, setResetKey] = useState(0);
   const [pendingConversationId, setPendingConversationId] = useState<
     string | null
@@ -80,6 +85,7 @@ export function ChatWithAIPage() {
   const selectedConversationId = urlConversationId ?? null;
 
   const handleNewChat = useCallback(() => {
+    setAgentTask(undefined);
     setInitialPrompt(undefined);
     setResetKey((k) => k + 1);
     setPendingConversationId(null);
@@ -339,6 +345,19 @@ export function ChatWithAIPage() {
             key={`${selectedConversationId ?? 'new'}-${resetKey}`}
             incognito={false}
             initialPrompt={initialPrompt}
+            errorRecovery={
+              agentTask === undefined ? undefined : (
+                <Link
+                  to="/agents"
+                  state={{ agentTask }}
+                  className="underline underline-offset-4"
+                >
+                  {t(
+                    'Return to agent setup to create manually. Your task will be kept.',
+                  )}
+                </Link>
+              )
+            }
             conversationId={selectedConversationId}
             onTitleUpdate={handleTitleUpdate}
             onConversationCreated={handleConversationCreated}

@@ -14,6 +14,7 @@ import { getProjectName } from '@/features/projects';
 
 export const NewBlankAgentButton = ({
   projects,
+  projectId,
   pending,
   onCreate,
   variant = 'outline',
@@ -22,18 +23,21 @@ export const NewBlankAgentButton = ({
   icon,
   label,
 }: NewBlankAgentButtonProps) => {
-  const personalProject = projects.find(
-    (project) => project.type === ProjectType.PERSONAL,
-  );
+  const targetProject =
+    projectId === undefined
+      ? projects.find((project) => project.type === ProjectType.PERSONAL) ??
+        (projects.length === 1 ? projects[0] : undefined)
+      : projects.find((project) => project.id === projectId);
 
-  if (personalProject !== undefined) {
+  if (targetProject !== undefined) {
     return (
       <Button
         variant={variant}
         size={size}
         className={className}
         loading={pending}
-        onClick={() => onCreate(personalProject.id)}
+        disabled={pending}
+        onClick={() => onCreate(targetProject.id)}
       >
         {icon}
         {label}
@@ -49,6 +53,7 @@ export const NewBlankAgentButton = ({
           size={size}
           className={className}
           loading={pending}
+          disabled={pending || projects.length === 0 || projectId !== undefined}
         >
           {icon}
           {label}
@@ -73,6 +78,7 @@ export const NewBlankAgentButton = ({
 
 type NewBlankAgentButtonProps = {
   projects: Project[];
+  projectId?: string;
   pending: boolean;
   onCreate: (projectId: string) => void;
   variant?: 'outline' | 'default' | 'ghost';

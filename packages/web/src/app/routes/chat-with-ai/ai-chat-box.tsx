@@ -54,6 +54,7 @@ import { getTextFromParts } from './lib/message-parsers';
 export function AIChatBox({
   incognito,
   initialPrompt,
+  errorRecovery,
   agentId,
   builder,
   onTurnEnd,
@@ -84,6 +85,7 @@ export function AIChatBox({
       <ChatBoxContent
         incognito={incognito}
         initialPrompt={initialPrompt}
+        errorRecovery={errorRecovery}
         agentId={agentId}
         builder={builder}
         onTurnEnd={onTurnEnd}
@@ -104,6 +106,7 @@ export function AIChatBox({
 function ChatBoxContent({
   incognito,
   initialPrompt,
+  errorRecovery,
   agentId,
   builder,
   onTurnEnd,
@@ -221,8 +224,11 @@ function ChatBoxContent({
 
   const handleRetry = useCallback(() => {
     const lastUser = messages.findLast((m) => m.role === 'user');
-    if (lastUser) void sendMessage(getTextFromParts(lastUser.parts));
-  }, [messages, sendMessage]);
+    const retryText = lastUser
+      ? getTextFromParts(lastUser.parts)
+      : initialPrompt;
+    if (retryText) void handleSend(retryText);
+  }, [messages, initialPrompt, handleSend]);
 
   const lastMessage = messages[messages.length - 1];
   const lastAssistantMessage = useMemo(
@@ -426,7 +432,10 @@ function ChatBoxContent({
                     transition={{ duration: 0.2 }}
                   >
                     <AlertTriangle className="h-4 w-4 shrink-0" />
-                    <span className="flex-1">{error}</span>
+                    <div className="min-w-0 flex-1 break-words" role="alert">
+                      <p>{error}</p>
+                      {errorRecovery && <p className="mt-2">{errorRecovery}</p>}
+                    </div>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -548,6 +557,7 @@ function computeClaimedBuildIds(
 type AIChatBoxProps = {
   incognito: boolean;
   initialPrompt?: string;
+  errorRecovery?: React.ReactNode;
   agentId?: string;
   builder?: boolean;
   onTurnEnd?: () => void;

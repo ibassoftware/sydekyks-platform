@@ -1,4 +1,4 @@
-import { isNil, unique } from '@activepieces/core-utils';
+import { isNil, isObject, unique } from '@activepieces/core-utils';
 import { Agent, AgentToolType } from '@activepieces/shared';
 import { t } from 'i18next';
 import { ChevronLeft, History, SearchX, Settings2 } from 'lucide-react';
@@ -94,7 +94,12 @@ const AgentEditorContent = () => {
     roomForConversationsBesidePanel,
   );
   const [designRunning, setDesignRunning] = useState(false);
-  const [configureChosen, setConfigureChosen] = useState<boolean>();
+  const [configureChosen, setConfigureChosen] = useState<boolean | undefined>(
+    () =>
+      isObject(locationState) && locationState.configure === true
+        ? true
+        : undefined,
+  );
   const configureRef = useRef<AgentConfigurePanelHandle>(null);
   const [renderedPanel, setRenderedPanel] = useState<RightPanel | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();

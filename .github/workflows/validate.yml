@@ -78,7 +78,13 @@ jobs:
       - name: Check shared skill and provider utility contracts
         run: |
           (cd packages/core/shared && bun x vitest run test/ee/agent-tool-skills.test.ts)
-          bun x vitest run --config packages/server/utils/vitest.config.ts packages/server/utils/test/agent-ai-utils.test.ts packages/server/utils/test/ai-provider-signal.test.ts
+          bun x vitest run --config packages/server/utils/vitest.config.ts packages/server/utils/test/agent-ai-utils.test.ts packages/server/utils/test/agent-openai-retention.test.ts packages/server/utils/test/ai-provider-signal.test.ts
+      - name: Check agent creation and editor regressions
+        run: >-
+          bun x vitest run --config packages/web/vitest.config.ts
+          packages/web/test/features/agents/new-blank-agent-button.test.tsx
+          packages/web/test/app/routes/agents
+          packages/web/test/app/builder/step-settings/agent-settings/agent-link.test.tsx
       - name: Check Syd API and MCP authorization regressions
         env:
           SYD_TEST_POSTGRES: 'true'

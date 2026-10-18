@@ -47,6 +47,21 @@ async function createAgent(ctx: TestContext): Promise<Agent> {
 }
 
 describe('owned saved agents in Community Edition', () => {
+    it('publishes a new agent when the editor explicitly requests goLive, while ordinary saves remain drafts', async () => {
+        const owner = await createTestContext(app)
+        const agent = await createAgent(owner)
+        const saved = await owner.post(`/v1/agents/${agent.id}`, { draft: agent.draft })
+        expect(saved.statusCode).toBe(200)
+        expect(saved.json<Agent>().published).toBeNull()
+        const published = await owner.post(`/v1/agents/${agent.id}`, { draft: { ...agent.draft, instructions: 'Greet the named person.' }, goLive: true })
+        expect(published.statusCode, published.body).toBe(200)
+        expect(published.json<Agent>().published?.instructions).toBe('Greet the named person.')
+        const staged = await owner.post(`/v1/agents/${agent.id}`, { draft: { ...agent.draft, instructions: 'Not live yet.' }, goLive: false })
+        expect(staged.statusCode).toBe(200)
+        expect(staged.json<Agent>().published?.instructions).toBe('Greet the named person.')
+        expect(staged.json<Agent>().draft.instructions).toBe('Not live yet.')
+    })
+
     it('supports CRUD and draft publication with scoped keys and hides stored tool credentials', async () => {
         const owner = await createTestContext(app, { plan: { agentsEnabled: false, chatEnabled: false } })
         const outsider = await createTestContext(app)

@@ -119,6 +119,6 @@ describe('the configure panel never lets two writes race', () => {
     await new Promise((resolve) => setTimeout(resolve, 120));
 
     expect(mutateCalls).toHaveLength(1);
-    expect(mutateCalls[0]?.goLive).toBeUndefined();
+    expect(mutateCalls[0]?.goLive).toBe(true);
   });
 });
