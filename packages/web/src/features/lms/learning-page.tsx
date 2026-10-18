@@ -85,12 +85,14 @@ function LearningSession({ scope }: { scope: number }) {
       >
         <Button
           variant={tab === 'learn' ? 'default' : 'outline'}
+          aria-pressed={tab === 'learn'}
           onClick={() => setTab('learn')}
         >
           Course
         </Button>
         <Button
           variant={tab === 'assessment' ? 'default' : 'outline'}
+          aria-pressed={tab === 'assessment'}
           onClick={() => setTab('assessment')}
         >
           Assessment
@@ -98,6 +100,7 @@ function LearningSession({ scope }: { scope: number }) {
         {operator && (
           <Button
             variant={tab === 'operator' ? 'default' : 'outline'}
+            aria-pressed={tab === 'operator'}
             onClick={() => setTab('operator')}
           >
             Instructor
@@ -130,7 +133,31 @@ function LearningSession({ scope }: { scope: number }) {
             {new Date(enrollment.accessUntil).toLocaleDateString()}
           </p>
           <div className="grid gap-8 md:grid-cols-[260px_1fr]">
-            <nav aria-label="Course lessons">
+            <div className="min-w-0 md:hidden">
+              <label
+                htmlFor="course-lesson"
+                className="mb-2 block text-sm font-medium"
+              >
+                Course lesson
+              </label>
+              <select
+                id="course-lesson"
+                aria-controls="learning-lesson"
+                value={lesson?.id ?? ''}
+                onChange={(event) => setSelected(event.target.value)}
+                className="min-w-0 w-full max-w-full rounded-md border border-gray-6 bg-gray-1 px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-9"
+              >
+                {course.lessons.map((item, index) => (
+                  <option key={item.id} value={item.id}>
+                    {index + 1}. {item.title}
+                    {enrollment.completedLessons.includes(item.id)
+                      ? ' · Complete'
+                      : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <nav aria-label="Course lessons" className="hidden md:block">
               <ol className="divide-y divide-gray-6">
                 {course.lessons.map((item, index) => (
                   <li key={item.id}>
@@ -156,7 +183,7 @@ function LearningSession({ scope }: { scope: number }) {
               </ol>
             </nav>
             {lesson && (
-              <article className="min-w-0 max-w-3xl">
+              <article id="learning-lesson" className="min-w-0 max-w-3xl">
                 <h2 className="mb-5 text-xl font-semibold">{lesson.title}</h2>
                 <div className="space-y-4 leading-7">
                   {lesson.body.split('\n\n').map((paragraph, index) => (

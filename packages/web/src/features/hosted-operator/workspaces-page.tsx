@@ -144,7 +144,7 @@ function SessionWorkspaces({
                   variant="outline"
                   disabled={current || opening !== null}
                   onClick={() => void enter(workspace.platformId)}
-                  aria-label={t('Open {{name}}', { name: workspace.name })}
+                  aria-label={t('Open {name}', { name: workspace.name })}
                 >
                   {opening === workspace.platformId
                     ? t('Opening…')
