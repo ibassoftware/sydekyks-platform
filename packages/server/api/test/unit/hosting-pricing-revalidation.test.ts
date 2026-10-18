@@ -72,7 +72,7 @@ describe('official pricing conditional HTTP validation', () => {
         const { fetch } = sequence([response(200, html, { age: '601' }), response(304, '', { etag: tag })])
         await expect(fetch()).rejects.toThrow()
     })
-    it.each([{ age: '601' }, { age: '-1' }, { age: '0,0' }, { date: undefined }, { date: 'invalid' }, { date: 'Sun, 18 Oct 2099 00:00:00 GMT' }, { vary: '*' }, { vary: 'Origin' }])('refuses invalid304 metadata %j', async headers => {
+    it.each([{ age: '601' }, { age: '-1' }, { age: '0,0' }, { date: undefined }, { date: 'invalid' }, { date: new Date(Date.now() + 60000).toUTCString() }, { vary: '*' }, { vary: 'Origin' }])('refuses invalid304 metadata %j', async headers => {
         const { fetch } = sequence([response(200, html, { age: '601' }), response(304, '', headers)])
         await expect(fetch()).rejects.toThrow()
     })
@@ -144,8 +144,12 @@ describe('official pricing conditional HTTP validation', () => {
 
 describe('persisted pricing validation evidence', () => {
     let ds: DataSource
-    beforeAll(async () => { ds = await migratedHostedPGlite() })
-    afterAll(async () => { if (ds?.isInitialized) await ds.destroy(); vi.unstubAllEnvs() })
+    beforeAll(async () => {
+        ds = await migratedHostedPGlite()
+    })
+    afterAll(async () => {
+        if (ds?.isInitialized) await ds.destroy(); vi.unstubAllEnvs()
+    })
     it('keeps approval and prepared quotes on equivalent304 proof, persists immutable provenance, and stops on changed200', async () => {
         await ds.getRepository(FlagEntity).insert({ id: INSTALLATION_MODE_FLAG_ID, value: { schemaVersion: 1, serviceMode: 'hosted' } })
         const id = apId()
@@ -179,7 +183,9 @@ describe('persisted pricing validation evidence', () => {
             await runner.startTransaction()
             await expect(new SydekyksPricingValidation1893000000000().down(runner)).rejects.toThrow('EMPTY_PROVENANCE')
         }
-        finally { await runner.rollbackTransaction(); await runner.release() }
+        finally {
+            await runner.rollbackTransaction(); await runner.release()
+        }
         fetch = sequence([response(200, html, { age: '601' }), response(200, html.replace('$0.003', '$0.004').replace('$0.006', '$0.008'))]).fetch
         await pricing.observe()
         expect((await view()).status).toBe('mismatch')
