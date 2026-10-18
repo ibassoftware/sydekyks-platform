@@ -49,6 +49,23 @@ function init(): void {
   });
 }
 
+// Account setup URLs can contain a one-time credential. Bootstrap removes the
+// fragment before telemetry starts; keep this boundary safe for future callers.
+function isPartnerSetupPage(): boolean {
+  return window.location.pathname.replace(/\/+$/, '') === '/partner-setup';
+}
+
+function redactSetupUrl(value: string): string {
+  try {
+    const url = new URL(value, window.location.origin);
+    return url.pathname.replace(/\/+$/, '') === '/partner-setup'
+      ? `${url.origin}${url.pathname}`
+      : value;
+  } catch {
+    return '';
+  }
+}
+
 function buildCaptureContext(report: FrontendErrorReport) {
   const userId = authenticationSession.getCurrentUserId();
   const projectId = authenticationSession.getProjectId();
@@ -66,10 +83,10 @@ function buildCaptureContext(report: FrontendErrorReport) {
       : { id: userId, project_id: projectId, platform_id: platformId },
     contexts: {
       page: {
-        url: window.location.href,
+        url: redactSetupUrl(window.location.href),
         pathname: window.location.pathname,
-        hash: window.location.hash,
-        referrer: document.referrer,
+        hash: isPartnerSetupPage() ? '' : window.location.hash,
+        referrer: redactSetupUrl(document.referrer),
       },
       browser_info: {
         user_agent: navigator.userAgent,
@@ -100,6 +117,10 @@ function dispatch(report: FrontendErrorReport): void {
 }
 
 function send(report: FrontendErrorReport): void {
+  // Setup errors may contain request metadata. Do not log or buffer them for
+  // external reporting on this credential-entry page.
+  if (isPartnerSetupPage()) return;
+
   console.error('[frontend-error]', toError(report.error), {
     source: report.source,
     componentStack: report.componentStack,
