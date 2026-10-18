@@ -1,5 +1,6 @@
 import { HostedBillingActionReason, HostedBillingOverview, hostingCatalog } from '@activepieces/shared'
 import { DataSource, Not } from 'typeorm'
+import { effectiveManagedAiCredits } from './hosting-ai-allowance'
 import { hostingResourceUsage } from './hosting-billing-resources'
 import { HostingGrant, HostingGrantEntity } from './hosting-entities'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
@@ -57,12 +58,13 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
                 return { id, limits: { ...limits, byokEnabled: true as const }, price, checkout: { enabled: reason === null, reason, continuing: !!checkout && (expiredCheckout || checkout.payload.planId === id) } }
             })
             const portalReason = !configured ? 'billing_unavailable' : !bound?.customerId ? 'customer_missing' : commandReason(portal)
+            const effectiveAiCredits = await effectiveManagedAiCredits(manager, account.id, account.planId)
             const previousHeld = grants.filter(value => value.meter === 'managed_ai' && value.id !== managed?.id).reduce((sum, value) => sum + value.reserved, 0n)
             return HostedBillingOverview.parse({
                 schemaVersion: 1, platformId: account.id, userId: user.id, catalogVersion: account.catalogVersion, serverTime: now.toISOString(), environment: 'test',
                 planId: account.planId, status: account.status, entitlementState: paused ? 'paused' : account.validUntil <= now ? 'expired' : account.planId === 'trial' ? 'trial' : account.planId === 'training' ? 'training' : 'paid', validUntil: account.validUntil.toISOString(), trialEndsAt: account.trialEndsAt.toISOString(), billingHold: account.billingHold ?? false, subscriptionStatus: bound?.subscriptionStatus ?? null, planChangesEnabled: false,
                 notice: account.status === 'suspended' ? 'account_paused' : account.billingHold && !ended ? 'billing_review' : bound?.lastError ? 'billing_delayed' : null,
-                meters: { execution: meter(current, now), managedAi: meter(managed, now), previousPeriodHeldMicroUsd: previousHeld.toString() }, usage: { ...usage, activeExecutions: account.activeExecutions }, limits: { ...hostingCatalog.getPlan({ planId: account.planId }), byokEnabled: true }, plans, portal: { enabled: portalReason === null, reason: portalReason, continuing: false },
+                meters: { execution: meter(current, now), managedAi: meter(managed, now), previousPeriodHeldMicroUsd: previousHeld.toString() }, usage: { ...usage, activeExecutions: account.activeExecutions }, limits: { ...hostingCatalog.getPlan({ planId: account.planId }), aiCredits: effectiveAiCredits, byokEnabled: true }, plans, portal: { enabled: portalReason === null, reason: portalReason, continuing: false },
             })
         } })
     } }

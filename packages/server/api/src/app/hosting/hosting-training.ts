@@ -3,6 +3,7 @@ import { HOSTED_MICRO_USD_PER_CREDIT, hostingCatalog } from '@activepieces/share
 import { DataSource, EntityManager, In } from 'typeorm'
 import { z } from 'zod'
 import { assertHostingOperator } from './hosting-access-policy'
+import { effectiveManagedAiCredits } from './hosting-ai-allowance'
 import { HostingAccountEntity, HostingGrantEntity, HostingLedgerEntity, HostingReservationEntity } from './hosting-entities'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { HostingStripeBindingEntity } from './hosting-stripe-entities'
@@ -43,10 +44,11 @@ export function createHostedTraining({ dataSource, manager: existingManager }: {
             const endsAt = new Date(startsAt.getTime() + periods * periodMs)
             const record = await manager.getRepository(HostingTrainingEntity).save({ id: apId(), ...input, operatorIdentityId: actor.identityId, startsAt, endsAt, revokedAt: null })
             const limits = hostingCatalog.getPlan({ planId: 'training' })
+            const managedCredits = await effectiveManagedAiCredits(manager, account.id, 'training')
             // All periods are created exactly once. Future allowances cannot be used early;
             // balance reads never grant credits and no renewal scheduler can duplicate them.
             for (let period = 0; period < periods; period++) {
-                for (const [meter, amount] of [['execution', BigInt(limits.executions)], ['managed_ai', BigInt(limits.aiCredits) * HOSTED_MICRO_USD_PER_CREDIT]] as const) {
+                for (const [meter, amount] of [['execution', BigInt(limits.executions)], ['managed_ai', BigInt(managedCredits) * HOSTED_MICRO_USD_PER_CREDIT]] as const) {
                     const grantId = apId()
                     await manager.getRepository(HostingGrantEntity).insert({
                         id: grantId, platformId: account.id, sourceKey: `training:${record.id}:${period}`, meter, amount, reserved: 0n, consumed: 0n,

@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
 import { apId } from '@activepieces/core-utils'
-import { hostingCatalog } from '@activepieces/shared'
+import { HOSTED_MICRO_USD_PER_CREDIT, hostingCatalog } from '@activepieces/shared'
 import { DataSource, EntityManager, LessThanOrEqual } from 'typeorm'
+import { effectiveManagedAiCredits } from './hosting-ai-allowance'
 import { hostingResourceFits as resourceFits } from './hosting-billing-resources'
 import { hostingConfiguration } from './hosting-configuration'
 import { HostingAccount, HostingAccountEntity, HostingGrant, HostingGrantEntity, HostingLedgerEntity } from './hosting-entities'
@@ -307,7 +308,8 @@ async function recordPeriod({ manager, bound, evidence }: { manager: EntityManag
     await repo.save(repo.create({ ...existing, id: existing?.id ?? apId(), platformId: bound.platformId, stripeAccountId: bound.stripeAccountId, customerId: bound.customerId ?? '', subscriptionId: evidence.subscriptionId, itemId: evidence.itemId, priceId: evidence.priceId, planId: evidence.planId, sourceKey, periodStart: start, periodEnd: end, invoiceIds: [...new Set([...(existing?.invoiceIds ?? []), evidence.invoiceId])], lineIds: [...new Set([...(existing?.lineIds ?? []), evidence.lineId])], chargeIds: [...new Set([...(existing?.chargeIds ?? []), evidence.chargeId])] }))
     if (existing) return
     const plan = hostingCatalog.getPlan({ planId: evidence.planId })
-    for (const [meter, amount] of [['execution', BigInt(plan.executions)], ['managed_ai', BigInt(plan.aiCredits) * 1000n]] as const) {
+    const managedCredits = await effectiveManagedAiCredits(manager, bound.platformId, evidence.planId)
+    for (const [meter, amount] of [['execution', BigInt(plan.executions)], ['managed_ai', BigInt(managedCredits) * HOSTED_MICRO_USD_PER_CREDIT]] as const) {
         const id = apId()
         await manager.getRepository(HostingGrantEntity).insert({ id, platformId: bound.platformId, sourceKey, meter, amount, consumed: 0n, reserved: 0n, validFrom: start, validUntil: end })
         await manager.getRepository(HostingLedgerEntity).insert({ id: apId(), platformId: bound.platformId, grantId: id, reservationId: null, operation: 'grant', key: `grant:${id}`, amount })
