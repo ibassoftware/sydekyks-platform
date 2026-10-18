@@ -1,9 +1,8 @@
 import { ActivepiecesError, ErrorCode } from '@activepieces/core-utils'
-import { EmailType, PasswordType, PlatformRole, PrincipalType, RequestEmailCodeRequest } from '@activepieces/shared'
+import { EmailType, PasswordType, PrincipalType, RequestEmailCodeRequest } from '@activepieces/shared'
 import { FastifyRequest } from 'fastify'
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
-import { authenticationUtils } from '../authentication/authentication-utils'
 import { authenticationService } from '../authentication/authentication.service'
 import { securityAccess } from '../core/security/authorization/fastify-security'
 import { authnRateLimit, emailCodeRateLimit } from '../core/security/rate-limit'
@@ -49,21 +48,16 @@ export const hostingController: FastifyPluginAsyncZod = async app => {
         const grants = await hostingServices.ledger().balance({ actor: await actor(request) })
         return grants.filter(grant => grant.meter === 'execution').map(grant => ({ meter: grant.meter, unit: grant.unit, amount: grant.amount.toString(), reserved: grant.reserved.toString(), consumed: grant.consumed.toString(), available: grant.available.toString(), microcreditsPerUnit: null, validUntil: grant.validUntil.toISOString() }))
     })
-    app.post('/invitations', { config: user, schema: { body: z.strictObject({ email: z.email(), role: z.enum(PlatformRole) }) } }, async request => {
-        return (await hostingServices.onboarding()).invite({ actor: await actor(request), ...request.body })
+    // Hosted membership mutations require the current revision, immutable audit
+    // record and issuer-bound one-time capability of the tenant-members API.
+    for (const path of ['/invitations', '/invitations/accept']) app.post(path, { config: user }, async () => {
+        throw new HostingError('HOSTING_TENANT_MEMBERS_REQUIRED')
     })
-    app.delete('/invitations/:id', { config: user, schema: { params: z.object({ id: z.string() }) } }, async request => {
-        await (await hostingServices.onboarding()).revokeInvitation({ actor: await actor(request), invitationId: request.params.id })
-        return { success: true }
+    app.delete('/invitations/:id', { config: user }, async () => {
+        throw new HostingError('HOSTING_TENANT_MEMBERS_REQUIRED')
     })
-    app.patch('/members/:id', { config: user, schema: { params: z.object({ id: z.string() }), body: z.strictObject({ role: z.enum(PlatformRole).optional(), deactivate: z.boolean().optional() }).refine(value => value.role !== undefined || value.deactivate === true) } }, async request => {
-        await (await hostingServices.onboarding()).changeMember({ actor: await actor(request), userId: request.params.id, ...request.body })
-        return { success: true }
-    })
-    app.post('/invitations/accept', { config: { security: securityAccess.unscoped([PrincipalType.USER, PrincipalType.ONBOARDING]), rateLimit: authnRateLimit }, schema: { body: z.strictObject({ token: z.string().length(43) }) } }, async request => {
-        const identityId = request.principal.type === PrincipalType.ONBOARDING ? request.principal.id : (await userService(request.log).getOneOrFail({ id: request.principal.id })).identityId
-        const tenant = await (await hostingServices.onboarding()).acceptInvitation({ identityId, token: request.body.token, expectedTokenVersion: request.principal.tokenVersion ?? null })
-        return authenticationUtils(request.log).getProjectAndToken({ ...tenant, expectedTokenVersion: tenant.tokenVersion })
+    app.patch('/members/:id', { config: user }, async () => {
+        throw new HostingError('HOSTING_TENANT_MEMBERS_REQUIRED')
     })
 }
 

@@ -12,6 +12,7 @@ import { assertHostingOperator, hostingOperatorIdentityIds, isOperationalUser } 
 import { HostingAccountEntity } from './hosting-entities'
 import { HostingPartnerAdminBindingEntity, HostingPartnerAdminCommandEntity } from './hosting-partner-admin-entities'
 import { HostingPartnerSetupTokenEntity } from './hosting-partner-setup-entities'
+import { HostingTenantMembersCommandEntity } from './hosting-tenant-members-entities'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 const id = z.string().length(21)
@@ -106,10 +107,11 @@ async function view(manager: EntityManager, actor: HostingActor, identityId: str
         if (platform) names.set(platformId, platform.name)
     }
     const users = await manager.getRepository(UserEntity).find({ where: { identityId, status: UserStatus.ACTIVE }, take: 100 })
-    const manuallyAdmitted = identity.verified && await manager.getRepository(HostingPartnerSetupTokenEntity).existsBy({ identityId, usedAt: Not(IsNull()) })
+    const tenantAdmitted = identity.verified && await manager.getRepository(HostingTenantMembersCommandEntity).existsBy({ identityId, mode: 'setup', usedAt: Not(IsNull()) })
+    const manuallyAdmitted = tenantAdmitted || (identity.verified && await manager.getRepository(HostingPartnerSetupTokenEntity).existsBy({ identityId, usedAt: Not(IsNull()) }))
     return {
         identityId, email: identity.email, firstName: identity.firstName, lastName: identity.lastName, verified: identity.verified,
-        verificationMethod: !identity.verified ? 'pending' as const : manuallyAdmitted ? 'operator' as const : 'email' as const,
+        admissionSource: tenantAdmitted ? 'tenant_admin' : manuallyAdmitted ? 'operator' : identity.verified ? 'email' : 'pending', verificationMethod: !identity.verified ? 'pending' as const : manuallyAdmitted ? 'operator' as const : 'email' as const,
         emailOwnershipVerified: identity.verified && !manuallyAdmitted,
         role: role?.role ?? null, active: role?.active ?? false, revision: binding?.revision ?? 0,
         stateHash: hash({ verified: identity.verified, role: role?.role ?? null, active: role?.active ?? false, memberships: memberships.map(({ id, platformId, userId, role, active }) => ({ id, platformId, userId, role, active })) }),
