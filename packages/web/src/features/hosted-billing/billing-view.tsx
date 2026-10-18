@@ -120,7 +120,10 @@ export function HostedBillingView({
                   { date: date(info.trialEndsAt) },
                 )
               : info.planId === 'training'
-              ? t('Training access ends {date}. Credits refresh every 30 days during included access, with no rollover.', { date: date(info.validUntil) })
+              ? t(
+                  'Training access ends {date}. Credits refresh every 30 days during included access, with no rollover.',
+                  { date: date(info.validUntil) },
+                )
               : t(
                   'Paid through {date}. Allowances shown below belong to the displayed period.',
                   { date: date(info.validUntil) },

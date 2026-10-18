@@ -107,14 +107,17 @@ export function AIModelSelector({
         return 0;
       })
       .flatMap((entry) =>
-        entry.provider === AIProviderName.ACTIVEPIECES && entry.keys.length === 0
+        entry.provider === AIProviderName.ACTIVEPIECES &&
+        entry.keys.length === 0
           ? [{ provider: entry.provider, configId: '', label: entry.name }]
           : entry.keys.map((key) => ({
-          provider: entry.provider,
-          configId: key.id,
-          label:
-            entry.keys.length > 1 ? `${entry.name}: ${key.name}` : entry.name,
-        })),
+              provider: entry.provider,
+              configId: key.id,
+              label:
+                entry.keys.length > 1
+                  ? `${entry.name}: ${key.name}`
+                  : entry.name,
+            })),
       );
   }, [providers]);
 
