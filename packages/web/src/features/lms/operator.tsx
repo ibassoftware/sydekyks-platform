@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 
 import { CourseContent, Enrollment, LearnerCandidate, lmsApi } from './lms-api';
+import { lmsSessionVersion } from './session';
 
 const safetyLabels = {
   credentials: 'Credentials are protected',
@@ -36,6 +37,8 @@ export function LmsOperator({ scope }: { scope: number }) {
   const [learnerEmail, setLearnerEmail] = useState('');
   const [learner, setLearner] = useState<LearnerCandidate | null>(null);
   const [lookupMessage, setLookupMessage] = useState('');
+  const [workspaceReviewRequired, setWorkspaceReviewRequired] = useState(false);
+  const workspaceCreating = useRef(false);
   const [deliveryEnrollment, setDeliveryEnrollment] = useState('');
   const [repairWorkspace, setRepairWorkspace] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
@@ -106,6 +109,7 @@ export function LmsOperator({ scope }: { scope: number }) {
   async function findLearner() {
     setBusy(true);
     setLookupMessage('');
+    setWorkspaceReviewRequired(false);
     setLearner(null);
     setWorkspacePlatformId('');
     setVerifiedPayment(false);
@@ -122,7 +126,7 @@ export function LmsOperator({ scope }: { scope: number }) {
         );
       else if (!found.workspaces.length)
         setLookupMessage(
-          'This learner has no owned hosted workspace. Complete workspace setup before recording enrollment.',
+          'This verified learner needs a training workspace before enrollment. Create it below; partner approval is separate.',
         );
       else if (found.workspaces.length === 1)
         setWorkspacePlatformId(found.workspaces[0].platformId);
@@ -132,6 +136,60 @@ export function LmsOperator({ scope }: { scope: number }) {
       );
     } finally {
       setBusy(false);
+    }
+  }
+  async function createLearnerWorkspace() {
+    if (
+      workspaceCreating.current ||
+      busy ||
+      !learner?.verified ||
+      learner.workspaces.length ||
+      workspaceReviewRequired
+    )
+      return;
+    workspaceCreating.current = true;
+    const session = lmsSessionVersion();
+    const candidate = learner;
+    setBusy(true);
+    setLookupMessage('');
+    setWorkspacePlatformId('');
+    setVerifiedPayment(false);
+    try {
+      const person =
+        [candidate.firstName, candidate.lastName].join(' ').trim() ||
+        candidate.email.split('@')[0] ||
+        'Learner';
+      const result = await lmsApi.createTrainingWorkspace(
+        candidate.identityId,
+        `${person.slice(0, 96)} training workspace`,
+      );
+      const refreshed = await lmsApi.lookupLearner(candidate.email);
+      if (session !== lmsSessionVersion()) return;
+      if (!refreshed?.verified || refreshed.identityId !== candidate.identityId)
+        throw new Error('Learner lookup changed');
+      setLearner(refreshed);
+      const owned = refreshed.workspaces.find(
+        (item) => item.platformId === result.platformId,
+      );
+      if (owned) {
+        setWorkspacePlatformId(owned.platformId);
+        setLookupMessage(
+          'Training workspace is ready. Verify the receipt before recording enrollment. Partner status has not changed.',
+        );
+      } else {
+        setWorkspaceReviewRequired(true);
+        setLookupMessage(
+          'The returned workspace is not owned by this learner. Operator review is required before enrollment; no workspace has been selected.',
+        );
+      }
+    } catch {
+      if (session === lmsSessionVersion())
+        setLookupMessage(
+          'Workspace setup could not be confirmed. Find the learner again before retrying.',
+        );
+    } finally {
+      workspaceCreating.current = false;
+      if (session === lmsSessionVersion()) setBusy(false);
     }
   }
   if (course.isPending || enrollments.isPending)
@@ -460,6 +518,7 @@ export function LmsOperator({ scope }: { scope: number }) {
                     setLearner(null);
                     setWorkspacePlatformId('');
                     setLookupMessage('');
+                    setWorkspaceReviewRequired(false);
                     setVerifiedPayment(false);
                     setPaymentReference('');
                   }}
@@ -483,6 +542,23 @@ export function LmsOperator({ scope }: { scope: number }) {
                   Verified learner: {learner.firstName} {learner.lastName} ·{' '}
                   {learner.email}
                 </p>
+              )}
+              {learner?.verified && learner.workspaces.length === 0 && (
+                <div className="space-y-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy || workspaceReviewRequired}
+                    onClick={() => void createLearnerWorkspace()}
+                  >
+                    Create training workspace
+                  </Button>
+                  <p className="text-sm text-gray-11">
+                    Creates or reuses the learner’s normal hosted workspace. It
+                    does not enroll them, verify payment or grant partner
+                    status.
+                  </p>
+                </div>
               )}
               <label className="block" htmlFor="learner-workspace">
                 Learner-owned workspace

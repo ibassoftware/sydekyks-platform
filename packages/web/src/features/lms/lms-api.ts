@@ -103,6 +103,11 @@ export type LearnerCandidate = {
 };
 const base = '/v1/lms';
 const requests = {
+  createTrainingWorkspace: (identityId: string, name: string) =>
+    api.post<{ platformId: string; created: boolean }>(
+      '/v1/hosting/operator/tenants',
+      { identityId, name },
+    ),
   lookupLearner: async (email: string) => {
     const session = currentAuthSession();
     const result = await api.get<{
