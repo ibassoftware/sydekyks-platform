@@ -1,3 +1,8 @@
+import {
+  ApFlagId,
+  HOSTED_RUNTIME_CAPABILITIES,
+  HOSTED_RUNTIME_PROFILE,
+} from '@activepieces/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronRight, GraduationCap } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -5,6 +10,8 @@ import { Link } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
+import { flagsHooks } from '@/hooks/flags-hooks';
 
 import { Exam, lmsApi } from './lms-api';
 import { LmsOperator } from './operator';
@@ -12,9 +19,32 @@ import { useLmsSession } from './session';
 
 export function LearningPage() {
   const scope = useLmsSession();
-  return <LearningSession key={scope} scope={scope} />;
+  const hosted = useHostedBillingEnabled();
+  const { data: flags } = flagsHooks.useFlags();
+  const capabilities: unknown = flags[ApFlagId.HOSTED_RUNTIME_CAPABILITIES];
+  const pilotReady =
+    flags[ApFlagId.HOSTED_RUNTIME_PROFILE] === HOSTED_RUNTIME_PROFILE &&
+    Array.isArray(capabilities) &&
+    capabilities.length === HOSTED_RUNTIME_CAPABILITIES.length &&
+    HOSTED_RUNTIME_CAPABILITIES.every((value) => capabilities.includes(value));
+  return (
+    <LearningSession
+      key={scope}
+      scope={scope}
+      hosted={hosted}
+      pilotReady={pilotReady}
+    />
+  );
 }
-function LearningSession({ scope }: { scope: number }) {
+function LearningSession({
+  scope,
+  hosted,
+  pilotReady,
+}: {
+  scope: number;
+  hosted: boolean;
+  pilotReady: boolean;
+}) {
   const queryClient = useQueryClient();
   const state = useQuery({
     queryKey: ['lms', scope, 'me'],
@@ -79,6 +109,34 @@ function LearningSession({ scope }: { scope: number }) {
           <Link to="/">Back to workspace</Link>
         </Button>
       </header>
+      {hosted && (
+        <section
+          aria-labelledby="learning-pilot-scope"
+          className="mb-6 border-y border-gray-6 py-4"
+        >
+          <h2 id="learning-pilot-scope" className="font-semibold">
+            Hosted pilot: manual calculations and AI drafts
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-11">
+            Start your pilot workflows manually. Use Code and Ask AI, then
+            review drafts yourself before sharing. Sydekyks chat supports
+            conversation only.
+          </p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-11">
+            Agents, webhooks, schedules, tools, file uploads, memory and
+            personalization are unavailable. You cannot pause for approval,
+            resume a run, start another workflow from a workflow, or cancel
+            queued runs. Include only available features in client proposals.
+          </p>
+          {!pilotReady && (
+            <p role="status" className="mt-3 text-sm">
+              This training workspace is not ready yet. Contact Sydekyks support
+              before starting the examples.
+            </p>
+          )}
+        </section>
+      )}
+
       <nav
         aria-label="Learning sections"
         className="mb-6 flex flex-wrap gap-2 border-b border-gray-6 pb-4"
@@ -186,21 +244,28 @@ function LearningSession({ scope }: { scope: number }) {
               <article id="learning-lesson" className="min-w-0 max-w-3xl">
                 <h2 className="mb-5 text-xl font-semibold">{lesson.title}</h2>
                 <div className="space-y-4 leading-7">
-                  {lesson.body.split('\n\n').map((paragraph, index) => (
-                    <p key={index}>{paragraph}</p>
-                  ))}
+                  {lesson.body
+                    .replaceAll('\\n', '\n')
+                    .split('\n\n')
+                    .map((paragraph, index) => (
+                      <p key={index}>{paragraph}</p>
+                    ))}
                 </div>
                 <h3 className="mb-3 mt-8 text-lg font-semibold">
                   Put it into practice
                 </h3>
                 <p className="leading-7">{lesson.exercise}</p>
-                {lesson.resources.length > 0 && (
+                {lesson.resources.length > 0 && (!hosted || pilotReady) && (
                   <ul className="mt-4 space-y-2">
                     {lesson.resources.map((resource) => (
                       <li key={resource.url}>
                         <a
                           className="text-accent-11 underline underline-offset-4"
                           href={resource.url}
+                          download={
+                            resource.url.startsWith('/learning/templates/') ||
+                            undefined
+                          }
                           target="_blank"
                           rel="noreferrer"
                         >

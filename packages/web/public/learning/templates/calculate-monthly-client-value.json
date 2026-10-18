@@ -1,0 +1,58 @@
+{
+  "name": "Calculate monthly client value",
+  "type": "CUSTOM",
+  "summary": "Supported manually started partner-pilot demonstration.",
+  "description": "Import into your own assigned workspace, inspect the sample inputs and run manually. Ask AI results are short drafts. Review facts, fees, assumptions and handover yourself outside the workflow before sharing. No automated approval, external delivery or production integration is included.",
+  "tags": [],
+  "blogUrl": null,
+  "metadata": null,
+  "author": "Sydekyks",
+  "categories": [
+    "Partner training"
+  ],
+  "pieces": [
+    "@activepieces/piece-manual-trigger"
+  ],
+  "flows": [
+    {
+      "displayName": "Calculate monthly client value",
+      "schemaVersion": "28",
+      "trigger": {
+        "name": "trigger",
+        "type": "PIECE_TRIGGER",
+        "displayName": "Run manually",
+        "valid": true,
+        "settings": {
+          "pieceName": "@activepieces/piece-manual-trigger",
+          "pieceVersion": "0.0.8",
+          "triggerName": "manual_trigger",
+          "input": {},
+          "propertySettings": {}
+        },
+        "nextAction": {
+          "name": "step_1",
+          "type": "CODE",
+          "displayName": "Calculate monthly value",
+          "valid": true,
+          "settings": {
+            "input": {
+              "hoursPerWeek": 5,
+              "hourlyRate": 30
+            },
+            "sourceCode": {
+              "packageJson": "{}",
+              "code": "export const code = async (inputs) => ({ monthlyValue: inputs.hoursPerWeek * inputs.hourlyRate * 4 });"
+            },
+            "errorHandlingOptions": {}
+          },
+          "lastUpdatedDate": "2026-10-18T00:00:00.000Z"
+        },
+        "lastUpdatedDate": "2026-10-18T00:00:00.000Z"
+      },
+      "valid": true,
+      "notes": []
+    }
+  ],
+  "tables": [],
+  "status": "PUBLISHED"
+}

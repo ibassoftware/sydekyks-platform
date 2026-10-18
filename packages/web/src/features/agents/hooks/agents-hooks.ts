@@ -19,6 +19,7 @@ import {
 } from '@tanstack/react-query';
 
 import { internalErrorToast } from '@/components/ui/sonner';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import { useAuthorization } from '@/hooks/authorization-hooks';
 import { platformHooks } from '@/hooks/platform-hooks';
 
@@ -32,9 +33,10 @@ export const useAgentsAvailable = (): boolean => {
 };
 
 export const useAgentsNavVisible = (): boolean => {
+  const hosted = useHostedBillingEnabled();
   const available = useAgentsAvailable();
   const { checkAccess } = useAuthorization();
-  return available && checkAccess(Permission.READ_AGENT);
+  return !hosted && available && checkAccess(Permission.READ_AGENT);
 };
 
 const AGENTS_PAGE_SIZE = 100;

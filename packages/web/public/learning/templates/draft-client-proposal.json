@@ -1,0 +1,83 @@
+{
+  "name": "Draft a client proposal",
+  "type": "CUSTOM",
+  "summary": "Supported manually started partner-pilot demonstration.",
+  "description": "Import into your own assigned workspace, inspect the sample inputs and run manually. Ask AI results are short drafts. Review facts, fees, assumptions and handover yourself outside the workflow before sharing. No automated approval, external delivery or production integration is included.",
+  "tags": [],
+  "blogUrl": null,
+  "metadata": null,
+  "author": "Sydekyks",
+  "categories": [
+    "Partner training"
+  ],
+  "pieces": [
+    "@activepieces/piece-manual-trigger",
+    "@activepieces/piece-ai"
+  ],
+  "flows": [
+    {
+      "displayName": "Draft a client proposal",
+      "schemaVersion": "28",
+      "trigger": {
+        "name": "trigger",
+        "type": "PIECE_TRIGGER",
+        "displayName": "Run manually",
+        "valid": true,
+        "settings": {
+          "pieceName": "@activepieces/piece-manual-trigger",
+          "pieceVersion": "0.0.8",
+          "triggerName": "manual_trigger",
+          "input": {},
+          "propertySettings": {}
+        },
+        "nextAction": {
+          "name": "step_1",
+          "type": "CODE",
+          "displayName": "Prepare client brief",
+          "valid": true,
+          "settings": {
+            "input": {
+              "scope": "Draft an inbox triage workflow for human approval",
+              "hoursPerWeek": 5,
+              "hourlyRate": 30
+            },
+            "sourceCode": {
+              "packageJson": "{}",
+              "code": "export const code = async (inputs) => ({ scope: inputs.scope, monthlyValue: inputs.hoursPerWeek * inputs.hourlyRate * 4 });"
+            },
+            "errorHandlingOptions": {}
+          },
+          "nextAction": {
+            "name": "step_2",
+            "type": "PIECE",
+            "displayName": "Draft a client proposal",
+            "valid": true,
+            "settings": {
+              "pieceName": "@activepieces/piece-ai",
+              "pieceVersion": "0.13.1",
+              "actionName": "askAi",
+              "input": {
+                "provider": {
+                  "provider": "activepieces"
+                },
+                "model": "sydekyks",
+                "prompt": "Scope: {{step_1.scope}}. Monthly client value: {{step_1.monthlyValue}}. Return scope, a fixed-price suggestion, assumptions and a handover checklist.",
+                "maxOutputTokens": 100,
+                "webSearch": false
+              },
+              "propertySettings": {},
+              "errorHandlingOptions": {}
+            },
+            "lastUpdatedDate": "2026-10-18T00:00:00.000Z"
+          },
+          "lastUpdatedDate": "2026-10-18T00:00:00.000Z"
+        },
+        "lastUpdatedDate": "2026-10-18T00:00:00.000Z"
+      },
+      "valid": true,
+      "notes": []
+    }
+  ],
+  "tables": [],
+  "status": "PUBLISHED"
+}

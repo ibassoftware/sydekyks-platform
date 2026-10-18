@@ -47,6 +47,7 @@ import {
 } from '@/features/flow-runs/hooks/flow-run-hooks';
 import { flowRunUtils } from '@/features/flow-runs/utils/flow-run-utils';
 import { flowHooks } from '@/features/flows/hooks/flow-hooks';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import {
   useAuthorization,
   useIsPlatformAdmin,
@@ -69,6 +70,7 @@ type SelectedRow = {
   status: FlowRunStatus;
 };
 export const RunsTable = () => {
+  const hostedPilot = useHostedBillingEnabled();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedRows, setSelectedRows] = useState<Array<SelectedRow>>([]);
   const [selectedAll, setSelectedAll] = useState(false);
@@ -338,6 +340,7 @@ export const RunsTable = () => {
               row.status === FlowRunStatus.QUEUED,
           );
           const isDisabled =
+            hostedPilot ||
             selectedRows.length === 0 ||
             !userHasPermissionToRetryRun ||
             !allCancellable;
@@ -348,8 +351,14 @@ export const RunsTable = () => {
                 hasPermission={userHasPermissionToRetryRun}
               >
                 <MessageTooltip
-                  message={t('Only paused or queued runs can be cancelled')}
-                  isDisabled={allCancellable}
+                  message={
+                    hostedPilot
+                      ? t(
+                          'Queued-run cancellation is unavailable in the hosted pilot',
+                        )
+                      : t('Only paused or queued runs can be cancelled')
+                  }
+                  isDisabled={!hostedPilot && allCancellable}
                 >
                   <Button
                     disabled={isDisabled}
@@ -357,6 +366,7 @@ export const RunsTable = () => {
                     size="sm"
                     loading={cancelRuns.isPending}
                     onClick={() => {
+                      if (hostedPilot) return;
                       const runIds = selectedRows.map((row) => row.id);
                       const status = searchParams.getAll(
                         'status',
@@ -543,6 +553,9 @@ export const RunsTable = () => {
       selectedAll,
       excludedRows,
       cancelRuns,
+      hostedPilot,
+      projectId,
+      searchParams,
     ],
   );
 
