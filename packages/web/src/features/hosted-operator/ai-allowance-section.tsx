@@ -80,6 +80,10 @@ function ClientAllowance({
         ? 'Plan default restored. Usage, held costs and access dates are unchanged.'
         : 'Client allowance saved. Usage, held costs and access dates are unchanged.',
     );
+    await refreshReferences();
+  }
+  async function refreshReferences() {
+    assertAuthSession(access.session);
     await Promise.all(
       [
         'hosted-ai-allowance',
@@ -134,6 +138,13 @@ function ClientAllowance({
           state={query.data}
           access={access}
           onSaved={saved}
+          onConflict={async () => {
+            assertAuthSession(access.session);
+            setNotice(
+              'The allowance changed while you were editing. Review the refreshed limit before saving again.',
+            );
+            await refreshReferences();
+          }}
         />
       )}
     </section>
@@ -143,10 +154,12 @@ function AllowanceEditor({
   state,
   access,
   onSaved,
+  onConflict,
 }: {
   state: AiAllowance;
   access: Access;
   onSaved: (value: AiAllowance) => Promise<void>;
+  onConflict: () => Promise<void>;
 }) {
   const [basis, setBasis] = useState<'plan' | 'override'>(
     state.overrideMonthlyCredits === null ? 'plan' : 'override',
@@ -213,6 +226,8 @@ function AllowanceEditor({
               ? 'This allowance changed while you were editing. Refresh, review the current limit and try again.'
               : 'The allowance was not confirmed. Refresh to check access and the saved limit before retrying.',
           );
+          if (cause instanceof AiSettingsError && cause.kind === 'conflict')
+            await onConflict();
         } catch {
           /* A changed account has a new editor. */
         }
