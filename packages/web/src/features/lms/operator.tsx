@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 
-import { CourseContent, Enrollment, lmsApi } from './lms-api';
+import { CourseContent, Enrollment, LearnerCandidate, lmsApi } from './lms-api';
 
 const safetyLabels = {
   credentials: 'Credentials are protected',
@@ -16,6 +17,7 @@ const safetyLabels = {
 };
 export function LmsOperator({ scope }: { scope: number }) {
   const client = useQueryClient();
+  const hosted = useHostedBillingEnabled();
   const course = useQuery({
     queryKey: ['lms', scope, 'operator', 'course'],
     queryFn: lmsApi.course,
@@ -31,6 +33,11 @@ export function LmsOperator({ scope }: { scope: number }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [identityId, setIdentityId] = useState('');
+  const [learnerEmail, setLearnerEmail] = useState('');
+  const [learner, setLearner] = useState<LearnerCandidate | null>(null);
+  const [lookupMessage, setLookupMessage] = useState('');
+  const [deliveryEnrollment, setDeliveryEnrollment] = useState('');
+  const [repairWorkspace, setRepairWorkspace] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
   const [workspacePlatformId, setWorkspacePlatformId] = useState('');
   const [tier, setTier] = useState<'core' | 'launch'>('core');
@@ -63,6 +70,70 @@ export function LmsOperator({ scope }: { scope: number }) {
       setBusy(false);
     }
   };
+  const delivery = enrollments.data?.find(
+    (item) => item.id === deliveryEnrollment,
+  );
+  const deliveryLookup = useQuery({
+    queryKey: [
+      'lms',
+      scope,
+      'operator',
+      'delivery-learner',
+      delivery?.id,
+      delivery?.learnerEmail,
+    ],
+    queryFn: () => lmsApi.lookupLearner(delivery?.learnerEmail ?? ''),
+    enabled: hosted && !!delivery?.learnerEmail && !delivery.training,
+    retry: false,
+    gcTime: 0,
+  });
+  const deliveryWorkspaces =
+    deliveryLookup.data?.verified &&
+    deliveryLookup.data.identityId === delivery?.identityId
+      ? deliveryLookup.data.workspaces
+      : [];
+  const repairTarget =
+    repairWorkspace ||
+    deliveryWorkspaces.find(
+      (item) => item.platformId === delivery?.workspacePlatformId,
+    )?.platformId ||
+    (deliveryWorkspaces.length === 1 ? deliveryWorkspaces[0].platformId : '');
+  const deliveryOwned =
+    !!delivery?.workspacePlatformId &&
+    deliveryWorkspaces.some(
+      (item) => item.platformId === delivery.workspacePlatformId,
+    );
+  async function findLearner() {
+    setBusy(true);
+    setLookupMessage('');
+    setLearner(null);
+    setWorkspacePlatformId('');
+    setVerifiedPayment(false);
+    try {
+      const found = await lmsApi.lookupLearner(learnerEmail);
+      setLearner(found);
+      if (!found)
+        setLookupMessage(
+          'No account was found. Ask the learner to register and verify their email first.',
+        );
+      else if (!found.verified)
+        setLookupMessage(
+          'This learner must verify their email before enrollment.',
+        );
+      else if (!found.workspaces.length)
+        setLookupMessage(
+          'This learner has no owned hosted workspace. Complete workspace setup before recording enrollment.',
+        );
+      else if (found.workspaces.length === 1)
+        setWorkspacePlatformId(found.workspaces[0].platformId);
+    } catch {
+      setLookupMessage(
+        'The learner could not be checked. Confirm the email and refresh before retrying.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
   if (course.isPending || enrollments.isPending)
     return <p role="status">Loading instructor tools…</p>;
   if (course.isError || enrollments.isError)
@@ -347,38 +418,108 @@ export function LmsOperator({ scope }: { scope: number }) {
       <section className="max-w-3xl">
         <h2 className="text-xl font-semibold">Record a verified enrollment</h2>
         <p className="my-3 text-gray-11">
-          Verify payment outside this form first. This records learning access
-          only. Provision the private workspace and its training allowance
-          through the hosting operator process.
+          Find the verified learner and their own workspace, then verify the
+          receipt outside this form. Record learning access here and activate
+          the included training workspace in the delivery section below.
         </p>
         <form
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!current) return;
-            void run(() =>
-              lmsApi.enroll({
-                identityId,
+            if (
+              !current ||
+              (hosted && (!learner?.verified || !workspacePlatformId))
+            )
+              return;
+            void run(async () => {
+              const recorded = await lmsApi.enroll({
+                identityId: hosted ? learner!.identityId : identityId,
                 courseId: current.id,
                 package: tier,
                 paymentReference,
                 ...(workspacePlatformId ? { workspacePlatformId } : {}),
                 paymentVerified: true,
-              }),
-            );
+              });
+              setDeliveryEnrollment(recorded.id);
+              setRepairWorkspace('');
+              setVerifiedPayment(false);
+            });
           }}
         >
-          <label className="block" htmlFor="learner-identity">
-            Verified learner identity ID
-            <Input
-              id="learner-identity"
-              value={identityId}
-              minLength={21}
-              maxLength={21}
-              required
-              onChange={(event) => setIdentityId(event.target.value)}
-            />
-          </label>
+          {hosted ? (
+            <div className="space-y-3">
+              <label className="block" htmlFor="learner-email">
+                Learner email
+                <Input
+                  id="learner-email"
+                  type="email"
+                  value={learnerEmail}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setLearnerEmail(event.target.value);
+                    setLearner(null);
+                    setWorkspacePlatformId('');
+                    setLookupMessage('');
+                    setVerifiedPayment(false);
+                    setPaymentReference('');
+                  }}
+                />
+              </label>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy || !learnerEmail.trim()}
+                onClick={() => void findLearner()}
+              >
+                Find verified learner
+              </Button>
+              {lookupMessage && (
+                <p role="status" className="text-sm">
+                  {lookupMessage}
+                </p>
+              )}
+              {learner?.verified && (
+                <p className="text-sm">
+                  Verified learner: {learner.firstName} {learner.lastName} ·{' '}
+                  {learner.email}
+                </p>
+              )}
+              <label className="block" htmlFor="learner-workspace">
+                Learner-owned workspace
+                <select
+                  id="learner-workspace"
+                  className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
+                  value={workspacePlatformId}
+                  disabled={busy || !learner?.verified}
+                  required
+                  onChange={(event) => {
+                    setWorkspacePlatformId(event.target.value);
+                    setVerifiedPayment(false);
+                  }}
+                >
+                  <option value="">Choose the learner’s workspace</option>
+                  {learner?.verified &&
+                    learner.workspaces.map((item) => (
+                      <option key={item.platformId} value={item.platformId}>
+                        {item.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            </div>
+          ) : (
+            <label className="block" htmlFor="learner-identity">
+              Verified learner identity ID
+              <Input
+                id="learner-identity"
+                value={identityId}
+                minLength={21}
+                maxLength={21}
+                required
+                onChange={(event) => setIdentityId(event.target.value)}
+              />
+            </label>
+          )}
           <label className="block" htmlFor="payment-reference">
             Verified payment or receipt reference
             <Input
@@ -390,16 +531,18 @@ export function LmsOperator({ scope }: { scope: number }) {
               onChange={(event) => setPaymentReference(event.target.value)}
             />
           </label>
-          <label className="block" htmlFor="workspace-platform">
-            Workspace platform ID (optional)
-            <Input
-              id="workspace-platform"
-              value={workspacePlatformId}
-              minLength={21}
-              maxLength={21}
-              onChange={(event) => setWorkspacePlatformId(event.target.value)}
-            />
-          </label>
+          {!hosted && (
+            <label className="block" htmlFor="workspace-platform">
+              Workspace platform ID (optional)
+              <Input
+                id="workspace-platform"
+                value={workspacePlatformId}
+                minLength={21}
+                maxLength={21}
+                onChange={(event) => setWorkspacePlatformId(event.target.value)}
+              />
+            </label>
+          )}
           <label className="block" htmlFor="training-package">
             Package
             <select
@@ -429,7 +572,10 @@ export function LmsOperator({ scope }: { scope: number }) {
           </label>
           <Button
             disabled={
-              busy || !verifiedPayment || current?.status !== 'published'
+              busy ||
+              !verifiedPayment ||
+              current?.status !== 'published' ||
+              (hosted && (!learner?.verified || !workspacePlatformId))
             }
             type="submit"
           >
@@ -437,6 +583,166 @@ export function LmsOperator({ scope }: { scope: number }) {
           </Button>
         </form>
       </section>
+      {hosted && (
+        <section
+          className="max-w-3xl space-y-4"
+          aria-labelledby="training-delivery-heading"
+        >
+          <h2 id="training-delivery-heading" className="text-xl font-semibold">
+            Training workspace delivery
+          </h2>
+          <p className="text-gray-11">
+            Activate included workspace access after recording enrollment. This
+            uses the saved package and receipt; it does not take a payment or
+            extend a previous activation.
+          </p>
+          <label className="block" htmlFor="training-enrollment">
+            Learner enrollment
+            <select
+              id="training-enrollment"
+              className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
+              value={deliveryEnrollment}
+              onChange={(event) => {
+                setDeliveryEnrollment(event.target.value);
+                setRepairWorkspace('');
+              }}
+            >
+              <option value="">Choose an enrollment</option>
+              {enrollments.data?.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.learnerEmail || 'Verified learner'} · {item.package} ·{' '}
+                  {item.paymentReference} · {item.status}
+                </option>
+              ))}
+            </select>
+          </label>
+          {delivery && (
+            <div className="space-y-4">
+              <p className="text-sm">
+                Receipt: {delivery.paymentReference} ·{' '}
+                {delivery.package === 'core'
+                  ? 'Core: 60 days'
+                  : 'Launch: 90 days'}
+              </p>
+              {delivery.training ? (
+                <p role="status">
+                  {delivery.training.revoked
+                    ? 'Training access revoked'
+                    : 'Training workspace activated'}{' '}
+                  · {new Date(delivery.training.startsAt).toLocaleDateString()}{' '}
+                  – {new Date(delivery.training.endsAt).toLocaleDateString()}.
+                  Repeating activation does not restart these dates.
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm">
+                    {delivery.workspaceName
+                      ? `Saved workspace: ${delivery.workspaceName}`
+                      : 'Workspace delivery has not been completed.'}
+                  </p>
+                  {deliveryLookup.isFetching ? (
+                    <p role="status">
+                      Checking the learner’s owned workspaces…
+                    </p>
+                  ) : deliveryLookup.isError ? (
+                    <p role="alert">
+                      Workspace ownership could not load. Refresh before
+                      activating.
+                    </p>
+                  ) : (
+                    <>
+                      <label className="block" htmlFor="delivery-workspace">
+                        Learner-owned workspace
+                        <select
+                          id="delivery-workspace"
+                          className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
+                          value={repairTarget}
+                          disabled={busy || !deliveryWorkspaces.length}
+                          onChange={(event) =>
+                            setRepairWorkspace(event.target.value)
+                          }
+                        >
+                          <option value="">
+                            Choose the learner’s workspace
+                          </option>
+                          {deliveryWorkspaces.map((item) => (
+                            <option
+                              key={item.platformId}
+                              value={item.platformId}
+                            >
+                              {item.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {!deliveryWorkspaces.length && (
+                        <p className="text-sm">
+                          A verified learner-owned workspace is required before
+                          activation. Ask the learner to complete workspace
+                          setup, then refresh.
+                        </p>
+                      )}
+                      {!deliveryOwned && (
+                        <p className="text-sm">
+                          Confirm the correct workspace below before activating.
+                          This repair keeps the receipt, package and access
+                          dates unchanged.
+                        </p>
+                      )}
+                      <div className="flex flex-wrap gap-3">
+                        <Button
+                          variant="outline"
+                          disabled={
+                            busy ||
+                            !repairTarget ||
+                            repairTarget === delivery.workspacePlatformId ||
+                            delivery.status !== 'active'
+                          }
+                          onClick={() =>
+                            run(() =>
+                              lmsApi.bindWorkspace(
+                                delivery.id,
+                                repairTarget,
+                                delivery.workspacePlatformId,
+                              ),
+                            )
+                          }
+                        >
+                          Save learner-owned workspace
+                        </Button>
+                        <Button
+                          disabled={
+                            busy ||
+                            !deliveryOwned ||
+                            delivery.status !== 'active'
+                          }
+                          onClick={() =>
+                            run(() => lmsApi.activateTraining(delivery.id))
+                          }
+                        >
+                          Activate training workspace
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+              <Button
+                variant="outline"
+                disabled={
+                  busy || enrollments.isFetching || deliveryLookup.isFetching
+                }
+                onClick={() => {
+                  void enrollments.refetch();
+                  if (!delivery.training) void deliveryLookup.refetch();
+                }}
+              >
+                Refresh delivery status
+              </Button>
+            </div>
+          )}
+        </section>
+      )}
       <section>
         <h2 className="text-xl font-semibold">
           Practical review and certification
@@ -467,7 +773,8 @@ export function LmsOperator({ scope }: { scope: number }) {
             <option value="">Choose an enrollment</option>
             {enrollments.data?.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.identityId} · {item.package} · {item.status}
+                {item.learnerEmail || 'Verified learner'} · {item.package} ·{' '}
+                {item.paymentReference} · {item.status}
               </option>
             ))}
           </select>
@@ -619,17 +926,6 @@ function ReviewForm({
           onClick={() => run(() => lmsApi.certify(enrollment.id))}
         >
           Approve and issue certificate
-        </Button>
-        <Button
-          disabled={
-            busy ||
-            !enrollment.workspacePlatformId ||
-            enrollment.status === 'revoked'
-          }
-          variant="outline"
-          onClick={() => run(() => lmsApi.activateTraining(enrollment.id))}
-        >
-          Activate training workspace
         </Button>
         <Button
           disabled={busy || enrollment.status === 'revoked'}

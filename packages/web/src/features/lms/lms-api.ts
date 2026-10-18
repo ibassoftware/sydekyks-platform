@@ -1,3 +1,4 @@
+import { currentAuthSession } from '@/features/hosted-onboarding/auth-session';
 import { api } from '@/lib/api';
 
 import { lmsSessionVersion } from './session';
@@ -30,6 +31,14 @@ export type Enrollment = {
   completedLessons: string[];
   assignment: { submission: string; submittedAt: string } | null;
   practicalReviews: Review[];
+  learnerEmail?: string | null;
+  workspaceName?: string | null;
+  training?: {
+    activated: true;
+    startsAt: string;
+    endsAt: string;
+    revoked: boolean;
+  } | null;
 };
 export type Certificate = {
   id: string;
@@ -84,8 +93,42 @@ export type LearningState = {
     'id' | 'ordinal' | 'deadline' | 'score' | 'passed' | 'submittedAt'
   >[];
 };
+export type LearnerCandidate = {
+  identityId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  verified: boolean;
+  workspaces: { platformId: string; name: string }[];
+};
 const base = '/v1/lms';
 const requests = {
+  lookupLearner: async (email: string) => {
+    const session = currentAuthSession();
+    const result = await api.get<{
+      platformId: string;
+      userId: string;
+      candidate: LearnerCandidate | null;
+    }>('/v1/hosting/operator/partners/lookup', {
+      email: email.trim().toLowerCase(),
+    });
+    if (
+      session.kind !== 'user' ||
+      result.platformId !== session.platformId ||
+      result.userId !== session.id
+    )
+      throw new Error('The learner lookup could not be verified.');
+    return result.candidate;
+  },
+  bindWorkspace: (
+    id: string,
+    workspacePlatformId: string,
+    expectedWorkspacePlatformId: string | null,
+  ) =>
+    api.post(`${base}/operator/enrollments/${id}/workspace`, {
+      workspacePlatformId,
+      expectedWorkspacePlatformId,
+    }),
   me: () => api.get<LearningState>(`${base}/me`),
   progress: (lessonId: string, completed: boolean) =>
     api.post(`${base}/progress`, { lessonId, completed }),
