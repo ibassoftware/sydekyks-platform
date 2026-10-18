@@ -155,6 +155,7 @@ export class HostedAuthError extends Error {
       | 'captcha'
       | 'unavailable'
       | 'trial'
+      | 'approval'
       | 'denied',
   ) {
     super(`Hosted authentication ${kind}`);

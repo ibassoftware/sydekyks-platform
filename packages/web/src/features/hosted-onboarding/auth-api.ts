@@ -40,6 +40,8 @@ async function request<T>(
         ? 'credentials'
         : code === 'HOSTING_TRIAL_ALREADY_USED'
         ? 'trial'
+        : code === 'HOSTING_OPERATOR_PROVISIONING_REQUIRED'
+        ? 'approval'
         : code === 'VALIDATION'
         ? 'captcha'
         : status === 401 ||

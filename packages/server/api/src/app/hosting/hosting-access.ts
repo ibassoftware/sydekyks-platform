@@ -23,9 +23,9 @@ type HostedAccessService = {
     list(params: { actor: HostingActor }): Promise<WorkspaceList>
 }
 
-export function createHostedAccess({ dataSource }: { dataSource: DataSource }): HostedAccessService {
+export function createHostedAccess({ dataSource, manager: existingManager }: { dataSource: DataSource, manager?: EntityManager }): HostedAccessService {
     async function setRole({ actor, identityId, role, active }: RoleParams): Promise<void> {
-        await tx.run({ dataSource, fn: async manager => {
+        await tx.run({ dataSource, manager: existingManager, fn: async manager => {
             await assertHostingOperator({ manager, actor })
             await lockIdentity(manager, identityId)
             const previous = await manager.getRepository(HostingAccessRoleEntity).findOneBy({ id: identityId })
@@ -40,7 +40,7 @@ export function createHostedAccess({ dataSource }: { dataSource: DataSource }): 
     }
 
     async function assignPartner({ actor, platformId, identityId }: AssignmentParams): Promise<HostingAccessMembership> {
-        return tx.run({ dataSource, fn: async manager => {
+        return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             await assertHostingOperator({ manager, actor })
             await lockIdentity(manager, identityId)
             await tx.account({ manager, platformId })
@@ -51,7 +51,7 @@ export function createHostedAccess({ dataSource }: { dataSource: DataSource }): 
     }
 
     async function unassignPartner({ actor, platformId, identityId }: AssignmentParams): Promise<void> {
-        await tx.run({ dataSource, fn: async manager => {
+        await tx.run({ dataSource, manager: existingManager, fn: async manager => {
             await assertHostingOperator({ manager, actor })
             await lockIdentity(manager, identityId)
             await tx.account({ manager, platformId })
@@ -61,7 +61,7 @@ export function createHostedAccess({ dataSource }: { dataSource: DataSource }): 
     }
 
     async function enter({ actor, platformId }: EntryParams): Promise<OperationalTenant> {
-        return tx.run({ dataSource, fn: async manager => {
+        return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             const identity = await lockIdentity(manager, actor.identityId)
             if (actor.tokenVersion === undefined || (identity.tokenVersion ?? null) !== actor.tokenVersion) hostingFail('HOSTING_SESSION_EXPIRED')
             // Check the source session before looking at the requested client.
@@ -89,7 +89,7 @@ export function createHostedAccess({ dataSource }: { dataSource: DataSource }): 
     }
 
     async function list({ actor }: { actor: HostingActor }): Promise<WorkspaceList> {
-        return tx.run({ dataSource, fn: async manager => {
+        return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             const user = await tx.member({ manager, actor })
             const role = await manager.getRepository(HostingAccessRoleEntity).findOneBy({ id: actor.identityId, active: true })
             if (!role) return { platformId: actor.platformId, userId: user.id, role: null, workspaces: [] }

@@ -23,6 +23,11 @@ const ManagedAiSettingsPage = React.lazy(() =>
     default: m.ManagedAiSettingsPage,
   })),
 );
+const PartnersAdminPage = React.lazy(() =>
+  import('@/features/hosted-operator/partners-page').then((m) => ({
+    default: m.PartnersAdminPage,
+  })),
+);
 const PartnerWorkspacesPage = React.lazy(() =>
   import('@/features/hosted-operator/workspaces-page').then((m) => ({
     default: m.PartnerWorkspacesPage,
@@ -127,6 +132,18 @@ const AI_TAB_PATHS = {
 const PIECES_TAB_PATHS = { pieces: '', 'piece-sets': 'piece-sets' };
 
 export const platformRoutes = [
+  {
+    path: '/platform/partners',
+    element: (
+      <PlatformLayout>
+        <PageTitle titleKey="Partners">
+          <SuspenseWrapper>
+            <PartnersAdminPage />
+          </SuspenseWrapper>
+        </PageTitle>
+      </PlatformLayout>
+    ),
+  },
   {
     path: '/platform/managed-ai',
     element: (

@@ -306,6 +306,11 @@ export function PlatformSidebar() {
         ...(operator.allowed
           ? [
               {
+                to: '/platform/partners',
+                label: t('Partners'),
+                icon: UsersIcon,
+              },
+              {
                 to: '/platform/managed-ai',
                 label: t('Managed AI settings'),
                 icon: SparklesIcon,

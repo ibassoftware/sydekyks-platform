@@ -267,6 +267,7 @@ function SessionAuth({
   return (
     <HostedAuthView
       stage={stage}
+      approvalPending={error === 'approval'}
       mode={initialMode}
       offer={offer.data}
       status={!denied && !status.isError ? status.data : undefined}
@@ -338,6 +339,9 @@ function message(error: HostedAuthError['kind'], stage: AuthStage) {
     ),
     trial: t(
       'A trial has already been used for this identity. Sign in to the existing workspace or contact support.',
+    ),
+    approval: t(
+      'Email verification is complete. Ask the Sydekyks team to approve this email, then sign in again. You do not need to create another account.',
     ),
     unavailable:
       stage === 'verification'

@@ -21,6 +21,7 @@ export type AuthStage =
   | 'ready';
 export type HostedAuthViewProps = {
   stage: AuthStage;
+  approvalPending?: boolean;
   mode: 'signup' | 'signin';
   offer?: HostedOnboardingOffer;
   status?: HostedOnboardingStatus;
@@ -46,6 +47,7 @@ export type HostedAuthViewProps = {
 export function HostedAuthView(props: HostedAuthViewProps) {
   const {
     stage,
+    approvalPending = false,
     mode,
     offer,
     status,
@@ -108,7 +110,9 @@ export function HostedAuthView(props: HostedAuthViewProps) {
               id="hosted-auth-title"
               className="text-xl font-medium focus:outline-none"
             >
-              {ready
+              {approvalPending
+                ? t('Waiting for Sydekyks approval')
+                : ready
                 ? t('Your workspace')
                 : details
                 ? t('Set up your workspace')
@@ -119,11 +123,15 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                 : password
                 ? t('Sign in with password')
                 : mode === 'signup'
-                ? t('Start your hosted trial')
+                ? t('Create your Sydekyks account')
                 : t('Sign in to your workspace')}
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-gray-11">
-              {ready && status
+              {approvalPending
+                ? t(
+                    'Your email is verified. Ask the Sydekyks team to approve this email for pilot access, then sign in again. You do not need to create another account.',
+                  )
+                : ready && status
                 ? t(
                     'Your current access is verified by the server. Signing in never restarts a trial.',
                   )
@@ -133,7 +141,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                   )
                 : details
                 ? t(
-                    'Your email is verified. Add your name to continue to your workspace. Existing memberships and trial eligibility are checked on the server.',
+                    'Your email is verified. Add your name to continue. New pilot workspace access requires Sydekyks approval; existing memberships and trial eligibility are checked on the server.',
                   )
                 : verification
                 ? t(
@@ -157,7 +165,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                 {t('Loading hosted setup…')}
               </p>
             )}
-            {error && (
+            {error && !approvalPending && (
               <Alert variant="destructive" className="mt-5">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
@@ -176,7 +184,12 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                 </AlertDescription>
               </Alert>
             )}
-            {!ready && (
+            {approvalPending && (
+              <Button className="mt-6 w-full" onClick={onExit}>
+                {t('Sign in after approval')}
+              </Button>
+            )}
+            {!ready && !approvalPending && (
               <form
                 ref={formRef}
                 onSubmit={submit}
