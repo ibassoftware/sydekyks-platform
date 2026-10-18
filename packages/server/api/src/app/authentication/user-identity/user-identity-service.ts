@@ -3,6 +3,7 @@ import { cryptoUtils } from '@activepieces/server-utils'
 import { UserIdentity } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { nanoid } from 'nanoid'
+import { EntityManager } from 'typeorm'
 import { repoFactory } from '../../core/db/repo-factory'
 import { passwordHasher } from '../lib/password-hasher'
 import { UserIdentityEntity } from './user-identity-entity'
@@ -10,14 +11,15 @@ import { UserIdentityEntity } from './user-identity-entity'
 export const userIdentityRepository = repoFactory(UserIdentityEntity)
 
 export const userIdentityService = (log: FastifyBaseLogger) => ({
-    async create(params: Pick<UserIdentity, 'email' | 'password' | 'firstName' | 'lastName' | 'trackEvents' | 'newsLetter' | 'provider' | 'verified'> & { imageUrl?: string }): Promise<UserIdentity> {
+    async create(params: Pick<UserIdentity, 'email' | 'password' | 'firstName' | 'lastName' | 'trackEvents' | 'newsLetter' | 'provider' | 'verified'> & { imageUrl?: string }, manager?: EntityManager): Promise<UserIdentity> {
         log.info({
             email: params.email,
         }, 'Creating user identity')
 
         const cleanedEmail = params.email.toLowerCase().trim()
+        const repository = manager ? manager.getRepository(UserIdentityEntity) : userIdentityRepository()
         const hashedPassword = await passwordHasher.hash(params.password)
-        const userByEmail = await userIdentityRepository().findOne({ where: { email: cleanedEmail } })
+        const userByEmail = await repository.findOne({ where: { email: cleanedEmail } })
         if (userByEmail) {
             throw new ActivepiecesError({
                 code: ErrorCode.EXISTING_USER,
@@ -42,7 +44,7 @@ export const userIdentityService = (log: FastifyBaseLogger) => ({
             tokenVersion: nanoid(),
             imageUrl: params.imageUrl,
         }
-        const identity = await userIdentityRepository().save(newUserIdentity)
+        const identity = await repository.save(newUserIdentity)
         return identity
     },
     async verifyIdentityPassword(params: VerifyIdentityPasswordParams): Promise<UserIdentity> {
