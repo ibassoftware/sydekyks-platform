@@ -86,9 +86,9 @@ function workerVersionIsCompatible({ log, workerVersion, workerId, rpcMethod }: 
     return false
 }
 
-export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAssignment | null = null, connectionId?: string, workerProps?: WorkerProps): WorkerToApiContract {
+export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAssignment | null = null, connectionId?: string, workerProps?: WorkerProps, connectionSignal?: AbortSignal): WorkerToApiContract {
     const connectionWorkerProps = Object.freeze({ ...workerProps })
-    const connectionIsCompatible = () => hostingWorkerGate.isCompatible({ workerProps: connectionWorkerProps })
+    const connectionIsCompatible = () => !connectionSignal?.aborted && hostingWorkerGate.isCompatible({ workerProps: connectionWorkerProps })
     return protectHostedCopilotRpc({
         async poll(input) {
             if (!connectionIsCompatible() || !hostingWorkerGate.isCompatible({ workerProps: input.workerProps })) return null
@@ -98,7 +98,7 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
                 return null
             }
             const pollQueueName = getPollQueueName(assignment)
-            const job = await jobBroker(log).poll(pollQueueName, connectionId)
+            const job = await jobBroker(log).poll(pollQueueName, connectionId, connectionSignal)
             if (job) {
                 log.info({ worker: { id: input.workerId }, job: { id: job.jobId, type: job.jobData.jobType } }, '[workerRpc#poll] Returning job to worker')
             }
@@ -114,6 +114,7 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
         },
 
         async completeJob(input) {
+            if (!connectionIsCompatible()) hostingFail('HOSTING_WORKER_INCOMPATIBLE')
             log.info({ job: { id: input.jobId }, status: input.status }, '[workerRpc#completeJob] Job completed by worker')
             await jobBroker(log).completeJob(input, connectionId)
         },
@@ -254,7 +255,8 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
         },
 
         async extendLock(input) {
-            await jobBroker(log).extendLock(input)
+            if (!connectionIsCompatible()) return
+            await jobBroker(log).extendLock(input, connectionId)
         },
 
         async getPieceArchive(input) {

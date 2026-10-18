@@ -183,7 +183,11 @@ async function tryDequeue(worker: BullMQWorker, queueName: string, log: FastifyB
     }
 }
 
-async function returnJobToQueue(jobId: string, token: string, queueName: string, log: FastifyBaseLogger): Promise<void> {
+async function returnJobToQueue(jobId: string, token: string, queueName: string, log: FastifyBaseLogger, admissionId?: string): Promise<void> {
+    if (hostingConfiguration.getServiceMode() === 'hosted') {
+        if (!admissionId) return
+        await hostingServices.execution().disconnect({ queueName, jobId, admissionId })
+    }
     const job = await fetchJobFromRedis(queueName, jobId, log)
     if (isNil(job)) {
         return
@@ -243,11 +247,15 @@ export const jobBroker = (log: FastifyBaseLogger) => ({
         log.info('[jobBroker] Job broker initialized')
     },
 
-    async poll(queueName: string = QueueName.WORKER_JOBS, connectionId?: string): Promise<ConsumeJobRequest | null> {
+    async poll(queueName: string = QueueName.WORKER_JOBS, connectionId?: string, signal?: AbortSignal): Promise<ConsumeJobRequest | null> {
         if (hostingConfiguration.getServiceMode() === 'hosted' && !connectionId) return null
         const worker = await ensureBullMQWorker(queueName, log)
         const dispatcher = ensureDispatcher(queueName, worker, log)
-        const job = await dispatcher.poll()
+        const job = await dispatcher.poll(signal)
+        if (signal?.aborted && job) {
+            await returnJobToQueue(job.jobId, job.token, job.queueName, log, job.admissionId)
+            return null
+        }
         if (!isNil(job) && !isNil(connectionId)) {
             jobAssignmentTracker.record({ connectionId, jobId: job.jobId, token: job.token, queueName: job.queueName, admissionId: job.admissionId })
         }
@@ -382,15 +390,16 @@ export const jobBroker = (log: FastifyBaseLogger) => ({
         }
     },
 
-    async extendLock(input: { jobId: string, token: string, queueName: string }): Promise<void> {
+    async extendLock(input: { jobId: string, token: string, queueName: string }, connectionId?: string): Promise<void> {
+        if (hostingConfiguration.getServiceMode() === 'hosted' && (!connectionId || !jobAssignmentTracker.belongsTo({ ...input, connectionId }))) return
         const job = await fetchJobFromRedis(input.queueName, input.jobId, log)
         if (isNil(job)) {
             return
         }
         const extended = await job.extendLock(input.token, LOCK_DURATION_MS)
-        if (extended > 0 && hostingConfiguration.getServiceMode() === 'hosted') {
+        if (extended > 0 && hostingConfiguration.getServiceMode() === 'hosted' && connectionId) {
             const assignment = jobAssignmentTracker.assignmentFor(input)
-            if (assignment?.admissionId) await hostingServices.execution().heartbeat({ queueName: input.queueName, jobId: input.jobId, queueToken: input.token, admissionId: assignment.admissionId })
+            if (assignment?.admissionId) await hostingServices.execution().heartbeat({ queueName: input.queueName, jobId: input.jobId, queueToken: input.token, admissionId: assignment.admissionId, connectionId })
         }
         log.debug({ job: { id: input.jobId } }, '[jobBroker] Lock extended')
     },

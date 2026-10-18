@@ -20,11 +20,15 @@ function validate(): ServiceMode {
     if (!webhookSecret || !/^whsec_[A-Za-z0-9]+$/.test(webhookSecret)) {
         throw new Error('Hosted Stripe configuration requires a webhook signing secret')
     }
+    if (!system.get(AppSystemProp.HOSTED_OPERATOR_IDENTITY_IDS)?.trim()) throw new Error('Hosted pilot requires an explicit operator identity allowlist')
+    if (system.get(AppSystemProp.SANDBOX_PROPAGATED_ENV_VARS)?.trim()) throw new Error('Hosted pilot prohibits propagating server environment variables into code sandboxes')
     return mode
 }
 
 function assertRuntimeAvailable({ mode }: { mode: ServiceMode }): void {
-    if (mode === 'hosted') throw new Error('HOSTED_IMPLEMENTATION_INCOMPLETE: hosted execution and signup are disabled until admission and billing are implemented')
+    // This release supports the deliberately bounded partner pilot profile.
+    // Queue admission and RPC guards continue to reject unsupported job paths.
+    if (mode === 'hosted') validate()
 }
 
 export const hostingConfiguration = { getServiceMode, validate, assertRuntimeAvailable }

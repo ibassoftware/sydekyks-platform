@@ -8,7 +8,7 @@ import { McpOAuthTokenEntity } from '../mcp/oauth/token/mcp-oauth-token.entity'
 import { PlatformEntity } from '../platform/platform.entity'
 import { ProjectEntity } from '../project/project-entity'
 import { UserEntity } from '../user/user-entity'
-import { hostedCustomerSeatCount, isOperationalUser } from './hosting-access-policy'
+import { assertHostingOperator, hostedCustomerSeatCount, hostingOperatorIdentityIds, isOperationalUser } from './hosting-access-policy'
 import { HostingAccount, HostingAccountEntity, HostingEligibilityEntity, HostingGrantEntity, HostingInvitationEntity, HostingLedgerEntity, HostingPolicyEntity } from './hosting-entities'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
@@ -23,7 +23,7 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
         if (existing.subjectKeyFingerprint !== fingerprint) hostingFail('HOSTING_SUBJECT_KEY_CHANGED')
     }
 
-    async function provision({ identityId, name, expectedTokenVersion, names, manager: existingManager }: ProvisionParams): Promise<ProvisionedTenant> {
+    async function provision({ identityId, name, expectedTokenVersion, names, operator, manager: existingManager }: ProvisionParams): Promise<ProvisionedTenant> {
         assertName(name)
         return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             await policy(manager)
@@ -44,6 +44,10 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
                 const project = await manager.getRepository(ProjectEntity).findOneBy({ platformId: user.platformId, ownerId: user.id })
                 return { platformId: user.platformId, userId: user.id, projectId: project?.id ?? null, created: false, tokenVersion: identity.tokenVersion ?? null }
             }
+            // Only trusted operators may create new pilot tenants. The first
+            // allowlisted verified operator can bootstrap their own home.
+            if (operator) await assertHostingOperator({ manager, actor: operator })
+            else if (!hostingOperatorIdentityIds().includes(identityId) || expectedTokenVersion === undefined) hostingFail('HOSTING_OPERATOR_PROVISIONING_REQUIRED')
             if (await eligibility.existsBy({ identityId })) hostingFail('HOSTING_TRIAL_ALREADY_USED')
             const platformId = apId()
             const claim = await eligibility.createQueryBuilder().insert().values({ id: subject(identity.email), identityId, platformId }).orIgnore().returning('id').execute()
@@ -212,5 +216,5 @@ function assertName(name: string): void {
     if (typeof name !== 'string' || name.trim().length < 1 || name.length > 120) hostingFail('HOSTING_INVALID_NAME')
 }
 
-type ProvisionParams = { manager?: EntityManager, identityId: string, name: string, expectedTokenVersion?: string | null, names?: { firstName: string, lastName: string } }
+type ProvisionParams = { operator?: HostingActor, manager?: EntityManager, identityId: string, name: string, expectedTokenVersion?: string | null, names?: { firstName: string, lastName: string } }
 export type ProvisionedTenant = { platformId: string, userId: string, projectId: string | null, created: boolean, tokenVersion: string | null }

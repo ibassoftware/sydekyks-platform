@@ -285,12 +285,12 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
         } })
     }
 
-    async function heartbeat({ queueName, jobId, admissionId, queueToken }: { queueName: string, jobId: string, admissionId: string, queueToken: string }): Promise<void> {
+    async function heartbeat({ queueName, jobId, admissionId, queueToken, connectionId }: { queueName: string, jobId: string, admissionId: string, queueToken: string, connectionId: string }): Promise<void> {
         await tx.run({ dataSource, fn: async manager => {
             const peek = await binding({ manager, queueName, jobId })
             await tx.account({ manager, platformId: peek.platformId })
             const dispatch = await binding({ manager, queueName, jobId })
-            if (dispatch.admissionId !== admissionId || dispatch.queueTokenHash !== digest(queueToken) || !['admitted', 'running'].includes(dispatch.state)) return
+            if (dispatch.admissionId !== admissionId || dispatch.queueTokenHash !== digest(queueToken) || dispatch.connectionId !== connectionId || dispatch.state !== 'running' || !dispatch.leaseUntil || dispatch.leaseUntil <= await tx.now(manager)) return
             await manager.getRepository(HostingDispatchEntity).update({ id: dispatch.id }, { leaseUntil: lease(await tx.now(manager)) })
         } })
     }

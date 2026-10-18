@@ -1,6 +1,6 @@
 import { isNil } from '@activepieces/core-utils'
 import { apVersionUtil } from '@activepieces/server-utils'
-import { ExecutionMode, NetworkMode, WorkerGroupScope, WorkerMachineHealthcheckRequest, WorkerMachineStatus, WorkerMachineType, WorkerMachineWithStatus, WorkerSettingsResponse } from '@activepieces/shared'
+import { ExecutionMode, HOSTED_ACCOUNTING_PROTOCOL, HOSTED_RUNTIME_CAPABILITIES, HOSTED_RUNTIME_PROFILE, NetworkMode, WorkerGroupScope, WorkerMachineHealthcheckRequest, WorkerMachineStatus, WorkerMachineType, WorkerMachineWithStatus, WorkerSettingsResponse } from '@activepieces/shared'
 
 import { FastifyBaseLogger } from 'fastify'
 import { domainHelper } from '../../helper/domain-helper'
@@ -24,7 +24,9 @@ async function buildSettingsResponse(_log: FastifyBaseLogger): Promise<WorkerSet
     const executionMode = system.getOrThrow<ExecutionMode>(AppSystemProp.EXECUTION_MODE)
     const settings = {
         SERVICE_MODE: hostingConfiguration.getServiceMode(),
-        HOSTING_ACCOUNTING_PROTOCOL: 0,
+        HOSTING_ACCOUNTING_PROTOCOL: HOSTED_ACCOUNTING_PROTOCOL,
+        HOSTING_RUNTIME_PROFILE: HOSTED_RUNTIME_PROFILE,
+        HOSTING_RUNTIME_CAPABILITIES: [...HOSTED_RUNTIME_CAPABILITIES],
         TRIGGER_TIMEOUT_SECONDS: system.getNumberOrThrow(AppSystemProp.TRIGGER_TIMEOUT_SECONDS),
         PAUSED_FLOW_TIMEOUT_DAYS: system.getNumberOrThrow(AppSystemProp.PAUSED_FLOW_TIMEOUT_DAYS),
         EXECUTION_MODE: executionMode,

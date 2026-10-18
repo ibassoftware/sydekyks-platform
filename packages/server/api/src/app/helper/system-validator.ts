@@ -1,3 +1,4 @@
+import { isIP } from 'node:net'
 import { inspect } from 'util'
 import { isNil, tryCatchSync } from '@activepieces/core-utils'
 import { ApEdition, ApEnvironment, AUDIT_LOG_RETENTION_MAX_DAYS, AUDIT_LOG_RETENTION_MIN_DAYS, DefaultProjectRole, ExecutionMode, FileLocation, maxBarrierSignalsBounds, NetworkMode, PieceSyncMode } from '@activepieces/shared'
@@ -96,6 +97,7 @@ const systemPropValidators: {
     [key in SystemProp]: (value: string) => true | string
 } = {
     // AppSystemProp
+    [AppSystemProp.BIND_ADDRESS]: value => !value || isIP(value) > 0 ? true : 'Bind address must be an IPv4 or IPv6 address',
     [AppSystemProp.SERVICE_MODE]: enumValidator(['self_hosted', 'hosted']),
     [AppSystemProp.HOSTED_OPERATOR_IDENTITY_IDS]: (value) => !value || value.split(',').every(id => id.trim().length === 21) ? true : 'Operator identity IDs must be 21 characters',
     [AppSystemProp.HOSTED_DEEPSEEK_API_KEY]: () => true,

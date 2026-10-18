@@ -66,7 +66,7 @@ export const worker = {
         modelCatalog.load().catch(() => undefined)
         await modelTierCatalog.warmUp()
         const workerGroupId = system.get(WorkerSystemProp.WORKER_GROUP_ID)
-        const projectWorker = system.getBoolean(WorkerSystemProp.PROJECT_WORKER) ?? true
+        const projectWorker = system.getBoolean(WorkerSystemProp.PROJECT_WORKER) ?? (workerServiceMode.getProps().serviceMode !== 'hosted')
         socket = io(socketUrl.url, {
             auth: { token: workerToken, workerId, workerGroupId, projectWorker },
             path: socketUrl.path,

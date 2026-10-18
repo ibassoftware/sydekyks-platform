@@ -1,5 +1,6 @@
 import { aiDevtools, evlogSetup } from '@activepieces/server-utils'
 import { ApEnvironment } from '@activepieces/shared'
+import { isIP } from 'node:net'
 import dayjs from 'dayjs'
 import { FastifyInstance } from 'fastify'
 import { appPostBoot } from './app/app'
@@ -13,8 +14,10 @@ import { setupServer } from './app/server'
 const start = async (app: FastifyInstance): Promise<void> => {
     try {
         const port = Number(system.get(AppSystemProp.PORT))
+        const host = system.get(AppSystemProp.BIND_ADDRESS) ?? '::'
+        if (isIP(host) === 0) throw new Error('AP_BIND_ADDRESS must be an IPv4 or IPv6 address')
         await app.listen({
-            host: '::',
+            host,
             port,
         })
         if (system.isApp()) {

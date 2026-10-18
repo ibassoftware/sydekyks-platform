@@ -36,6 +36,8 @@ export type SandboxInformation = z.infer<typeof SandboxInformation>
 export const WorkerProps = z.object({
     serviceMode: ServiceMode.optional(),
     accountingProtocol: z.number().int().nonnegative().optional(),
+    runtimeProfile: z.string().optional(),
+    capabilities: z.array(z.string()).optional(),
     EXECUTION_MODE: z.string().optional(),
     WORKER_CONCURRENCY: z.string().optional(),
     SANDBOX_MEMORY_LIMIT: z.string().optional(),
@@ -111,6 +113,8 @@ export type WorkerMachineHealthcheckRequest = z.infer<typeof WorkerMachineHealth
 export const WorkerSettingsResponse = z.object({
     SERVICE_MODE: ServiceMode.optional(),
     HOSTING_ACCOUNTING_PROTOCOL: z.number().int().nonnegative().optional(),
+    HOSTING_RUNTIME_PROFILE: z.string().optional(),
+    HOSTING_RUNTIME_CAPABILITIES: z.array(z.string()).optional(),
     PUBLIC_URL: z.string(),
     TRIGGER_TIMEOUT_SECONDS: z.number(),
     TRIGGER_HOOKS_TIMEOUT_SECONDS: z.number(),

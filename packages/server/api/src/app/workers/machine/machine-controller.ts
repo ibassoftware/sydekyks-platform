@@ -17,16 +17,19 @@ export const workerMachineController: FastifyPluginAsyncZod = async (app) => {
 
     websocketService.addListener(PrincipalType.WORKER, WebsocketServerEvent.FETCH_WORKER_SETTINGS, (socket) => {
         return async (request: WorkerMachineHealthcheckRequest, _principal, _projectId, callback?: (data: unknown) => void) => {
-            if (!hostingWorkerGate.isCompatible({ workerProps: request.workerProps })) {
+            if (!hostingWorkerGate.isCompatible({ workerProps: request.workerProps }) || (request.workerProps?.serviceMode === 'hosted' && (socket.handshake.auth?.workerGroupId || socket.handshake.auth?.projectWorker === true))) {
+                app.log.warn({ workerId: request.workerId, workerVersion: request.workerProps?.version }, 'Worker runtime profile rejected')
                 socket.disconnect(true)
                 return
             }
+            const lifetime = new AbortController()
+            socket.once('disconnect', () => lifetime.abort())
             const rawWorkerGroupValue = socket.handshake.auth?.workerGroupId
             const projectWorker = socket.handshake.auth?.projectWorker === true
             const assignment = parseWorkerGroupValue({ value: typeof rawWorkerGroupValue === 'string' ? rawWorkerGroupValue : undefined, projectWorker })
             const response = await machineService(app.log).onConnection(request, assignment)
             callback?.(response)
-            createRpcServer<WorkerToApiContract>(socket, createHandlers(app.log, assignment, socket.id, request.workerProps), app.log)
+            createRpcServer<WorkerToApiContract>(socket, createHandlers(app.log, assignment, socket.id, request.workerProps, lifetime.signal), app.log)
         }
     })
 

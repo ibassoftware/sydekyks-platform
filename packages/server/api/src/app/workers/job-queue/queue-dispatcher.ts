@@ -10,24 +10,29 @@ function createQueueDispatcher(params: {
     queueName: string
     worker: BullMQWorker
     dequeue: (worker: BullMQWorker, queueName: string, log: FastifyBaseLogger) => Promise<ConsumeJobRequest | null>
-    onOrphanedJob: (jobId: string, token: string, queueName: string, log: FastifyBaseLogger) => Promise<void>
+    onOrphanedJob: (jobId: string, token: string, queueName: string, log: FastifyBaseLogger, admissionId?: string) => Promise<void>
     log: FastifyBaseLogger
 }): QueueDispatcher {
     const { queueName, worker, dequeue, onOrphanedJob, log } = params
     const waiters: Waiter[] = []
     let loopRunning = false
 
-    async function poll(): Promise<ConsumeJobRequest | null> {
+    async function poll(signal?: AbortSignal): Promise<ConsumeJobRequest | null> {
+        if (signal?.aborted) return null
         return new Promise<ConsumeJobRequest | null>((resolve) => {
-            const timer = setTimeout(() => {
-                const idx = waiters.findIndex(w => w.resolve === resolve)
-                if (idx !== -1) {
-                    waiters.splice(idx, 1)
-                }
-                resolve(null)
-            }, WAITER_TIMEOUT_MS)
-
-            waiters.push({ resolve, timer })
+            const complete = (value: ConsumeJobRequest | null): void => {
+                clearTimeout(timer)
+                signal?.removeEventListener('abort', abort)
+                resolve(value)
+            }
+            const abort = (): void => {
+                const idx = waiters.findIndex(w => w.resolve === complete)
+                if (idx !== -1) waiters.splice(idx, 1)
+                complete(null)
+            }
+            const timer = setTimeout(abort, WAITER_TIMEOUT_MS)
+            waiters.push({ resolve: complete, timer })
+            signal?.addEventListener('abort', abort, { once: true })
             startLoop()
         })
     }
@@ -56,7 +61,7 @@ function createQueueDispatcher(params: {
             const waiter = waiters.shift()
             if (isNil(waiter)) {
                 log.warn({ queueName, job: { id: job.jobId } }, '[QueueDispatcher] job dequeued but no waiter available, returning to queue')
-                const { error: orphanError } = await tryCatch(() => onOrphanedJob(job.jobId, job.token, job.queueName, log))
+                const { error: orphanError } = await tryCatch(() => onOrphanedJob(job.jobId, job.token, job.queueName, log, job.admissionId))
                 if (orphanError) {
                     log.error({ queueName, job: { id: job.jobId }, error: String(orphanError) }, '[QueueDispatcher] failed to return orphaned job to queue')
                 }
@@ -96,7 +101,7 @@ type Waiter = {
 }
 
 export type QueueDispatcher = {
-    poll(): Promise<ConsumeJobRequest | null>
+    poll(signal?: AbortSignal): Promise<ConsumeJobRequest | null>
     close(): void
     waiterCount(): number
 }

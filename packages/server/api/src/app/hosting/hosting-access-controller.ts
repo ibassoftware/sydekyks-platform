@@ -44,7 +44,7 @@ export const hostingAccessController: FastifyPluginAsyncZod = async app => {
         const onboarding = await hostingServices.onboarding()
         const tenant = await tx.run({ dataSource: databaseConnection(), fn: async manager => {
             await assertHostingOperator({ manager, actor: operator })
-            const result = await onboarding.provision({ ...request.body, manager })
+            const result = await onboarding.provision({ ...request.body, operator, manager })
             await tx.event({ manager, platformId: result.platformId, event: 'operational.tenant.provisioned', payload: { actorIdentityId: operator.identityId, ownerIdentityId: request.body.identityId, created: result.created } })
             return result
         } })
