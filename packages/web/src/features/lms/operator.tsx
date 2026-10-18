@@ -5,8 +5,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
+import {
+  operatorClientsQuery,
+  useHostedOperatorAccess,
+} from '@/features/hosted-operator/operator-api';
 
-import { CourseContent, Enrollment, LearnerCandidate, lmsApi } from './lms-api';
+import {
+  Course,
+  CourseContent,
+  Enrollment,
+  LearnerCandidate,
+  lmsApi,
+} from './lms-api';
 import { lmsSessionVersion } from './session';
 
 const safetyLabels = {
@@ -16,16 +26,255 @@ const safetyLabels = {
   recovery: 'Failure recovery and duplicate prevention work',
   humanApproval: 'Required human approvals are present',
 };
-export function LmsOperator({ scope }: { scope: number }) {
+export function LmsOperator({
+  scope,
+  globalOperator,
+}: {
+  scope: number;
+  globalOperator: boolean;
+}) {
+  const client = useQueryClient();
+  const courses = useQuery({
+    queryKey: ['lms', scope, 'operator', 'courses'],
+    queryFn: lmsApi.courses,
+    gcTime: 0,
+  });
+  const access = useHostedOperatorAccess();
+  const [after, setAfter] = useState<string | null>(null);
+  const clients = useQuery(
+    operatorClientsQuery(
+      access.session,
+      after,
+      globalOperator && access.allowed,
+    ),
+  );
+  const [selected, setSelected] = useState('');
+  const [title, setTitle] = useState('');
+  const [kind, setKind] = useState<'partner' | 'global' | 'private'>(
+    globalOperator ? 'global' : 'private',
+  );
+  const [owner, setOwner] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const current =
+    courses.data?.find((item) => item.id === selected) ?? courses.data?.[0];
+  if (courses.isPending) return <p role="status">Loading courses…</p>;
+  if (courses.isError)
+    return <p role="alert">Courses could not load. Refresh to try again.</p>;
+  return (
+    <div className="space-y-8">
+      <header>
+        <h1 className="text-2xl font-semibold">Manage courses</h1>
+        <p className="mt-2 text-gray-11">
+          Choose a course to edit its draft, publish it and manage its own
+          enrollments. Published lessons stay fixed. Create a new course for a
+          different audience or version.
+        </p>
+      </header>
+      <label className="block max-w-3xl" htmlFor="managed-course">
+        Course
+        <select
+          id="managed-course"
+          className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
+          value={current?.id ?? ''}
+          onChange={(event) => setSelected(event.target.value)}
+        >
+          {!courses.data?.length && <option value="">No courses yet</option>}
+          {courses.data?.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.content.title} · {item.status} ·{' '}
+              {item.ownerPlatformId
+                ? item.ownerName || 'Private workspace'
+                : item.audience === 'partner'
+                ? 'Global partner training'
+                : 'Global end-user learning'}
+            </option>
+          ))}
+        </select>
+      </label>
+      <details className="max-w-3xl border-y border-gray-6 py-4">
+        <summary className="cursor-pointer font-semibold">Add a course</summary>
+        <form
+          className="mt-4 space-y-4"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (busy) return;
+            setBusy(true);
+            setMessage('');
+            try {
+              const created = await lmsApi.createCourse({
+                title,
+                scope: kind === 'private' ? 'tenant' : 'global',
+                ...(kind === 'private' && globalOperator && owner
+                  ? { ownerPlatformId: owner }
+                  : {}),
+                audience: kind === 'partner' ? 'partner' : 'end_user',
+                certificationMode: kind === 'partner' ? 'partner' : 'none',
+              });
+              await client.invalidateQueries({ queryKey: ['lms', scope] });
+              setSelected(created.id);
+              setTitle('');
+              setMessage(
+                'Course draft created. Review the content before publishing.',
+              );
+            } catch {
+              setMessage(
+                'The draft could not be created. Check your access and try again.',
+              );
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <label className="block" htmlFor="new-course-title">
+            Course title
+            <Input
+              id="new-course-title"
+              required
+              minLength={3}
+              maxLength={160}
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </label>
+          <label className="block" htmlFor="new-course-kind">
+            Audience and access
+            <select
+              id="new-course-kind"
+              className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
+              value={kind}
+              onChange={(event) => setKind(event.target.value as typeof kind)}
+            >
+              {globalOperator && (
+                <>
+                  <option value="global">
+                    Global end-user course · lessons only
+                  </option>
+                  <option value="partner">
+                    Global partner training · exam and practical certification
+                  </option>
+                </>
+              )}
+              <option value="private">
+                Private workspace course · lessons only
+              </option>
+            </select>
+          </label>
+          {globalOperator && kind === 'private' && (
+            <div className="space-y-3">
+              <label className="block" htmlFor="course-owner">
+                Owning workspace
+                <select
+                  id="course-owner"
+                  className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
+                  value={owner}
+                  onChange={(event) => setOwner(event.target.value)}
+                >
+                  <option value="">My current workspace</option>
+                  {clients.data?.clients.map((item) => (
+                    <option key={item.platformId} value={item.platformId}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!after}
+                  onClick={() => {
+                    setAfter(null);
+                    setOwner('');
+                  }}
+                >
+                  First workspaces
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!clients.data?.next}
+                  onClick={() => {
+                    setAfter(clients.data?.next ?? null);
+                    setOwner('');
+                  }}
+                >
+                  More workspaces
+                </Button>
+              </div>
+            </div>
+          )}
+          <p className="text-sm text-gray-11">
+            Lesson-only courses do not include partner certification or training
+            workspace credits. Partner status is approved separately.
+          </p>
+          <Button disabled={busy} type="submit">
+            Create course draft
+          </Button>
+        </form>
+        {globalOperator &&
+          !courses.data?.some((item) => item.audience === 'partner') && (
+            <Button
+              className="mt-4"
+              variant="outline"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  const created = await lmsApi.initialize();
+                  await client.invalidateQueries({ queryKey: ['lms', scope] });
+                  setSelected(created.id);
+                } catch {
+                  setMessage('The founding draft could not be created.');
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Create founding partner course draft
+            </Button>
+          )}
+        {message && (
+          <p className="mt-3" role="status">
+            {message}
+          </p>
+        )}
+      </details>
+      {current && (
+        <CourseEditor
+          key={current.id}
+          scope={scope}
+          current={current}
+          globalOperator={globalOperator}
+        />
+      )}
+    </div>
+  );
+}
+function CourseEditor({
+  scope,
+  current,
+  globalOperator,
+}: {
+  scope: number;
+  current: Course;
+  globalOperator: boolean;
+}) {
   const client = useQueryClient();
   const hosted = useHostedBillingEnabled();
-  const course = useQuery({
-    queryKey: ['lms', scope, 'operator', 'course'],
-    queryFn: lmsApi.course,
+  const course = { data: current, isPending: false, isError: false };
+  const partnerTraining = current.audience === 'partner';
+  const globalLookup = globalOperator && current.ownerPlatformId === null;
+  const members = useQuery({
+    queryKey: ['lms', scope, current.id, 'members'],
+    queryFn: () => lmsApi.members(current.id),
+    enabled: !partnerTraining && !globalLookup,
+    gcTime: 0,
   });
   const enrollments = useQuery({
-    queryKey: ['lms', scope, 'operator', 'enrollments'],
-    queryFn: lmsApi.enrollments,
+    queryKey: ['lms', scope, 'operator', current.id, 'enrollments'],
+    queryFn: () => lmsApi.enrollments(current.id),
+    gcTime: 0,
   });
   const [content, setContent] = useState<CourseContent | null>(null);
   const [selectedLesson, setSelectedLesson] = useState(0);
@@ -86,7 +335,12 @@ export function LmsOperator({ scope }: { scope: number }) {
       delivery?.learnerEmail,
     ],
     queryFn: () => lmsApi.lookupLearner(delivery?.learnerEmail ?? ''),
-    enabled: hosted && !!delivery?.learnerEmail && !delivery.training,
+    enabled:
+      hosted &&
+      partnerTraining &&
+      globalOperator &&
+      !!delivery?.learnerEmail &&
+      !delivery.training,
     retry: false,
     gcTime: 0,
   });
@@ -124,6 +378,8 @@ export function LmsOperator({ scope }: { scope: number }) {
         setLookupMessage(
           'This learner needs email verification or an operator-issued account setup link before enrollment.',
         );
+      else if (!partnerTraining)
+        setLookupMessage('This learner is eligible for course access.');
       else if (!found.workspaces.length)
         setLookupMessage(
           'This eligible learner needs a training workspace before enrollment. Create it below; partner approval is separate.',
@@ -198,13 +454,12 @@ export function LmsOperator({ scope }: { scope: number }) {
     return (
       <p role="alert">Instructor tools could not load. Refresh to try again.</p>
     );
-  const current = course.data;
   const enrollment = enrollments.data?.find(
     (item) => item.id === selectedEnrollment,
   );
   const lesson = content?.lessons[selectedLesson];
   const question = content?.questions[selectedQuestion];
-  const draft = current?.status === 'draft';
+  const draft = current.status === 'draft' && current.canEdit;
   const changeContent = (next: CourseContent) => {
     setContent(next);
     setReviewed(false);
@@ -215,9 +470,10 @@ export function LmsOperator({ scope }: { scope: number }) {
       <section>
         <h2 className="text-xl font-semibold">Course publication</h2>
         <p className="my-3 max-w-3xl text-gray-11">
-          The supplied curriculum and 60 question candidates are drafts. Review
-          every lesson and answer before publishing. Published content is fixed
-          for this pilot so learners and exam attempts have a stable version.
+          {partnerTraining
+            ? 'Partner training includes a written exam and practical assessment. Review every lesson and the 60 or more question candidates before publishing.'
+            : 'End-user courses contain lessons only. They do not issue partner credentials or activate hosting credits.'}{' '}
+          Published content is fixed; create another course for later changes.
         </p>
         {!current ? (
           <Button disabled={busy} onClick={() => run(lmsApi.initialize)}>
@@ -273,6 +529,45 @@ export function LmsOperator({ scope }: { scope: number }) {
                   ))}
                 </select>
               </label>
+              {draft && (
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    variant="outline"
+                    disabled={busy || content.lessons.length >= 60}
+                    onClick={() => {
+                      const next = [
+                        ...content.lessons,
+                        {
+                          id: `lesson-${crypto.randomUUID()}`,
+                          title: 'New lesson',
+                          body: 'Write the lesson here.',
+                          exercise: '',
+                          resources: [],
+                        },
+                      ];
+                      changeContent({ ...content, lessons: next });
+                      setSelectedLesson(next.length - 1);
+                    }}
+                  >
+                    Add lesson
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={busy || content.lessons.length <= 1}
+                    onClick={() => {
+                      changeContent({
+                        ...content,
+                        lessons: content.lessons.filter(
+                          (_, index) => index !== selectedLesson,
+                        ),
+                      });
+                      setSelectedLesson(0);
+                    }}
+                  >
+                    Remove selected lesson
+                  </Button>
+                </div>
+              )}
               {lesson && (
                 <>
                   <label className="block" htmlFor="lesson-title">
@@ -333,24 +628,26 @@ export function LmsOperator({ scope }: { scope: number }) {
                   </label>
                 </>
               )}
-              <label className="block" htmlFor="question-editor-select">
-                Review exam question
-                <select
-                  id="question-editor-select"
-                  className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
-                  value={selectedQuestion}
-                  onChange={(event) =>
-                    setSelectedQuestion(Number(event.target.value))
-                  }
-                >
-                  {content.questions.map((item, index) => (
-                    <option key={item.id} value={index}>
-                      {index + 1}. {item.prompt}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {question && (
+              {partnerTraining && (
+                <label className="block" htmlFor="question-editor-select">
+                  Review exam question
+                  <select
+                    id="question-editor-select"
+                    className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
+                    value={selectedQuestion}
+                    onChange={(event) =>
+                      setSelectedQuestion(Number(event.target.value))
+                    }
+                  >
+                    {content.questions.map((item, index) => (
+                      <option key={item.id} value={index}>
+                        {index + 1}. {item.prompt}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {question && partnerTraining && (
                 <fieldset className="space-y-3" disabled={!draft || busy}>
                   <legend className="mb-2 font-medium">
                     Question and answer key
@@ -437,7 +734,13 @@ export function LmsOperator({ scope }: { scope: number }) {
                     disabled={busy}
                     variant="outline"
                     onClick={() =>
-                      run(() => lmsApi.saveCourse(current.id, content))
+                      run(() =>
+                        lmsApi.saveCourse(
+                          current.id,
+                          current.revision,
+                          content,
+                        ),
+                      )
                     }
                   >
                     Save reviewed edits
@@ -450,8 +753,9 @@ export function LmsOperator({ scope }: { scope: number }) {
                       onChange={(event) => setReviewed(event.target.checked)}
                     />
                     <span>
-                      I reviewed the saved lessons and every exam question and
-                      answer for this revision.
+                      {partnerTraining
+                        ? 'I reviewed the saved lessons and every exam question and answer for this revision.'
+                        : 'I reviewed the saved lessons for this revision.'}
                     </span>
                   </label>
                   <Button
@@ -473,198 +777,305 @@ export function LmsOperator({ scope }: { scope: number }) {
           )
         )}
       </section>
-      <section className="max-w-3xl">
-        <h2 className="text-xl font-semibold">Record a verified enrollment</h2>
-        <p className="my-3 text-gray-11">
-          Find the eligible learner and their own workspace, then verify the
-          receipt outside this form. Record learning access here and activate
-          the included training workspace in the delivery section below.
-        </p>
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (
-              !current ||
-              (hosted && (!learner?.verified || !workspacePlatformId))
-            )
-              return;
-            void run(async () => {
-              const recorded = await lmsApi.enroll({
-                identityId: hosted ? learner!.identityId : identityId,
-                courseId: current.id,
-                package: tier,
-                paymentReference,
-                ...(workspacePlatformId ? { workspacePlatformId } : {}),
-                paymentVerified: true,
-              });
-              setDeliveryEnrollment(recorded.id);
-              setRepairWorkspace('');
-              setVerifiedPayment(false);
-            });
-          }}
-        >
-          {hosted ? (
+      {!partnerTraining ? (
+        <section className="max-w-3xl space-y-4">
+          <h2 className="text-xl font-semibold">Course enrollments</h2>
+          <p className="text-gray-11">
+            Give this learner access to this course for one year. This does not
+            grant partner status, certification or hosting credits.
+          </p>
+          {globalLookup ? (
             <div className="space-y-3">
-              <label className="block" htmlFor="learner-email">
+              <label className="block" htmlFor="learning-email">
                 Learner email
                 <Input
-                  id="learner-email"
+                  id="learning-email"
                   type="email"
                   value={learnerEmail}
-                  disabled={busy}
                   onChange={(event) => {
                     setLearnerEmail(event.target.value);
                     setLearner(null);
-                    setWorkspacePlatformId('');
-                    setLookupMessage('');
-                    setWorkspaceReviewRequired(false);
-                    setVerifiedPayment(false);
-                    setPaymentReference('');
                   }}
                 />
               </label>
               <Button
-                type="button"
                 variant="outline"
                 disabled={busy || !learnerEmail.trim()}
                 onClick={() => void findLearner()}
               >
                 Find learner
               </Button>
-              {lookupMessage && (
-                <p role="status" className="text-sm">
-                  {lookupMessage}
-                </p>
-              )}
               {learner?.verified && (
-                <p className="break-words text-sm">
-                  {learner.verificationMethod === 'operator'
-                    ? 'Operator admitted'
-                    : learner.verificationMethod === 'email' &&
-                      learner.emailOwnershipVerified
-                    ? 'Email verified'
-                    : 'Eligible learner'}
-                  : {learner.firstName} {learner.lastName} · {learner.email}
-                </p>
+                <p className="break-words">Eligible learner: {learner.email}</p>
               )}
-              {learner?.verified && learner.workspaces.length === 0 && (
-                <div className="space-y-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy || workspaceReviewRequired}
-                    onClick={() => void createLearnerWorkspace()}
-                  >
-                    Create training workspace
-                  </Button>
-                  <p className="text-sm text-gray-11">
-                    Creates or reuses the learner’s normal hosted workspace. It
-                    does not enroll them, verify payment or grant partner
-                    status.
-                  </p>
-                </div>
-              )}
-              <label className="block" htmlFor="learner-workspace">
-                Learner-owned workspace
-                <select
-                  id="learner-workspace"
-                  className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
-                  value={workspacePlatformId}
-                  disabled={busy || !learner?.verified}
-                  required
-                  onChange={(event) => {
-                    setWorkspacePlatformId(event.target.value);
-                    setVerifiedPayment(false);
-                  }}
-                >
-                  <option value="">Choose the learner’s workspace</option>
-                  {learner?.verified &&
-                    learner.workspaces.map((item) => (
-                      <option key={item.platformId} value={item.platformId}>
-                        {item.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
+              {lookupMessage && <p role="status">{lookupMessage}</p>}
             </div>
           ) : (
-            <label className="block" htmlFor="learner-identity">
-              Eligible learner identity ID
-              <Input
-                id="learner-identity"
+            <label className="block" htmlFor="course-member">
+              Workspace learner
+              <select
+                id="course-member"
+                className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
                 value={identityId}
-                minLength={21}
-                maxLength={21}
-                required
                 onChange={(event) => setIdentityId(event.target.value)}
-              />
+              >
+                <option value="">Choose an eligible workspace member</option>
+                {members.data?.map((member) => (
+                  <option key={member.identityId} value={member.identityId}>
+                    {member.firstName} {member.lastName} · {member.email}
+                  </option>
+                ))}
+              </select>
+              {members.isError && (
+                <span role="alert">
+                  Members could not load. Refresh to try again.
+                </span>
+              )}
             </label>
           )}
-          <label className="block" htmlFor="payment-reference">
-            Verified payment or receipt reference
-            <Input
-              id="payment-reference"
-              value={paymentReference}
-              minLength={3}
-              maxLength={160}
-              required
-              onChange={(event) => setPaymentReference(event.target.value)}
-            />
-          </label>
-          {!hosted && (
-            <label className="block" htmlFor="workspace-platform">
-              Workspace platform ID (optional)
-              <Input
-                id="workspace-platform"
-                value={workspacePlatformId}
-                minLength={21}
-                maxLength={21}
-                onChange={(event) => setWorkspacePlatformId(event.target.value)}
-              />
-            </label>
-          )}
-          <label className="block" htmlFor="training-package">
-            Package
-            <select
-              id="training-package"
-              className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
-              value={tier}
-              onChange={(event) =>
-                setTier(event.target.value as 'core' | 'launch')
-              }
-            >
-              <option value="core">
-                Core · two coaching hours · 60-day training workspace
-              </option>
-              <option value="launch">
-                Launch · four coaching hours · 90-day training workspace
-              </option>
-            </select>
-          </label>
-          <label className="flex items-start gap-3">
-            <input
-              className="mt-1"
-              type="checkbox"
-              checked={verifiedPayment}
-              onChange={(event) => setVerifiedPayment(event.target.checked)}
-            />
-            <span>I verified this payment and the learner’s identity.</span>
-          </label>
           <Button
             disabled={
               busy ||
-              !verifiedPayment ||
-              current?.status !== 'published' ||
-              (hosted && (!learner?.verified || !workspacePlatformId))
+              current.status !== 'published' ||
+              !(globalLookup ? learner?.verified : identityId)
             }
-            type="submit"
+            onClick={() =>
+              run(() =>
+                lmsApi.enrollLearning(
+                  globalLookup ? learner!.identityId : identityId,
+                  current.id,
+                ),
+              )
+            }
           >
-            Record enrollment
+            Enroll in this course
           </Button>
-        </form>
-      </section>
-      {hosted && (
+          <p className="text-sm text-gray-11">
+            {enrollments.data?.length ?? 0} enrollment records for this course.
+            Access to other courses is separate.
+          </p>
+          <ul className="space-y-3">
+            {enrollments.data?.map((item) => (
+              <li
+                key={item.id}
+                className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-6 py-3"
+              >
+                <span className="min-w-0 break-words">
+                  {item.learnerEmail || 'Learner'} · {item.status} · access
+                  until {new Date(item.accessUntil).toLocaleDateString()}
+                </span>
+                <Button
+                  variant="outline"
+                  disabled={busy || item.status !== 'active'}
+                  onClick={() => run(() => lmsApi.revoke(item.id))}
+                >
+                  Revoke course access
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : (
+        <section className="max-w-3xl">
+          <h2 className="text-xl font-semibold">
+            Record a verified enrollment
+          </h2>
+          <p className="my-3 text-gray-11">
+            Find the eligible learner and their own workspace, then verify the
+            receipt outside this form. Record learning access here and activate
+            the included training workspace in the delivery section below.
+          </p>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (
+                !current ||
+                (hosted && (!learner?.verified || !workspacePlatformId))
+              )
+                return;
+              void run(async () => {
+                const recorded = await lmsApi.enroll({
+                  accessType: 'partner_training',
+                  identityId: hosted ? learner!.identityId : identityId,
+                  courseId: current.id,
+                  package: tier,
+                  paymentReference,
+                  ...(workspacePlatformId ? { workspacePlatformId } : {}),
+                  paymentVerified: true,
+                });
+                setDeliveryEnrollment(recorded.id);
+                setRepairWorkspace('');
+                setVerifiedPayment(false);
+              });
+            }}
+          >
+            {hosted ? (
+              <div className="space-y-3">
+                <label className="block" htmlFor="learner-email">
+                  Learner email
+                  <Input
+                    id="learner-email"
+                    type="email"
+                    value={learnerEmail}
+                    disabled={busy}
+                    onChange={(event) => {
+                      setLearnerEmail(event.target.value);
+                      setLearner(null);
+                      setWorkspacePlatformId('');
+                      setLookupMessage('');
+                      setWorkspaceReviewRequired(false);
+                      setVerifiedPayment(false);
+                      setPaymentReference('');
+                    }}
+                  />
+                </label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy || !learnerEmail.trim()}
+                  onClick={() => void findLearner()}
+                >
+                  Find learner
+                </Button>
+                {lookupMessage && (
+                  <p role="status" className="text-sm">
+                    {lookupMessage}
+                  </p>
+                )}
+                {learner?.verified && (
+                  <p className="break-words text-sm">
+                    {learner.admissionSource === 'tenant_admin'
+                      ? 'Client admin admitted'
+                      : learner.admissionSource === 'operator'
+                      ? 'Operator admitted'
+                      : learner.verificationMethod === 'email' &&
+                        learner.emailOwnershipVerified
+                      ? 'Email verified'
+                      : 'Eligible learner'}
+                    : {learner.firstName} {learner.lastName} · {learner.email}
+                  </p>
+                )}
+                {learner?.verified && learner.workspaces.length === 0 && (
+                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={busy || workspaceReviewRequired}
+                      onClick={() => void createLearnerWorkspace()}
+                    >
+                      Create training workspace
+                    </Button>
+                    <p className="text-sm text-gray-11">
+                      Creates or reuses the learner’s normal hosted workspace.
+                      It does not enroll them, verify payment or grant partner
+                      status.
+                    </p>
+                  </div>
+                )}
+                <label className="block" htmlFor="learner-workspace">
+                  Learner-owned workspace
+                  <select
+                    id="learner-workspace"
+                    className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
+                    value={workspacePlatformId}
+                    disabled={busy || !learner?.verified}
+                    required
+                    onChange={(event) => {
+                      setWorkspacePlatformId(event.target.value);
+                      setVerifiedPayment(false);
+                    }}
+                  >
+                    <option value="">Choose the learner’s workspace</option>
+                    {learner?.verified &&
+                      learner.workspaces.map((item) => (
+                        <option key={item.platformId} value={item.platformId}>
+                          {item.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </div>
+            ) : (
+              <label className="block" htmlFor="learner-identity">
+                Eligible learner identity ID
+                <Input
+                  id="learner-identity"
+                  value={identityId}
+                  minLength={21}
+                  maxLength={21}
+                  required
+                  onChange={(event) => setIdentityId(event.target.value)}
+                />
+              </label>
+            )}
+            <label className="block" htmlFor="payment-reference">
+              Verified payment or receipt reference
+              <Input
+                id="payment-reference"
+                value={paymentReference}
+                minLength={3}
+                maxLength={160}
+                required
+                onChange={(event) => setPaymentReference(event.target.value)}
+              />
+            </label>
+            {!hosted && (
+              <label className="block" htmlFor="workspace-platform">
+                Workspace platform ID (optional)
+                <Input
+                  id="workspace-platform"
+                  value={workspacePlatformId}
+                  minLength={21}
+                  maxLength={21}
+                  onChange={(event) =>
+                    setWorkspacePlatformId(event.target.value)
+                  }
+                />
+              </label>
+            )}
+            <label className="block" htmlFor="training-package">
+              Package
+              <select
+                id="training-package"
+                className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
+                value={tier}
+                onChange={(event) =>
+                  setTier(event.target.value as 'core' | 'launch')
+                }
+              >
+                <option value="core">
+                  Core · two coaching hours · 60-day training workspace
+                </option>
+                <option value="launch">
+                  Launch · four coaching hours · 90-day training workspace
+                </option>
+              </select>
+            </label>
+            <label className="flex items-start gap-3">
+              <input
+                className="mt-1"
+                type="checkbox"
+                checked={verifiedPayment}
+                onChange={(event) => setVerifiedPayment(event.target.checked)}
+              />
+              <span>I verified this payment and the learner’s identity.</span>
+            </label>
+            <Button
+              disabled={
+                busy ||
+                !verifiedPayment ||
+                current?.status !== 'published' ||
+                (hosted && (!learner?.verified || !workspacePlatformId))
+              }
+              type="submit"
+            >
+              Record enrollment
+            </Button>
+          </form>
+        </section>
+      )}
+      {hosted && partnerTraining && globalOperator && (
         <section
           className="max-w-3xl space-y-4"
           aria-labelledby="training-delivery-heading"
@@ -759,8 +1170,8 @@ export function LmsOperator({ scope }: { scope: number }) {
                       {!deliveryWorkspaces.length && (
                         <p className="text-sm">
                           An eligible learner-owned workspace is required before
-                          activation. Find this learner above to complete account
-                          and workspace setup, then refresh.
+                          activation. Find this learner above to complete
+                          account and workspace setup, then refresh.
                         </p>
                       )}
                       {!deliveryOwned && (
@@ -824,58 +1235,60 @@ export function LmsOperator({ scope }: { scope: number }) {
           )}
         </section>
       )}
-      <section>
-        <h2 className="text-xl font-semibold">
-          Practical review and certification
-        </h2>
-        <p className="my-3 text-gray-11">
-          The practical review records a live walkthrough and mandatory safety
-          checks. Issuing the certificate is a separate assessor action and
-          requires both assessments to pass.
-        </p>
-        <label className="block max-w-3xl" htmlFor="review-enrollment">
-          Learner enrollment
-          <select
-            id="review-enrollment"
-            className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
-            value={selectedEnrollment}
-            onChange={(event) => {
-              setSelectedEnrollment(event.target.value);
-              setFeedback('');
-              setScore(0);
-              setWalkthrough(false);
-              setSafety(
-                Object.fromEntries(
-                  Object.keys(safetyLabels).map((key) => [key, false]),
-                ),
-              );
-            }}
-          >
-            <option value="">Choose an enrollment</option>
-            {enrollments.data?.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.learnerEmail || 'Eligible learner'} · {item.package} ·{' '}
-                {item.paymentReference} · {item.status}
-              </option>
-            ))}
-          </select>
-        </label>
-        {enrollment && (
-          <ReviewForm
-            enrollment={enrollment}
-            score={score}
-            setScore={setScore}
-            feedback={feedback}
-            setFeedback={setFeedback}
-            safety={safety}
-            setSafety={setSafety}
-            walkthrough={walkthrough}
-            setWalkthrough={setWalkthrough}
-            busy={busy}
-            run={run}
-          />
-        )}
-      </section>
+      {partnerTraining && globalOperator && (
+        <section>
+          <h2 className="text-xl font-semibold">
+            Practical review and certification
+          </h2>
+          <p className="my-3 text-gray-11">
+            The practical review records a live walkthrough and mandatory safety
+            checks. Issuing the certificate is a separate assessor action and
+            requires both assessments to pass.
+          </p>
+          <label className="block max-w-3xl" htmlFor="review-enrollment">
+            Learner enrollment
+            <select
+              id="review-enrollment"
+              className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
+              value={selectedEnrollment}
+              onChange={(event) => {
+                setSelectedEnrollment(event.target.value);
+                setFeedback('');
+                setScore(0);
+                setWalkthrough(false);
+                setSafety(
+                  Object.fromEntries(
+                    Object.keys(safetyLabels).map((key) => [key, false]),
+                  ),
+                );
+              }}
+            >
+              <option value="">Choose an enrollment</option>
+              {enrollments.data?.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.learnerEmail || 'Eligible learner'} · {item.package} ·{' '}
+                  {item.paymentReference} · {item.status}
+                </option>
+              ))}
+            </select>
+          </label>
+          {enrollment && (
+            <ReviewForm
+              enrollment={enrollment}
+              score={score}
+              setScore={setScore}
+              feedback={feedback}
+              setFeedback={setFeedback}
+              safety={safety}
+              setSafety={setSafety}
+              walkthrough={walkthrough}
+              setWalkthrough={setWalkthrough}
+              busy={busy}
+              run={run}
+            />
+          )}
+        </section>
+      )}
     </div>
   );
 }

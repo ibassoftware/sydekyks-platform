@@ -2,6 +2,7 @@ import { apId } from '@activepieces/core-utils'
 import { HOSTED_MICRO_USD_PER_CREDIT, hostingCatalog } from '@activepieces/shared'
 import { DataSource, EntityManager, In } from 'typeorm'
 import { z } from 'zod'
+import { LmsCourseEntity, LmsEnrollment, LmsEnrollmentEntity } from '../lms/lms-entities'
 import { assertHostingOperator } from './hosting-access-policy'
 import { effectiveManagedAiCredits } from './hosting-ai-allowance'
 import { HostingAccountEntity, HostingGrantEntity, HostingLedgerEntity, HostingReservationEntity } from './hosting-entities'
@@ -16,6 +17,13 @@ const bindingSchema = z.strictObject({
 })
 type Binding = z.infer<typeof bindingSchema>
 
+// Defense in depth: neither a browser binding nor another internal caller can
+// turn an ordinary/private course enrollment into a hosting-credit entitlement.
+export async function assertPartnerTrainingEnrollment(manager: EntityManager, enrollment: LmsEnrollment): Promise<void> {
+    const course = await manager.getRepository(LmsCourseEntity).findOneBy({ id: enrollment.courseId, status: 'published' })
+    if (!course || course.ownerPlatformId !== null || course.audience !== 'partner' || course.certificationMode !== 'partner' || enrollment.accessType !== 'partner_training' || enrollment.grantPlatformId !== null || !enrollment.package || !enrollment.paymentReference?.trim()) hostingFail('HOSTING_PARTNER_TRAINING_REQUIRED')
+}
+
 // Internal operator fulfillment API. The caller must load a verified persisted LMS
 // enrollment/payment record; course completion or browser payment assertions are not authority.
 export function createHostedTraining({ dataSource, manager: existingManager }: { dataSource: DataSource, manager?: EntityManager }) {
@@ -23,6 +31,11 @@ export function createHostedTraining({ dataSource, manager: existingManager }: {
         const input = bindingSchema.parse(binding)
         return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             await assertHostingOperator({ manager, actor })
+            const enrollment = await manager.getRepository(LmsEnrollmentEntity).findOne({ where: { id: input.enrollmentId }, lock: { mode: 'pessimistic_write' } })
+            if (!enrollment) hostingFail('HOSTING_PARTNER_TRAINING_REQUIRED')
+            await assertPartnerTrainingEnrollment(manager, enrollment)
+            const now = await tx.now(manager)
+            if (enrollment.status !== 'active' || enrollment.startsAt > now || enrollment.accessUntil <= now || enrollment.assessmentUntil <= now || enrollment.identityId !== input.identityId || enrollment.workspacePlatformId !== input.platformId || enrollment.paymentReference !== input.receiptId || enrollment.package !== input.tier) hostingFail('HOSTING_LEARNING_ENROLLMENT_UNAVAILABLE')
             const account = await tx.account({ manager, platformId: input.platformId })
             if (account.ownerIdentityId !== input.identityId) hostingFail('HOSTING_TRAINING_RECIPIENT_MISMATCH')
             const rows = await manager.getRepository(HostingTrainingEntity).find({ where: [

@@ -5,12 +5,13 @@ import { FastifyRequest } from 'fastify'
 import { EntityManager } from 'typeorm'
 import { UserIdentityEntity } from '../authentication/user-identity/user-identity-entity'
 import { databaseConnection } from '../database/database-connection'
-import { system } from '../helper/system/system'
-import { AppSystemProp } from '../helper/system/system-props'
+import { hasOperationalAccess, hostingOperatorIdentityIds, isOperationalUser } from '../hosting/hosting-access-policy'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { HostingAccountEntity } from '../hosting/hosting-entities'
 import { HostingActor } from '../hosting/hosting-transactions'
 import { UserEntity } from '../user/user-entity'
 import { LmsCertificate, LmsCertificateEntity, LmsCourse, LmsCourseEntity, LmsEnrollment, LmsEnrollmentEntity, LmsExamAttempt, LmsExamAttemptEntity } from './lms-entities'
-import { Question } from './lms-schema'
+import { courseContentSchema, Question } from './lms-schema'
 
 export class LmsError extends Error {
     constructor(message: string, public readonly status = 403) {
@@ -20,16 +21,63 @@ export class LmsError extends Error {
 export const fail = (message: string, status = 403): never => {
     throw new LmsError(message, status) 
 }
-export type LmsActor = HostingActor & { operator: boolean }
+export type LmsActor = HostingActor & { operator: boolean, tenantAdmin: boolean, ordinaryMember: boolean }
 export async function lmsActor(manager: EntityManager, request: FastifyRequest): Promise<LmsActor> {
     if (request.principal.type !== PrincipalType.USER) return fail('LMS_USER_REQUIRED')
     const principal = request.principal
     const user = await manager.getRepository(UserEntity).findOneBy({ id: principal.id, platformId: principal.platform.id, status: UserStatus.ACTIVE })
     if (!user) return fail('LMS_ACCESS_DENIED')
     const identity = await manager.getRepository(UserIdentityEntity).findOneBy({ id: user.identityId })
-    if (!identity?.verified || (identity.tokenVersion ?? null) !== (principal.tokenVersion ?? null)) return fail('LMS_SESSION_EXPIRED')
-    const allowed = (system.get(AppSystemProp.HOSTED_OPERATOR_IDENTITY_IDS) ?? '').split(',').map(value => value.trim()).filter(value => /^[a-zA-Z0-9_-]{21}$/.test(value))
-    return { identityId: identity.id, platformId: principal.platform.id, tokenVersion: principal.tokenVersion ?? null, operator: allowed.includes(identity.id) && user.platformRole === PlatformRole.ADMIN }
+    if (!identity?.verified || principal.tokenVersion === undefined || (identity.tokenVersion ?? null) !== principal.tokenVersion) return fail('LMS_SESSION_EXPIRED')
+    const operational = isOperationalUser(user)
+    if (operational && !await hasOperationalAccess({ manager, user })) return fail('LMS_ACCESS_DENIED')
+    const ordinaryMember = !operational
+    const tenantAdmin = ordinaryMember && user.platformRole === PlatformRole.ADMIN && (hostingConfiguration.getServiceMode() !== 'hosted' || await manager.getRepository(HostingAccountEntity).existsBy({ id: principal.platform.id }))
+    return { identityId: identity.id, platformId: principal.platform.id, tokenVersion: principal.tokenVersion, operator: ordinaryMember && hostingOperatorIdentityIds().includes(identity.id) && user.platformRole === PlatformRole.ADMIN, tenantAdmin, ordinaryMember }
+}
+export function requireManager(actor: LmsActor): void {
+    if (!actor.operator && !actor.tenantAdmin) fail('LMS_INSTRUCTOR_REQUIRED')
+}
+export function assertCourseShape(course: Pick<LmsCourse, 'ownerPlatformId' | 'audience' | 'certificationMode'>): void {
+    if ((course.ownerPlatformId !== null && (course.audience !== 'end_user' || course.certificationMode !== 'none')) || (course.certificationMode === 'partner' && (course.ownerPlatformId !== null || course.audience !== 'partner'))) fail('LMS_INVALID_COURSE_SCOPE', 400)
+}
+export function canManageCourse(actor: LmsActor, course: LmsCourse): boolean {
+    return actor.operator || (actor.tenantAdmin && course.ownerPlatformId === actor.platformId)
+}
+export function assertManageCourse(actor: LmsActor, course: LmsCourse): void {
+    if (!canManageCourse(actor, course)) fail('LMS_COURSE_ACCESS_DENIED')
+}
+export function assertCanEnroll(actor: LmsActor, course: LmsCourse): void {
+    requireManager(actor)
+    assertCourseShape(course)
+    if (course.audience === 'partner') requireOperator(actor)
+    else if (!actor.operator && course.ownerPlatformId !== null && course.ownerPlatformId !== actor.platformId) fail('LMS_COURSE_ACCESS_DENIED')
+}
+export async function assertOrdinaryRecipient(manager: EntityManager, identityId: string, platformId: string): Promise<void> {
+    const user = await manager.getRepository(UserEntity).findOneBy({ identityId, platformId, status: UserStatus.ACTIVE })
+    const identity = await manager.getRepository(UserIdentityEntity).findOneBy({ id: identityId, verified: true })
+    if (!user || isOperationalUser(user) || !identity) fail('LMS_ELIGIBLE_TENANT_MEMBER_REQUIRED')
+}
+export function assertEnrollmentShape(enrollment: LmsEnrollment, course: LmsCourse): void {
+    assertCourseShape(course)
+    if (course.ownerPlatformId !== null && enrollment.grantPlatformId !== course.ownerPlatformId) fail('LMS_ENROLLMENT_SCOPE_MISMATCH')
+    if (enrollment.accessType === 'partner_training') {
+        if (course.ownerPlatformId !== null || course.audience !== 'partner' || course.certificationMode !== 'partner' || enrollment.grantPlatformId !== null || !enrollment.package || !enrollment.paymentReference) fail('LMS_PARTNER_TRAINING_REQUIRED')
+    }
+    else if (enrollment.package !== null || enrollment.paymentReference !== null || enrollment.workspacePlatformId !== null || course.audience === 'partner') fail('LMS_LEARNING_ACCESS_INVALID')
+}
+export function assertPartnerAssessment(enrollment: LmsEnrollment, course: LmsCourse): void {
+    assertEnrollmentShape(enrollment, course)
+    if (enrollment.accessType !== 'partner_training' || course.certificationMode !== 'partner') fail('LMS_ASSESSMENT_NOT_INCLUDED')
+}
+export function validatePublication(course: LmsCourse): void {
+    assertCourseShape(course)
+    courseContentSchema.parse(course.content)
+    if (course.certificationMode === 'partner' && (course.content.lessons.length < 4 || course.content.questions.length < 60 || course.content.lessons.some(lesson => lesson.exercise.trim().length < 20))) fail('LMS_PARTNER_ASSESSMENT_CONTENT_REQUIRED', 400)
+    if (course.certificationMode === 'none' && course.content.questions.length !== 0) fail('LMS_LESSON_ONLY_COURSE_HAS_NO_EXAM', 400)
+}
+export function learnerScope(actor: LmsActor, enrollment: LmsEnrollment): boolean {
+    return enrollment.identityId === actor.identityId && (enrollment.grantPlatformId === null || (actor.ordinaryMember && enrollment.grantPlatformId === actor.platformId))
 }
 export async function lmsTransaction<T>(request: FastifyRequest, fn: (manager: EntityManager, actor: LmsActor, now: Date) => Promise<T>): Promise<T> {
     return databaseConnection().transaction(async manager => {
@@ -41,11 +89,13 @@ export async function lmsTransaction<T>(request: FastifyRequest, fn: (manager: E
 export function requireOperator(actor: LmsActor): void {
     if (!actor.operator) fail('LMS_OPERATOR_REQUIRED') 
 }
-export async function learnerEnrollment(manager: EntityManager, actor: LmsActor, now: Date, assessment = false): Promise<LmsEnrollment> {
-    const enrollment = await manager.getRepository(LmsEnrollmentEntity).findOne({ where: { identityId: actor.identityId }, order: { created: 'DESC' }, lock: { mode: 'pessimistic_write' } })
+export async function learnerEnrollment(manager: EntityManager, actor: LmsActor, now: Date, enrollmentId: string, assessment = false): Promise<LmsEnrollment> {
+    const enrollment = await manager.getRepository(LmsEnrollmentEntity).findOne({ where: { id: enrollmentId, identityId: actor.identityId }, lock: { mode: 'pessimistic_write' } })
     const [clock] = await manager.query('SELECT clock_timestamp() AS now')
     now.setTime(new Date(clock.now).getTime())
-    if (!enrollment || enrollment.status !== 'active' || enrollment.startsAt > now || (assessment ? enrollment.assessmentUntil : enrollment.accessUntil) <= now) return fail('LMS_ENROLLMENT_UNAVAILABLE')
+    if (!enrollment || !learnerScope(actor, enrollment) || enrollment.status !== 'active' || enrollment.startsAt > now || (assessment ? enrollment.assessmentUntil : enrollment.accessUntil) <= now) return fail('LMS_ENROLLMENT_UNAVAILABLE')
+    const course = await courseForEnrollment(manager, enrollment)
+    if (assessment) assertPartnerAssessment(enrollment, course)
     return enrollment
 }
 export function shuffle<T>(items: T[]): T[] {
@@ -81,6 +131,7 @@ export async function expireAttempt(manager: EntityManager, attempt: LmsExamAtte
 }
 export async function maybeCertificate(manager: EntityManager, enrollment: LmsEnrollment, actor: LmsActor, now: Date): Promise<LmsCertificate> {
     requireOperator(actor)
+    assertPartnerAssessment(enrollment, await courseForEnrollment(manager, enrollment))
     if (actor.identityId === enrollment.identityId) fail('LMS_INDEPENDENT_ASSESSOR_REQUIRED')
     if (enrollment.status !== 'active') fail('LMS_ENROLLMENT_UNAVAILABLE')
     const practical = enrollment.practicalReviews.at(-1)
@@ -95,5 +146,6 @@ export async function maybeCertificate(manager: EntityManager, enrollment: LmsEn
 export async function courseForEnrollment(manager: EntityManager, enrollment: LmsEnrollment): Promise<LmsCourse> {
     const course = await manager.getRepository(LmsCourseEntity).findOneBy({ id: enrollment.courseId, status: 'published' })
     if (!course) return fail('LMS_COURSE_NOT_PUBLISHED')
+    assertEnrollmentShape(enrollment, course)
     return course
 }

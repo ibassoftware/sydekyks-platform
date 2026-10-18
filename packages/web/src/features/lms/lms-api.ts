@@ -21,8 +21,10 @@ export type Enrollment = {
   id: string;
   identityId: string;
   courseId: string;
-  package: 'core' | 'launch';
-  paymentReference: string;
+  grantPlatformId: string | null;
+  accessType: 'learning' | 'partner_training';
+  package: 'core' | 'launch' | null;
+  paymentReference: string | null;
   workspacePlatformId: string | null;
   startsAt: string;
   accessUntil: string;
@@ -73,6 +75,11 @@ export type CourseContent = {
 };
 export type Course = {
   id: string;
+  ownerPlatformId: string | null;
+  ownerName?: string | null;
+  audience: 'partner' | 'end_user';
+  certificationMode: 'partner' | 'none';
+  canEdit: boolean;
   revision: number;
   status: 'draft' | 'published';
   content: CourseContent;
@@ -83,6 +90,8 @@ export type LearningState = {
   course: {
     id: string;
     revision: number;
+    certificationMode: 'partner' | 'none';
+    audience: 'partner' | 'end_user';
     title: string;
     description: string;
     lessons: Lesson[];
@@ -100,6 +109,7 @@ export type LearnerCandidate = {
   lastName: string;
   verified: boolean;
   verificationMethod: 'operator' | 'email' | 'pending';
+  admissionSource: 'tenant_admin' | 'operator' | 'email' | 'pending';
   emailOwnershipVerified: boolean;
   workspaces: { platformId: string; name: string }[];
 };
@@ -136,36 +146,74 @@ const requests = {
       workspacePlatformId,
       expectedWorkspacePlatformId,
     }),
-  me: () => api.get<LearningState>(`${base}/me`),
-  progress: (lessonId: string, completed: boolean) =>
-    api.post(`${base}/progress`, { lessonId, completed }),
-  assignment: (submission: string) =>
-    api.post(`${base}/assignment`, { submission }),
-  currentExam: () => api.get<Exam | null>(`${base}/exam/current`),
-  startExam: () => api.post<Exam>(`${base}/exam/start`, {}),
+  me: () =>
+    api.get<{
+      operator: boolean;
+      canManage: boolean;
+      enrollments: {
+        id: string;
+        courseId: string;
+        title: string;
+        certificationMode: 'partner' | 'none';
+      }[];
+    }>(`${base}/me`),
+  learning: (id: string) => api.get<LearningState>(`${base}/enrollments/${id}`),
+  progress: (enrollmentId: string, lessonId: string, completed: boolean) =>
+    api.post(`${base}/enrollments/${enrollmentId}/progress`, {
+      lessonId,
+      completed,
+    }),
+  assignment: (enrollmentId: string, submission: string) =>
+    api.post(`${base}/enrollments/${enrollmentId}/assignment`, { submission }),
+  currentExam: (enrollmentId: string) =>
+    api.get<Exam | null>(`${base}/enrollments/${enrollmentId}/exam/current`),
+  startExam: (enrollmentId: string) =>
+    api.post<Exam>(`${base}/enrollments/${enrollmentId}/exam/start`, {}),
   saveExam: (
+    enrollmentId: string,
     attemptId: string,
     answers: Record<string, number>,
     submit = false,
   ) =>
-    api.post<Exam>(`${base}/exam/${submit ? 'submit' : 'save'}`, {
-      attemptId,
-      answers,
-    }),
-  course: () => api.get<Course | null>(`${base}/operator/course`),
+    api.post<Exam>(
+      `${base}/enrollments/${enrollmentId}/exam/${submit ? 'submit' : 'save'}`,
+      {
+        attemptId,
+        answers,
+      },
+    ),
+  courses: () => api.get<Course[]>(`${base}/operator/courses`),
+  createCourse: (body: {
+    title: string;
+    scope: 'global' | 'tenant';
+    ownerPlatformId?: string;
+    audience: 'partner' | 'end_user';
+    certificationMode: 'partner' | 'none';
+  }) => api.post<Course>(`${base}/operator/courses`, body),
+  members: (courseId: string) =>
+    api.get<
+      {
+        identityId: string;
+        email: string;
+        firstName: string;
+        lastName: string;
+      }[]
+    >(`${base}/operator/members`, { courseId }),
   initialize: () => api.post<Course>(`${base}/operator/course/initialize`, {}),
-  saveCourse: (id: string, content: CourseContent) =>
+  saveCourse: (id: string, expectedRevision: number, content: CourseContent) =>
     api.any<Course>(`${base}/operator/course/${id}`, {
       method: 'PUT',
-      data: content,
+      data: { expectedRevision, content },
     }),
   publish: (id: string, revision: number) =>
     api.post<Course>(`${base}/operator/course/${id}/publish`, {
       revision,
       reviewedLessonsAndQuestions: true,
     }),
-  enrollments: () => api.get<Enrollment[]>(`${base}/operator/enrollments`),
+  enrollments: (courseId: string) =>
+    api.get<Enrollment[]>(`${base}/operator/enrollments`, { courseId }),
   enroll: (body: {
+    accessType: 'partner_training';
     identityId: string;
     courseId: string;
     package: 'core' | 'launch';
@@ -173,6 +221,12 @@ const requests = {
     workspacePlatformId?: string;
     paymentVerified: true;
   }) => api.post<Enrollment>(`${base}/operator/enroll`, body),
+  enrollLearning: (identityId: string, courseId: string) =>
+    api.post<Enrollment>(`${base}/operator/enroll`, {
+      accessType: 'learning',
+      identityId,
+      courseId,
+    }),
   review: (
     id: string,
     body: {

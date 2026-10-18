@@ -28,7 +28,7 @@ export function LearningPage() {
     capabilities.length === HOSTED_RUNTIME_CAPABILITIES.length &&
     HOSTED_RUNTIME_CAPABILITIES.every((value) => capabilities.includes(value));
   return (
-    <LearningSession
+    <LearningCatalogue
       key={scope}
       scope={scope}
       hosted={hosted}
@@ -36,7 +36,7 @@ export function LearningPage() {
     />
   );
 }
-function LearningSession({
+function LearningCatalogue({
   scope,
   hosted,
   pilotReady,
@@ -45,13 +45,108 @@ function LearningSession({
   hosted: boolean;
   pilotReady: boolean;
 }) {
-  const queryClient = useQueryClient();
-  const state = useQuery({
+  const catalogue = useQuery({
     queryKey: ['lms', scope, 'me'],
     queryFn: lmsApi.me,
+    gcTime: 0,
+  });
+  const [selection, setSelection] = useState('');
+  const [manage, setManage] = useState(false);
+  if (catalogue.isPending)
+    return (
+      <p className="p-6" role="status">
+        Loading your courses…
+      </p>
+    );
+  if (catalogue.isError)
+    return (
+      <p className="p-6" role="alert">
+        Courses could not load. Refresh to try again.
+      </p>
+    );
+  const selected =
+    catalogue.data.enrollments.find((item) => item.id === selection)?.id ??
+    catalogue.data.enrollments[0]?.id;
+  return (
+    <>
+      <div className="mx-auto flex w-full max-w-6xl flex-wrap items-end gap-4 px-4 pt-6 md:px-8">
+        <label className="min-w-0 flex-1" htmlFor="enrolled-course">
+          Your courses
+          <select
+            id="enrolled-course"
+            className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
+            value={selected ?? ''}
+            onChange={(event) => {
+              setSelection(event.target.value);
+              setManage(false);
+            }}
+          >
+            {!catalogue.data.enrollments.length && (
+              <option value="">No course access yet</option>
+            )}
+            {catalogue.data.enrollments.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        {catalogue.data.canManage && (
+          <Button
+            variant={manage ? 'default' : 'outline'}
+            aria-pressed={manage}
+            onClick={() => setManage(!manage)}
+          >
+            Manage courses
+          </Button>
+        )}
+      </div>
+      {manage ? (
+        <main className="mx-auto w-full max-w-6xl p-4 md:p-8">
+          <LmsOperator scope={scope} globalOperator={catalogue.data.operator} />
+        </main>
+      ) : selected ? (
+        <LearningSession
+          key={selected}
+          enrollmentId={selected}
+          scope={scope}
+          hosted={hosted}
+          pilotReady={pilotReady}
+        />
+      ) : (
+        <main className="mx-auto max-w-6xl p-6">
+          <h1 className="text-2xl font-semibold">Learning</h1>
+          <p className="mt-3">
+            Your instructor will give you access to the courses included in your
+            training.
+          </p>
+          <Button asChild variant="outline" className="mt-4">
+            <Link to="/">Back to workspace</Link>
+          </Button>
+        </main>
+      )}
+    </>
+  );
+}
+function LearningSession({
+  scope,
+  hosted,
+  pilotReady,
+  enrollmentId,
+}: {
+  scope: number;
+  hosted: boolean;
+  pilotReady: boolean;
+  enrollmentId: string;
+}) {
+  const queryClient = useQueryClient();
+  const state = useQuery({
+    queryKey: ['lms', scope, 'learning', enrollmentId],
+    queryFn: () => lmsApi.learning(enrollmentId),
+    gcTime: 0,
   });
   const [selected, setSelected] = useState('');
-  const [tab, setTab] = useState<'learn' | 'assessment' | 'operator'>('learn');
+  const [tab, setTab] = useState<'learn' | 'assessment'>('learn');
   const [submission, setSubmission] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -85,7 +180,7 @@ function LearningSession({
         </Button>
       </div>
     );
-  const { course, enrollment, certificate, operator, attempts } = state.data;
+  const { course, enrollment, certificate, attempts } = state.data;
   const lesson =
     course?.lessons.find((item) => item.id === selected) ?? course?.lessons[0];
   const practical = enrollment?.practicalReviews.at(-1);
@@ -98,7 +193,7 @@ function LearningSession({
         <div>
           <h1 className="flex items-center gap-3 text-2xl font-semibold">
             <GraduationCap aria-hidden="true" />
-            Partner learning
+            Learning
           </h1>
           <p className="mt-2 max-w-2xl text-gray-11">
             Build reliable AI workflows and a practical client service. Learn at
@@ -109,7 +204,7 @@ function LearningSession({
           <Link to="/">Back to workspace</Link>
         </Button>
       </header>
-      {hosted && (
+      {hosted && course?.audience === 'partner' && (
         <section
           aria-labelledby="learning-pilot-scope"
           className="mb-6 border-y border-gray-6 py-4"
@@ -148,20 +243,13 @@ function LearningSession({
         >
           Course
         </Button>
-        <Button
-          variant={tab === 'assessment' ? 'default' : 'outline'}
-          aria-pressed={tab === 'assessment'}
-          onClick={() => setTab('assessment')}
-        >
-          Assessment
-        </Button>
-        {operator && (
+        {course?.certificationMode === 'partner' && (
           <Button
-            variant={tab === 'operator' ? 'default' : 'outline'}
-            aria-pressed={tab === 'operator'}
-            onClick={() => setTab('operator')}
+            variant={tab === 'assessment' ? 'default' : 'outline'}
+            aria-pressed={tab === 'assessment'}
+            onClick={() => setTab('assessment')}
           >
-            Instructor
+            Assessment
           </Button>
         )}
       </nav>
@@ -170,9 +258,7 @@ function LearningSession({
           {message}
         </p>
       )}
-      {tab === 'operator' && operator ? (
-        <LmsOperator scope={scope} />
-      ) : !enrollment || !course ? (
+      {!enrollment || !course ? (
         <section className="py-8">
           <h2 className="text-xl font-semibold">
             Your course access is not active yet
@@ -255,32 +341,43 @@ function LearningSession({
                   Put it into practice
                 </h3>
                 <p className="leading-7">{lesson.exercise}</p>
-                {lesson.resources.length > 0 && (!hosted || pilotReady) && (
-                  <ul className="mt-4 space-y-2">
-                    {lesson.resources.map((resource) => (
-                      <li key={resource.url}>
-                        <a
-                          className="text-accent-11 underline underline-offset-4"
-                          href={resource.url}
-                          download={
-                            resource.url.startsWith('/learning/templates/') ||
-                            undefined
-                          }
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {resource.title}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                {lesson.resources.length > 0 &&
+                  (course.audience !== 'partner' || !hosted || pilotReady) && (
+                    <ul className="mt-4 space-y-2">
+                      {lesson.resources.map((resource) => (
+                        <li key={resource.url}>
+                          <a
+                            className="text-accent-11 underline underline-offset-4"
+                            href={resource.url}
+                            download={
+                              resource.url.startsWith('/learning/templates/') ||
+                              undefined
+                            }
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {resource.title}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                {course.certificationMode === 'none' &&
+                  course.lessons.every((item) =>
+                    enrollment.completedLessons.includes(item.id),
+                  ) && (
+                    <p className="mt-6 font-medium" role="status">
+                      All lessons complete. This course does not issue a partner
+                      certificate.
+                    </p>
+                  )}
                 <div className="mt-8">
                   <Button
                     disabled={busy}
                     onClick={() =>
                       run(() =>
                         lmsApi.progress(
+                          enrollmentId,
                           lesson.id,
                           !enrollment.completedLessons.includes(lesson.id),
                         ),
@@ -340,6 +437,7 @@ function LearningSession({
               refresh this page; saved answers resume on return.
             </p>
             <WrittenExam
+              enrollmentId={enrollmentId}
               scope={scope}
               enabled={
                 enrollment.completedLessons.length === course.lessons.length
@@ -407,7 +505,7 @@ function LearningSession({
               }
               onClick={() =>
                 run(async () => {
-                  await lmsApi.assignment(submission);
+                  await lmsApi.assignment(enrollmentId, submission);
                   setSubmission('');
                 })
               }
@@ -424,18 +522,21 @@ function LearningSession({
 }
 
 function WrittenExam({
+  enrollmentId,
   scope,
   enabled,
   exhausted,
 }: {
+  enrollmentId: string;
   scope: number;
   enabled: boolean;
   exhausted: boolean;
 }) {
   const queryClient = useQueryClient();
   const current = useQuery({
-    queryKey: ['lms', scope, 'exam'],
-    queryFn: lmsApi.currentExam,
+    queryKey: ['lms', scope, enrollmentId, 'exam'],
+    queryFn: () => lmsApi.currentExam(enrollmentId),
+    gcTime: 0,
   });
   const [exam, setExam] = useState<Exam | null>(null);
   const [busy, setBusy] = useState(false);
@@ -467,7 +568,9 @@ function WrittenExam({
       const next = await work();
       setExam(next);
       if (next.submittedAt)
-        await queryClient.invalidateQueries({ queryKey: ['lms', scope, 'me'] });
+        await queryClient.invalidateQueries({
+          queryKey: ['lms', scope, 'learning', enrollmentId],
+        });
     } catch {
       setError(
         'Your answer could not be saved. Check your connection and try again. The exam clock continues.',
@@ -495,7 +598,7 @@ function WrittenExam({
       {!exam || exam.submittedAt ? (
         <Button
           disabled={!enabled || exhausted || busy}
-          onClick={() => act(lmsApi.startExam)}
+          onClick={() => act(() => lmsApi.startExam(enrollmentId))}
         >
           {exhausted
             ? 'No further written attempt available'
@@ -541,7 +644,7 @@ function WrittenExam({
                         checked={exam.answers[question.id] === optionIndex}
                         onChange={() =>
                           act(() =>
-                            lmsApi.saveExam(exam.id, {
+                            lmsApi.saveExam(enrollmentId, exam.id, {
                               ...exam.answers,
                               [question.id]: optionIndex,
                             }),
@@ -559,7 +662,9 @@ function WrittenExam({
             <Button
               disabled={busy}
               onClick={() =>
-                act(() => lmsApi.saveExam(exam.id, exam.answers, true))
+                act(() =>
+                  lmsApi.saveExam(enrollmentId, exam.id, exam.answers, true),
+                )
               }
             >
               {remaining === 0

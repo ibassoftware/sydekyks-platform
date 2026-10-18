@@ -2,7 +2,7 @@ import { DataSource, EntityManager, IsNull } from 'typeorm'
 import { UserIdentityEntity } from '../authentication/user-identity/user-identity-entity'
 import { LmsCertificateEntity, LmsEnrollmentEntity } from '../lms/lms-entities'
 import { assertHostingOperator } from './hosting-access-policy'
-import { createHostedTraining } from './hosting-training'
+import { assertPartnerTrainingEnrollment, createHostedTraining } from './hosting-training'
 import { HostingTrainingEntity } from './hosting-training-entity'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
@@ -33,6 +33,7 @@ export function createLearningFulfillment({ dataSource, manager: existingManager
             const enrollment = await manager.getRepository(LmsEnrollmentEntity).findOne({ where: { id: enrollmentId }, lock: { mode: 'pessimistic_write' } })
             const now = await tx.now(manager)
             if (!enrollment || enrollment.status !== 'active' || enrollment.startsAt > now || enrollment.accessUntil <= now || enrollment.assessmentUntil <= now) hostingFail('HOSTING_LEARNING_ENROLLMENT_UNAVAILABLE')
+            await assertPartnerTrainingEnrollment(manager, enrollment)
             if (await manager.getRepository(HostingTrainingEntity).existsBy({ enrollmentId })) hostingFail('HOSTING_LEARNING_WORKSPACE_LOCKED')
             await assertLearningWorkspaceOwner(manager, enrollment.identityId, workspacePlatformId)
             await assertHostingOperator({ manager, actor })
@@ -49,7 +50,8 @@ export function createLearningFulfillment({ dataSource, manager: existingManager
             const enrollment = await manager.getRepository(LmsEnrollmentEntity).findOne({ where: { id: enrollmentId }, lock: { mode: 'pessimistic_write' } })
             const now = await tx.now(manager)
             if (!enrollment || enrollment.status !== 'active' || enrollment.startsAt > now || enrollment.accessUntil <= now || enrollment.assessmentUntil <= now) hostingFail('HOSTING_LEARNING_ENROLLMENT_UNAVAILABLE')
-            if (!enrollment.workspacePlatformId || !enrollment.paymentReference.trim()) hostingFail('HOSTING_LEARNING_FULFILLMENT_INCOMPLETE')
+            await assertPartnerTrainingEnrollment(manager, enrollment)
+            if (!enrollment.workspacePlatformId || !enrollment.paymentReference?.trim() || !enrollment.package) hostingFail('HOSTING_LEARNING_FULFILLMENT_INCOMPLETE')
             const training = await createHostedTraining({ dataSource, manager }).activate({
                 actor,
                 platformId: enrollment.workspacePlatformId,
