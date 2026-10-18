@@ -52,13 +52,16 @@ function init(): void {
 // Account setup URLs can contain a one-time credential. Bootstrap removes the
 // fragment before telemetry starts; keep this boundary safe for future callers.
 function isPartnerSetupPage(): boolean {
-  return window.location.pathname.replace(/\/+$/, '') === '/partner-setup';
+  return (
+    window.location.pathname.replace(/\/+$/, '').toLowerCase() ===
+    '/partner-setup'
+  );
 }
 
 function redactSetupUrl(value: string): string {
   try {
     const url = new URL(value, window.location.origin);
-    return url.pathname.replace(/\/+$/, '') === '/partner-setup'
+    return url.pathname.replace(/\/+$/, '').toLowerCase() === '/partner-setup'
       ? `${url.origin}${url.pathname}`
       : value;
   } catch {
