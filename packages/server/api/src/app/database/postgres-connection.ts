@@ -30,7 +30,9 @@ import { SydekyksPricingValidation1893000000000 } from './migration/postgres/189
 import { SydekyksPartnerAdmin1894000000000 } from './migration/postgres/1894000000000-SydekyksPartnerAdmin'
 import { SydekyksPartnerSetup1895000000000 } from './migration/postgres/1895000000000-SydekyksPartnerSetup'
 
-export const getMigrations = () => [SydekyksInitialSchema1880000000000, SydekyksUpstream1031881000000000, SydekyksUpstreamOctober211882000000000, SydekyksHostingLedger1882000000000, SydekyksHostingDispatch1883000000000, SydekyksHostingSegments1884000000000, SydekyksHostingModelCalls1885000000000, SydekyksHostingStripe1886000000000, SydekyksHostingAccess1887000000000, SydekyksLearning1888000000000, SydekyksTrainingGrants1889000000000, SydekyksManagedPricing1890000000000, SydekyksClientAiAllowance1892000000000, SydekyksPricingValidation1893000000000, SydekyksPartnerAdmin1894000000000, SydekyksPartnerSetup1895000000000]
+import { SydekyksTenantMembers1896000000000 } from './migration/postgres/1896000000000-SydekyksTenantMembers'
+
+export const getMigrations = () => [SydekyksInitialSchema1880000000000, SydekyksUpstream1031881000000000, SydekyksUpstreamOctober211882000000000, SydekyksHostingLedger1882000000000, SydekyksHostingDispatch1883000000000, SydekyksHostingSegments1884000000000, SydekyksHostingModelCalls1885000000000, SydekyksHostingStripe1886000000000, SydekyksHostingAccess1887000000000, SydekyksLearning1888000000000, SydekyksTrainingGrants1889000000000, SydekyksManagedPricing1890000000000, SydekyksClientAiAllowance1892000000000, SydekyksPricingValidation1893000000000, SydekyksPartnerAdmin1894000000000, SydekyksPartnerSetup1895000000000, SydekyksTenantMembers1896000000000]
 
 function getSslConfig() {
     return system.getBoolean(AppSystemProp.POSTGRES_USE_SSL) ? { rejectUnauthorized: true } : false

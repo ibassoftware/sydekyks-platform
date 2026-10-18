@@ -20,6 +20,7 @@ import { hostingPartnerSetupController, hostingPartnerSetupPublicController } fr
 import { hostingPricingController } from './hosting-pricing-controller'
 import { hostingServices } from './hosting-services'
 import { hostingStripeController } from './hosting-stripe-controller'
+import { hostingTenantJoinController, hostingTenantMembersController } from './hosting-tenant-members-controller'
 import { HostingActor, HostingError } from './hosting-transactions'
 
 export const hostingController: FastifyPluginAsyncZod = async app => {
@@ -29,6 +30,8 @@ export const hostingController: FastifyPluginAsyncZod = async app => {
     await app.register(hostingPartnerAdminController, { prefix: '/operator/partners' })
     await app.register(hostingPartnerSetupController, { prefix: '/operator/partner-setup' })
     await app.register(hostingPartnerSetupPublicController, { prefix: '/partner-setup' })
+    await app.register(hostingTenantMembersController, { prefix: '/tenant-members' })
+    await app.register(hostingTenantJoinController, { prefix: '/tenant-join' })
     await app.register(hostingLearningController, { prefix: '/operator' })
     await app.register(hostingOperatorController, { prefix: '/operator' })
     await app.register(hostingPricingController, { prefix: '/operator/ai-pricing' })
