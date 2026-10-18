@@ -183,7 +183,12 @@ export function assertHostedPayerAvailable(
   payer: HostedChatPayer | null,
   options?: HostedChatOptions,
 ): asserts payer is HostedChatPayer {
-  if (!payer) throw new HostedChatError('selection');
+  if (!payer)
+    throw new HostedChatError(
+      options && !options.managedAvailable && options.keys.length === 0
+        ? 'unavailable'
+        : 'selection',
+    );
   if (!options) throw new HostedChatError('unavailable');
   if (
     payer.type === 'managed'
