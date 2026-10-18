@@ -3,11 +3,14 @@ import { modelTierCatalog } from '@activepieces/server-utils'
 import { AIProviderModelType, aiProviderUtils } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { aiProviderService } from '../../ai/ai-provider-service'
+import { HOSTED_MANAGED_MODEL } from '../../hosting/hosting-ai-policy'
+import { hostingConfiguration } from '../../hosting/hosting-configuration'
 import { ActorScope, sydCopilotContext } from './copilot-context'
 
 async function getModels({ platformId, userId, projectId, log }: ActorScope & { projectId: string, log: FastifyBaseLogger }): Promise<ChatModelCatalog> {
     const projects = await sydCopilotContext.getUserProjects({ platformId, userId, log })
     if (!projects.some((project) => project.id === projectId)) throw new ActivepiecesError({ code: ErrorCode.AUTHORIZATION, params: { message: 'This command center is unavailable' } })
+    if (hostingConfiguration.getServiceMode() === 'hosted') return { provider: AIProviderName.ACTIVEPIECES, models: [{ id: HOSTED_MANAGED_MODEL, label: 'Sydekyks' }], defaultModelId: HOSTED_MANAGED_MODEL }
     const scope = sydCopilotContext.runScopeOrThrow({ projectId })
     const credentials = await sydCopilotContext.resolveChatProvider({ platformId, scope, log })
     const allowed = (id: string) => credentials.modelScope !== 'selected' || credentials.modelIds.includes(id)

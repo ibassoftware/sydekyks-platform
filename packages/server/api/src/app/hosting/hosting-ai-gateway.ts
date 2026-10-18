@@ -10,6 +10,7 @@ import { SydConversationEntity } from '../syd/copilot/models/conversation.entity
 import { hostedAiCredential } from './hosting-ai-credentials'
 import { HOSTED_AI_CONTEXT_TOKENS, HOSTED_AI_MAX_CALLS, HOSTED_AI_TIMEOUT_MS, HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL, hostedAiCost, HostedAiInput, HostedAiQuote, HostedAiRequest, readHostedAiQuote } from './hosting-ai-policy'
 import { deepseekHostedProvider, HostedAiProvider, hostedModelCatalog } from './hosting-ai-provider'
+import { hostedPublicChunk, hostedPublicResponse } from './hosting-ai-public'
 import { createHostedStreamParser, settledCompletionStream } from './hosting-ai-stream'
 import { HostingDispatch, HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingAccountEntity, HostingGrantEntity, HostingReservationEntity } from './hosting-entities'
@@ -61,7 +62,7 @@ export function createHostedAiGateway({ dataSource, provider = deepseekHostedPro
             const reservation = quote ? await createHostedLedger({ dataSource, manager }).reserveManagedCall({ actor: actorOf(segment), rootReservationId: root.id, key: `model:${id}`, maxCostMicroUsd: hostedAiCost({ hit: 0, miss: HOSTED_AI_CONTEXT_TOKENS, output: input.max_tokens, prices: quote.ceiling }), expectedDay: day }) : null
             return manager.getRepository(HostingModelCallEntity).save(manager.getRepository(HostingModelCallEntity).create({ id, platformId: scope.platformId, projectId: scope.projectId, segmentId: segment.id, rootReservationId: root.id, admissionId: scope.admissionId, identityId: segment.identityId, callKey: input.callKey, attempt: input.attempt, requestHash: hash, payer: input.payer.type, configId: input.payer.type === 'byok' ? input.payer.configId : null, credentialFingerprint: credential.fingerprint, model: input.model, endpoint: provider.endpoint, state: 'prepared', reservationId: reservation?.id ?? null, budgetDay: reservation?.day ?? null, quote, leaseUntil: new Date(now.getTime() + HOSTED_AI_TIMEOUT_MS + 5000) }))
         } })
-        if (prepared.state === 'settled' && prepared.response) return stream ? Readable.from(settledCompletionStream(publicResponse(prepared.response, prepared))) : publicResponse(prepared.response, prepared)
+        if (prepared.state === 'settled' && prepared.response) return stream ? Readable.from(settledCompletionStream(hostedPublicResponse(prepared.response, prepared))) : hostedPublicResponse(prepared.response, prepared)
         if (prepared.state !== 'prepared') hostingFail('HOSTING_AI_OUTCOME_UNAVAILABLE')
         const claim = await tx.run({ dataSource, fn: async manager => {
             await lockCallBudget({ manager, call: prepared })
@@ -103,14 +104,14 @@ export function createHostedAiGateway({ dataSource, provider = deepseekHostedPro
                         const parser = createHostedStreamParser(input.model)
                         const decoder = new StringDecoder('utf8')
                         for await (const bytes of upstream) {
-                            for (const text of parser.push(decoder.write(Buffer.from(bytes)))) yield publicChunk(text, prepared)
+                            for (const text of parser.push(decoder.write(Buffer.from(bytes)))) yield hostedPublicChunk(text, prepared)
                         }
-                        for (const text of parser.push(decoder.end())) yield publicChunk(text, prepared)
+                        for (const text of parser.push(decoder.end())) yield hostedPublicChunk(text, prepared)
                         const completion = completionSchema.parse(parser.finish())
                         validateUsage(completion.usage)
                         const saved = await settle({ callId: prepared.id, fence: claim.fence!, response: completion, maxOutput: input.max_tokens })
                         settled = true
-                        for (const text of settledCompletionStream(publicResponse(saved, prepared), true)) yield publicChunk(text, prepared)
+                        for (const text of settledCompletionStream(hostedPublicResponse(saved, prepared), true)) yield hostedPublicChunk(text, prepared)
                     }
                     catch {
                         throw new HostingError('HOSTING_AI_OUTCOME_UNCERTAIN')
@@ -125,7 +126,7 @@ export function createHostedAiGateway({ dataSource, provider = deepseekHostedPro
             if (!parsed.success || parsed.data.model !== input.model) hostingFail('HOSTING_AI_USAGE_UNVERIFIED')
             const usage = parsed.data.usage
             validateUsage(usage)
-            return publicResponse(await settle({ callId: prepared.id, fence: claim.fence, response: parsed.data, maxOutput: input.max_tokens }), prepared)
+            return hostedPublicResponse(await settle({ callId: prepared.id, fence: claim.fence, response: parsed.data, maxOutput: input.max_tokens }), prepared)
         }
         catch {
             await markUncertain({ callId: prepared.id, fence: claim.fence })
@@ -240,12 +241,4 @@ function canonical(value: unknown): string {
 
 function validateUsage(usage: z.infer<typeof usageSchema>): void {
     if (usage.prompt_tokens !== usage.prompt_cache_hit_tokens + usage.prompt_cache_miss_tokens || usage.total_tokens !== usage.prompt_tokens + usage.completion_tokens) hostingFail('HOSTING_AI_USAGE_UNVERIFIED')
-}
-
-function publicResponse(response: Record<string, unknown>, call: Pick<HostingModelCall, 'id' | 'payer'>): Record<string, unknown> {
-    return call.payer === 'managed' ? { ...response, id: `sydekyks-${call.id}`, model: HOSTED_MANAGED_MODEL } : response
-}
-function publicChunk(text: string, call: Pick<HostingModelCall, 'id' | 'payer'>): string {
-    if (call.payer !== 'managed' || text.trim() === 'data: [DONE]') return text
-    return `data: ${JSON.stringify(publicResponse(JSON.parse(text.slice(6).trim()), call))}\n\n`
 }
