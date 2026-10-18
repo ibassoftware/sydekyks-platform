@@ -37,19 +37,21 @@ export const hostingAccessController: FastifyPluginAsyncZod = async app => {
         const tenant = await service().enter({ actor: await actor(request), platformId: request.params.platformId })
         return authenticationUtils(request.log).getProjectAndToken({ ...tenant, expectedTokenVersion: tenant.tokenVersion })
     })
-    // Creates the existing idempotent trial/account skeleton only. Paid runtime grants
-    // require the separate verified enrollment/receipt admission path.
-    app.post('/tenants', { config, schema: { body: z.strictObject({ identityId: id, name: z.string().trim().min(1).max(120) }) } }, async request => {
-        const operator = await actor(request)
-        const onboarding = await hostingServices.onboarding()
-        const tenant = await tx.run({ dataSource: databaseConnection(), fn: async manager => {
-            await assertHostingOperator({ manager, actor: operator })
-            const result = await onboarding.provision({ ...request.body, operator, manager })
-            await tx.event({ manager, platformId: result.platformId, event: 'operational.tenant.provisioned', payload: { actorIdentityId: operator.identityId, ownerIdentityId: request.body.identityId, created: result.created } })
-            return result
-        } })
-        return { platformId: tenant.platformId, userId: tenant.userId, projectId: tenant.projectId, created: tenant.created }
-    })
+    // Creates only the existing idempotent trial/account skeleton. Paid runtime
+    // grants require the separate verified enrollment/receipt admission path.
+    for (const route of [{ path: '/tenants', requireOwnedHome: false }, { path: '/tenants/owned-home', requireOwnedHome: true }]) {
+        app.post(route.path, { config, schema: { body: z.strictObject({ identityId: id, name: z.string().trim().min(1).max(120) }) } }, async request => {
+            const operator = await actor(request)
+            const onboarding = await hostingServices.onboarding()
+            const tenant = await tx.run({ dataSource: databaseConnection(), fn: async manager => {
+                await assertHostingOperator({ manager, actor: operator })
+                const result = await onboarding.provision({ ...request.body, operator, manager, requireOwnedHome: route.requireOwnedHome })
+                await tx.event({ manager, platformId: result.platformId, event: 'operational.tenant.provisioned', payload: { actorIdentityId: operator.identityId, ownerIdentityId: request.body.identityId, created: result.created, requireOwnedHome: route.requireOwnedHome } })
+                return result
+            } })
+            return { platformId: tenant.platformId, userId: tenant.userId, projectId: tenant.projectId, created: tenant.created }
+        })
+    }
 }
 
 async function actor(request: FastifyRequest): Promise<HostingActor> {

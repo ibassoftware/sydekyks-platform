@@ -23,10 +23,16 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
         if (existing.subjectKeyFingerprint !== fingerprint) hostingFail('HOSTING_SUBJECT_KEY_CHANGED')
     }
 
-    async function provision({ identityId, name, expectedTokenVersion, names, operator, manager: existingManager }: ProvisionParams): Promise<ProvisionedTenant> {
+    async function provision({ identityId, name, expectedTokenVersion, names, operator, requireOwnedHome = false, manager: existingManager }: ProvisionParams): Promise<ProvisionedTenant> {
         assertName(name)
         return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             await policy(manager)
+            // Creating a learner-owned home is an explicit operator action. Normal
+            // sign-in/partner admission continues to preserve joined memberships.
+            if (requireOwnedHome) {
+                if (!operator) hostingFail('HOSTING_OPERATOR_PROVISIONING_REQUIRED')
+                await assertHostingOperator({ manager, actor: operator! })
+            }
             const identity = await lockedIdentity({ manager, identityId })
             if (expectedTokenVersion !== undefined && (identity.tokenVersion ?? null) !== expectedTokenVersion) hostingFail('HOSTING_SESSION_EXPIRED')
             const eligibility = manager.getRepository(HostingEligibilityEntity)
@@ -34,12 +40,12 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
             if (prior) {
                 if (prior.identityId !== identityId) hostingFail('HOSTING_TRIAL_ALREADY_USED')
                 const account = await manager.getRepository(HostingAccountEntity).findOneBy({ id: prior.platformId })
-                if (!account) hostingFail('HOSTING_TRIAL_ALREADY_USED')
+                if (!account || (requireOwnedHome && account.ownerIdentityId !== identityId)) hostingFail('HOSTING_TRIAL_ALREADY_USED')
                 const user = await tx.member({ manager, actor: { identityId, platformId: account.id } })
                 return { platformId: account.id, userId: user.id, projectId: account.initialProjectId, created: false, tokenVersion: identity.tokenVersion ?? null }
             }
             const joined = await manager.getRepository(UserEntity).find({ where: { identityId, status: UserStatus.ACTIVE }, order: { created: 'ASC' } })
-            for (const user of joined) {
+            for (const user of requireOwnedHome ? [] : joined) {
                 if (isOperationalUser(user) || !user.platformId || !await manager.getRepository(HostingAccountEntity).existsBy({ id: user.platformId })) continue
                 const project = await manager.getRepository(ProjectEntity).findOneBy({ platformId: user.platformId, ownerId: user.id })
                 return { platformId: user.platformId, userId: user.id, projectId: project?.id ?? null, created: false, tokenVersion: identity.tokenVersion ?? null }
@@ -216,5 +222,5 @@ function assertName(name: string): void {
     if (typeof name !== 'string' || name.trim().length < 1 || name.length > 120) hostingFail('HOSTING_INVALID_NAME')
 }
 
-type ProvisionParams = { operator?: HostingActor, manager?: EntityManager, identityId: string, name: string, expectedTokenVersion?: string | null, names?: { firstName: string, lastName: string } }
+type ProvisionParams = { requireOwnedHome?: boolean, operator?: HostingActor, manager?: EntityManager, identityId: string, name: string, expectedTokenVersion?: string | null, names?: { firstName: string, lastName: string } }
 export type ProvisionedTenant = { platformId: string, userId: string, projectId: string | null, created: boolean, tokenVersion: string | null }
