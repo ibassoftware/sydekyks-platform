@@ -10,6 +10,16 @@ import qs from 'qs';
 
 import { authenticationSession } from '@/lib/authentication-session';
 import { chatDebug } from '@/lib/chat-debug-logger';
+let hostedSessionIsolation = false;
+
+function projectPointer() {
+  try {
+    return authenticationSession.getProjectId();
+  } catch {
+    return null;
+  }
+}
+
 export const CLOUD_HOSTNAME = 'cloud.activepieces.com';
 
 export const isRunningCloudInDevMode = import.meta.env.MODE === 'cloud';
@@ -71,6 +81,13 @@ function request<TResponse>(
     resolvedUrl.replace(API_URL, '').startsWith(route),
   );
 
+  const originToken = authenticationSession.getToken();
+  const originProject = projectPointer();
+  const isStale = () =>
+    hostedSessionIsolation &&
+    (originToken !== authenticationSession.getToken() ||
+      originProject !== projectPointer());
+  const staleError = () => new Error('Your session changed. Please try again.');
   const startedAt = performance.now();
   return axios({
     url: resolvedUrl,
@@ -80,11 +97,12 @@ function request<TResponse>(
       Authorization: getToken(
         unAuthenticated || scope?.anonymous === true,
         isApWebsite,
-        authenticationSession.getToken(),
+        originToken,
       ),
     },
   })
     .then((response) => {
+      if (isStale()) throw staleError();
       logChatHttp({
         url: resolvedUrl,
         config,
@@ -96,6 +114,8 @@ function request<TResponse>(
         : (response.data as TResponse);
     })
     .catch((error) => {
+      // Do not expose an old account payload/config or let it log out the new session.
+      if (isStale()) throw staleError();
       logChatHttp({
         url: resolvedUrl,
         config,
@@ -172,6 +192,9 @@ function getToken(
 export type HttpError = AxiosError<unknown, AxiosResponse<unknown>>;
 
 export const api = {
+  setHostedSessionIsolation(enabled: boolean) {
+    hostedSessionIsolation = enabled;
+  },
   // Callers must fence results against their captured session and sanitize errors.
   // A late response must not trigger global logout or licensing side effects.
   sessionScoped: <TResponse>(

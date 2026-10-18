@@ -60,9 +60,13 @@ export function currentAuthSession(): Session {
   });
   return snapshot;
 }
-function subscribe(listener: () => void) {
+export function subscribeHostedSession(listener: () => void) {
+  let active = true;
+  let pending = false;
   let timer: ReturnType<typeof setTimeout>;
   const notify = () => {
+    pending = false;
+    if (!active) return;
     clearTimeout(timer);
     const session = currentAuthSession();
     if (session.expiresAt)
@@ -75,18 +79,27 @@ function subscribe(listener: () => void) {
       );
     listener();
   };
-  window.addEventListener('storage', notify);
-  window.addEventListener('focus', notify);
+  // A verified response clears then replaces storage synchronously. Observe its final state.
+  const schedule = () => {
+    if (pending) return;
+    pending = true;
+    queueMicrotask(notify);
+  };
+  window.addEventListener('storage', schedule);
+  window.addEventListener('focus', schedule);
+  window.addEventListener('pageshow', schedule);
   notify();
   return () => {
+    active = false;
     clearTimeout(timer);
-    window.removeEventListener('storage', notify);
-    window.removeEventListener('focus', notify);
+    window.removeEventListener('storage', schedule);
+    window.removeEventListener('focus', schedule);
+    window.removeEventListener('pageshow', schedule);
   };
 }
 export function useHostedAuthSession() {
   return useSyncExternalStore(
-    subscribe,
+    subscribeHostedSession,
     currentAuthSession,
     currentAuthSession,
   );

@@ -1,13 +1,15 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import React from 'react';
+import React, { Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ApErrorDialog } from '@/components/custom/ap-error-dialog/ap-error-dialog';
+import { LoadingScreen } from '@/components/custom/loading-screen';
 import { EmbeddingProvider } from '@/components/providers/embed-provider';
 import TelemetryProvider from '@/components/providers/telemetry-provider';
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { HostedApplicationSessionBoundary } from '@/features/hosted-onboarding/application-session-boundary';
 import { RefreshAnalyticsProvider } from '@/features/platform-admin';
 
 import { EmbeddingAnalyticsLoader } from './components/embedding-analytics-loader';
@@ -22,26 +24,30 @@ export function App() {
   return (
     <GlobalErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <RefreshAnalyticsProvider>
-          <EmbeddingProvider>
-            <InitialDataGuard>
-              <EmbeddingFontLoader>
-                <EmbeddingAnalyticsLoader />
-                <TelemetryProvider>
-                  <TooltipProvider>
-                    <ThemeProvider storageKey="vite-ui-theme">
-                      <React.Fragment key={i18n.language}>
-                        <ApRouter />
-                        <Toaster position="bottom-right" />
-                        <ApErrorDialog />
-                      </React.Fragment>
-                    </ThemeProvider>
-                  </TooltipProvider>
-                </TelemetryProvider>
-              </EmbeddingFontLoader>
-            </InitialDataGuard>
-          </EmbeddingProvider>
-        </RefreshAnalyticsProvider>
+        <Suspense fallback={<LoadingScreen />}>
+          <HostedApplicationSessionBoundary>
+            <RefreshAnalyticsProvider>
+              <EmbeddingProvider>
+                <InitialDataGuard>
+                  <EmbeddingFontLoader>
+                    <EmbeddingAnalyticsLoader />
+                    <TelemetryProvider>
+                      <TooltipProvider>
+                        <ThemeProvider storageKey="vite-ui-theme">
+                          <React.Fragment key={i18n.language}>
+                            <ApRouter />
+                            <Toaster position="bottom-right" />
+                            <ApErrorDialog />
+                          </React.Fragment>
+                        </ThemeProvider>
+                      </TooltipProvider>
+                    </TelemetryProvider>
+                  </EmbeddingFontLoader>
+                </InitialDataGuard>
+              </EmbeddingProvider>
+            </RefreshAnalyticsProvider>
+          </HostedApplicationSessionBoundary>
+        </Suspense>
       </QueryClientProvider>
     </GlobalErrorBoundary>
   );

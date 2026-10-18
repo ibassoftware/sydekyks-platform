@@ -57,7 +57,7 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
                 pinnedPieces: [], pieceSelectorConfig: null, cloudAuthEnabled: true, googleAuthEnabled: true,
             })
             await manager.getRepository(UserEntity).update({ id: userId }, { platformId })
-            const projectId = await insertProject({ manager, platformId, userId, name: `${identity.firstName}'s Project`, type: ProjectType.PERSONAL })
+            const projectId = await insertProject({ manager, platformId, userId, name: `${names?.firstName ?? identity.firstName}'s Project`, type: ProjectType.PERSONAL })
             const now = await tx.now(manager)
             const trialEndsAt = new Date(now.getTime() + hostingCatalog.trialDays * 86_400_000)
             await manager.getRepository(HostingAccountEntity).insert({ id: platformId, ownerIdentityId: identityId, initialProjectId: projectId, status: 'trialing', planId: 'trial', catalogVersion: hostingCatalog.version, trialStartedAt: now, trialEndsAt, validUntil: trialEndsAt, activeExecutions: 0 })
