@@ -503,6 +503,9 @@ function PricingReview({
   const [busy, setBusy] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [status, setStatus] = useState('');
+  const [approvalUntil, setApprovalUntil] = useState(
+    state.pricing.calendar.until.slice(0, 16),
+  );
   const controller = useRef<AbortController | null>(null);
   const active = useRef(true);
   useEffect(() => {
@@ -513,15 +516,36 @@ function PricingReview({
     };
   }, []);
   const pricing = state.pricing;
-  const expiryTime = Math.min(
-    Date.parse(pricing.calendar.until),
-    Date.parse(pricing.sourceValidUntil ?? pricing.calendar.until),
-  );
+  useEffect(() => {
+    setConfirmed(false);
+  }, [
+    pricing.observationId,
+    pricing.termsHash,
+    pricing.calendar.version,
+    approvalUntil,
+  ]);
+  useEffect(() => {
+    setApprovalUntil(pricing.calendar.until.slice(0, 16));
+  }, [pricing.calendar.until]);
+  const expiryTime = approvalUntil
+    ? Date.parse(`${approvalUntil}:00.000Z`)
+    : NaN;
   const expires = Number.isFinite(expiryTime)
     ? new Date(expiryTime).toISOString()
     : null;
+  const canApprove =
+    !busy &&
+    confirmed &&
+    expires !== null &&
+    expiryTime > Date.now() &&
+    expiryTime <= Date.parse(pricing.calendar.until) &&
+    Date.parse(pricing.sourceValidUntil ?? '') > Date.now() &&
+    !!pricing.terms &&
+    !!pricing.observationId &&
+    !!pricing.termsHash &&
+    ['needs_approval', 'ready', 'expired', 'mismatch'].includes(pricing.status);
   async function action(approve: boolean) {
-    if (busy) return;
+    if (busy || (approve && !canApprove)) return;
     setBusy(true);
     setStatus('');
     const attempt = new AbortController();
@@ -573,6 +597,8 @@ function PricingReview({
         <dd>{pricing.status.replaceAll('_', ' ')}</dd>
         <dt className="font-medium">Last observation</dt>
         <dd>{date(pricing.observedAt)}</dd>
+        <dt className="font-medium">Source confirmation valid until</dt>
+        <dd>{date(pricing.sourceValidUntil)}</dd>
         <dt className="font-medium">Current approval expires</dt>
         <dd>{date(pricing.approval?.validUntil ?? null)}</dd>
         <dt className="font-medium">Published source</dt>
@@ -660,6 +686,29 @@ function PricingReview({
           Refresh pricing status
         </Button>
       </div>
+      <div className="mt-5 max-w-sm">
+        <label htmlFor="pricing-approval-until" className="text-sm font-medium">
+          Approval valid until (UTC)
+        </label>
+        <Input
+          id="pricing-approval-until"
+          type="datetime-local"
+          className="mt-2"
+          value={approvalUntil}
+          max={pricing.calendar.until.slice(0, 16)}
+          disabled={busy}
+          onChange={(event) => {
+            setConfirmed(false);
+            setApprovalUntil(event.target.value);
+          }}
+          aria-describedby="pricing-approval-help"
+        />
+        <p id="pricing-approval-help" className="mt-2 text-sm text-gray-11">
+          Approval can last until the verified calendar ends. The server keeps
+          checking published prices separately; stale or changed pricing pauses
+          managed calls until it is confirmed or approved again.
+        </p>
+      </div>
       <label className="mt-5 flex max-w-3xl items-start gap-3 text-sm">
         <input
           type="checkbox"
@@ -675,16 +724,7 @@ function PricingReview({
       </label>
       <Button
         className="mt-4"
-        disabled={
-          busy ||
-          !confirmed ||
-          !expires ||
-          expiryTime <= Date.now() ||
-          !pricing.terms ||
-          !pricing.observationId ||
-          !pricing.termsHash ||
-          !['needs_approval', 'ready', 'expired'].includes(pricing.status)
-        }
+        disabled={!canApprove}
         onClick={() => void action(true)}
       >
         Approve observed pricing
