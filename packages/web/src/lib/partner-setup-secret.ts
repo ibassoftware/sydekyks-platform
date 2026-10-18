@@ -3,7 +3,7 @@
 let setupSecret: string | null = null;
 if (
   typeof window !== 'undefined' &&
-  window.location.pathname.replace(/\/+$/, '') === '/partner-setup'
+  window.location.pathname.replace(/\/+$/, '').toLowerCase() === '/partner-setup'
 ) {
   const token = new URLSearchParams(window.location.hash.slice(1)).get('token');
   if (token && /^[a-zA-Z0-9_-]{43}$/.test(token)) setupSecret = token;
