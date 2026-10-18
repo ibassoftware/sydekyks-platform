@@ -116,7 +116,7 @@ describe('operator learning workspace repair', () => {
         expect((await readEnrollment()).workspacePlatformId).toBeNull()
         expect(await ds.getRepository(HostingTrainingEntity).count()).toBe(0)
     })
-    it.each([{ status: 'revoked' as const }, { accessUntil: new Date(0) }, { assessmentUntil: new Date(0) }, { startsAt: new Date('2099-01-01T00:00:00Z') }])('refuses unavailable enrollment %j', async change => {
+    it.each([{ status: 'revoked' as const }, { startsAt: new Date(0), accessUntil: new Date(1), assessmentUntil: new Date(1) }, { startsAt: new Date(0), assessmentUntil: new Date(1) }, { startsAt: new Date('2099-01-01T00:00:00Z'), accessUntil: new Date('2100-01-01T00:00:00Z'), assessmentUntil: new Date('2100-01-01T00:00:00Z') }])('refuses unavailable enrollment %j', async change => {
         await ds.getRepository(LmsEnrollmentEntity).update({ id: enrollment.id }, change)
         await expect(bind()).rejects.toThrow('ENROLLMENT_UNAVAILABLE')
         expect((await readEnrollment()).workspacePlatformId).toBeNull()

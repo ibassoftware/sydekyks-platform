@@ -10,6 +10,7 @@ import { passwordHasher } from '../../src/app/authentication/lib/password-hasher
 import { UserIdentityEntity } from '../../src/app/authentication/user-identity/user-identity-entity'
 import { authenticationMiddleware } from '../../src/app/core/security/v2/authn/authentication-middleware'
 import { authorizationMiddleware } from '../../src/app/core/security/v2/authz/authorization-middleware'
+import { SydekyksPartnerSetup1895000000000 } from '../../src/app/database/migration/postgres/1895000000000-SydekyksPartnerSetup'
 import { FlagEntity } from '../../src/app/flags/flag.entity'
 import { errorHandler } from '../../src/app/helper/error-handler'
 import { createHostedAccess } from '../../src/app/hosting/hosting-access'
@@ -31,7 +32,7 @@ const service = () => createHostedPartnerSetup({ dataSource: ds, log: app.log })
 const onboarding = () => createHostedOnboarding({ dataSource: ds, subjectSecret: 'synthetic-partner-setup-subject-at-least32characters' })
 async function identity(verified = false) {
     const id = apId()
-    await ds.getRepository(UserIdentityEntity).insert({ id, email: `${id}@test.invalid`, provider: 'EMAIL', password: oldHash, verified, firstName: 'Before', lastName: 'Setup', tokenVersion: 'initial' })
+    await ds.getRepository(UserIdentityEntity).insert({ id, email: `${id.toLowerCase()}@test.invalid`, provider: 'EMAIL', password: oldHash, verified, firstName: 'Before', lastName: 'Setup', tokenVersion: 'initial' })
     return id
 }
 const readTarget = () => ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: target })
@@ -135,6 +136,21 @@ describe('one-use operator partner setup', () => {
         await expect(ds.getRepository(HostingPartnerSetupTokenEntity).update({ id: original.id }, { identityEmail: 'rewritten@test.invalid' })).rejects.toThrow('HISTORY_IMMUTABLE')
         expect((await readTarget()).verified).toBe(false)
     })
+    it('refuses populated migration rollback transactionally without losing setup history or the copied pending link', async () => {
+        const link = await issue(), before = await ds.getRepository(HostingPartnerSetupTokenEntity).find(), binding = await ds.getRepository(HostingPartnerSetupBindingEntity).findOneByOrFail({ id: target })
+        const runner = ds.createQueryRunner()
+        await runner.connect(); await runner.startTransaction()
+        try {
+            await expect(new SydekyksPartnerSetup1895000000000().down(runner)).rejects.toThrow('BACKUP_RESTORE')
+        }
+        finally {
+            await runner.rollbackTransaction(); await runner.release()
+        }
+        expect(await ds.getRepository(HostingPartnerSetupTokenEntity).find()).toEqual(before)
+        expect(await ds.getRepository(HostingPartnerSetupBindingEntity).findOneByOrFail({ id: target })).toEqual(binding)
+        expect(await service().inspect(link.token)).toMatchObject({ email: (await readTarget()).email, method: 'operator', emailOwnershipVerified: false })
+        expect((await service().status({ actor: operator, email: (await readTarget()).email })).pending).toBe(true)
+    })
     it('commits only one completion when copied links are redeemed concurrently', async () => {
         const link = await issue(), outcomes = await Promise.allSettled([redeem(link.token), redeem(link.token)])
         expect(outcomes.filter(outcome => outcome.status === 'fulfilled')).toHaveLength(1)
@@ -161,7 +177,11 @@ describe('one-use operator partner setup', () => {
         if (protectedType === 'verified') await ds.getRepository(UserIdentityEntity).update({ id: target }, { verified: true })
         if (protectedType === 'self') target = operator.identityId
         if (protectedType === 'operator') vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', `${operator.identityId},${target}`)
-        if (protectedType === 'team') await createHostedAccess({ dataSource: ds }).setRole({ actor: operator, identityId: target, role: 'team', active: false })
+        if (protectedType === 'team') {
+            await ds.getRepository(UserIdentityEntity).update({ id: target }, { verified: true })
+            await createHostedAccess({ dataSource: ds }).setRole({ actor: operator, identityId: target, role: 'team', active: false })
+            await ds.getRepository(UserIdentityEntity).update({ id: target }, { verified: false })
+        }
         if (protectedType === 'inactive-member') await ds.getRepository(UserEntity).insert({ id: apId(), identityId: target, platformId: operator.platformId, platformRole: PlatformRole.MEMBER, status: UserStatus.INACTIVE })
         const before = await readTarget()
         await expect(issue()).rejects.toThrow('ACCOUNT_UNAVAILABLE')
@@ -188,7 +208,7 @@ describe('one-use operator partner setup', () => {
 
 describe('partner setup HTTP security and disclosure', () => {
     it('creates an unverified identity for a new email without granting a workspace, partner role or password chosen by the operator', async () => {
-        const email = `new-${apId()}@test.invalid`, auth = await headers()
+        const email = `new-${apId().toLowerCase()}@test.invalid`, auth = await headers()
         const missing = await app.inject({ url: `${operatorUrl}?email=${encodeURIComponent(email)}`, headers: auth })
         expect(missing.statusCode, missing.body).toBe(200)
         expect(missing.json()).toMatchObject({ identityId: null, revision: 0, pending: false })

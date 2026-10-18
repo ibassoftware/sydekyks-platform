@@ -54,6 +54,7 @@ async function configureManaged() {
     await pricing.approve({ actor, input: { expectedRevision: view.revision, observationId: view.observationId!, termsHash: view.termsHash!, requestKey: 'customer-dto:approval', validUntil: PRICING_CALENDAR.until, calendarVersion: PRICING_CALENDAR.version } })
 }
 beforeAll(async () => {
+    vi.stubEnv('AP_SERVICE_MODE', 'hosted')
     ds = await migratedHostedPGlite()
     previousConnection = Reflect.get(globalThis, '__AP_DB_CONNECTION__')
     Reflect.set(globalThis, '__AP_DB_CONNECTION__', ds)
