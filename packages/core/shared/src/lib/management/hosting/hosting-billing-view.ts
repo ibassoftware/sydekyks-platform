@@ -19,5 +19,13 @@ export const HostedBillingOverview = z.object({
     portal: action,
 })
 export type HostedBillingOverview = z.infer<typeof HostedBillingOverview>
+// Customer credit balances describe executions. Supplier budgets remain in the
+// internal/operator view and continue to constrain managed calls independently.
+export const HostedCustomerBillingOverview = HostedBillingOverview.extend({
+    meters: z.object({ execution: meter }),
+    limits: limits.omit({ aiCredits: true }),
+    plans: z.array(HostedBillingOverview.shape.plans.element.extend({ limits: limits.omit({ aiCredits: true }) })).length(2),
+})
+export type HostedCustomerBillingOverview = z.infer<typeof HostedCustomerBillingOverview>
 export type HostedBillingActionReason = z.infer<typeof HostedBillingActionReason>
 export const HOSTED_MICRO_USD_PER_CREDIT = BigInt(1000)

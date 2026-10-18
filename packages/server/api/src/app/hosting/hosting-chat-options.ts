@@ -28,6 +28,7 @@ export async function hostedChatOptions({ manager, actor, userId, projectId: req
     }
     const account = await tx.account({ manager, platformId: actor.platformId })
     const credits = await readHostedCredits(manager, account, await tx.now(manager))
-    return { credits, platformId: actor.platformId, userId, requestedProjectId, projectId, conversationId: conversationId ?? null, model: { id: HOSTED_MANAGED_MODEL, label: 'Sydekyks' }, managedAvailable,
+    managedAvailable = managedAvailable && BigInt(credits.execution.available) > 0n && BigInt(credits.ai.available) > 0n
+    return { credits: { execution: credits.execution }, platformId: actor.platformId, userId, requestedProjectId, projectId, conversationId: conversationId ?? null, model: { id: HOSTED_MANAGED_MODEL, label: 'Sydekyks' }, managedAvailable,
         keys: rows.filter(row => !Object.keys(row.config).length && aiKeyScope.rowAllowsScope({ row, scope: { type: 'project', projectId } }) && aiKeyScope.keyOffersModel({ key: row, modelId: HOSTED_DEEPSEEK_MODEL })).map(row => ({ id: row.id, name: row.displayName })) }
 }

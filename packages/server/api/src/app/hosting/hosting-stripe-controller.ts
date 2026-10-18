@@ -1,4 +1,4 @@
-import { PrincipalType } from '@activepieces/shared'
+import { HostedCustomerBillingOverview, PrincipalType } from '@activepieces/shared'
 import { FastifyRequest } from 'fastify'
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
@@ -14,7 +14,7 @@ export const hostingStripeController: FastifyPluginAsyncZod = async app => {
     const user = { security: securityAccess.platformAdminOnly([PrincipalType.USER]), rateLimit: authnRateLimit }
     app.get('/overview', { config: user }, async (request, reply) => {
         void reply.header('Cache-Control', 'private, no-store').header('Vary', 'Authorization')
-        return hostingServices.billingView().read(await actor(request))
+        return HostedCustomerBillingOverview.parse(await hostingServices.billingView().read(await actor(request)))
     })
     app.get('/', { config: user }, async request => (await hostingServices.billing()).status(await actor(request)))
     app.post('/checkout', { config: user, schema: { body: z.strictObject({ planId: z.enum(['starter', 'team']) }) } }, async request => (await hostingServices.billing()).checkout(await actor(request), request.body.planId))

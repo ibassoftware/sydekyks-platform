@@ -42,7 +42,7 @@ export const hostingController: FastifyPluginAsyncZod = async app => {
     const user = { security: securityAccess.unscoped([PrincipalType.USER]), rateLimit: authnRateLimit }
     app.get('/balance', { config: user }, async request => {
         const grants = await hostingServices.ledger().balance({ actor: await actor(request) })
-        return grants.map(grant => ({ meter: grant.meter, unit: grant.unit, amount: grant.amount.toString(), reserved: grant.reserved.toString(), consumed: grant.consumed.toString(), available: grant.available.toString(), microcreditsPerUnit: grant.microcreditsPerUnit?.toString() ?? null, validUntil: grant.validUntil.toISOString() }))
+        return grants.filter(grant => grant.meter === 'execution').map(grant => ({ meter: grant.meter, unit: grant.unit, amount: grant.amount.toString(), reserved: grant.reserved.toString(), consumed: grant.consumed.toString(), available: grant.available.toString(), microcreditsPerUnit: null, validUntil: grant.validUntil.toISOString() }))
     })
     app.post('/invitations', { config: user, schema: { body: z.strictObject({ email: z.email(), role: z.enum(PlatformRole) }) } }, async request => {
         return (await hostingServices.onboarding()).invite({ actor: await actor(request), ...request.body })
