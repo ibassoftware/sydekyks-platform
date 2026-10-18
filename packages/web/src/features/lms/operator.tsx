@@ -118,15 +118,15 @@ export function LmsOperator({ scope }: { scope: number }) {
       setLearner(found);
       if (!found)
         setLookupMessage(
-          'No account was found. Ask the learner to register and verify their email first.',
+          'No account was found. Add the account in Partners and ask the learner to complete secure account setup, then search again.',
         );
       else if (!found.verified)
         setLookupMessage(
-          'This learner must verify their email before enrollment.',
+          'This learner needs email verification or an operator-issued account setup link before enrollment.',
         );
       else if (!found.workspaces.length)
         setLookupMessage(
-          'This verified learner needs a training workspace before enrollment. Create it below; partner approval is separate.',
+          'This eligible learner needs a training workspace before enrollment. Create it below; partner approval is separate.',
         );
       else if (found.workspaces.length === 1)
         setWorkspacePlatformId(found.workspaces[0].platformId);
@@ -476,7 +476,7 @@ export function LmsOperator({ scope }: { scope: number }) {
       <section className="max-w-3xl">
         <h2 className="text-xl font-semibold">Record a verified enrollment</h2>
         <p className="my-3 text-gray-11">
-          Find the verified learner and their own workspace, then verify the
+          Find the eligible learner and their own workspace, then verify the
           receipt outside this form. Record learning access here and activate
           the included training workspace in the delivery section below.
         </p>
@@ -530,7 +530,7 @@ export function LmsOperator({ scope }: { scope: number }) {
                 disabled={busy || !learnerEmail.trim()}
                 onClick={() => void findLearner()}
               >
-                Find verified learner
+                Find learner
               </Button>
               {lookupMessage && (
                 <p role="status" className="text-sm">
@@ -539,8 +539,13 @@ export function LmsOperator({ scope }: { scope: number }) {
               )}
               {learner?.verified && (
                 <p className="break-words text-sm">
-                  Verified learner: {learner.firstName} {learner.lastName} ·{' '}
-                  {learner.email}
+                  {learner.verificationMethod === 'operator'
+                    ? 'Operator admitted'
+                    : learner.verificationMethod === 'email' &&
+                      learner.emailOwnershipVerified
+                    ? 'Email verified'
+                    : 'Eligible learner'}
+                  : {learner.firstName} {learner.lastName} · {learner.email}
                 </p>
               )}
               {learner?.verified && learner.workspaces.length === 0 && (
@@ -585,7 +590,7 @@ export function LmsOperator({ scope }: { scope: number }) {
             </div>
           ) : (
             <label className="block" htmlFor="learner-identity">
-              Verified learner identity ID
+              Eligible learner identity ID
               <Input
                 id="learner-identity"
                 value={identityId}
@@ -686,7 +691,7 @@ export function LmsOperator({ scope }: { scope: number }) {
               <option value="">Choose an enrollment</option>
               {enrollments.data?.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.learnerEmail || 'Verified learner'} · {item.package} ·{' '}
+                  {item.learnerEmail || 'Eligible learner'} · {item.package} ·{' '}
                   {item.paymentReference} · {item.status}
                 </option>
               ))}
@@ -753,9 +758,9 @@ export function LmsOperator({ scope }: { scope: number }) {
                       </label>
                       {!deliveryWorkspaces.length && (
                         <p className="text-sm">
-                          A verified learner-owned workspace is required before
-                          activation. Ask the learner to complete workspace
-                          setup, then refresh.
+                          An eligible learner-owned workspace is required before
+                          activation. Find this learner above to complete account
+                          and workspace setup, then refresh.
                         </p>
                       )}
                       {!deliveryOwned && (
@@ -849,7 +854,7 @@ export function LmsOperator({ scope }: { scope: number }) {
             <option value="">Choose an enrollment</option>
             {enrollments.data?.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.learnerEmail || 'Verified learner'} · {item.package} ·{' '}
+                {item.learnerEmail || 'Eligible learner'} · {item.package} ·{' '}
                 {item.paymentReference} · {item.status}
               </option>
             ))}

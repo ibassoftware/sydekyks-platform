@@ -99,6 +99,8 @@ export type LearnerCandidate = {
   firstName: string;
   lastName: string;
   verified: boolean;
+  verificationMethod: 'operator' | 'email' | 'pending';
+  emailOwnershipVerified: boolean;
   workspaces: { platformId: string; name: string }[];
 };
 const base = '/v1/lms';
