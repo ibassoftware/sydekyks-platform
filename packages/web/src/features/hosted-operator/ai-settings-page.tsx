@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { assertAuthSession } from '@/features/hosted-onboarding/auth-session';
 
+import { ClientAiAllowanceSection } from './ai-allowance-section';
 import {
   AiSettings,
   AiSettingsError,
@@ -154,44 +155,53 @@ function SessionSettings({ access }: { access: Access }) {
             <p role="alert">
               Choose a client from the current authorized list.
             </p>
-          ) : settings.isPending || global.isPending ? (
-            <p role="status">Loading managed AI settings…</p>
-          ) : settings.isError || global.isError ? (
-            <div role="alert">
-              <p>
-                Managed AI settings could not load. Refresh to check access and
-                availability.
-              </p>
-              <Button
-                className="mt-3"
-                variant="outline"
-                onClick={() => {
-                  void settings.refetch();
-                  void global.refetch();
-                }}
-              >
-                Refresh settings
-              </Button>
-            </div>
           ) : (
             <>
-              <SettingsEditor
-                key={`${target}:${settings.data.revision}:${settings.data.globalRevision}`}
+              {settings.isPending || global.isPending ? (
+                <p role="status">Loading managed AI settings…</p>
+              ) : settings.isError || global.isError ? (
+                <div role="alert">
+                  <p>
+                    Managed AI settings could not load. Refresh to check access
+                    and availability.
+                  </p>
+                  <Button
+                    className="mt-3"
+                    variant="outline"
+                    onClick={() => {
+                      void settings.refetch();
+                      void global.refetch();
+                    }}
+                  >
+                    Refresh settings
+                  </Button>
+                </div>
+              ) : (
+                <SettingsEditor
+                  key={`${target}:${settings.data.revision}:${settings.data.globalRevision}`}
+                  access={access}
+                  state={settings.data}
+                  globalState={global.data}
+                  targetName={targetName}
+                  refresh={() => {
+                    void settings.refetch();
+                    void global.refetch();
+                  }}
+                />
+              )}
+              <ClientAiAllowanceSection
                 access={access}
-                state={settings.data}
-                globalState={global.data}
-                targetName={targetName}
-                refresh={() => {
-                  void settings.refetch();
-                  void global.refetch();
-                }}
+                platformId={target}
+                clientName={targetName}
               />
-              <PricingReview
-                key={`${global.data.pricing.revision}:${global.data.pricing.observationId}`}
-                access={access}
-                state={global.data}
-                refresh={() => void global.refetch()}
-              />
+              {global.data && !global.isError && (
+                <PricingReview
+                  key={`${global.data.pricing.revision}:${global.data.pricing.observationId}`}
+                  access={access}
+                  state={global.data}
+                  refresh={() => void global.refetch()}
+                />
+              )}
             </>
           )}
         </>
