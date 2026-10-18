@@ -1,5 +1,5 @@
 import { apId } from '@activepieces/core-utils'
-import { PrincipalType } from '@activepieces/shared'
+import { PlatformRole, PrincipalType, UserStatus } from '@activepieces/shared'
 import fastify, { FastifyInstance } from 'fastify'
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
 import { DataSource } from 'typeorm'
@@ -10,17 +10,22 @@ import { authenticationMiddleware } from '../../src/app/core/security/v2/authn/a
 import { authorizationMiddleware } from '../../src/app/core/security/v2/authz/authorization-middleware'
 import { FlagEntity } from '../../src/app/flags/flag.entity'
 import { errorHandler } from '../../src/app/helper/error-handler'
-import { HostingAccountEntity, HostingGrantEntity, HostingLedgerEntity, HostingOutboxEntity } from '../../src/app/hosting/hosting-entities'
+import { createHostedAccess } from '../../src/app/hosting/hosting-access'
+import { hostingAccessController } from '../../src/app/hosting/hosting-access-controller'
+import { HostingAccessRoleEntity } from '../../src/app/hosting/hosting-access-entities'
+import { HostingAccountEntity, HostingEligibilityEntity, HostingGrantEntity, HostingLedgerEntity, HostingOutboxEntity } from '../../src/app/hosting/hosting-entities'
 import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
 import { createLearningFulfillment } from '../../src/app/hosting/hosting-learning-fulfillment'
 import { createHostedLedger } from '../../src/app/hosting/hosting-ledger'
 import { createHostedOnboarding } from '../../src/app/hosting/hosting-onboarding'
+import { hostingServices } from '../../src/app/hosting/hosting-services'
 import { createHostedTraining } from '../../src/app/hosting/hosting-training'
 import { HostingTrainingEntity } from '../../src/app/hosting/hosting-training-entity'
 import { HostingActor } from '../../src/app/hosting/hosting-transactions'
 import { foundingCourseDraft } from '../../src/app/lms/lms-content'
 import { lmsController } from '../../src/app/lms/lms-controller'
 import { LmsCourseEntity, LmsEnrollment, LmsEnrollmentEntity } from '../../src/app/lms/lms-entities'
+import { UserEntity } from '../../src/app/user/user-entity'
 import { bootstrapHostedOperator, migratedHostedPGlite } from '../helpers/hosting-fixtures'
 
 let ds: DataSource, app: FastifyInstance, previousConnection: unknown, actor: HostingActor, operatorUserId: string
@@ -50,10 +55,15 @@ beforeAll(async () => {
     app = fastify()
     app.setValidatorCompiler(validatorCompiler); app.setSerializerCompiler(serializerCompiler); app.setErrorHandler(errorHandler)
     app.addHook('preHandler', authenticationMiddleware); app.addHook('preHandler', authorizationMiddleware)
-    await app.register(lmsController, { prefix: '/api/v1/lms' }); await app.ready()
+    // Bind the production service factory to the isolated fixture's subject secret.
+    // Operator authentication and the complete onboarding transaction remain real.
+    vi.spyOn(hostingServices, 'onboarding').mockImplementation(async () => onboarding())
+    await app.register(lmsController, { prefix: '/api/v1/lms' })
+    await app.register(hostingAccessController, { prefix: '/api/v1/hosting/operator' }); await app.ready()
 })
 afterAll(async () => {
     if (app) await app.close()
+    vi.restoreAllMocks()
     Reflect.set(globalThis, '__AP_DB_CONNECTION__', previousConnection)
     if (ds?.isInitialized) await ds.destroy()
 })
@@ -177,5 +187,77 @@ describe('operator learning workspace repair', () => {
         const repaired = await app.inject({ ...request, headers: await headers(), payload: { ...request.payload, expectedWorkspacePlatformId: other.platformId } })
         expect(repaired.statusCode, repaired.body).toBe(200)
         expect(repaired.json().workspacePlatformId).toBe(learner.platformId)
+    })
+})
+
+
+describe('operator learner-owned home provisioning', () => {
+    const url = '/api/v1/hosting/operator/tenants/owned-home'
+    it('creates one owned trial home for an existing ordinary member while preserving their original membership and partner role', async () => {
+        const identityId = await identity(), userId = apId()
+        await ds.getRepository(UserEntity).insert({ id: userId, identityId, platformId: other.platformId, platformRole: PlatformRole.MEMBER, status: UserStatus.ACTIVE })
+        await createHostedAccess({ dataSource: ds }).setRole({ actor, identityId, role: 'partner', active: true })
+        const previousMembership = await ds.getRepository(UserEntity).findOneByOrFail({ id: userId })
+        const previousRole = await ds.getRepository(HostingAccessRoleEntity).findOneByOrFail({ id: identityId })
+        const previousGrants = await grants(), accountCount = await ds.getRepository(HostingAccountEntity).count()
+        expect(await ds.getRepository(HostingEligibilityEntity).countBy({ identityId })).toBe(0)
+        const generic = await onboarding().provision({ identityId, name: 'Generic sign-in', operator: actor })
+        expect(generic).toMatchObject({ platformId: other.platformId, userId, created: false })
+        expect(await grants()).toEqual(previousGrants)
+        expect(await ds.getRepository(HostingAccountEntity).count()).toBe(accountCount)
+        await expect(onboarding().provision({ identityId, name: 'Unauthorized owned home', requireOwnedHome: true })).rejects.toThrow('OPERATOR_PROVISIONING_REQUIRED')
+        expect(await ds.getRepository(HostingEligibilityEntity).countBy({ identityId })).toBe(0)
+        expect(await grants()).toEqual(previousGrants)
+
+        const request = { method: 'POST' as const, url, headers: await headers(), payload: { identityId, name: 'Learner owned training home' } }
+        const response = await app.inject(request)
+        expect(response.statusCode, response.body).toBe(200)
+        const created = response.json()
+        expect(created.created).toBe(true)
+        expect(created.platformId).not.toBe(other.platformId)
+        expect(await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: created.platformId })).toMatchObject({ ownerIdentityId: identityId, status: 'trialing', planId: 'trial' })
+        expect(await ds.getRepository(UserEntity).findOneByOrFail({ id: created.userId })).toMatchObject({ identityId, platformId: created.platformId, platformRole: PlatformRole.ADMIN, status: UserStatus.ACTIVE })
+        expect(await ds.getRepository(UserEntity).findOneByOrFail({ id: userId })).toEqual(previousMembership)
+        expect(await ds.getRepository(HostingAccessRoleEntity).findOneByOrFail({ id: identityId })).toEqual(previousRole)
+        expect(await ds.getRepository(HostingEligibilityEntity).countBy({ identityId })).toBe(1)
+        const ownGrants = await ds.getRepository(HostingGrantEntity).findBy({ platformId: created.platformId })
+        expect(ownGrants).toHaveLength(2)
+        expect(ownGrants.find(grant => grant.meter === 'execution')?.amount).toBe(1000n)
+        expect(ownGrants.find(grant => grant.meter === 'managed_ai')?.amount).toBe(1000000n)
+        expect(ownGrants.every(grant => grant.validUntil.getTime() - grant.validFrom.getTime() === 14 * 86400000)).toBe(true)
+        const allGrants = await grants(), historyCount = await ds.getRepository(HostingLedgerEntity).count()
+        const replay = await app.inject(request)
+        expect(replay.statusCode, replay.body).toBe(200)
+        expect(replay.json()).toMatchObject({ platformId: created.platformId, userId: created.userId, projectId: created.projectId, created: false })
+        expect(await ds.getRepository(HostingAccountEntity).count()).toBe(accountCount + 1)
+        expect(await grants()).toEqual(allGrants)
+        expect(await ds.getRepository(HostingLedgerEntity).count()).toBe(historyCount)
+        expect(await ds.getRepository(UserEntity).findOneByOrFail({ id: userId })).toEqual(previousMembership)
+        expect(await ds.getRepository(HostingAccessRoleEntity).findOneByOrFail({ id: identityId })).toEqual(previousRole)
+        expect(await ds.getRepository(HostingTrainingEntity).count()).toBe(0)
+    })
+    it.each(['nonoperator', 'stale-operator', 'unverified-operator', 'unverified-learner'] as const)('denies %s without granting or creating an account', async denied => {
+        const identityId = await identity(), before = await grants(), accountCount = await ds.getRepository(HostingAccountEntity).count()
+        let auth = await headers()
+        if (denied === 'nonoperator') auth = await headers(learner.userId, learner.actor)
+        if (denied === 'stale-operator') auth = await headers(operatorUserId, { ...actor, tokenVersion: 'stale' })
+        if (denied === 'unverified-operator') await ds.getRepository(UserIdentityEntity).update({ id: actor.identityId }, { verified: false })
+        if (denied === 'unverified-learner') await ds.getRepository(UserIdentityEntity).update({ id: identityId }, { verified: false })
+        const response = await app.inject({ method: 'POST', url, headers: auth, payload: { identityId, name: 'Denied owned home' } })
+        expect(response.statusCode, response.body).toBeGreaterThanOrEqual(400)
+        expect(response.statusCode).toBeLessThan(500)
+        expect(await ds.getRepository(HostingAccountEntity).count()).toBe(accountCount)
+        expect(await ds.getRepository(HostingEligibilityEntity).countBy({ identityId })).toBe(0)
+        expect(await grants()).toEqual(before)
+    })
+    it.each([{ requireOwnedHome: false }, { requireOwnedHome: true }, { amount: 1000000000 }, { monthlyCredits: 1000000 }, { trialDays: 365 }])('rejects browser-controlled provisioning options %j on both operator routes', async extra => {
+        const identityId = await identity(), before = await grants(), accountCount = await ds.getRepository(HostingAccountEntity).count()
+        for (const endpoint of ['/api/v1/hosting/operator/tenants', url]) {
+            const response = await app.inject({ method: 'POST', url: endpoint, headers: await headers(), payload: { identityId, name: 'Strict owned home', ...extra } })
+            expect(response.statusCode, response.body).toBe(400)
+        }
+        expect(await ds.getRepository(HostingAccountEntity).count()).toBe(accountCount)
+        expect(await ds.getRepository(HostingEligibilityEntity).countBy({ identityId })).toBe(0)
+        expect(await grants()).toEqual(before)
     })
 })
