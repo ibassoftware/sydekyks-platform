@@ -3,7 +3,7 @@ import { HOSTED_RUNTIME_CAPABILITIES, HOSTED_RUNTIME_PROFILE } from '@activepiec
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { values } = vi.hoisted(() => ({ values: new Map<string, string>() }))
-vi.mock('../../src/app/helper/system/system', () => ({ system: { get: (key: string) => values.get(key) } }))
+vi.mock('../../src/app/helper/system/system', () => ({ system: { get: (key: string) => values.get(key), getBoolean: (key: string) => values.get(key) === 'true' } }))
 
 import { hostingConfiguration } from '../../src/app/hosting/hosting-configuration'
 import { hostingWorkerGate } from '../../src/app/hosting/hosting-worker-gate'
@@ -17,6 +17,8 @@ describe('hosting configuration', () => {
         values.set('DB_TYPE', 'POSTGRES')
         values.set('REDIS_TYPE', 'STANDALONE')
         values.set('EXECUTION_MODE', 'SANDBOX_CODE_ONLY')
+        values.set('FILE_STORAGE_LOCATION', 'DB')
+        values.set('S3_USE_SIGNED_URLS', 'false')
         values.set('HOSTED_BILLING_MODE', 'stripe_test')
         values.set('HOSTED_STRIPE_SECRET_KEY', 'sk_test_disposable')
         values.set('HOSTED_STRIPE_WEBHOOK_SECRET', 'whsec_disposable')

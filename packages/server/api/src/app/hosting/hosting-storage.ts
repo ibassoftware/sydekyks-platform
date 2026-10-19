@@ -88,14 +88,14 @@ export async function cleanupHostedFiles(dataSource: DataSource, requestedTypes:
         await lockStorage(manager)
         // Conservatively retain every file in a project with an unsettled root or
         // nonterminal run. Durable assets and unscoped files are never swept.
-        const removed: { id: string }[] = await manager.query(`DELETE FROM file WHERE id IN (
+        const [removed]: { count: number }[] = await manager.query(`WITH deleted AS (DELETE FROM file WHERE id IN (
             SELECT f.id FROM file f JOIN project p ON p.id=f."projectId" AND p."platformId"=f."platformId"
             WHERE f.type=ANY($1::varchar[]) AND f.location='DB'
             AND f.created < CURRENT_TIMESTAMP - ($2::int * interval '1 day')
             AND NOT EXISTS (SELECT 1 FROM hosting_reservation r WHERE r."projectId"=f."projectId" AND r.kind='execution' AND r.state IN ('reserved','running','paused','uncertain'))
             AND NOT EXISTS (SELECT 1 FROM flow_run r WHERE r."projectId"=f."projectId" AND r.status <> ALL($3::varchar[]))
             ORDER BY f.created ASC,f.id ASC LIMIT 4000
-        ) RETURNING id`, [types, retentionDays, terminal])
-        return removed.length
+        ) RETURNING id) SELECT count(*)::int AS count FROM deleted`, [types, retentionDays, terminal])
+        return removed.count
     })
 }
