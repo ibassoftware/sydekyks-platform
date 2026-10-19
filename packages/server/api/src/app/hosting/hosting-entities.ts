@@ -1,6 +1,7 @@
 import { HostedPlanId, PlatformRole } from '@activepieces/shared'
 import { EntitySchema, EntitySchemaColumnOptions, EntitySchemaOptions } from 'typeorm'
 import { ApIdSchema, BaseColumnSchemaPart } from '../database/database-common'
+import type { HostingSubscriptionContext } from './hosting-subscription-entities'
 
 function fromQuantity(value: unknown): bigint | null {
     if (value === null) return null
@@ -101,7 +102,7 @@ export const HostingOutboxEntity = new EntitySchema<HostingOutboxEvent>({
 export const HOSTING_ENTITIES = [HostingAccountEntity, HostingEligibilityEntity, HostingPolicyEntity, HostingGrantEntity, HostingReservationEntity, HostingLedgerEntity, HostingDailyBudgetEntity, HostingInvitationEntity, HostingOutboxEntity]
 
 type HostingBase = { id: string, created: Date, updated: Date }
-export type HostingAccount = HostingBase & { ownerIdentityId: string, initialProjectId: string, status: 'trialing' | 'active' | 'suspended', planId: HostedPlanId, catalogVersion: string, trialStartedAt: Date, trialEndsAt: Date, validUntil: Date, activeExecutions: number, billingHold?: boolean }
+export type HostingAccount = HostingBase & { ownerIdentityId: string, initialProjectId: string, status: 'trialing' | 'active' | 'suspended', planId: HostedPlanId, catalogVersion: string, trialStartedAt: Date, trialEndsAt: Date, validUntil: Date, activeExecutions: number, billingHold?: boolean, subscription?: HostingSubscriptionContext }
 export type HostingEligibility = HostingBase & { identityId: string, platformId: string }
 export type HostingPolicy = HostingBase & { subjectKeyFingerprint: string }
 export type HostingMeter = 'execution' | 'managed_ai'

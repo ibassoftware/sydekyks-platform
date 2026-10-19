@@ -8,6 +8,7 @@ import { UserEntity } from '../user/user-entity'
 import { HostingAccessMembership, HostingAccessMembershipEntity, HostingAccessRole, HostingAccessRoleEntity } from './hosting-access-entities'
 import { assertHostingOperator, hasOperationalAccess, isOperationalUser, operationalExternalId } from './hosting-access-policy'
 import { HostingAccountEntity } from './hosting-entities'
+import { partnerSubscriptionAllowed } from './hosting-subscription-policy'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 type AssignmentParams = { actor: HostingActor, platformId: string, identityId: string }
@@ -77,6 +78,7 @@ export function createHostedAccess({ dataSource, manager: existingManager }: { d
                 await tx.event({ manager, platformId, event: 'operational.workspace.entered', payload: { actorIdentityId: actor.identityId, actorUserId: independent.id, role: role.role, access: 'existing_membership' } })
                 return { platformId, userId: independent.id, projectId: null, tokenVersion: identity.tokenVersion ?? null }
             }
+            if (role.role === 'partner' && !await partnerSubscriptionAllowed(manager, actor.identityId)) hostingFail('HOSTING_SUBSCRIPTION_OVERDUE')
             const membership = role.role === 'team'
                 ? await materialize(manager, actor, platformId, role)
                 : await manager.getRepository(HostingAccessMembershipEntity).findOneBy({ platformId, identityId: actor.identityId, role: 'partner', active: true })
@@ -94,7 +96,8 @@ export function createHostedAccess({ dataSource, manager: existingManager }: { d
             const role = await manager.getRepository(HostingAccessRoleEntity).findOneBy({ id: actor.identityId, active: true })
             if (!role) return { platformId: actor.platformId, userId: user.id, role: null, workspaces: [] }
             // Bounded operator pilot: no unbounded client list in a tenant-facing response.
-            const rows = role.role === 'team'
+            const partnerCurrent = role.role !== 'partner' || await partnerSubscriptionAllowed(manager, actor.identityId)
+            const rows = !partnerCurrent ? [] : role.role === 'team'
                 ? await manager.getRepository(HostingAccountEntity).find({ order: { created: 'DESC' }, take: 100 })
                 : await manager.getRepository(HostingAccessMembershipEntity).find({ where: { identityId: actor.identityId, role: 'partner', active: true }, order: { created: 'DESC' }, take: 100 })
             const independent = role.role === 'partner' ? await manager.getRepository(UserEntity).find({ where: { identityId: actor.identityId, status: UserStatus.ACTIVE }, take: 100 }) : []

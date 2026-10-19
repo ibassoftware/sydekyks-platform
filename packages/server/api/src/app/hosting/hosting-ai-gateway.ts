@@ -220,13 +220,14 @@ async function current({ manager, scope }: { manager: EntityManager, scope: Scop
         const latest = await manager.getRepository(HostingDispatchEntity).findOne({ where: { platformId: scope.platformId, flowRunId: segment.flowRunId }, order: { generation: 'DESC' } })
         if (latest?.id !== segment.id) hostingFail('HOSTING_AI_SEGMENT_DENIED')
     }
-    await tx.member({ manager, actor: actorOf(segment), projectId: scope.projectId, write: true })
     const account = await tx.account({ manager, platformId: scope.platformId })
-    tx.assertActive({ account, now })
+    await tx.member({ manager, actor: actorOf(segment), projectId: scope.projectId, write: true })
+    const authorityNow = await tx.now(manager)
+    tx.assertActive({ account, now: authorityNow })
     const root = await manager.getRepository(HostingReservationEntity).findOneBy({ id: required(segment.reservationId), platformId: scope.platformId, kind: 'execution', state: 'running' })
     if (!root || root.identityId !== segment.identityId || root.projectId !== scope.projectId) hostingFail('HOSTING_AI_ROOT_DENIED')
     const grant = await manager.getRepository(HostingGrantEntity).findOneByOrFail({ id: root.grantId, platformId: root.platformId })
-    tx.assertGrantActive({ grant, now })
+    tx.assertGrantActive({ grant, now: authorityNow, account })
     return { segment, root }
 }
 async function lockCallBudget({ manager, call }: { manager: EntityManager, call: HostingModelCall }): Promise<void> {

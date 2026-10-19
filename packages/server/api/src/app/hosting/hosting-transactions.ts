@@ -9,6 +9,7 @@ import { UserEntity } from '../user/user-entity'
 import { hasOperationalAccess, isOperationalUser } from './hosting-access-policy'
 import { HostingAccount, HostingAccountEntity, HostingGrant, HostingLedgerEntity, HostingOutboxEntity, HostingReservation } from './hosting-entities'
 import { INSTALLATION_MODE_FLAG_ID } from './hosting-installation'
+import { loadSubscriptionContext, subscriptionAccountActive, subscriptionGrantActive } from './hosting-subscription-policy'
 
 async function run<T>({ dataSource, manager: existing, fn }: { dataSource: DataSource, manager?: EntityManager, fn: (manager: EntityManager) => Promise<T> }): Promise<T> {
     const operation = async (manager: EntityManager): Promise<T> => {
@@ -28,7 +29,7 @@ async function now(manager: EntityManager): Promise<Date> {
 async function account({ manager, platformId }: { manager: EntityManager, platformId: string }): Promise<HostingAccount> {
     const value = await manager.getRepository(HostingAccountEntity).findOne({ where: { id: platformId }, lock: { mode: 'pessimistic_write' } })
     if (!value) hostingFail('HOSTING_ACCOUNT_NOT_FOUND')
-    return value
+    return { ...value, subscription: await loadSubscriptionContext(manager, value) }
 }
 
 async function member({ manager, actor, admin = false, projectId, write = false }: { manager: EntityManager, actor: HostingActor, admin?: boolean, projectId?: string, write?: boolean }) {
@@ -48,11 +49,11 @@ async function member({ manager, actor, admin = false, projectId, write = false 
 
 function assertActive({ account: value, now: instant }: { account: HostingAccount, now: Date }): void {
     if (value.catalogVersion !== hostingCatalog.version) hostingFail('HOSTING_CATALOG_UNAVAILABLE')
-    if (value.billingHold || value.status === 'suspended' || value.validUntil.getTime() <= instant.getTime()) hostingFail('HOSTING_ENTITLEMENT_EXPIRED')
+    if (!subscriptionAccountActive(value, instant)) hostingFail('HOSTING_ENTITLEMENT_EXPIRED')
 }
 
-function assertGrantActive({ grant, now: instant }: { grant: HostingGrant, now: Date }): void {
-    if (grant.revokedAt || grant.validFrom > instant || grant.validUntil <= instant) hostingFail('HOSTING_GRANT_EXPIRED')
+function assertGrantActive({ grant, now: instant, account: owner }: { grant: HostingGrant, now: Date, account?: HostingAccount }): void {
+    if (owner ? !subscriptionGrantActive(owner, grant, instant) : grant.revokedAt || grant.validFrom > instant || grant.validUntil <= instant) hostingFail('HOSTING_GRANT_EXPIRED')
 }
 
 async function entry({ manager, reservation, operation, amount, key }: { manager: EntityManager, reservation: HostingReservation, operation: 'reserve' | 'dispatch' | 'settle' | 'release' | 'uncertain' | 'revoke', amount: bigint, key?: string }): Promise<void> {

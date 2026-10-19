@@ -7,6 +7,7 @@ import { HostingGrant, HostingGrantEntity } from './hosting-entities'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
 import { HostingStripeBindingEntity, HostingStripeCommandEntity, StripeCommand } from './hosting-stripe-entities'
 import { readStripePolicy, stripeDigest } from './hosting-stripe-policy'
+import { subscriptionAccountActive, subscriptionAccountUntil, subscriptionGrantActive, subscriptionGrantUntil } from './hosting-subscription-policy'
 import { HostingActor, hostingTransactions as tx } from './hosting-transactions'
 
 export function createHostedBillingView({ dataSource }: { dataSource: DataSource }) {
@@ -21,7 +22,7 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
             const usage = await hostingResourceUsage(manager, account.id, now)
             const grants = await manager.getRepository(HostingGrantEntity).find({ where: { platformId: account.id }, order: { validFrom: 'DESC', id: 'ASC' } })
             const candidates = grants.filter(value => value.meter === 'execution' && hostingGrantMatchesPlan(value, account.planId) && value.validFrom <= now)
-            const current = candidates.find(value => value.validUntil > now) ?? candidates[0]
+            const current = candidates.find(value => subscriptionGrantActive(account, value, now)) ?? candidates[0]
             const managed = grants.find(value => value.meter === 'managed_ai' && value.sourceKey === current?.sourceKey)
             const billingMode = hostingConfiguration.getBillingMode()
             let policy: ReturnType<typeof readStripePolicy> | null = null
@@ -44,7 +45,7 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
             const expiredCheckout = checkout?.state === 'ready' && !!checkout.objectId && !!checkout.expiresAt && checkout.expiresAt <= now
             const customer = open.find(value => value.kind === 'customer')
             const portal = open.find(value => value.kind === 'portal' && !(value.state === 'ready' && value.expiresAt && value.expiresAt <= now))
-            const ended = account.status !== 'suspended' && account.validUntil <= now && bound?.holds.length === 1 && bound.holds[0] === 'subscription_ended'
+            const ended = account.status !== 'suspended' && subscriptionAccountUntil(account) <= now && bound?.holds.length === 1 && bound.holds[0] === 'subscription_ended'
             const paused = account.status === 'suspended' || (account.billingHold === true && !ended)
             const plans = (['starter', 'team'] as const).map(id => {
                 const limits = hostingCatalog.getPlan({ planId: id })
@@ -64,16 +65,16 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
             const previousHeld = grants.filter(value => value.meter === 'managed_ai' && value.id !== managed?.id).reduce((sum, value) => sum + value.reserved, 0n)
             return HostedBillingOverview.parse({
                 schemaVersion: 1, platformId: account.id, userId: user.id, catalogVersion: account.catalogVersion, serverTime: now.toISOString(), billingMode, environment: billingMode === 'manual' ? 'manual' : 'test',
-                planId: account.planId, status: account.status, entitlementState: paused ? 'paused' : account.validUntil <= now ? 'expired' : account.planId === 'trial' ? 'trial' : account.planId === 'training' ? 'training' : account.planId === 'assessment' ? 'assessment' : 'paid', validUntil: account.validUntil.toISOString(), trialEndsAt: account.trialEndsAt.toISOString(), billingHold: account.billingHold ?? false, subscriptionStatus: bound?.subscriptionStatus ?? null, planChangesEnabled: false,
+                planId: account.planId, status: account.status, entitlementState: paused ? 'paused' : subscriptionAccountUntil(account) <= now ? 'expired' : account.planId === 'trial' ? 'trial' : account.planId === 'training' ? 'training' : account.planId === 'assessment' ? 'assessment' : 'paid', validUntil: subscriptionAccountUntil(account).toISOString(), trialEndsAt: account.trialEndsAt.toISOString(), billingHold: account.billingHold ?? false, subscriptionStatus: bound?.subscriptionStatus ?? null, planChangesEnabled: false,
                 notice: account.status === 'suspended' ? 'account_paused' : account.billingHold && !ended ? 'billing_review' : bound?.lastError ? 'billing_delayed' : null,
-                meters: { execution: meter(current, now, !paused && account.validUntil > now), managedAi: meter(managed, now, !paused && account.validUntil > now), previousPeriodHeldMicroUsd: previousHeld.toString() }, usage: { ...usage, activeExecutions: account.activeExecutions }, limits: { ...hostingCatalog.getPlan({ planId: account.planId }), aiCredits: effectiveAiCredits, byokEnabled: true }, plans, portal: { enabled: portalReason === null, reason: portalReason, continuing: false },
+                meters: { execution: meter(current, now, !paused && subscriptionAccountActive(account, now), account), managedAi: meter(managed, now, !paused && subscriptionAccountActive(account, now), account), previousPeriodHeldMicroUsd: previousHeld.toString() }, usage: { ...usage, activeExecutions: account.activeExecutions }, limits: { ...hostingCatalog.getPlan({ planId: account.planId }), aiCredits: effectiveAiCredits, byokEnabled: true }, plans, portal: { enabled: portalReason === null, reason: portalReason, continuing: false },
             })
         } })
     } }
 }
-function meter(grant: HostingGrant | undefined, now: Date, spendable: boolean) {
+function meter(grant: HostingGrant | undefined, now: Date, spendable: boolean, account: import('./hosting-entities').HostingAccount) {
     if (!grant) return { state: 'missing', amount: '0', consumed: '0', reserved: '0', available: '0', validFrom: null, validUntil: null }
-    const active = !grant.revokedAt && grant.validFrom <= now && grant.validUntil > now
+    const active = subscriptionGrantActive(account, grant, now)
     const remaining = grant.amount - grant.consumed - grant.reserved
-    return { state: grant.revokedAt ? 'revoked' : active ? 'active' : 'expired', amount: grant.amount.toString(), consumed: grant.consumed.toString(), reserved: grant.reserved.toString(), available: spendable && active && remaining > 0n ? remaining.toString() : '0', validFrom: grant.validFrom.toISOString(), validUntil: grant.validUntil.toISOString() }
+    return { state: grant.revokedAt ? 'revoked' : active ? 'active' : 'expired', amount: grant.amount.toString(), consumed: grant.consumed.toString(), reserved: grant.reserved.toString(), available: spendable && active && remaining > 0n ? remaining.toString() : '0', validFrom: grant.validFrom.toISOString(), validUntil: subscriptionGrantUntil(account, grant).toISOString() }
 }

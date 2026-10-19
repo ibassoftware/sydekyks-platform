@@ -33,8 +33,12 @@ import { Button } from '@/components/ui/button';
 import { flowHooks } from '@/features/flows';
 import { FlowCreatedByBadge } from '@/features/flows/components/flow-created-by-badge';
 import { foldersHooks } from '@/features/folders';
-import { getProjectName, projectCollectionUtils } from '@/features/projects';
+import {
+  projectSelectionLabel,
+  projectCollectionUtils,
+} from '@/features/projects';
 import { useAuthorization } from '@/hooks/authorization-hooks';
+import { platformHooks } from '@/hooks/platform-hooks';
 import { authenticationSession } from '@/lib/authentication-session';
 import { NEW_FLOW_QUERY_PARAM } from '@/lib/route-utils';
 import { cn } from '@/lib/utils';
@@ -71,6 +75,8 @@ export const BuilderHeader = ({
 
   const { embedState } = useEmbedding();
   const { project } = projectCollectionUtils.useCurrentProject();
+  const { data: projects } = projectCollectionUtils.useAll();
+  const { platform } = platformHooks.useCurrentPlatform();
 
   const { data: folderData } = foldersHooks.useFolder(
     flow.folderId ?? UncategorizedFolderId,
@@ -102,9 +108,18 @@ export const BuilderHeader = ({
               <BreadcrumbItem className="hidden md:flex">
                 <BreadcrumbLink
                   onClick={goToFlowsPage}
-                  className="cursor-pointer text-sm"
+                  className="flex min-w-0 max-w-64 cursor-pointer flex-col items-start text-sm"
+                  title={`${platform.name} · ${projectSelectionLabel(
+                    project,
+                    projects,
+                  )}`}
                 >
-                  {getProjectName(project)}
+                  <span className="block max-w-full truncate text-xs text-gray-11">
+                    {platform.name}
+                  </span>
+                  <span className="block max-w-full truncate">
+                    {projectSelectionLabel(project, projects)}
+                  </span>
                 </BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator className="hidden md:block" />

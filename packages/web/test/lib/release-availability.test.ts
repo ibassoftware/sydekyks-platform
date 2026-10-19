@@ -97,3 +97,20 @@ describe('public release navigation', () => {
     expect(releaseAvailability.projectMembers).toBe(false);
   });
 });
+
+describe('manual subscription operator route', () => {
+  it('is available in hosted mode and remains unavailable in self-hosted mode', () => {
+    expect(
+      releaseAvailability.isRouteAvailable({
+        pathname: '/platform/billing/subscriptions',
+        hostedBilling: true,
+      }),
+    ).toBe(true);
+    expect(
+      releaseAvailability.isRouteAvailable({
+        pathname: '/platform/billing/subscriptions',
+        hostedBilling: false,
+      }),
+    ).toBe(false);
+  });
+});

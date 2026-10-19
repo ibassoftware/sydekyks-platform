@@ -25,6 +25,7 @@ export function createHostedAssessment({ dataSource, manager: existingManager }:
             if (!course || course.ownerPlatformId !== null || course.audience !== 'partner' || course.certificationMode !== 'partner') hostingFail('HOSTING_ASSESSMENT_NOT_ELIGIBLE')
             const account = await tx.account({ manager, platformId: enrollment.workspacePlatformId })
             now = await tx.now(manager)
+            if (account.subscription?.policy?.renewalDueAt) hostingFail('HOSTING_ASSESSMENT_RENEWAL_OVERRIDE_REQUIRES_REVIEW')
             if (enrollment.assessmentUntil <= now || enrollment.accessUntil <= now) hostingFail('HOSTING_ASSESSMENT_NOT_ELIGIBLE')
             const training = await manager.getRepository(HostingTrainingEntity).findOneBy({ enrollmentId })
             if (!training || training.revokedAt || training.tier !== 'core' || training.platformId !== account.id || training.identityId !== enrollment.identityId || training.receiptId !== enrollment.paymentReference || account.ownerIdentityId !== enrollment.identityId || training.endsAt > now || enrollment.assessmentUntil.getTime() > training.startsAt.getTime() + 90 * 86_400_000) hostingFail('HOSTING_ASSESSMENT_NOT_ELIGIBLE')

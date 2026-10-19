@@ -8,6 +8,7 @@ import { AllowanceGrantSnapshot, HostingAiAllowanceBindingEntity, HostingAiAllow
 import { HostingAccount, HostingGrant, HostingGrantEntity, HostingLedgerEntity } from './hosting-entities'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
 import { HostingStripePeriodEntity } from './hosting-stripe-entities'
+import { subscriptionAccountActive, subscriptionGrantActive, subscriptionGrantUntil } from './hosting-subscription-policy'
 import { HostingTrainingEntity } from './hosting-training-entity'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
@@ -95,15 +96,15 @@ async function currentPolicy(manager: EntityManager, platformId: string) {
 async function allowanceView(manager: EntityManager, account: HostingAccount, now: Date) {
     const { binding, change } = await currentPolicy(manager, account.id)
     const defaultMonthlyCredits = hostingCatalog.getPlan({ planId: account.planId === 'trial' ? 'training' : account.planId }).aiCredits
-    const grants = await manager.getRepository(HostingGrantEntity).find({ where: { platformId: account.id, meter: 'managed_ai', validFrom: LessThanOrEqual(now), validUntil: MoreThan(now), revokedAt: IsNull() }, order: { validFrom: 'DESC', id: 'ASC' }, take: 257 })
+    const grants = await manager.getRepository(HostingGrantEntity).find({ where: { platformId: account.id, meter: 'managed_ai', validFrom: LessThanOrEqual(now), revokedAt: IsNull() }, order: { validFrom: 'DESC', id: 'ASC' }, take: 257 })
     if (grants.length > 256) hostingFail('HOSTING_AI_ALLOWANCE_GRANT_LIMIT')
-    const current = grants.find(grant => hostingGrantMatchesPlan(grant, account.planId) && grant.validFrom <= now && grant.validUntil > now && !grant.revokedAt)
+    const current = grants.find(grant => hostingGrantMatchesPlan(grant, account.planId) && subscriptionGrantActive(account, grant, now))
     const remaining = current ? current.amount - current.consumed - current.reserved : 0n
-    const active = account.status !== 'suspended' && !account.billingHold && account.validUntil > now
+    const active = subscriptionAccountActive(account, now)
     return {
         scopePlatformId: account.id, revision: binding?.revision ?? 0, planId: account.planId, overrideMonthlyCredits: change?.monthlyCredits ?? null, defaultMonthlyCredits,
         effectiveMonthlyCredits: account.planId === 'assessment' ? defaultMonthlyCredits : change?.monthlyCredits ?? defaultMonthlyCredits, appliesToCurrentPeriod: account.planId !== 'trial' && account.planId !== 'assessment' && !!current && account.validUntil > now,
-        period: current ? { validFrom: current.validFrom.toISOString(), validUntil: current.validUntil.toISOString(), amountMicroUsd: current.amount.toString(), consumedMicroUsd: current.consumed.toString(), reservedMicroUsd: current.reserved.toString(), availableMicroUsd: active && remaining > 0n ? remaining.toString() : '0' } : null,
+        period: current ? { validFrom: current.validFrom.toISOString(), validUntil: subscriptionGrantUntil(account, current).toISOString(), amountMicroUsd: current.amount.toString(), consumedMicroUsd: current.consumed.toString(), reservedMicroUsd: current.reserved.toString(), availableMicroUsd: active && remaining > 0n ? remaining.toString() : '0' } : null,
     }
 }
 async function sourcePlan(manager: EntityManager, account: HostingAccount, grant: HostingGrant): Promise<HostedPlanId | null> {

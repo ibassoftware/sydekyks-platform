@@ -17,6 +17,7 @@ import { hostedCustomerSeatCount, isOperationalUser } from './hosting-access-pol
 import { HostingInvitationEntity } from './hosting-entities'
 import { identityAdmission } from './hosting-identity-admission'
 import { createHostedOnboarding } from './hosting-onboarding'
+import { subscriptionAccountUntil } from './hosting-subscription-policy'
 import { HostingTenantMembersBindingEntity, HostingTenantMembersCommandEntity } from './hosting-tenant-members-entities'
 import { assertTenantAdministrator, assertTenantMemberTarget } from './hosting-tenant-members-policy'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
@@ -87,7 +88,7 @@ export function createHostedTenantMembers({ dataSource, onboarding, log }: { dat
                     if (mode === 'setup') await assertUnused(manager, identityId)
                     const invitation = await onboarding.invite({ actor, email: identity.email, role: value.role, manager })
                     invitationId = invitation.id
-                    const expiresAt = new Date(Math.min(invitation.expiresAt.getTime(), now.getTime() + 24 * 60 * 60_000))
+                    const expiresAt = new Date(Math.min(subscriptionAccountUntil(account).getTime(), now.getTime() + 24 * 60 * 60_000))
                     await manager.getRepository(HostingInvitationEntity).update({ id: invitation.id }, { expiresAt })
                     const url = new URL('/tenant-join', system.getOrThrow(AppSystemProp.FRONTEND_URL)); url.hash = `token=${invitation.token}`; setupUrl = url.href
                 }

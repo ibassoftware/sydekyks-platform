@@ -2,9 +2,10 @@ import { apId } from '@activepieces/core-utils'
 import { hostingCatalog } from '@activepieces/shared'
 import { DataSource, EntityManager, In } from 'typeorm'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrant, HostingGrantEntity, HostingReservation, HostingReservationEntity } from './hosting-entities'
-import { assertHostedStorageAdmission } from './hosting-storage'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
+import { assertHostedStorageAdmission } from './hosting-storage'
+import { subscriptionAccountActive, subscriptionGrantActive, subscriptionGrantUntil } from './hosting-subscription-policy'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 export function createHostedLedger({ dataSource, manager: existingManager }: { dataSource: DataSource, manager?: EntityManager }) {
@@ -22,7 +23,7 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             const now = await tx.now(manager)
             tx.assertActive({ account, now })
             await assertHostedStorageAdmission(manager, account.id)
-            const grant = await activeGrant({ manager, platformId: account.id, meter: 'execution', now, planId: account.planId })
+            const grant = await activeGrant({ manager, account, platformId: account.id, meter: 'execution', now, planId: account.planId })
             if (grant.amount - grant.reserved - grant.consumed < 1n) hostingFail('HOSTING_CREDITS_EXHAUSTED')
             if (account.activeExecutions >= hostingCatalog.getPlan({ planId: account.planId }).concurrency) hostingFail('HOSTING_CONCURRENCY_LIMIT')
             const reservation = manager.getRepository(HostingReservationEntity).create({ id: apId(), platformId: account.id, projectId, identityId: actor.identityId, grantId: grant.id, key, kind: 'execution', payer, state: 'reserved', rootReservationId: null, day: null, amount: 1n, actualAmount: null, dispatchId: null })
@@ -44,7 +45,7 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             if (reservation.state !== 'reserved') return { claimed: false, dispatchId: null }
             const grant = await manager.getRepository(HostingGrantEntity).findOneByOrFail({ id: reservation.grantId, platformId: account.id })
             const now = await tx.now(manager)
-            if (account.billingHold || grant.revokedAt || account.status === 'suspended' || account.validUntil <= now || grant.validUntil <= now || grant.validFrom > now) {
+            if (!subscriptionAccountActive(account, now) || !subscriptionGrantActive(account, grant, now)) {
                 await release({ manager, reservation })
                 return { claimed: false, dispatchId: null }
             }
@@ -94,9 +95,9 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             if (day !== utcDay(now)) hostingFail('HOSTING_ADMISSION_DAY_CHANGED')
             tx.assertActive({ account, now })
             const executionGrant = await manager.getRepository(HostingGrantEntity).findOneByOrFail({ id: root.grantId, platformId: account.id })
-            tx.assertGrantActive({ grant: executionGrant, now })
+            tx.assertGrantActive({ grant: executionGrant, now, account })
             const grant = await manager.getRepository(HostingGrantEntity).findOneByOrFail({ platformId: account.id, sourceKey: executionGrant.sourceKey, meter: 'managed_ai' })
-            tx.assertGrantActive({ grant, now })
+            tx.assertGrantActive({ grant, now, account })
             if (grant.amount - grant.reserved - grant.consumed < maxCostMicroUsd) hostingFail('HOSTING_CREDITS_EXHAUSTED')
             if (budget.limit - budget.reserved - budget.consumed < maxCostMicroUsd) hostingFail('HOSTING_OPERATOR_BUDGET_EXHAUSTED')
             const reservation = manager.getRepository(HostingReservationEntity).create({ id: apId(), platformId: account.id, projectId: root.projectId, identityId: actor.identityId, grantId: grant.id, rootReservationId: root.id, kind: 'managed_ai', payer: 'managed', key, state: 'reserved', day, amount: maxCostMicroUsd, actualAmount: null, dispatchId: null })
@@ -121,7 +122,7 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             const root = await findReservation({ manager, platformId: account.id, reservationId: reservation.rootReservationId ?? '', kind: 'execution' })
             const executionGrant = await manager.getRepository(HostingGrantEntity).findOneByOrFail({ id: root.grantId, platformId: account.id })
             const now = await tx.now(manager)
-            if (requiredDay(reservation) !== utcDay(now) || executionGrant.validUntil <= now || executionGrant.validFrom > now || root.state !== 'running' || account.billingHold || grant.revokedAt || executionGrant.revokedAt || account.status === 'suspended' || account.validUntil <= now || grant.validUntil <= now || grant.validFrom > now) {
+            if (requiredDay(reservation) !== utcDay(now) || root.state !== 'running' || !subscriptionAccountActive(account, now) || !subscriptionGrantActive(account, executionGrant, now) || !subscriptionGrantActive(account, grant, now)) {
                 await release({ manager, reservation })
                 return { claimed: false, dispatchId: null }
             }
@@ -203,7 +204,7 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             await tx.member({ manager, actor })
             const now = await tx.now(manager)
             const grants = await manager.getRepository(HostingGrantEntity).findBy({ platformId: actor.platformId })
-            return grants.map(grant => ({ ...grant, unit: grant.meter === 'execution' ? 'execution' : 'micro_usd', microcreditsPerUnit: grant.meter === 'managed_ai' ? BigInt(hostingCatalog.microcreditsPerMicroUsd) : null, available: account.status !== 'suspended' && !account.billingHold && account.validUntil > now && hostingGrantMatchesPlan(grant, account.planId) && !grant.revokedAt && grant.validFrom <= now && grant.validUntil > now ? maxZero(grant.amount - grant.reserved - grant.consumed) : 0n }))
+            return grants.map(grant => ({ ...grant, validUntil: subscriptionGrantUntil(account, grant), unit: grant.meter === 'execution' ? 'execution' : 'micro_usd', microcreditsPerUnit: grant.meter === 'managed_ai' ? BigInt(hostingCatalog.microcreditsPerMicroUsd) : null, available: subscriptionAccountActive(account, now) && hostingGrantMatchesPlan(grant, account.planId) && subscriptionGrantActive(account, grant, now) ? maxZero(grant.amount - grant.reserved - grant.consumed) : 0n }))
         } })
     }
 
@@ -231,7 +232,7 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             const now = await tx.now(manager)
             tx.assertActive({ account, now })
             const grant = await manager.getRepository(HostingGrantEntity).findOneByOrFail({ id: reservation.grantId, platformId: actor.platformId })
-            tx.assertGrantActive({ grant, now })
+            tx.assertGrantActive({ grant, now, account })
             if (reservation.state === 'running') return
             if (reservation.state !== 'paused') hostingFail('HOSTING_INVALID_TRANSITION')
             if (account.activeExecutions >= hostingCatalog.getPlan({ planId: account.planId }).concurrency) hostingFail('HOSTING_CONCURRENCY_LIMIT')
@@ -244,9 +245,9 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
     return { reserveExecution, claimExecution, finishExecution, parkExecution, resumeExecution, reserveManagedCall, claimManagedCall, settleManagedCall, markUncertain, releaseUnsent, cancelUnsent, balance }
 }
 
-async function activeGrant({ manager, platformId, meter, now, planId }: { manager: EntityManager, platformId: string, meter: 'execution' | 'managed_ai', now: Date, planId: import('@activepieces/shared').HostedPlanId }): Promise<HostingGrant> {
+async function activeGrant({ manager, account, platformId, meter, now, planId }: { manager: EntityManager, account: import('./hosting-entities').HostingAccount, platformId: string, meter: 'execution' | 'managed_ai', now: Date, planId: import('@activepieces/shared').HostedPlanId }): Promise<HostingGrant> {
     const grants = await manager.getRepository(HostingGrantEntity).find({ where: { platformId, meter }, order: { validFrom: 'DESC', id: 'ASC' } })
-    const grant = grants.find(value => !value.revokedAt && hostingGrantMatchesPlan(value, planId) && value.validFrom <= now && value.validUntil > now)
+    const grant = grants.find(value => hostingGrantMatchesPlan(value, planId) && subscriptionGrantActive(account, value, now))
     if (!grant) hostingFail('HOSTING_GRANT_EXPIRED')
     return grant
 }

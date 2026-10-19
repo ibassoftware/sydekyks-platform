@@ -8,6 +8,7 @@ import { SearchInput } from '@/components/custom/search-input';
 import {
   ApProjectDisplay,
   getProjectName,
+  projectSelectionLabel,
   projectCollectionUtils,
 } from '@/features/projects';
 import { userHooks } from '@/hooks/user-hooks';
@@ -158,7 +159,7 @@ export function ProjectPickerCard({
           <motion.div key="list" {...VIEW_TRANSITION}>
             <div className="mt-2.5 space-y-0.5">
               {collapsedSuggested.map((project) => {
-                const name = getProjectName(project);
+                const name = projectSelectionLabel(project, projects);
                 return (
                   <ChatOptionRow
                     key={project.id}
@@ -220,7 +221,10 @@ export function ProjectPickerCard({
 function ProjectGrid({ projects, search, onSelect }: ProjectGridProps) {
   const named = useMemo(
     () =>
-      projects.map((project) => ({ project, name: getProjectName(project) })),
+      projects.map((project) => ({
+        project,
+        name: projectSelectionLabel(project, projects),
+      })),
     [projects],
   );
   const query = search.trim().toLowerCase();

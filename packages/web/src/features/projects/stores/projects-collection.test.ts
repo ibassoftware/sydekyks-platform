@@ -109,9 +109,9 @@ describe('getProjectName', () => {
     ({ getProjectName } = await import('./project-collection'));
   });
 
-  it('returns "Personal Command Center" for a PERSONAL type project', () => {
+  it('preserves a PERSONAL project stored name', () => {
     const project = makeProject('p1', ProjectType.PERSONAL, CURRENT_USER_ID);
-    expect(getProjectName(project)).toBe('Personal Command Center');
+    expect(getProjectName(project)).toBe(project.displayName);
   });
 
   it('returns the displayName for a TEAM type project', () => {
@@ -124,14 +124,14 @@ describe('getProjectName', () => {
     expect(getProjectName(project)).toBe('Marketing');
   });
 
-  it('ignores displayName for PERSONAL projects', () => {
+  it('preserves a renamed PERSONAL project', () => {
     const project = makeProject(
       'p2',
       ProjectType.PERSONAL,
       CURRENT_USER_ID,
-      'ShouldBeIgnored',
+      'Client onboarding',
     );
-    expect(getProjectName(project)).toBe('Personal Command Center');
+    expect(getProjectName(project)).toBe(project.displayName);
   });
 });
 

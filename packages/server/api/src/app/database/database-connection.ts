@@ -20,20 +20,21 @@ import { FlowVersionEntity } from '../flows/flow-version/flow-version-entity'
 import { FolderEntity } from '../flows/folder/folder.entity'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
-import { HOSTING_TRAINER_ENTITIES } from '../hosting/hosting-trainer-entities'
-import { HOSTING_RECOVERY_ENTITIES } from '../hosting/hosting-recovery-entities'
-import { HostingAssessmentEntity } from '../hosting/hosting-assessment-entity'
-import { HostingStorageLockEntity } from '../hosting/hosting-storage'
 import { HOSTING_ACCESS_ENTITIES } from '../hosting/hosting-access-entities'
 import { HOSTING_AI_ALLOWANCE_ENTITIES } from '../hosting/hosting-ai-allowance-entities'
+import { HostingAssessmentEntity } from '../hosting/hosting-assessment-entity'
 import { HostingDispatchEntity } from '../hosting/hosting-dispatch-entity'
 import { HOSTING_ENTITIES } from '../hosting/hosting-entities'
 import { HostingModelCallEntity } from '../hosting/hosting-model-call-entity'
 import { HOSTING_PARTNER_ADMIN_ENTITIES } from '../hosting/hosting-partner-admin-entities'
-import { HOSTING_TENANT_MEMBERS_ENTITIES } from '../hosting/hosting-tenant-members-entities'
 import { HOSTING_PARTNER_SETUP_ENTITIES } from '../hosting/hosting-partner-setup-entities'
 import { HOSTING_PRICING_ENTITIES } from '../hosting/hosting-pricing-entities'
+import { HOSTING_RECOVERY_ENTITIES } from '../hosting/hosting-recovery-entities'
+import { HostingStorageLockEntity } from '../hosting/hosting-storage'
 import { HOSTING_STRIPE_ENTITIES } from '../hosting/hosting-stripe-entities'
+import { HOSTING_SUBSCRIPTION_ENTITIES } from '../hosting/hosting-subscription-entities'
+import { HOSTING_TENANT_MEMBERS_ENTITIES } from '../hosting/hosting-tenant-members-entities'
+import { HOSTING_TRAINER_ENTITIES } from '../hosting/hosting-trainer-entities'
 import { HostingTrainingEntity } from '../hosting/hosting-training-entity'
 import { KnowledgeBaseChunkEntity } from '../knowledge-base/knowledge-base-chunk.entity'
 import { KnowledgeBaseFileEntity } from '../knowledge-base/knowledge-base-file.entity'
@@ -80,6 +81,7 @@ function getEntities(): EntitySchema<unknown>[] {
         ...LMS_ENTITIES,
         ...HOSTING_ENTITIES,
         ...HOSTING_TRAINER_ENTITIES,
+        ...HOSTING_SUBSCRIPTION_ENTITIES,
         ...HOSTING_RECOVERY_ENTITIES,
         HostingAssessmentEntity,
         HostingStorageLockEntity,

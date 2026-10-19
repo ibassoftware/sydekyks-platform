@@ -10,6 +10,7 @@ import { AppSystemProp } from '../helper/system/system-props'
 import { PlatformEntity } from '../platform/platform.entity'
 import { UserEntity } from '../user/user-entity'
 import { HostingAccountEntity } from './hosting-entities'
+import { subscriptionAccountUntil } from './hosting-subscription-policy'
 import { hostingFail, hostingTransactions as tx } from './hosting-transactions'
 import { readHostedCredits } from './hosting-usage'
 
@@ -48,7 +49,7 @@ export const hostingOperatorController: FastifyPluginAsyncZod = async app => {
                 const now = await tx.now(manager)
                 const platform = await manager.getRepository(PlatformEntity).findOneByOrFail({ id: account.id })
                 const [calls] = await manager.query('SELECT COUNT(*)::text AS calls, COUNT(*) FILTER (WHERE state = \'uncertain\')::text AS uncertain, COALESCE(SUM((usage->>\'total_tokens\')::numeric) FILTER (WHERE state = \'settled\'),0)::text AS "verifiedTokens" FROM hosting_model_call WHERE "platformId"=$1', [account.id])
-                clients.push({ platformId: account.id, name: platform.name, planId: account.planId, status: account.status, validUntil: account.validUntil.toISOString(), activeExecutions: account.activeExecutions, credits: await readHostedCredits(manager, account, now), modelCalls: calls })
+                clients.push({ platformId: account.id, name: platform.name, planId: account.planId, status: account.status, validUntil: subscriptionAccountUntil(account).toISOString(), activeExecutions: account.activeExecutions, credits: await readHostedCredits(manager, account, now), modelCalls: calls })
             }
             return { platformId: request.principal.type === PrincipalType.USER ? request.principal.platform.id : '', userId: request.principal.id, clients, next: rows.length > 25 ? rows[24].id : null }
         })

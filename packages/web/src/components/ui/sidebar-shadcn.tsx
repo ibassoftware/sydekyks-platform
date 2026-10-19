@@ -13,6 +13,7 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
+  SheetTrigger,
 } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -63,6 +64,7 @@ function SidebarProvider({
 }) {
   const isMobile = useIsMobile();
   const [openMobile, setOpenMobile] = React.useState(false);
+  const mobileTriggerRef = React.useRef<HTMLButtonElement | null>(null);
   const [isHovered, setIsHovered] = React.useState(false);
   const [keepElevatedZIndex, setKeepElevatedZIndex] = React.useState(false);
 
@@ -169,6 +171,7 @@ function SidebarProvider({
       isMobile,
       openMobile,
       setOpenMobile,
+      mobileTriggerRef,
       toggleSidebar,
       hoverMode,
       isHoverExpanded,
@@ -193,23 +196,25 @@ function SidebarProvider({
   return (
     <SidebarContext.Provider value={contextValue}>
       <TooltipProvider delayDuration={0}>
-        <div
-          data-slot="sidebar-wrapper"
-          style={
-            {
-              '--sidebar-width': SIDEBAR_WIDTH,
-              '--sidebar-width-icon': SIDEBAR_WIDTH_ICON,
-              ...style,
-            } as React.CSSProperties
-          }
-          className={cn(
-            'group/sidebar-wrapper flex h-svh w-full has-data-[variant=inset]:bg-gray-2',
-            className,
-          )}
-          {...props}
-        >
-          {children}
-        </div>
+        <Sheet open={isMobile && openMobile} onOpenChange={setOpenMobile}>
+          <div
+            data-slot="sidebar-wrapper"
+            style={
+              {
+                '--sidebar-width': SIDEBAR_WIDTH,
+                '--sidebar-width-icon': SIDEBAR_WIDTH_ICON,
+                ...style,
+              } as React.CSSProperties
+            }
+            className={cn(
+              'group/sidebar-wrapper flex h-svh w-full has-data-[variant=inset]:bg-gray-2',
+              className,
+            )}
+            {...props}
+          >
+            {children}
+          </div>
+        </Sheet>
       </TooltipProvider>
     </SidebarContext.Provider>
   );
@@ -230,8 +235,7 @@ function Sidebar({
   const {
     isMobile,
     state,
-    openMobile,
-    setOpenMobile,
+    mobileTriggerRef,
     setOpen,
     hoverMode,
     isHoverExpanded,
@@ -256,26 +260,30 @@ function Sidebar({
 
   if (isMobile) {
     return (
-      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
-        <SheetContent
-          data-sidebar="sidebar"
-          data-slot="sidebar"
-          data-mobile="true"
-          className="w-(--sidebar-width) bg-gray-2 p-0 text-gray-12 [&>button]:hidden"
-          style={
-            {
-              '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
-            } as React.CSSProperties
-          }
-          side={side}
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>Sidebar</SheetTitle>
-            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
-          </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
-        </SheetContent>
-      </Sheet>
+      <SheetContent
+        data-sidebar="sidebar"
+        data-slot="sidebar"
+        data-mobile="true"
+        className="w-(--sidebar-width) bg-gray-2 p-0 text-gray-12 [&>button]:hidden"
+        style={
+          {
+            '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
+          } as React.CSSProperties
+        }
+        side={side}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          const trigger = mobileTriggerRef.current;
+          if (trigger?.isConnected) trigger.focus();
+        }}
+        {...props}
+      >
+        <SheetHeader className="sr-only">
+          <SheetTitle>Sidebar</SheetTitle>
+          <SheetDescription>Displays the mobile sidebar.</SheetDescription>
+        </SheetHeader>
+        <div className="flex h-full w-full flex-col">{children}</div>
+      </SheetContent>
     );
   }
 
@@ -357,12 +365,23 @@ function Sidebar({
 function SidebarTrigger({
   className,
   onClick,
+  ref,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar, open } = useSidebar();
+  const { toggleSidebar, open, openMobile, isMobile, mobileTriggerRef } =
+    useSidebar();
+  const triggerRef = React.useCallback(
+    (node: HTMLButtonElement | null) => {
+      mobileTriggerRef.current = node;
+      if (typeof ref === 'function') return ref(node);
+      if (ref) ref.current = node;
+    },
+    [mobileTriggerRef, ref],
+  );
 
-  return (
+  const trigger = (
     <Button
+      ref={triggerRef}
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
       variant="ghost"
@@ -370,11 +389,11 @@ function SidebarTrigger({
       className={cn('size-7', className)}
       onClick={(event) => {
         onClick?.(event);
-        toggleSidebar();
+        if (!event.defaultPrevented && !isMobile) toggleSidebar();
       }}
       {...props}
     >
-      {open ? (
+      {(isMobile ? openMobile : open) ? (
         <PanelLeftCloseIcon size={16} />
       ) : (
         <PanelLeftOpenIcon size={16} />
@@ -382,6 +401,7 @@ function SidebarTrigger({
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   );
+  return isMobile ? <SheetTrigger asChild>{trigger}</SheetTrigger> : trigger;
 }
 
 function SidebarRail({ className, ...props }: React.ComponentProps<'button'>) {
@@ -847,6 +867,7 @@ type SidebarContextProps = {
   setOpen: (open: boolean) => void;
   openMobile: boolean;
   setOpenMobile: (open: boolean) => void;
+  mobileTriggerRef: React.RefObject<HTMLButtonElement | null>;
   isMobile: boolean;
   toggleSidebar: () => void;
   hoverMode: boolean;

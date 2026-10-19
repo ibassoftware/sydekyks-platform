@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   ApProjectDisplay,
-  getProjectName,
+  projectSelectionLabel,
   projectCollectionUtils,
 } from '@/features/projects';
 import { cn } from '@/lib/utils';
@@ -40,7 +40,7 @@ export function ProjectPicker({
           <span className="text-gray-11">{t('Project')}</span>
           {selectedProject ? (
             <ApProjectDisplay
-              title={getProjectName(selectedProject)}
+              title={projectSelectionLabel(selectedProject, projects)}
               icon={selectedProject.icon}
               projectType={selectedProject.type}
               iconClassName="size-4.5 text-xs"
@@ -61,7 +61,7 @@ export function ProjectPicker({
             onSelect={() => onSelect(project.id)}
           >
             <ApProjectDisplay
-              title={getProjectName(project)}
+              title={projectSelectionLabel(project, projects)}
               icon={project.icon}
               projectType={project.type}
               iconClassName="size-4.5 text-xs"

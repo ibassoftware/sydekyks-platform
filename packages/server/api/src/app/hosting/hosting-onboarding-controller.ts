@@ -12,6 +12,7 @@ import { userService } from '../user/user-service'
 import { assertHostedEmailCodes, hostedEmailCodesAvailable, resendHostedVerification } from './hosting-auth-policy'
 import { hostingConfiguration } from './hosting-configuration'
 import { HostingStripeBindingEntity } from './hosting-stripe-entities'
+import { subscriptionAccountUntil } from './hosting-subscription-policy'
 import { hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 export const hostingOnboardingController: FastifyPluginAsyncZod = async app => {
@@ -45,9 +46,9 @@ export const hostingOnboardingController: FastifyPluginAsyncZod = async app => {
             const platform = await manager.getRepository(PlatformEntity).findOneByOrFail({ id: account.id })
             const bound = await manager.getRepository(HostingStripeBindingEntity).findOneBy({ platformId: account.id })
             const now = await tx.now(manager)
-            const ended = account.validUntil <= now && bound?.holds.length === 1 && bound.holds[0] === 'subscription_ended'
+            const ended = subscriptionAccountUntil(account) <= now && bound?.holds.length === 1 && bound.holds[0] === 'subscription_ended'
             const paused = account.status === 'suspended' || (account.billingHold && !ended)
-            return HostedOnboardingStatus.parse({ platformId: account.id, userId: user.id, platformName: platform.name, firstName: identity.firstName, isAdmin: user.platformRole === PlatformRole.ADMIN, planId: account.planId, entitlementState: paused ? 'paused' : account.validUntil <= now ? 'expired' : account.planId === 'trial' ? 'trial' : account.planId === 'training' ? 'training' : account.planId === 'assessment' ? 'assessment' : 'paid', validUntil: account.validUntil.toISOString(), serverTime: now.toISOString() })
+            return HostedOnboardingStatus.parse({ platformId: account.id, userId: user.id, platformName: platform.name, firstName: identity.firstName, isAdmin: user.platformRole === PlatformRole.ADMIN, planId: account.planId, entitlementState: paused ? 'paused' : subscriptionAccountUntil(account) <= now ? 'expired' : account.planId === 'trial' ? 'trial' : account.planId === 'training' ? 'training' : account.planId === 'assessment' ? 'assessment' : 'paid', validUntil: subscriptionAccountUntil(account).toISOString(), serverTime: now.toISOString() })
         } })
     })
 }

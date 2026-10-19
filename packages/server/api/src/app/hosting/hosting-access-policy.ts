@@ -6,6 +6,7 @@ import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { UserEntity } from '../user/user-entity'
 import { HostingAccessMembershipEntity, HostingAccessRoleEntity } from './hosting-access-entities'
+import { partnerSubscriptionAllowed, subscriptionOperationalAllowed } from './hosting-subscription-policy'
 import { hasTrainerOperationalAccess, trainerExternalId } from './hosting-trainer-policy'
 import { HostingActor, hostingFail } from './hosting-transactions'
 
@@ -19,10 +20,11 @@ export function isOperationalUser(user: Pick<User, 'externalId'>): boolean {
 
 // A role/assignment is authority; materialized tenant users alone are never authority.
 export async function hasOperationalAccess({ manager, user }: { manager: EntityManager, user: User }): Promise<boolean> {
+    if (!user.platformId || !await subscriptionOperationalAllowed(manager, user.platformId)) return false
     if (user.externalId === trainerExternalId(user.identityId)) return hasTrainerOperationalAccess({ manager, user })
     if (!isOperationalUser(user) || !user.platformId || user.externalId !== operationalExternalId(user.identityId) || user.status !== UserStatus.ACTIVE || user.platformRole !== PlatformRole.OPERATOR) return false
     const membership = await manager.getRepository(HostingAccessMembershipEntity).findOneBy({ userId: user.id, identityId: user.identityId, platformId: user.platformId, active: true })
-    if (!membership) return false
+    if (!membership || (membership.role === 'partner' && !await partnerSubscriptionAllowed(manager, user.identityId))) return false
     return manager.getRepository(HostingAccessRoleEntity).existsBy({ id: user.identityId, role: membership.role, active: true })
 }
 

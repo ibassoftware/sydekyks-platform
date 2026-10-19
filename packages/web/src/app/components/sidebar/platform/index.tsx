@@ -310,6 +310,10 @@ export function PlatformSidebar() {
                     end: true,
                   },
                   { to: '/platform/billing/clients', label: t('Client usage') },
+                  {
+                    to: '/platform/billing/subscriptions',
+                    label: t('Renewal dates'),
+                  },
                 ],
               }
             : {}),
@@ -370,7 +374,10 @@ export function PlatformSidebar() {
         .map((item) => ({
           ...item,
           subItems: item.subItems?.filter((subItem) =>
-            releaseAvailability.isRouteAvailable({ pathname: subItem.to }),
+            releaseAvailability.isRouteAvailable({
+              pathname: subItem.to,
+              hostedBilling,
+            }),
           ),
         })),
     }))

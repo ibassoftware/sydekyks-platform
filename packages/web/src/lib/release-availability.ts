@@ -10,7 +10,9 @@ function isRouteAvailable({
     .replace(/^\/projects\/[^/]+(?=\/)/, '');
   if (
     hostedBilling &&
-    (path === '/platform/billing' || path === '/platform/billing/clients')
+    (path === '/platform/billing' ||
+      path === '/platform/billing/clients' ||
+      path === '/platform/billing/subscriptions')
   )
     return true;
   return !UNAVAILABLE_ROUTE_PREFIXES.some(

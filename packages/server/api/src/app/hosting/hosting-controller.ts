@@ -10,25 +10,27 @@ import { networkUtils } from '../helper/network-utils'
 import { userService } from '../user/user-service'
 import { hostingAccessController } from './hosting-access-controller'
 import { hostingAiAllowanceController } from './hosting-ai-allowance-controller'
+import { hostingAssessmentController } from './hosting-assessment-controller'
 import { resendHostedVerification } from './hosting-auth-policy'
 import { hostingConfiguration } from './hosting-configuration'
 import { hostingLearningController } from './hosting-learning-controller'
 import { hostingOnboardingController } from './hosting-onboarding-controller'
 import { hostingOperatorController } from './hosting-operator-controller'
 import { hostingPartnerAdminController } from './hosting-partner-admin-controller'
-import { hostingStorageController } from './hosting-storage-controller'
-import { hostingAssessmentController } from './hosting-assessment-controller'
-import { hostingRecoveryController, hostingRecoveryPublicController } from './hosting-recovery-controller'
-import { hostingTrainerAdminController, hostingTrainerController, hostingTrainerSetupController } from './hosting-trainers-controller'
 import { hostingPartnerSetupController, hostingPartnerSetupPublicController } from './hosting-partner-setup-controller'
 import { hostingPricingController } from './hosting-pricing-controller'
+import { hostingRecoveryController, hostingRecoveryPublicController } from './hosting-recovery-controller'
 import { hostingServices } from './hosting-services'
+import { hostingStorageController } from './hosting-storage-controller'
 import { hostingStripeController } from './hosting-stripe-controller'
+import { hostingSubscriptionController } from './hosting-subscription-controller'
 import { hostingTenantJoinController, hostingTenantMembersController } from './hosting-tenant-members-controller'
+import { hostingTrainerAdminController, hostingTrainerController, hostingTrainerSetupController } from './hosting-trainers-controller'
 import { HostingActor, HostingError } from './hosting-transactions'
 
 export const hostingController: FastifyPluginAsyncZod = async app => {
     if (hostingConfiguration.getServiceMode() !== 'hosted') return
+    await app.register(hostingSubscriptionController, { prefix: '/operator/subscriptions' })
     await app.register(hostingStorageController, { prefix: '/operator' })
     await app.register(hostingAccessController, { prefix: '/operator' })
     await app.register(hostingAiAllowanceController, { prefix: '/operator/ai-allowance' })

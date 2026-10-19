@@ -23,6 +23,11 @@ const AccountRecoveryAdminPage = React.lazy(() =>
     default: m.AccountRecoveryAdminPage,
   })),
 );
+const SubscriptionAdminPage = React.lazy(() =>
+  import('@/features/hosted-operator/subscription-page').then((m) => ({
+    default: m.SubscriptionAdminPage,
+  })),
+);
 
 const TrainersAdminPage = React.lazy(() =>
   import('@/features/hosted-operator/trainers-page').then((m) => ({
@@ -148,6 +153,18 @@ const AI_TAB_PATHS = {
 const PIECES_TAB_PATHS = { pieces: '', 'piece-sets': 'piece-sets' };
 
 export const platformRoutes = [
+  {
+    path: '/platform/billing/subscriptions',
+    element: (
+      <PlatformLayout>
+        <PageTitle titleKey="Subscription renewal dates">
+          <SuspenseWrapper>
+            <SubscriptionAdminPage />
+          </SuspenseWrapper>
+        </PageTitle>
+      </PlatformLayout>
+    ),
+  },
   {
     path: '/platform/account-recovery',
     element: (
