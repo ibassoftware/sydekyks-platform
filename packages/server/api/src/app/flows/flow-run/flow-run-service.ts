@@ -14,7 +14,7 @@ import { Order } from '../../helper/pagination/paginator'
 import { system } from '../../helper/system/system'
 import { AppSystemProp } from '../../helper/system/system-props'
 import { hostingConfiguration } from '../../hosting/hosting-configuration'
-import { HostingJobOrigin } from '../../hosting/hosting-execution'
+import { HostedRunStartRefused, HostingJobOrigin } from '../../hosting/hosting-execution'
 import { hostingFail } from '../../hosting/hosting-transactions'
 import { assertRunCreditsNotExceeded, shouldBlockRunOnCredits } from '../../platform/billing-provider'
 import { projectLifecycle } from '../../project/project-lifecycle'
@@ -694,13 +694,29 @@ export async function addToQueue(params: AddToQueueParams, log: FastifyBaseLogge
             executeTrigger: params.executeTrigger,
         }
     const aParentIsBlockedOnThisRun = params.flowRun.failParentOnFailure && !isNil(params.flowRun.parentRunId)
-    await jobQueue(log).add({
-        id: params.jobId ?? params.flowRun.id,
-        hostedOrigin: params.hostedOrigin,
-        type: JobType.ONE_TIME,
-        data,
-        retryBackoffMs: aParentIsBlockedOnThisRun ? PARENT_BOUND_RETRY_BACKOFF_MS : undefined,
-    })
+    try {
+        await jobQueue(log).add({
+            id: params.jobId ?? params.flowRun.id,
+            hostedOrigin: params.hostedOrigin,
+            type: JobType.ONE_TIME,
+            data,
+            retryBackoffMs: aParentIsBlockedOnThisRun ? PARENT_BOUND_RETRY_BACKOFF_MS : undefined,
+        })
+    }
+    catch (error) {
+        // Only prepare's committed, undispatched refusal is a definite outcome.
+        // A queue/transaction failure may already have accepted recoverable work.
+        if (error instanceof HostedRunStartRefused &&
+            error.flowRun.id === params.flowRun.id &&
+            error.flowRun.projectId === params.flowRun.projectId &&
+            error.flowRun.flowId === params.flowRun.flowId &&
+            error.flowRun.flowVersionId === params.flowRun.flowVersionId &&
+            error.flowRun.status === FlowRunStatus.FAILED && !!error.flowRun.finishTime &&
+            params.executionType === ExecutionType.BEGIN && params.hostedOrigin?.type === 'user') {
+            return error.flowRun
+        }
+        throw error
+    }
     return params.flowRun
 }
 

@@ -1,10 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { AIProviderName, apId } from '@activepieces/core-utils'
-import { AgentRunSource, EngineResponseStatus, ExecuteAgentRunJobData, ExecuteFlowJobData, ExecutionType, FileType, FlowRunStatus, FlowVersionState, LATEST_JOB_DATA_SCHEMA_VERSION, OtpType, PlatformRole, PrincipalType, RunEnvironment, StreamStepProgress, UserIdentityProvider, WorkerJobType } from '@activepieces/shared'
-import { Job } from 'bullmq'
+import { AgentRunSource, EngineResponseStatus, ExecuteAgentRunJobData, ExecuteFlowJobData, ExecutionType, FileType, FlowRun, FlowRunStatus, FlowTriggerType, FlowVersionState, LATEST_FLOW_SCHEMA_VERSION, LATEST_JOB_DATA_SCHEMA_VERSION, OtpType, PlatformRole, PrincipalType, RunEnvironment, StreamStepProgress, TestFlowRunRequestBody, UserIdentityProvider, WebsocketClientEvent, WebsocketServerEvent, WorkerJobType } from '@activepieces/shared'
+import { Job, Queue } from 'bullmq'
 import fastify, { FastifyInstance } from 'fastify'
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
+import { Socket } from 'socket.io'
 import { DataSource } from 'typeorm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AIProviderEntity } from '../../../../src/app/ai/ai-provider-entity'
@@ -15,13 +16,16 @@ import { otpService } from '../../../../src/app/authentication/otp/otp-service'
 import { UserIdentityEntity } from '../../../../src/app/authentication/user-identity/user-identity-entity'
 import { authenticationMiddleware } from '../../../../src/app/core/security/v2/authn/authentication-middleware'
 import { authorizationMiddleware } from '../../../../src/app/core/security/v2/authz/authorization-middleware'
+import { WebsocketListener, websocketService } from '../../../../src/app/core/websockets.service'
 import { commonProperties } from '../../../../src/app/database/database-connection'
 import { getMigrations } from '../../../../src/app/database/postgres-connection'
 import { FileEntity } from '../../../../src/app/file/file.entity'
 import { FlagEntity } from '../../../../src/app/flags/flag.entity'
 import { FlowEntity } from '../../../../src/app/flows/flow/flow.entity'
 import { FlowRunEntity } from '../../../../src/app/flows/flow-run/flow-run-entity'
+import { flowRunService } from '../../../../src/app/flows/flow-run/flow-run-service'
 import { FlowVersionEntity } from '../../../../src/app/flows/flow-version/flow-version-entity'
+import { flowModule } from '../../../../src/app/flows/flow.module'
 import { encryptUtils } from '../../../../src/app/helper/encryption'
 import { errorHandler } from '../../../../src/app/helper/error-handler'
 import { jwtUtils } from '../../../../src/app/helper/jwt-utils'
@@ -56,6 +60,7 @@ const execution = createHostedExecution({ dataSource: ds })
 const onboarding = createHostedOnboarding({ dataSource: ds, subjectSecret: '0123456789abcdef0123456789abcdef' })
 let app: FastifyInstance
 let previousConnection: unknown
+let manualListener: WebsocketListener<TestFlowRunRequestBody, PrincipalType.USER> | undefined
 beforeAll(async () => {
     vi.stubEnv('AP_SERVICE_MODE', 'hosted')
     await ds.initialize()
@@ -80,7 +85,15 @@ beforeAll(async () => {
     await app.register(platformController, { prefix: '/api/v1/platforms' })
     await app.register(hostingController, { prefix: '/api/v1/hosting' })
     app.get('/public-tenant', async request => ({ platformId: await platformUtils.getPlatformIdForRequest(request) }))
-    await app.ready()
+    const registered = vi.spyOn(websocketService, 'addListener')
+    try {
+        await app.register(flowModule, { prefix: '/api' })
+        await app.ready()
+        manualListener = registered.mock.calls.find(call => call[1] === WebsocketServerEvent.MANUAL_TRIGGER_RUN_STARTED)?.[2] as WebsocketListener<TestFlowRunRequestBody, PrincipalType.USER> | undefined
+    }
+    finally {
+        registered.mockRestore()
+    }
 })
 afterAll(async () => {
     if (app) {
@@ -117,7 +130,7 @@ async function flow() {
     const value = await tenant()
     const flowId = apId(), flowVersionId = apId(), runId = apId()
     await ds.getRepository(FlowEntity).insert({ id: flowId, projectId: value.projectId, externalId: apId() })
-    await ds.getRepository(FlowVersionEntity).insert({ id: flowVersionId, flowId, displayName: 'Hosted test', connectionIds: [], agentIds: [], valid: true, state: FlowVersionState.LOCKED, notes: [] })
+    await ds.getRepository(FlowVersionEntity).insert({ id: flowVersionId, flowId, displayName: 'Hosted test', schemaVersion: LATEST_FLOW_SCHEMA_VERSION, trigger: { name: 'trigger', type: FlowTriggerType.PIECE, displayName: 'Run manually', valid: true, lastUpdatedDate: new Date().toISOString(), settings: { pieceName: '@activepieces/piece-manual-trigger', pieceVersion: '0.0.8', triggerName: 'manual_trigger', input: {}, propertySettings: {} } }, connectionIds: [], agentIds: [], valid: true, state: FlowVersionState.LOCKED, notes: [] })
     const data: ExecuteFlowJobData = { schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, platformId: value.platformId, projectId: value.projectId, jobType: WorkerJobType.EXECUTE_FLOW, flowId, flowVersionId, runId, environment: RunEnvironment.TESTING, executionType: ExecutionType.BEGIN, streamStepProgress: StreamStepProgress.NONE, logsFileId: apId(), payload: { type: 'inline', value: null } }
     await ds.getRepository(FileEntity).insert({ id: data.logsFileId, platformId: value.platformId, projectId: value.projectId, type: FileType.FLOW_RUN_LOG, location: 'DB', data: Buffer.from('{}') })
     await ds.getRepository(FlowRunEntity).insert({ id: runId, flowId, flowVersionId, projectId: value.projectId, triggeredBy: value.userId, environment: RunEnvironment.TESTING, status: FlowRunStatus.QUEUED, tags: [], steps: {} })
@@ -139,6 +152,122 @@ async function chat() {
     const data: ExecuteAgentRunJobData = { schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, jobType: WorkerJobType.EXECUTE_AGENT_RUN, platformId: value.platformId, projectId: value.projectId, conversationId, runId, userId: value.userId, userMessage: 'Test', source: AgentRunSource.CHAT, modelName: null }
     return { ...value, data, delivery: { queueName: `hosting-${schema}-${runId}`, jobId: runId, data }, origin: { type: 'user' as const, userId: value.userId, tokenVersion: value.tokenVersion } }
 }
+describe('manual socket admission outcomes', () => {
+    async function manualSocket(value: Awaited<ReturnType<typeof flow>>) {
+        if (!manualListener) throw new Error('Missing manual socket listener')
+        const emit = vi.fn()
+        const socket = { emit } as unknown as Socket
+        const principal = await accessTokenManager(app.log).verifyPrincipal(value.token)
+        if (principal.type !== PrincipalType.USER) throw new Error('Missing user principal')
+        await manualListener(socket)({ flowVersionId: value.data.flowVersionId }, principal, value.projectId)
+        expect(emit).toHaveBeenCalledTimes(1)
+        expect(emit.mock.calls[0][0]).toBe(WebsocketClientEvent.MANUAL_TRIGGER_RUN_STARTED)
+        return emit.mock.calls[0][1] as FlowRun
+    }
+
+    it('returns a committed terminal refusal through the manual socket listener without a queued orphan or charge', async () => {
+        const value = await flow()
+        await ds.getRepository(HostingAccountEntity).update({ id: value.platformId }, { validUntil: new Date(0) })
+        const balances = await ds.getRepository(HostingGrantEntity).findBy({ platformId: value.platformId })
+        const publish = vi.spyOn(Queue.prototype, 'add')
+        let run: FlowRun
+        try {
+            run = await manualSocket(value)
+            expect(publish).not.toHaveBeenCalled()
+        }
+        finally {
+            publish.mockRestore()
+        }
+        expect(run.id).not.toBe(value.data.runId)
+        expect(run.status).toBe(FlowRunStatus.FAILED)
+        expect(run.finishTime).toBeTruthy()
+        expect(run.failedStep?.message).toContain('access has expired')
+        const saved = await ds.getRepository(FlowRunEntity).findOneByOrFail({ id: run.id, projectId: value.projectId })
+        expect(saved.status).toBe(FlowRunStatus.FAILED)
+        expect(saved.finishTime).toBeTruthy()
+        expect(saved.startTime).toBeNull()
+        expect(await ds.getRepository(HostingDispatchEntity).countBy({ platformId: value.platformId })).toBe(0)
+        expect(await ds.getRepository(HostingReservationEntity).countBy({ platformId: value.platformId })).toBe(0)
+        expect(await ds.getRepository(HostingModelCallEntity).countBy({ platformId: value.platformId })).toBe(0)
+        expect(await ds.getRepository(HostingGrantEntity).findBy({ platformId: value.platformId })).toEqual(balances)
+        expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(0)
+        // Restoring access must not resurrect this definitive, refused attempt.
+        await ds.getRepository(HostingAccountEntity).update({ id: value.platformId }, { validUntil: new Date(Date.now() + 60_000) })
+        await expect(execution.prepare({ ...value.delivery, jobId: run.id, data: { ...value.data, runId: run.id }, origin: value.origin })).rejects.toThrow('HOSTING_REPLAY_DENIED')
+        expect(await ds.getRepository(HostingDispatchEntity).countBy({ platformId: value.platformId })).toBe(0)
+    })
+
+    it('continues to publish an authorized manual run and charges only when the worker starts', async () => {
+        const value = await flow()
+        const run = await manualSocket(value)
+        const dispatch = await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ flowRunId: run.id })
+        if (!dispatch.queueName || !dispatch.jobId) throw new Error('Missing prepared queue scope')
+        const queue = await jobQueue(app.log).getOrCreateQueue({ queueName: dispatch.queueName })
+        const job = await queue.getJob(dispatch.jobId)
+        try {
+            expect(run.status).toBe(FlowRunStatus.QUEUED)
+            expect(job).not.toBeNull()
+            expect(dispatch.state).toBe('prepared')
+            expect(await ds.getRepository(HostingReservationEntity).countBy({ platformId: value.platformId })).toBe(0)
+            if (!dispatch.payload) throw new Error('Missing prepared payload')
+            const delivery = { queueName: dispatch.queueName, jobId: dispatch.jobId, data: dispatch.payload, queueToken: 'manual-worker' }
+            const admissionId = await execution.admit(delivery)
+            const fence = { ...delivery, admissionId, connectionId: 'manual-worker-connection' }
+            expect(await execution.start(fence)).toBe(true)
+            expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ platformId: value.platformId, meter: 'execution' })).consumed).toBe(1n)
+            if (dispatch.payload.jobType !== WorkerJobType.EXECUTE_FLOW) throw new Error('Missing flow log scope')
+            // The worker uploads its log before its terminal callback. This
+            // fixture exercises that ordering with a real, tenant-scoped row.
+            await ds.getRepository(FileEntity).insert({ id: dispatch.payload.logsFileId, platformId: value.platformId, projectId: value.projectId, type: FileType.FLOW_RUN_LOG, location: 'DB', data: Buffer.from('{}'), size: 2 })
+            await execution.flowReceipt({ admissionId, projectId: value.projectId, runId: run.id, status: FlowRunStatus.SUCCEEDED })
+            await execution.complete({ ...fence, status: EngineResponseStatus.OK })
+            expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(0)
+        }
+        finally {
+            await job?.remove()
+        }
+    })
+
+    it('preserves prepared work when Redis accepted the job but its response was lost', async () => {
+        const value = await flow()
+        const original = Queue.prototype.add
+        const publish = vi.spyOn(Queue.prototype, 'add').mockImplementationOnce(async function (this: Queue, ...args: Parameters<Queue['add']>) {
+            await original.apply(this, args)
+            throw new Error('synthetic Redis response loss after acceptance')
+        })
+        try {
+            await expect(flowRunService(app.log).startManualTrigger({ projectId: value.projectId, flowVersionId: value.data.flowVersionId, triggeredBy: value.userId, hostedOrigin: value.origin })).rejects.toThrow('synthetic Redis response loss after acceptance')
+        }
+        finally {
+            publish.mockRestore()
+        }
+        const dispatch = await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ platformId: value.platformId })
+        if (!dispatch.queueName || !dispatch.jobId || !dispatch.flowRunId) throw new Error('Missing prepared queue scope')
+        const queue = await jobQueue(app.log).getOrCreateQueue({ queueName: dispatch.queueName })
+        const job = await queue.getJob(dispatch.jobId)
+        try {
+            const run = await ds.getRepository(FlowRunEntity).findOneByOrFail({ id: dispatch.flowRunId })
+            expect(job).not.toBeNull()
+            expect(dispatch.state).toBe('prepared')
+            expect(run.status).toBe(FlowRunStatus.QUEUED)
+            expect(run.finishTime).toBeNull()
+            expect(await ds.getRepository(HostingReservationEntity).countBy({ platformId: value.platformId })).toBe(0)
+            await ds.getRepository(HostingAccountEntity).update({ id: value.platformId }, { validUntil: new Date(0) })
+            if (!dispatch.payload) throw new Error('Missing prepared payload')
+            // Neither a same-key replay nor another queue key can compensate
+            // an already prepared run, even after its access expires.
+            for (const queueName of [dispatch.queueName, dispatch.queueName + '-other']) {
+                await expect(execution.prepare({ queueName, jobId: dispatch.jobId, data: dispatch.payload, origin: value.origin })).rejects.toThrow('HOSTING_ENTITLEMENT_EXPIRED')
+            }
+            expect((await ds.getRepository(FlowRunEntity).findOneByOrFail({ id: run.id })).status).toBe(FlowRunStatus.QUEUED)
+            expect((await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ id: dispatch.id })).state).toBe('prepared')
+        }
+        finally {
+            await job?.remove()
+        }
+    })
+})
+
 describe('authenticated hosted onboarding', () => {
     it('requires a verified authenticated identity, invalidates onboarding token and mints committed tenant session', async () => {
         expect((await app.inject({ method: 'POST', url: '/api/v1/platforms', payload: { name: 'Forged' } })).statusCode).toBeGreaterThanOrEqual(400)

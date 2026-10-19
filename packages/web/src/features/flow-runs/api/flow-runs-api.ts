@@ -14,6 +14,7 @@ import {
   BulkArchiveActionOnRunsRequestBody,
   BulkCancelFlowRequestBody,
   UpdateRunProgressRequest,
+  isFlowRunStateTerminal,
 } from '@activepieces/shared';
 import { Socket } from 'socket.io-client';
 
@@ -57,35 +58,44 @@ export const flowRunsApi = {
     onUpdate: (response: UpdateRunProgressRequest) => void,
     isForManualTrigger: boolean,
   ): Promise<void> {
-    socket.emit(
-      isForManualTrigger
-        ? WebsocketServerEvent.MANUAL_TRIGGER_RUN_STARTED
-        : WebsocketServerEvent.TEST_FLOW_RUN,
-      request,
-    );
-    const initialRun = await getInitialRun(
-      socket,
-      request.flowVersionId,
-      isForManualTrigger,
-    );
+    const initialRun = await getInitialRun(socket, request, isForManualTrigger);
+    if (
+      isFlowRunStateTerminal({
+        status: initialRun.status,
+        ignoreInternalError: false,
+      })
+    ) {
+      onUpdate({ flowRun: initialRun });
+      return;
+    }
     onUpdate({
       flowRun: initialRun,
     });
     const handleUpdateRunProgress = (response: UpdateRunProgressRequest) => {
       if (response.flowRun.id === initialRun.id) {
         onUpdate(response);
-        if (response.flowRun.finishTime) {
-          socket.off(
-            WebsocketClientEvent.UPDATE_RUN_PROGRESS,
-            handleUpdateRunProgress,
-          );
+        if (
+          isFlowRunStateTerminal({
+            status: response.flowRun.status,
+            ignoreInternalError: false,
+          })
+        ) {
+          cleanupProgress();
         }
       }
+    };
+    const cleanupProgress = () => {
+      socket.off(
+        WebsocketClientEvent.UPDATE_RUN_PROGRESS,
+        handleUpdateRunProgress,
+      );
+      socket.off('disconnect', cleanupProgress);
     };
     socket.on(
       WebsocketClientEvent.UPDATE_RUN_PROGRESS,
       handleUpdateRunProgress,
     );
+    socket.once('disconnect', cleanupProgress);
   },
   async testStep(params: TestStepParams): Promise<{ runId: string }> {
     const { request } = params;
@@ -98,29 +108,51 @@ export const flowRunsApi = {
 };
 function getInitialRun(
   socket: Socket,
-  flowVersionId: string,
+  request: TestFlowRunRequestBody,
   forManualTrigger: boolean,
 ): Promise<FlowRun> {
-  return new Promise<FlowRun>((resolve) => {
+  return new Promise<FlowRun>((resolve, reject) => {
+    const startedEvent = forManualTrigger
+      ? WebsocketClientEvent.MANUAL_TRIGGER_RUN_STARTED
+      : WebsocketClientEvent.TEST_FLOW_RUN_STARTED;
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.off(startedEvent, onRunStarted);
+      socket.off('disconnect', onDisconnect);
+    };
     const onRunStarted = (run: FlowRun) => {
-      if (run.flowVersionId !== flowVersionId) {
-        return;
-      }
-      if (forManualTrigger) {
-        socket.off(
-          WebsocketClientEvent.MANUAL_TRIGGER_RUN_STARTED,
-          onRunStarted,
-        );
-      } else {
-        socket.off(WebsocketClientEvent.TEST_FLOW_RUN_STARTED, onRunStarted);
-      }
+      if (run.flowVersionId !== request.flowVersionId) return;
+      cleanup();
       resolve(run);
     };
-
-    if (forManualTrigger) {
-      socket.on(WebsocketClientEvent.MANUAL_TRIGGER_RUN_STARTED, onRunStarted);
-    } else {
-      socket.on(WebsocketClientEvent.TEST_FLOW_RUN_STARTED, onRunStarted);
+    const onDisconnect = () => {
+      cleanup();
+      reject(
+        new Error(
+          'Connection lost before run start was confirmed. Check run history before retrying.',
+        ),
+      );
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(
+        new Error(
+          'Run start was not confirmed. Check run history before retrying.',
+        ),
+      );
+    }, 30_000);
+    socket.on(startedEvent, onRunStarted);
+    socket.once('disconnect', onDisconnect);
+    try {
+      socket.emit(
+        forManualTrigger
+          ? WebsocketServerEvent.MANUAL_TRIGGER_RUN_STARTED
+          : WebsocketServerEvent.TEST_FLOW_RUN,
+        request,
+      );
+    } catch (error) {
+      cleanup();
+      reject(error);
     }
   });
 }

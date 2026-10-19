@@ -5,7 +5,7 @@ import { HostingAccountEntity, HostingGrantEntity } from '../../src/app/hosting/
 import { createHostedOnboarding } from '../../src/app/hosting/hosting-onboarding'
 import { createHostedTraining } from '../../src/app/hosting/hosting-training'
 import { HostingTrainingEntity } from '../../src/app/hosting/hosting-training-entity'
-import { HostingActor } from '../../src/app/hosting/hosting-transactions'
+import { HostingActor, hostingTransactions } from '../../src/app/hosting/hosting-transactions'
 import { foundingCourseDraft } from '../../src/app/lms/lms-content'
 import { LmsCourseEntity, LmsEnrollmentEntity } from '../../src/app/lms/lms-entities'
 import { bootstrapHostedOperator } from './hosting-fixtures'
@@ -25,7 +25,7 @@ export async function fundedCore(ds: DataSource, operator: HostingActor) {
     const identityId = await subscriptionIdentity(ds)
     const tenant = await createHostedOnboarding({ dataSource: ds, subjectSecret: 'synthetic-subscription-fixture-secret-atleast32characters' }).provision({ identityId, name: 'Funded Core fixture', operator })
     const actor = { identityId, platformId: tenant.platformId, tokenVersion: tenant.tokenVersion }
-    const courseId = apId(), enrollmentId = apId(), receiptId = `synthetic-not-real-payment:${apId()}`, now = new Date()
+    const courseId = apId(), enrollmentId = apId(), receiptId = `synthetic-not-real-payment:${apId()}`, now = await hostingTransactions.now(ds.manager)
     await ds.getRepository(LmsCourseEntity).insert({ id: courseId, slug: `synthetic-${courseId}`, ownerPlatformId: null, audience: 'partner', certificationMode: 'partner', revision: 1, status: 'published', content: foundingCourseDraft, reviewedBy: operator.identityId, reviewedAt: now })
     await ds.getRepository(LmsEnrollmentEntity).insert({ id: enrollmentId, courseId, identityId, grantPlatformId: null, accessType: 'partner_training', package: 'core', paymentReference: receiptId, workspacePlatformId: tenant.platformId, startsAt: now, accessUntil: new Date(now.getTime() + 365 * 86400000), assessmentUntil: new Date(now.getTime() + 90 * 86400000), status: 'active', completedLessons: [], assignment: null, practicalReviews: [], enrolledBy: operator.identityId })
     const training = await createHostedTraining({ dataSource: ds }).activate({ actor: operator, platformId: tenant.platformId, identityId, enrollmentId, receiptId, tier: 'core' })

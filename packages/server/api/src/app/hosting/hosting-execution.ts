@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { apId } from '@activepieces/core-utils'
-import { AgentRunSource, EngineResponseStatus, ExecutionType, FileType, FlowRunStatus, FlowStatus, isFlowRunStateTerminal, JobData, LATEST_JOB_DATA_SCHEMA_VERSION, ResumeReason, StreamStepProgress, WorkerJobType } from '@activepieces/shared'
+import { AgentRunSource, EngineResponseStatus, ExecutionType, FileType, FlowRun, FlowRunStatus, FlowStatus, isFlowRunStateTerminal, JobData, LATEST_JOB_DATA_SCHEMA_VERSION, ResumeReason, StreamStepProgress, WorkerJobType } from '@activepieces/shared'
 import { DataSource, EntityManager, In } from 'typeorm'
 import { FileEntity } from '../file/file.entity'
 import { FlowEntity } from '../flows/flow/flow.entity'
@@ -25,12 +25,20 @@ const MAX_PAYLOAD_BYTES = 1024 * 1024
 const LEASE_MS = 120_000
 const ACTIVE: HostingDispatch['state'][] = ['admitted', 'running', 'uncertain']
 
+// This result is thrown only AFTER the transaction has committed a definitive,
+// undispatched refusal. Unknown transaction/queue outcomes must never use it.
+export class HostedRunStartRefused extends Error {
+    constructor(readonly flowRun: FlowRun) {
+        super('HOSTING_ENTITLEMENT_EXPIRED')
+    }
+}
+
 export function createHostedExecution({ dataSource }: { dataSource: DataSource }) {
     async function prepare({ queueName, jobId, data, origin, delay = 0 }: Delivery & { origin?: HostingJobOrigin, delay?: number }): Promise<JobData> {
         if (!data.platformId || !data.projectId) hostingFail('HOSTING_JOB_PROVENANCE_REQUIRED')
         const platformId = data.platformId
         const projectId = data.projectId
-        return tx.run({ dataSource, fn: async manager => {
+        const prepared = await tx.run<JobData | HostedRunStartRefused>({ dataSource, fn: async manager => {
             const account = await tx.account({ manager, platformId })
             const project = await manager.getRepository(ProjectEntity).findOneBy({ id: projectId, platformId })
             if (!project) hostingFail('HOSTING_PROJECT_ACCESS_DENIED')
@@ -45,11 +53,14 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
             let previous: HostingDispatch | null = null
             let flowRunId: string | null = null
             let generation = 0
+            let freshRun: FlowRun | undefined
             if (data.jobType === WorkerJobType.EXECUTE_FLOW) {
                 const flow = await manager.getRepository(FlowEntity).findOneBy({ id: data.flowId, projectId })
                 const version = await manager.getRepository(FlowVersionEntity).findOne({ where: { id: data.flowVersionId, flowId: data.flowId }, lock: { mode: 'pessimistic_read' } })
                 const run = await manager.getRepository(FlowRunEntity).findOneBy({ id: data.runId, projectId, flowId: data.flowId, flowVersionId: data.flowVersionId })
                 if (!flow || !version || !run) hostingFail('HOSTING_FLOW_SCOPE_MISMATCH')
+                if (!existing && data.executionType === ExecutionType.BEGIN && run.status !== FlowRunStatus.QUEUED) hostingFail('HOSTING_REPLAY_DENIED')
+                if (!existing && origin?.type === 'user' && data.executionType === ExecutionType.BEGIN && data.streamStepProgress === StreamStepProgress.WEBSOCKET && !run.parentRunId && run.status === FlowRunStatus.QUEUED) freshRun = run
                 // Fail unsupported/mixed AI selections before creating a dispatch.
                 hostedFlowPayer(version, data.stepNameToTest)
                 flowRunId = data.runId
@@ -86,7 +97,30 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
             else hostingFail('HOSTING_JOB_PATH_NOT_READY')
             await assertLiveContext({ manager, data })
             await tx.member({ manager, actor, projectId, write: true })
-            tx.assertActive({ account, now: await tx.now(manager) })
+            if (freshRun && await manager.getRepository(HostingDispatchEntity).existsBy({ platformId, flowRunId: freshRun.id })) freshRun = undefined
+            const now = await tx.now(manager)
+            try {
+                tx.assertActive({ account, now })
+            }
+            catch (error) {
+                if (!(error instanceof HostingError) || error.message !== 'HOSTING_ENTITLEMENT_EXPIRED' || !freshRun) throw error
+                const refused: FlowRun = {
+                    ...freshRun,
+                    status: FlowRunStatus.FAILED,
+                    finishTime: now.toISOString(),
+                    steps: {},
+                    failedStep: {
+                        name: 'trigger',
+                        displayName: 'Run access',
+                        message: 'Workspace access has expired. Contact your administrator or Sydekyks to renew access before running this Mission.',
+                    },
+                }
+                const updated = await manager.getRepository(FlowRunEntity).update({ id: refused.id, projectId, status: FlowRunStatus.QUEUED }, { status: refused.status, finishTime: refused.finishTime, failedStep: refused.failedStep })
+                if (updated.affected !== 1) throw error
+                // Return, rather than throw, so the refusal is committed without
+                // creating a dispatch, reservation, debit or queue job.
+                return new HostedRunStartRefused(refused)
+            }
             if (existing) {
                 if (existing.platformId !== platformId || existing.payloadHash !== hashData(data) || existing.identityId !== actor.identityId || existing.tokenVersion !== (actor.tokenVersion ?? null)) hostingFail('HOSTING_IDEMPOTENCY_CONFLICT')
                 if (!['prepared', 'admitted'].includes(existing.state)) hostingFail('HOSTING_REPLAY_DENIED')
@@ -101,6 +135,8 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
             await manager.getRepository(HostingDispatchEntity).save({ id, platformId, projectId, identityId: actor.identityId, tokenVersion: actor.tokenVersion ?? null, originType: actor.tokenVersion === undefined ? 'scheduled' : 'user', queueKey, payloadHash: hashData(normalized), rootKey, state: 'prepared', flowRunId, generation, rootDispatchId: root?.id ?? null, parentDispatchId: previous?.id ?? null, callbackWaitpointId: previous?.callbackWaitpointId ?? null, queueName, jobId, payload: normalized, availableAt: new Date((await tx.now(manager)).getTime() + delay) })
             return normalized
         } })
+        if (prepared instanceof HostedRunStartRefused) throw prepared
+        return prepared
     }
 
     async function nested({ admissionId, projectId, platformId, flowId, key, payload, failParentOnFailure, queueName }: NestedParams) {
