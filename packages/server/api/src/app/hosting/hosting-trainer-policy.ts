@@ -1,11 +1,12 @@
 import { PlatformRole, User, UserStatus } from '@activepieces/shared'
 import { EntityManager, In } from 'typeorm'
 import { UserIdentityEntity } from '../authentication/user-identity/user-identity-entity'
-import { HostingAccountEntity } from './hosting-entities'
 import { PlatformEntity } from '../platform/platform.entity'
 import { UserEntity } from '../user/user-entity'
-import { HostingActor, hostingFail } from './hosting-transactions'
+import { HostingAccountEntity } from './hosting-entities'
+import { identityAdmission } from './hosting-identity-admission'
 import { HostingTrainerAssignmentEntity, HostingTrainerRoleEntity } from './hosting-trainer-entities'
+import { HostingActor, hostingFail } from './hosting-transactions'
 
 export const trainerExternalId = (identityId: string): string => `sydekyks-operational:trainer:${identityId}`
 export async function isPrivilegedTrainerIdentity(manager: EntityManager, identityId: string): Promise<boolean> {
@@ -80,7 +81,7 @@ export async function listTrainerLearners({ manager, actor, audience = 'end_user
             const platform = await manager.getRepository(PlatformEntity).findOneBy({ id: account.id })
             if (platform) workspaces.push({ platformId: platform.id, name: platform.name, planId: account.planId })
         }
-        result.push({ identityId, email: identity.email, firstName: identity.firstName, lastName: identity.lastName, verified: true, workspaces })
+        result.push({ identityId, email: identity.email, firstName: identity.firstName, lastName: identity.lastName, verified: true, ...await identityAdmission(manager, identity), workspaces })
     }
     return result
 }
@@ -88,4 +89,13 @@ export async function hasTrainerOperationalAccess({ manager, user }: { manager: 
     if (!user.platformId || user.status !== UserStatus.ACTIVE || user.platformRole !== PlatformRole.OPERATOR || user.externalId !== trainerExternalId(user.identityId)) return false
     if (!await manager.getRepository(HostingTrainerRoleEntity).existsBy({ id: user.identityId, active: true })) return false
     return manager.getRepository(HostingTrainerAssignmentEntity).existsBy({ trainerIdentityId: user.identityId, kind: 'client', clientPlatformId: user.platformId, userId: user.id, active: true })
+}
+
+// Only the trainer's own newly-created, still-unclaimed recipient can use this
+// internal provisioning path. It never claims an existing user's home/trial.
+export async function assertTrainerProvisioning({ manager, actor, identityId, assignmentId }: { manager: EntityManager, actor: HostingActor, identityId: string, assignmentId: string }) {
+    const authority = await assertPlatformTrainer({ manager, actor })
+    const assignment = await manager.getRepository(HostingTrainerAssignmentEntity).findOne({ where: { id: assignmentId, trainerIdentityId: actor.identityId, kind: 'recipient', partnerIdentityId: identityId, active: true, provenance: 'onboarded', createdByIdentityId: actor.identityId }, lock: { mode: 'pessimistic_write' } })
+    if (!assignment || identityId === actor.identityId || await manager.getRepository(UserEntity).existsBy({ identityId }) || await manager.getRepository(HostingAccountEntity).existsBy({ ownerIdentityId: identityId })) hostingFail('HOSTING_TRAINER_NEW_RECIPIENT_REQUIRED')
+    return { ...authority, assignment }
 }

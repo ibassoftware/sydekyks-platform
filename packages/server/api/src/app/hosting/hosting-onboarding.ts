@@ -11,6 +11,7 @@ import { UserEntity } from '../user/user-entity'
 import { assertHostingOperator, hostedCustomerSeatCount, hostingOperatorIdentityIds, isOperationalUser } from './hosting-access-policy'
 import { HostingAccount, HostingAccountEntity, HostingEligibilityEntity, HostingGrantEntity, HostingInvitationEntity, HostingLedgerEntity, HostingPolicyEntity } from './hosting-entities'
 import { assertTenantAdministrator, assertTenantMemberTarget } from './hosting-tenant-members-policy'
+import { assertTrainerProvisioning } from './hosting-trainer-policy'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSource: DataSource, subjectSecret: string }) {
@@ -24,17 +25,18 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
         if (existing.subjectKeyFingerprint !== fingerprint) hostingFail('HOSTING_SUBJECT_KEY_CHANGED')
     }
 
-    async function provision({ identityId, name, expectedTokenVersion, names, operator, requireOwnedHome = false, manager: existingManager }: ProvisionParams): Promise<ProvisionedTenant> {
+    async function provision({ identityId, name, expectedTokenVersion, names, operator, trainer, requireOwnedHome = false, manager: existingManager }: ProvisionParams): Promise<ProvisionedTenant> {
         assertName(name)
         return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             await policy(manager)
             // Creating a learner-owned home is an explicit operator action. Normal
             // sign-in/partner admission continues to preserve joined memberships.
-            if (requireOwnedHome) {
-                if (!operator) hostingFail('HOSTING_OPERATOR_PROVISIONING_REQUIRED')
-                await assertHostingOperator({ manager, actor: operator! })
-            }
             const identity = await lockedIdentity({ manager, identityId })
+            if (trainer) await assertTrainerProvisioning({ manager, actor: trainer.actor, identityId, assignmentId: trainer.assignmentId })
+            if (requireOwnedHome) {
+                if (operator) await assertHostingOperator({ manager, actor: operator })
+                else if (!trainer) hostingFail('HOSTING_OPERATOR_PROVISIONING_REQUIRED')
+            }
             if (expectedTokenVersion !== undefined && (identity.tokenVersion ?? null) !== expectedTokenVersion) hostingFail('HOSTING_SESSION_EXPIRED')
             const eligibility = manager.getRepository(HostingEligibilityEntity)
             const prior = await eligibility.findOneBy({ id: subject(identity.email) })
@@ -54,7 +56,7 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
             // Only trusted operators may create new pilot tenants. The first
             // allowlisted verified operator can bootstrap their own home.
             if (operator) await assertHostingOperator({ manager, actor: operator })
-            else if (!hostingOperatorIdentityIds().includes(identityId) || expectedTokenVersion === undefined) hostingFail('HOSTING_OPERATOR_PROVISIONING_REQUIRED')
+            else if (!trainer && (!hostingOperatorIdentityIds().includes(identityId) || expectedTokenVersion === undefined)) hostingFail('HOSTING_OPERATOR_PROVISIONING_REQUIRED')
             if (await eligibility.existsBy({ identityId })) hostingFail('HOSTING_TRIAL_ALREADY_USED')
             const platformId = apId()
             const claim = await eligibility.createQueryBuilder().insert().values({ id: subject(identity.email), identityId, platformId }).orIgnore().returning('id').execute()
@@ -226,5 +228,5 @@ function assertName(name: string): void {
     if (typeof name !== 'string' || name.trim().length < 1 || name.length > 120) hostingFail('HOSTING_INVALID_NAME')
 }
 
-type ProvisionParams = { requireOwnedHome?: boolean, operator?: HostingActor, manager?: EntityManager, identityId: string, name: string, expectedTokenVersion?: string | null, names?: { firstName: string, lastName: string } }
+type ProvisionParams = { trainer?: { actor: HostingActor, assignmentId: string }, requireOwnedHome?: boolean, operator?: HostingActor, manager?: EntityManager, identityId: string, name: string, expectedTokenVersion?: string | null, names?: { firstName: string, lastName: string } }
 export type ProvisionedTenant = { platformId: string, userId: string, projectId: string | null, created: boolean, tokenVersion: string | null }

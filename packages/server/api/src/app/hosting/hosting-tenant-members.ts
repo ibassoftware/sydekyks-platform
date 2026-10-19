@@ -3,7 +3,7 @@ import { apId } from '@activepieces/core-utils'
 import { cryptoUtils } from '@activepieces/server-utils'
 import { hostingCatalog, MAX_FULL_NAME_LENGTH, PasswordType, PlatformRole, UserIdentityProvider } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
-import { DataSource, EntityManager, IsNull, MoreThan, Not } from 'typeorm'
+import { DataSource, EntityManager, MoreThan } from 'typeorm'
 import { z } from 'zod'
 import { passwordHasher } from '../authentication/lib/password-hasher'
 import { signupNames } from '../authentication/lib/signup-names'
@@ -15,8 +15,8 @@ import { PlatformEntity } from '../platform/platform.entity'
 import { UserEntity } from '../user/user-entity'
 import { hostedCustomerSeatCount, isOperationalUser } from './hosting-access-policy'
 import { HostingInvitationEntity } from './hosting-entities'
+import { identityAdmission } from './hosting-identity-admission'
 import { createHostedOnboarding } from './hosting-onboarding'
-import { HostingPartnerSetupTokenEntity } from './hosting-partner-setup-entities'
 import { HostingTenantMembersBindingEntity, HostingTenantMembersCommandEntity } from './hosting-tenant-members-entities'
 import { assertTenantAdministrator, assertTenantMemberTarget } from './hosting-tenant-members-policy'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
@@ -176,9 +176,6 @@ async function view(manager: EntityManager, actor: HostingActor) {
     const members = []
     for (const user of users) {
         const identity = await manager.getRepository(UserIdentityEntity).findOneByOrFail({ id: user.identityId })
-        const manualPartner = await manager.getRepository(HostingPartnerSetupTokenEntity).existsBy({ identityId: identity.id, usedAt: Not(IsNull()) })
-        const manualTenant = await manager.getRepository(HostingTenantMembersCommandEntity).existsBy({ identityId: identity.id, mode: 'setup', usedAt: Not(IsNull()) })
-        const manual = manualPartner || manualTenant
         let protectedMember = isOperationalUser(user) || identity.id === actor.identityId || identity.id === account.ownerIdentityId
         try {
             await assertTenantMemberTarget({ manager, identityId: identity.id, actorIdentityId: actor.identityId }) 
@@ -186,7 +183,7 @@ async function view(manager: EntityManager, actor: HostingActor) {
         catch {
             protectedMember = true 
         }
-        members.push({ id: user.id, identityId: identity.id, email: identity.email, firstName: identity.firstName, lastName: identity.lastName, status: user.status, platformRole: user.platformRole, verified: identity.verified, verificationMethod: identity.verified ? (manual ? 'operator' : 'email') : 'pending', emailOwnershipVerified: identity.verified && !manual, admissionSource: manualTenant ? 'tenant_admin' : manualPartner ? 'operator' : 'email', protected: protectedMember, operational: isOperationalUser(user) })
+        members.push({ id: user.id, identityId: identity.id, email: identity.email, firstName: identity.firstName, lastName: identity.lastName, status: user.status, platformRole: user.platformRole, verified: identity.verified, ...await identityAdmission(manager, identity), protected: protectedMember, operational: isOperationalUser(user) })
     }
     const invitations = await manager.getRepository(HostingInvitationEntity).findBy({ platformId: account.id, status: 'pending', expiresAt: MoreThan(now) })
     const pending = []
