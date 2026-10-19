@@ -9,13 +9,13 @@ export const hostedModelCatalog = Object.freeze({
         id: HOSTED_MANAGED_MODEL, provider: 'deepseek', upstreamModel: HOSTED_DEEPSEEK_MODEL,
         endpoint: HOSTED_DEEPSEEK_ENDPOINT, accountingVersion: 'deepseek-verified-usage-v1', creditConversionVersion: '1000-credits-per-usd-v1',
         capabilities: Object.freeze({ tools: true, json: true, stream: true }),
-        allowedPlans: Object.freeze(['trial', 'training', 'starter', 'team'] as HostedPlanId[]),
+        allowedPlans: Object.freeze(['trial', 'training', 'assessment', 'starter', 'team'] as HostedPlanId[]),
     }),
     [HOSTED_DEEPSEEK_PRO_MODEL]: Object.freeze({
         id: HOSTED_MANAGED_MODEL, provider: 'deepseek', upstreamModel: HOSTED_DEEPSEEK_PRO_MODEL,
         endpoint: HOSTED_DEEPSEEK_ENDPOINT, accountingVersion: 'deepseek-verified-usage-v1', creditConversionVersion: '1000-credits-per-usd-v1',
         capabilities: Object.freeze({ tools: true, json: true, stream: true }),
-        allowedPlans: Object.freeze(['trial', 'training', 'starter', 'team'] as HostedPlanId[]),
+        allowedPlans: Object.freeze(['trial', 'training', 'assessment', 'starter', 'team'] as HostedPlanId[]),
     }),
 })
 

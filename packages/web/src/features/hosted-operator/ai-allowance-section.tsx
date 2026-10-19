@@ -101,7 +101,9 @@ function ClientAllowance({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="client-allowance-heading" className="text-lg font-semibold">
-            Monthly AI allowance
+            {query.data?.planId === 'assessment'
+              ? 'Assessment AI budget'
+              : 'Monthly AI allowance'}
           </h2>
           <p className="mt-2 text-sm text-gray-11">
             {clientName} · Managed Sydekyks credits
@@ -131,6 +133,13 @@ function ClientAllowance({
         <p role="alert" className="mt-4 text-sm">
           The allowance could not load. Refresh to check your access and the
           current limit.
+        </p>
+      ) : query.data.planId === 'assessment' ? (
+        <p role="status" className="mt-4 max-w-3xl text-sm leading-6">
+          Assessment access has a fixed one-time $1 managed AI budget. It cannot
+          be increased through the monthly allowance setting and ends at the
+          saved assessment deadline. Existing usage and held costs remain
+          attached to this allowance.
         </p>
       ) : (
         <AllowanceEditor

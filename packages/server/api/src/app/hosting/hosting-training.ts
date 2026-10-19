@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { LmsCourseEntity, LmsEnrollment, LmsEnrollmentEntity } from '../lms/lms-entities'
 import { assertHostingOperator } from './hosting-access-policy'
 import { effectiveManagedAiCredits } from './hosting-ai-allowance'
+import { revokeAssessmentAccess } from './hosting-assessment'
 import { HostingAccountEntity, HostingGrantEntity, HostingLedgerEntity, HostingReservationEntity } from './hosting-entities'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { HostingStripeBindingEntity } from './hosting-stripe-entities'
@@ -79,10 +80,13 @@ export function createHostedTraining({ dataSource, manager: existingManager }: {
     async function revoke({ actor, enrollmentId }: { actor: HostingActor, enrollmentId: string }): Promise<void> {
         await tx.run({ dataSource, manager: existingManager, fn: async manager => {
             await assertHostingOperator({ manager, actor })
+            const enrollment = await manager.getRepository(LmsEnrollmentEntity).findOne({ where: { id: enrollmentId }, lock: { mode: 'pessimistic_write' } })
+            if (!enrollment) hostingFail('HOSTING_TRAINING_NOT_FOUND')
             const peek = await manager.getRepository(HostingTrainingEntity).findOneBy({ enrollmentId })
             if (!peek) hostingFail('HOSTING_TRAINING_NOT_FOUND')
             const account = await tx.account({ manager, platformId: peek.platformId })
             const record = await manager.getRepository(HostingTrainingEntity).findOneByOrFail({ id: peek.id })
+            await revokeAssessmentAccess({ manager, enrollmentId, actorIdentityId: actor.identityId })
             if (record.revokedAt) return
             const now = await tx.now(manager)
             await manager.getRepository(HostingTrainingEntity).update({ id: record.id }, { revokedAt: now })

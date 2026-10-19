@@ -343,6 +343,10 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                     ? t('Training access through {date}.', {
                         date: date(status.validUntil),
                       })
+                    : status.entitlementState === 'assessment'
+                    ? t(
+                        'Assessment access is active. Its one-time allowance ends on the stated date.',
+                      )
                     : status.entitlementState === 'paid'
                     ? t('Paid access through {date}.', {
                         date: date(status.validUntil),

@@ -9,7 +9,7 @@ export const HostedOnboardingOffer = z.object({
 export type HostedOnboardingOffer = z.infer<typeof HostedOnboardingOffer>
 export const HostedOnboardingStatus = z.object({
     platformId: z.string(), userId: z.string(), platformName: z.string(), firstName: z.string(), isAdmin: z.boolean(),
-    planId: z.enum(['trial', 'training', 'starter', 'team']), entitlementState: z.enum(['trial', 'training', 'paid', 'expired', 'paused']),
+    planId: z.enum(['trial', 'training', 'assessment', 'starter', 'team']), entitlementState: z.enum(['trial', 'training', 'assessment', 'paid', 'expired', 'paused']),
     validUntil: z.iso.datetime(), serverTime: z.iso.datetime(),
 })
 export type HostedOnboardingStatus = z.infer<typeof HostedOnboardingStatus>

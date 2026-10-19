@@ -20,7 +20,7 @@ export type HostingAiAllowanceInput = z.input<typeof HostingAiAllowanceInput>
 // Callers creating a grant hold the same account write lock used by allowance saves.
 // The supplied plan is the grant's own source period, not the account's current plan.
 export async function effectiveManagedAiCredits(manager: EntityManager, platformId: string, planId: HostedPlanId): Promise<number> {
-    if (planId === 'trial') return hostingCatalog.getPlan({ planId }).aiCredits
+    if (planId === 'trial' || planId === 'assessment') return hostingCatalog.getPlan({ planId }).aiCredits
     const { change } = await currentPolicy(manager, platformId)
     return change?.monthlyCredits ?? hostingCatalog.getPlan({ planId }).aiCredits
 }
@@ -43,6 +43,7 @@ export function createHostedAiAllowance({ dataSource }: { dataSource: DataSource
                 // serialize on this account. Never acquire the daily budget here.
                 const account = await tx.account({ manager, platformId: value.platformId })
                 await assertHostingOperator({ manager, actor })
+                if (account.planId === 'assessment') hostingFail('HOSTING_ASSESSMENT_ALLOWANCE_FIXED')
                 const now = await tx.now(manager), { binding, change: previous } = await currentPolicy(manager, account.id)
                 const prior = await manager.getRepository(HostingAiAllowanceChangeEntity).findOneBy({ operatorIdentityId: actor.identityId, requestKey: value.requestKey })
                 if (prior) {
@@ -101,12 +102,12 @@ async function allowanceView(manager: EntityManager, account: HostingAccount, no
     const active = account.status !== 'suspended' && !account.billingHold && account.validUntil > now
     return {
         scopePlatformId: account.id, revision: binding?.revision ?? 0, planId: account.planId, overrideMonthlyCredits: change?.monthlyCredits ?? null, defaultMonthlyCredits,
-        effectiveMonthlyCredits: change?.monthlyCredits ?? defaultMonthlyCredits, appliesToCurrentPeriod: account.planId !== 'trial' && !!current && account.validUntil > now,
+        effectiveMonthlyCredits: account.planId === 'assessment' ? defaultMonthlyCredits : change?.monthlyCredits ?? defaultMonthlyCredits, appliesToCurrentPeriod: account.planId !== 'trial' && account.planId !== 'assessment' && !!current && account.validUntil > now,
         period: current ? { validFrom: current.validFrom.toISOString(), validUntil: current.validUntil.toISOString(), amountMicroUsd: current.amount.toString(), consumedMicroUsd: current.consumed.toString(), reservedMicroUsd: current.reserved.toString(), availableMicroUsd: active && remaining > 0n ? remaining.toString() : '0' } : null,
     }
 }
 async function sourcePlan(manager: EntityManager, account: HostingAccount, grant: HostingGrant): Promise<HostedPlanId | null> {
-    if (grant.sourceKey.startsWith('trial:')) return null
+    if (grant.sourceKey.startsWith('trial:') || grant.sourceKey.startsWith('assessment:')) return null
     if (grant.sourceKey.startsWith('stripe:')) {
         const period = await manager.getRepository(HostingStripePeriodEntity).findOneBy({ platformId: account.id, sourceKey: grant.sourceKey })
         if (!period || period.revokedAt || !['starter', 'team'].includes(period.planId) || !sameTime(grant.validFrom, period.periodStart) || !sameTime(grant.validUntil, period.periodEnd)) hostingFail('HOSTING_AI_ALLOWANCE_SOURCE_INVALID')

@@ -118,6 +118,11 @@ export function HostedBillingView({
                   'Trial ends {date}. The trial has a time limit and limited allowances; there is no ongoing free hosted plan.',
                   { date: date(info.trialEndsAt) },
                 )
+              : info.planId === 'assessment'
+              ? t(
+                  'Assessment access ends {date}. This is a one-time allowance for your assessment, with no renewal or rollover.',
+                  { date: date(info.validUntil) },
+                )
               : info.planId === 'training'
               ? t(
                   'Training access ends {date}. Credits refresh every 30 days during included access, with no rollover.',
@@ -391,6 +396,8 @@ function planName(id: HostedCustomerBillingOverview['planId']) {
     ? t('Limited trial')
     : id === 'training'
     ? t('Training')
+    : id === 'assessment'
+    ? t('Assessment access')
     : id === 'starter'
     ? t('Starter')
     : t('Team');
@@ -400,6 +407,8 @@ function stateName(state: HostedCustomerBillingOverview['entitlementState']) {
     ? t('Trial active')
     : state === 'training'
     ? t('Training access')
+    : state === 'assessment'
+    ? t('Assessment access')
     : state === 'paid'
     ? t('Paid access')
     : state === 'paused'

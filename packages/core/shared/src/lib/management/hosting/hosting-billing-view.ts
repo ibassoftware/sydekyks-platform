@@ -8,8 +8,8 @@ const meter = z.object({ state: z.enum(['active', 'expired', 'revoked', 'missing
 const limits = z.object({ users: z.number().int().nonnegative(), projects: z.number().int().nonnegative(), executions: z.number().int().nonnegative(), concurrency: z.number().int().nonnegative(), aiCredits: z.number().int().nonnegative(), byokEnabled: z.literal(true) })
 export const HostedBillingOverview = z.object({
     schemaVersion: z.literal(1), platformId: z.string(), userId: z.string(), catalogVersion: z.string(), serverTime: date,
-    environment: z.literal('test'), planId: z.enum(['trial', 'training', 'starter', 'team']), status: z.enum(['trialing', 'active', 'suspended']),
-    entitlementState: z.enum(['trial', 'training', 'paid', 'expired', 'paused']), validUntil: date, trialEndsAt: date, billingHold: z.boolean(),
+    environment: z.literal('test'), planId: z.enum(['trial', 'training', 'assessment', 'starter', 'team']), status: z.enum(['trialing', 'active', 'suspended']),
+    entitlementState: z.enum(['trial', 'training', 'assessment', 'paid', 'expired', 'paused']), validUntil: date, trialEndsAt: date, billingHold: z.boolean(),
     subscriptionStatus: z.string().nullable(), planChangesEnabled: z.literal(false),
     notice: z.enum(['account_paused', 'billing_review', 'billing_delayed']).nullable(),
     meters: z.object({ execution: meter, managedAi: meter, previousPeriodHeldMicroUsd: quantity }),

@@ -47,7 +47,7 @@ export const hostingOnboardingController: FastifyPluginAsyncZod = async app => {
             const now = await tx.now(manager)
             const ended = account.validUntil <= now && bound?.holds.length === 1 && bound.holds[0] === 'subscription_ended'
             const paused = account.status === 'suspended' || (account.billingHold && !ended)
-            return HostedOnboardingStatus.parse({ platformId: account.id, userId: user.id, platformName: platform.name, firstName: identity.firstName, isAdmin: user.platformRole === PlatformRole.ADMIN, planId: account.planId, entitlementState: paused ? 'paused' : account.validUntil <= now ? 'expired' : account.planId === 'trial' ? 'trial' : account.planId === 'training' ? 'training' : 'paid', validUntil: account.validUntil.toISOString(), serverTime: now.toISOString() })
+            return HostedOnboardingStatus.parse({ platformId: account.id, userId: user.id, platformName: platform.name, firstName: identity.firstName, isAdmin: user.platformRole === PlatformRole.ADMIN, planId: account.planId, entitlementState: paused ? 'paused' : account.validUntil <= now ? 'expired' : account.planId === 'trial' ? 'trial' : account.planId === 'training' ? 'training' : account.planId === 'assessment' ? 'assessment' : 'paid', validUntil: account.validUntil.toISOString(), serverTime: now.toISOString() })
         } })
     })
 }

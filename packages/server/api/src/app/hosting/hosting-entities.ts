@@ -19,7 +19,7 @@ export const HostingAccountEntity = new EntitySchema<HostingAccount>({
         trialStartedAt: timestamp, trialEndsAt: timestamp, validUntil: timestamp,
         activeExecutions: { type: Number, default: 0 }, billingHold: { type: Boolean, default: false },
     },
-    checks: [{ expression: '"activeExecutions" >= 0' }, { expression: '"status" IN (\'trialing\', \'active\', \'suspended\')' }, { name: 'CHK_7a22f26b8fb98d989a5326db4b', expression: '"planId" IN (\'trial\', \'training\', \'starter\', \'team\')' }],
+    checks: [{ expression: '"activeExecutions" >= 0' }, { expression: '"status" IN (\'trialing\', \'active\', \'suspended\')' }, { name: 'CHK_7a22f26b8fb98d989a5326db4b', expression: '"planId" IN (\'trial\', \'training\', \'assessment\', \'starter\', \'team\')' }],
     foreignKeys: [{ target: 'platform', columnNames: ['id'], referencedColumnNames: ['id'], onDelete: 'RESTRICT' }],
 })
 
