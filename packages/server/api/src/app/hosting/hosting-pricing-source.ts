@@ -5,7 +5,7 @@ import { PricingSource, pricingSourceDate, PricingSourceValidation } from './hos
 export { createOfficialPricingFetcher, fetchOfficialPricing, HOSTED_PRICING_URL, PRICING_FRESH_MS, PricingFetcher, PricingHttpTransport, PricingSource, PricingSourceValidation } from './hosting-pricing-http'
 import { hostingFail } from './hosting-transactions'
 
-export const PRICING_REFRESH_MS = 5 * 60_000
+export { PRICING_REFRESH_MS } from './hosting-pricing-timing'
 export const PRICING_CALENDAR = Object.freeze({
     version: 'cn-state-council-2026-q4-v1', schedule: 'Peak: Monday–Friday 01:00–04:00 and 06:00–10:00 UTC, excluding Chinese public holidays. All other times are off-peak.', from: '2026-10-18T00:00:00.000Z', until: '2027-01-01T00:00:00.000Z', holidays: [] as string[],
     source: 'https://www.gov.cn/zhengce/content/202511/content_7047090.htm',

@@ -2,11 +2,12 @@ import { createHash } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
 import { safeHttp } from '@activepieces/server-utils'
 import { z } from 'zod'
+import { PRICING_FRESH_MS, PRICING_HTTP_DEADLINE_MS, PRICING_MIN_REFRESH_VALIDITY_MS } from './hosting-pricing-timing'
 import { hostingFail } from './hosting-transactions'
+export { PRICING_FRESH_MS } from './hosting-pricing-timing'
 
 export const HOSTED_PRICING_URL = 'https://api-docs.deepseek.com/quick_start/pricing/'
-export const PRICING_FRESH_MS = 10 * 60_000
-const DEADLINE_MS = 10_000
+const DEADLINE_MS = PRICING_HTTP_DEADLINE_MS
 const MAX_BODY_BYTES = 512 * 1024
 const REQUEST_HEADERS = Object.freeze({ Accept: 'text/html', 'Accept-Encoding': 'identity', 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' })
 const strongEtag = (value: string | null): value is string => value !== null && /^"[\x21\x23-\x7e\x80-\xff]{0,200}"$/.test(value)
@@ -64,17 +65,18 @@ export function createOfficialPricingFetcher(request: PricingHttpTransport = tra
         try {
             const first = await get()
             if (first.evidence.status !== 200) hostingFail('HOSTING_PRICING_SOURCE_INVALID')
-            if (metadataAge(first.evidence, new Date()) < PRICING_FRESH_MS) return result(first.html, 'fresh_200', [first.evidence])
-            // A stale body is never made fresh by local timestamps. Only a real
-            // conditional response may validate this exact stored representation.
+            if (hasRefreshHeadroom(first.evidence, new Date())) return result(first.html, 'fresh_200', [first.evidence])
+            // Revalidate before a cached body can expire between refresh ticks.
+            // Only a real conditional response can renew this representation;
+            // observation time never replaces the actual origin Date/Age.
             if (!strongEtag(first.evidence.etag)) hostingFail('HOSTING_PRICING_SOURCE_STALE')
             const second = await get(first.evidence.etag)
             if (second.evidence.status === 200) {
-                if (metadataAge(second.evidence, new Date()) >= PRICING_FRESH_MS) hostingFail('HOSTING_PRICING_SOURCE_STALE')
+                if (!hasRefreshHeadroom(second.evidence, new Date())) hostingFail('HOSTING_PRICING_SOURCE_STALE')
                 return result(second.html, 'conditional_200', [first.evidence, second.evidence])
             }
             if (second.html !== '' || second.evidence.etag !== first.evidence.etag || !strongEtag(second.evidence.etag) ||
-                (second.evidence.vary !== null && varyNames(second.evidence.vary).join(',') !== varyNames(first.evidence.vary).join(',')) || metadataAge(second.evidence, new Date()) >= PRICING_FRESH_MS) hostingFail('HOSTING_PRICING_REVALIDATION_INVALID')
+                (second.evidence.vary !== null && varyNames(second.evidence.vary).join(',') !== varyNames(first.evidence.vary).join(',')) || !hasRefreshHeadroom(second.evidence, new Date())) hostingFail('HOSTING_PRICING_REVALIDATION_INVALID')
             return result(first.html, 'revalidated_304', [first.evidence, second.evidence])
         }
         finally {
@@ -115,6 +117,9 @@ function result(html: string, mode: PricingSourceValidation['mode'], requests: P
     const sourceValidation = PricingSourceValidation.parse({ version: 'http-validation-v1', mode, url: HOSTED_PRICING_URL, requests })
     const last = requests[requests.length - 1]
     return { html, date: last.date, age: last.age ?? undefined, sourceValidation }
+}
+function hasRefreshHeadroom(value: { date: string, age: string | null, requestedAt: string, receivedAt: string }, now: Date): boolean {
+    return metadataAge(value, now) < PRICING_FRESH_MS - PRICING_MIN_REFRESH_VALIDITY_MS
 }
 function metadataAge(value: { date: string, age: string | null, requestedAt: string, receivedAt: string }, now: Date): number {
     const date = Date.parse(value.date), requested = Date.parse(value.requestedAt), received = Date.parse(value.receivedAt)

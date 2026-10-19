@@ -5,11 +5,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { UserIdentityEntity } from '../../src/app/authentication/user-identity/user-identity-entity'
 import { SydekyksPricingValidation1893000000000 } from '../../src/app/database/migration/postgres/1893000000000-SydekyksPricingValidation'
 import { FlagEntity } from '../../src/app/flags/flag.entity'
+import { HOSTED_AI_TIMEOUT_MS } from '../../src/app/hosting/hosting-ai-policy'
 import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
 import { createHostedOnboarding } from '../../src/app/hosting/hosting-onboarding'
 import { assertPreparedPricing, createHostedPricing, hostedPricingView, readApprovedPricing } from '../../src/app/hosting/hosting-pricing'
 import { PricingApprovalEntity, PricingObservationEntity } from '../../src/app/hosting/hosting-pricing-entities'
 import { createOfficialPricingFetcher, HOSTED_PRICING_URL, parseOfficialPricing, PRICING_CALENDAR, PricingHttpTransport } from '../../src/app/hosting/hosting-pricing-source'
+import { PRICING_FRESH_MS, PRICING_HTTP_DEADLINE_MS, PRICING_MIN_REFRESH_VALIDITY_MS, PRICING_REFRESH_MS } from '../../src/app/hosting/hosting-pricing-timing'
 import { hostingTransactions as tx } from '../../src/app/hosting/hosting-transactions'
 import { bootstrapHostedOperator, migratedHostedPGlite } from '../helpers/hosting-fixtures'
 
@@ -39,6 +41,39 @@ describe('official pricing conditional HTTP validation', () => {
         expect(request.mock.calls[0][0].timeout).toBeLessThanOrEqual(10000)
         expect(source.age).toBe('0')
         expect(parseOfficialPricing(source, new Date()).sourceValidation).toEqual(source.sourceValidation)
+    })
+    it('revalidates a seven-minute cached200 before it can expire ahead of the next refresh', async () => {
+        const { request, fetch } = sequence([response(200, html, { age: '420' }), response(304)])
+        const source = await fetch(), parsed = parseOfficialPricing(source, new Date())
+        expect(request).toHaveBeenCalledTimes(2)
+        expect(source.sourceValidation?.mode).toBe('revalidated_304')
+        expect(source.sourceValidation?.requests[0].age).toBe('420')
+        expect(source.sourceValidation?.requests[1].age).toBeNull()
+        expect(Date.now() - parsed.sourceAt.getTime()).toBeLessThan(2000)
+        expect(request.mock.calls[1][0].headers['If-None-Match']).toBe(etag)
+    })
+    it('keeps young cached source age and strict expiry instead of resetting it to observation time', async () => {
+        const { request, fetch } = sequence([response(200, html, { age: '180' })])
+        const source = await fetch(), now = new Date(), parsed = parseOfficialPricing(source, now)
+        const requestedAt = Date.parse(source.sourceValidation!.requests[0].requestedAt)
+        expect(request).toHaveBeenCalledTimes(1)
+        expect(source.sourceValidation?.mode).toBe('fresh_200')
+        expect(parsed.sourceAt.getTime()).toBe(requestedAt - 180_000)
+        expect(() => parseOfficialPricing(source, new Date(parsed.sourceAt.getTime() + PRICING_FRESH_MS))).toThrow('SOURCE_STALE')
+    })
+    it('requires conditional origin proof at the exact refresh-headroom boundary', async () => {
+        const age = String((PRICING_FRESH_MS - PRICING_MIN_REFRESH_VALIDITY_MS) / 1000)
+        const { request, fetch } = sequence([response(200, html, { age }), response(304)])
+        expect((await fetch()).sourceValidation?.mode).toBe('revalidated_304')
+        expect(request).toHaveBeenCalledTimes(2)
+        const noValidator = sequence([response(200, html, { age, etag: undefined })])
+        await expect(noValidator.fetch()).rejects.toThrow('STALE')
+        expect(noValidator.request).toHaveBeenCalledTimes(1)
+    })
+    it.each([200, 304])('rejects conditional%s with insufficient freshness even inside the ten-minute validity window', async status => {
+        const { request, fetch } = sequence([response(200, html, { age: '420' }), response(status, status === 304 ? '' : html, { age: '300' })])
+        await expect(fetch()).rejects.toThrow()
+        expect(request).toHaveBeenCalledTimes(2)
     })
     it('revalidates a stale200 only with exact same URL/variant and matching empty304 proof', async () => {
         const { request, fetch } = sequence([response(200, html, { age: '42000' }), response(304)])
@@ -165,7 +200,23 @@ describe('persisted pricing validation evidence', () => {
         await pricing.approve({ actor, input: { expectedRevision: before.revision, observationId: before.observationId!, termsHash: before.termsHash!, requestKey: apId(), validUntil: PRICING_CALENDAR.until, calendarVersion: PRICING_CALENDAR.version } })
         const quote = await tx.run({ dataSource: ds, fn: async manager => readApprovedPricing(manager, await tx.now(manager), 'deepseek-flash') })
         const approval = (await view()).approval
-        fetch = sequence([response(200, html, { age: '12000' }), response(304)]).fetch
+        // Worst accepted whole-second cache age: just below 3m30. Preserve its
+        // actual source age; allow the next five-minute timer, full HTTP deadline
+        // and 15 seconds scheduling delay while retaining the 65-second quote window.
+        const ageLimitSeconds = (PRICING_FRESH_MS - PRICING_MIN_REFRESH_VALIDITY_MS) / 1000
+        expect(ageLimitSeconds).toBe(210)
+        expect(PRICING_MIN_REFRESH_VALIDITY_MS - PRICING_REFRESH_MS - PRICING_HTTP_DEADLINE_MS - 15_000).toBeGreaterThanOrEqual(HOSTED_AI_TIMEOUT_MS + 5000)
+        const worstAccepted = sequence([response(200, html, { age: String(ageLimitSeconds - 1) })])
+        fetch = worstAccepted.fetch
+        await pricing.observe()
+        const cached = await view(), cachedObservation = await ds.getRepository(PricingObservationEntity).findOneByOrFail({ id: cached.observationId! })
+        expect(worstAccepted.request).toHaveBeenCalledTimes(1)
+        expect(cachedObservation.sourceValidation?.mode).toBe('fresh_200')
+        expect(cached.approval).toEqual(approval)
+        const slowNextTick = new Date(cachedObservation.observedAt.getTime() + PRICING_REFRESH_MS + PRICING_HTTP_DEADLINE_MS + 15_000)
+        const cachedQuote = await tx.run({ dataSource: ds, fn: manager => readApprovedPricing(manager, slowNextTick, 'deepseek-flash') })
+        expect(new Date(cachedQuote.validUntil).getTime() - slowNextTick.getTime()).toBeGreaterThanOrEqual(HOSTED_AI_TIMEOUT_MS + 5000)
+        fetch = sequence([response(200, html, { age: '420' }), response(304)]).fetch
         await pricing.observe()
         const after = await view()
         expect(after.status).toBe('ready')
@@ -174,6 +225,15 @@ describe('persisted pricing validation evidence', () => {
         expect(await ds.getRepository(PricingApprovalEntity).count()).toBe(1)
         await tx.run({ dataSource: ds, fn: async manager => assertPreparedPricing(manager, quote, await tx.now(manager)) })
         const observation = await ds.getRepository(PricingObservationEntity).findOneByOrFail({ id: after.observationId! })
+        // The same approved provider remains price-authorized across the next
+        // scheduled tick, including ten seconds of transport/scheduling delay.
+        // The prior implementation accepted Age420 and expired after180seconds.
+        const nextTick = new Date(observation.observedAt.getTime() + PRICING_REFRESH_MS + 10_000)
+        const nextQuote = await tx.run({ dataSource: ds, fn: manager => readApprovedPricing(manager, nextTick, 'deepseek-flash') })
+        expect(new Date(nextQuote.validUntil).getTime()).toBeGreaterThan(nextTick.getTime())
+        expect((await tx.run({ dataSource: ds, fn: manager => hostedPricingView(manager, nextTick) })).status).toBe('ready')
+        const expires = new Date(Math.min(observation.observedAt.getTime(), observation.sourceAt!.getTime()) + PRICING_FRESH_MS)
+        await expect(tx.run({ dataSource: ds, fn: manager => readApprovedPricing(manager, expires, 'deepseek-flash') })).rejects.toThrow('PRICING_UNAVAILABLE')
         expect(observation.sourceValidation?.mode).toBe('revalidated_304')
         expect(observation.sourceValidation!.requests.map(item => item.status)).toEqual([200, 304])
         expect(JSON.stringify(after)).not.toContain('sourceValidation')
