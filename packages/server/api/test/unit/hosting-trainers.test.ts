@@ -89,7 +89,8 @@ describe('current scoped Platform Trainer authority', ()=>{
     })
     it('revokes pending setup on removal; reactivation does not resurrect it', async ()=>{
         await role();const { token } = await newRecipient();await role(false);await role(true)
-        await expect(service().inspect(token)).rejects.toThrow('SETUP_UNAVAILABLE')
+        // Service reports stale issuer authority; the public controller masks this as setup unavailable.
+        await expect(service().inspect(token)).rejects.toThrow('TRAINER_REQUIRED')
         expect((await service().portfolio({ actor: await actor() })).pending).toEqual([])
     })
     it('materializes only scoped OPERATOR access while preserving client owner ADMIN and denying unrelated scope', async ()=>{
