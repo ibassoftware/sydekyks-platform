@@ -5,19 +5,30 @@ import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode'
 import { authenticationSession } from '@/lib/authentication-session';
 
 import { currentAuthSession, subscribeHostedSession } from './auth-session';
+import {
+  HostedDocumentSession,
+  hostedDocumentReloadPath,
+} from './document-session-navigation';
 
-function documentSession() {
+function readDocumentSession(): HostedDocumentSession {
   let project = null;
   try {
     project = authenticationSession.getProjectId();
   } catch {
     // A malformed credential is anonymous and cannot select a private project.
   }
-  return JSON.stringify([
-    authenticationSession.getToken(),
-    project,
-    currentAuthSession().kind,
-  ]);
+  const session = currentAuthSession();
+  return {
+    token: authenticationSession.getToken(),
+    projectId: project,
+    kind: session.kind,
+    id: session.id,
+    platformId: session.platformId,
+  };
+}
+
+function documentSession() {
+  return JSON.stringify(readDocumentSession());
 }
 
 // Global collections own independent caches. A new document gives the next
@@ -40,16 +51,21 @@ function HostedDocumentLifetime({ children }: { children: React.ReactNode }) {
     documentSession,
     documentSession,
   );
-  const initial = useRef(current);
+  const initial = useRef({ key: current, session: readDocumentSession() });
   const reloading = useRef(false);
-  const changed = current !== initial.current;
+  const changed = current !== initial.current.key;
   useLayoutEffect(() => {
     const reload = () => {
       if (reloading.current) return;
       reloading.current = true;
-      // Never carry another account's conversation/project URL into this session.
+      // Always reset document-owned caches. Only an unchanged account may keep
+      // its selected project-list route; other session changes use a safe root.
       window.location.replace(
-        currentAuthSession().kind === 'anonymous' ? '/sign-in' : '/',
+        hostedDocumentReloadPath(
+          initial.current.session,
+          readDocumentSession(),
+          window.location,
+        ),
       );
     };
     if (changed) reload();
@@ -61,7 +77,8 @@ function HostedDocumentLifetime({ children }: { children: React.ReactNode }) {
       documentRoot.style.display = 'none';
     };
     const restore = (event: PageTransitionEvent) => {
-      if (event.persisted || documentSession() !== initial.current) reload();
+      if (event.persisted || documentSession() !== initial.current.key)
+        reload();
       else documentRoot.style.display = originalDisplay;
     };
     window.addEventListener('pagehide', hide);

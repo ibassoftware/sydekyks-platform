@@ -1,5 +1,6 @@
 import {
   ApFlagId,
+  FlowRun,
   FlowRunStatus,
   isFlowRunStateTerminal,
   StepOutputStatus,
@@ -78,6 +79,21 @@ function getStatusText({
   }
 }
 
+const EXPIRED_RUN_ACCESS_MESSAGE =
+  'Workspace access has expired. Contact your administrator or Sydekyks to renew access before running this Mission.';
+
+function isExpiredRunAccessRefusal(run: FlowRun): boolean {
+  return (
+    run.status === FlowRunStatus.FAILED &&
+    !!run.finishTime &&
+    !run.startTime &&
+    Object.keys(run.steps ?? {}).length === 0 &&
+    run.failedStep?.name === 'trigger' &&
+    run.failedStep.displayName === 'Run access' &&
+    run.failedStep.message === EXPIRED_RUN_ACCESS_MESSAGE
+  );
+}
+
 const RunInfoWidget = () => {
   const run = useBuilderStateContext((state) => state.run);
   const { variant, Icon } = run
@@ -99,6 +115,7 @@ const RunInfoWidget = () => {
     status: run.status,
     ignoreInternalError: false,
   });
+  const expiredRunAccess = isExpiredRunAccessRefusal(run);
   return (
     <LargeWidgetWrapper
       containerClassName={cn(
@@ -120,7 +137,7 @@ const RunInfoWidget = () => {
           </span>
 
           <div className="shrink-0 text-gray-12">
-            {isRunTerminal && (
+            {isRunTerminal && run.startTime && (
               <>
                 &nbsp;-&nbsp;
                 {run.startTime && (
@@ -132,15 +149,17 @@ const RunInfoWidget = () => {
                     )}
                   />
                 )}
-                {', '}
                 {run.finishTime && run.startTime && (
-                  <DateSection
-                    text={t('Took')}
-                    dateOrDuration={formatUtils.formatDuration(
-                      new Date(run.finishTime).getTime() -
-                        new Date(run.startTime).getTime(),
-                    )}
-                  />
+                  <>
+                    {', '}
+                    <DateSection
+                      text={t('Took')}
+                      dateOrDuration={formatUtils.formatDuration(
+                        new Date(run.finishTime).getTime() -
+                          new Date(run.startTime).getTime(),
+                      )}
+                    />
+                  </>
                 )}
               </>
             )}
@@ -159,13 +178,21 @@ const RunInfoWidget = () => {
 
         <div className="flex items-center gap-2">
           <ResumeLiveFollowButton isRunTerminal={isRunTerminal} />
-          {run.failedStep && (
+          {run.failedStep && !expiredRunAccess && (
             <JumpToFailedStepButton failedStepName={run.failedStep.name} />
           )}
           <EditFlowOrViewDraftButton
             onCanvas={false}
           ></EditFlowOrViewDraftButton>
         </div>
+        {expiredRunAccess && (
+          <p
+            role="alert"
+            className="mt-2 w-full max-w-prose text-sm text-gray-12 break-words"
+          >
+            {t(EXPIRED_RUN_ACCESS_MESSAGE)}
+          </p>
+        )}
       </div>
     </LargeWidgetWrapper>
   );
