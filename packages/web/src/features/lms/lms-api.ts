@@ -22,7 +22,7 @@ export type Enrollment = {
   identityId: string;
   courseId: string;
   grantPlatformId: string | null;
-  accessType: 'learning' | 'partner_training';
+  accessType: 'learning' | 'partner_course' | 'partner_training';
   package: 'core' | 'launch' | null;
   paymentReference: string | null;
   workspacePlatformId: string | null;
@@ -35,6 +35,13 @@ export type Enrollment = {
   practicalReviews: Review[];
   learnerEmail?: string | null;
   workspaceName?: string | null;
+  certified?: boolean;
+  assessment?: {
+    id: string;
+    startsAt: string;
+    endsAt: string;
+    revoked: boolean;
+  } | null;
   training?: {
     activated: true;
     startsAt: string;
@@ -109,7 +116,12 @@ export type LearnerCandidate = {
   lastName: string;
   verified: boolean;
   verificationMethod: 'operator' | 'email' | 'pending';
-  admissionSource: 'tenant_admin' | 'operator' | 'email' | 'pending';
+  admissionSource:
+    | 'tenant_admin'
+    | 'operator'
+    | 'trainer'
+    | 'email'
+    | 'pending';
   emailOwnershipVerified: boolean;
   workspaces: { platformId: string; name: string }[];
 };
@@ -150,6 +162,7 @@ const requests = {
     api.get<{
       operator: boolean;
       canManage: boolean;
+      trainer: boolean;
       enrollments: {
         id: string;
         courseId: string;
@@ -182,6 +195,8 @@ const requests = {
         answers,
       },
     ),
+  trainerClients: () =>
+    api.get<{ platformId: string; name: string }[]>(`${base}/operator/clients`),
   courses: () => api.get<Course[]>(`${base}/operator/courses`),
   createCourse: (body: {
     title: string;
@@ -221,6 +236,29 @@ const requests = {
     workspacePlatformId?: string;
     paymentVerified: true;
   }) => api.post<Enrollment>(`${base}/operator/enroll`, body),
+  convertTraining: (
+    id: string,
+    body: {
+      package: 'core' | 'launch';
+      paymentReference: string;
+      workspacePlatformId: string;
+      paymentVerified: true;
+    },
+  ) =>
+    api.post<Enrollment>(
+      `${base}/operator/enrollments/${id}/convert-training`,
+      { ...body, expectedPriorAccessType: 'partner_course' },
+    ),
+  activateAssessment: (id: string) =>
+    api.post(`/v1/hosting/operator/assessment/enrollments/${id}/activate`, {}),
+  revokeAssessment: (id: string) =>
+    api.post(`/v1/hosting/operator/assessment/enrollments/${id}/revoke`, {}),
+  enrollPartnerCourse: (identityId: string, courseId: string) =>
+    api.post<Enrollment>(`${base}/operator/enroll`, {
+      accessType: 'partner_course',
+      identityId,
+      courseId,
+    }),
   enrollLearning: (identityId: string, courseId: string) =>
     api.post<Enrollment>(`${base}/operator/enroll`, {
       accessType: 'learning',

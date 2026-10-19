@@ -29,9 +29,11 @@ const safetyLabels = {
 export function LmsOperator({
   scope,
   globalOperator,
+  trainer,
 }: {
   scope: number;
   globalOperator: boolean;
+  trainer: boolean;
 }) {
   const client = useQueryClient();
   const courses = useQuery({
@@ -40,6 +42,12 @@ export function LmsOperator({
     gcTime: 0,
   });
   const access = useHostedOperatorAccess();
+  const trainerClients = useQuery({
+    queryKey: ['lms', scope, 'trainer', 'clients'],
+    queryFn: lmsApi.trainerClients,
+    enabled: trainer,
+    gcTime: 0,
+  });
   const [after, setAfter] = useState<string | null>(null);
   const clients = useQuery(
     operatorClientsQuery(
@@ -105,7 +113,7 @@ export function LmsOperator({
               const created = await lmsApi.createCourse({
                 title,
                 scope: kind === 'private' ? 'tenant' : 'global',
-                ...(kind === 'private' && globalOperator && owner
+                ...(kind === 'private' && (globalOperator || trainer) && owner
                   ? { ownerPlatformId: owner }
                   : {}),
                 audience: kind === 'partner' ? 'partner' : 'end_user',
@@ -160,7 +168,7 @@ export function LmsOperator({
               </option>
             </select>
           </label>
-          {globalOperator && kind === 'private' && (
+          {(globalOperator || trainer) && kind === 'private' && (
             <div className="space-y-3">
               <label className="block" htmlFor="course-owner">
                 Owning workspace
@@ -170,45 +178,53 @@ export function LmsOperator({
                   value={owner}
                   onChange={(event) => setOwner(event.target.value)}
                 >
-                  <option value="">My current workspace</option>
-                  {clients.data?.clients.map((item) => (
-                    <option key={item.platformId} value={item.platformId}>
-                      {item.name}
-                    </option>
-                  ))}
+                  <option value="">
+                    {trainer
+                      ? 'Choose an assigned client workspace'
+                      : 'My current workspace'}
+                  </option>
+                  {(trainer ? trainerClients.data : clients.data?.clients)?.map(
+                    (item) => (
+                      <option key={item.platformId} value={item.platformId}>
+                        {item.name}
+                      </option>
+                    ),
+                  )}
                 </select>
               </label>
-              <div className="flex gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!after}
-                  onClick={() => {
-                    setAfter(null);
-                    setOwner('');
-                  }}
-                >
-                  First workspaces
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!clients.data?.next}
-                  onClick={() => {
-                    setAfter(clients.data?.next ?? null);
-                    setOwner('');
-                  }}
-                >
-                  More workspaces
-                </Button>
-              </div>
+              {globalOperator && (
+                <div className="flex gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!after}
+                    onClick={() => {
+                      setAfter(null);
+                      setOwner('');
+                    }}
+                  >
+                    First workspaces
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!clients.data?.next}
+                    onClick={() => {
+                      setAfter(clients.data?.next ?? null);
+                      setOwner('');
+                    }}
+                  >
+                    More workspaces
+                  </Button>
+                </div>
+              )}
             </div>
           )}
           <p className="text-sm text-gray-11">
             Lesson-only courses do not include partner certification or training
             workspace credits. Partner status is approved separately.
           </p>
-          <Button disabled={busy} type="submit">
+          <Button disabled={busy || (trainer && !owner)} type="submit">
             Create course draft
           </Button>
         </form>
@@ -246,6 +262,7 @@ export function LmsOperator({
           scope={scope}
           current={current}
           globalOperator={globalOperator}
+          trainer={trainer}
         />
       )}
     </div>
@@ -255,10 +272,12 @@ function CourseEditor({
   scope,
   current,
   globalOperator,
+  trainer,
 }: {
   scope: number;
   current: Course;
   globalOperator: boolean;
+  trainer: boolean;
 }) {
   const client = useQueryClient();
   const hosted = useHostedBillingEnabled();
@@ -268,7 +287,7 @@ function CourseEditor({
   const members = useQuery({
     queryKey: ['lms', scope, current.id, 'members'],
     queryFn: () => lmsApi.members(current.id),
-    enabled: !partnerTraining && !globalLookup,
+    enabled: (!partnerTraining || trainer) && !globalLookup,
     gcTime: 0,
   });
   const enrollments = useQuery({
@@ -290,6 +309,7 @@ function CourseEditor({
   const workspaceCreating = useRef(false);
   const [deliveryEnrollment, setDeliveryEnrollment] = useState('');
   const [repairWorkspace, setRepairWorkspace] = useState('');
+  const [conversionEnrollment, setConversionEnrollment] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
   const [workspacePlatformId, setWorkspacePlatformId] = useState('');
   const [tier, setTier] = useState<'core' | 'launch'>('core');
@@ -468,9 +488,13 @@ function CourseEditor({
     <div className="space-y-10">
       {message && <p role="status">{message}</p>}
       <section>
-        <h2 className="text-xl font-semibold">Course publication</h2>
+        <h2 className="text-xl font-semibold">
+          {current.canEdit ? 'Course publication' : 'Course overview'}
+        </h2>
         <p className="my-3 max-w-3xl text-gray-11">
-          {partnerTraining
+          {partnerTraining && trainer
+            ? 'This published partner course is managed by Sydekyks. Assign access to your learners below; payment, runtime allowances and credential approval are separate.'
+            : partnerTraining
             ? 'Partner training includes a written exam and practical assessment. Review every lesson and the 60 or more question candidates before publishing.'
             : 'End-user courses contain lessons only. They do not issue partner credentials or activate hosting credits.'}{' '}
           Published content is fixed; create another course for later changes.
@@ -484,8 +508,10 @@ function CourseEditor({
             <div className="max-w-3xl space-y-4">
               <p className="font-medium">
                 {current.status === 'published' ? 'Published' : 'Draft'} ·
-                Revision {current.revision} · {content.questions.length}{' '}
-                question candidates
+                Revision {current.revision} · {content.lessons.length} lessons
+                {current.canEdit && partnerTraining && (
+                  <> · {content.questions.length} question candidates</>
+                )}
               </p>
               <label className="block" htmlFor="course-title">
                 Course title
@@ -628,7 +654,7 @@ function CourseEditor({
                   </label>
                 </>
               )}
-              {partnerTraining && (
+              {partnerTraining && current.canEdit && (
                 <label className="block" htmlFor="question-editor-select">
                   Review exam question
                   <select
@@ -777,12 +803,13 @@ function CourseEditor({
           )
         )}
       </section>
-      {!partnerTraining ? (
+      {!partnerTraining || trainer ? (
         <section className="max-w-3xl space-y-4">
           <h2 className="text-xl font-semibold">Course enrollments</h2>
           <p className="text-gray-11">
-            Give this learner access to this course for one year. This does not
-            grant partner status, certification or hosting credits.
+            {partnerTraining
+              ? 'Give an assigned partner access to this course and its assessments. This does not verify payment, grant hosting credits or change partner status. Sydekyks controls independent assessment and certification.'
+              : 'Give this learner access to this course for one year. This does not grant partner status, certification or hosting credits.'}
           </p>
           {globalLookup ? (
             <div className="space-y-3">
@@ -841,7 +868,9 @@ function CourseEditor({
             }
             onClick={() =>
               run(() =>
-                lmsApi.enrollLearning(
+                (partnerTraining
+                  ? lmsApi.enrollPartnerCourse
+                  : lmsApi.enrollLearning)(
                   globalLookup ? learner!.identityId : identityId,
                   current.id,
                 ),
@@ -866,10 +895,19 @@ function CourseEditor({
                 </span>
                 <Button
                   variant="outline"
-                  disabled={busy || item.status !== 'active'}
+                  disabled={
+                    busy ||
+                    item.status !== 'active' ||
+                    (trainer &&
+                      (item.certified ||
+                        item.accessType === 'partner_training'))
+                  }
                   onClick={() => run(() => lmsApi.revoke(item.id))}
                 >
-                  Revoke course access
+                  {trainer &&
+                  (item.certified || item.accessType === 'partner_training')
+                    ? 'Contact Sydekyks admin'
+                    : 'Revoke course access'}
                 </Button>
               </li>
             ))}
@@ -895,21 +933,75 @@ function CourseEditor({
               )
                 return;
               void run(async () => {
-                const recorded = await lmsApi.enroll({
-                  accessType: 'partner_training',
-                  identityId: hosted ? learner!.identityId : identityId,
-                  courseId: current.id,
-                  package: tier,
-                  paymentReference,
-                  ...(workspacePlatformId ? { workspacePlatformId } : {}),
-                  paymentVerified: true,
-                });
+                const converting = enrollments.data?.find(
+                  (item) => item.id === conversionEnrollment,
+                );
+                if (
+                  converting &&
+                  converting.identityId !==
+                    (hosted ? learner!.identityId : identityId)
+                )
+                  throw new Error(
+                    'Choose the same learner as the course enrollment.',
+                  );
+                const recorded = conversionEnrollment
+                  ? await lmsApi.convertTraining(conversionEnrollment, {
+                      package: tier,
+                      paymentReference,
+                      workspacePlatformId,
+                      paymentVerified: true,
+                    })
+                  : await lmsApi.enroll({
+                      accessType: 'partner_training',
+                      identityId: hosted ? learner!.identityId : identityId,
+                      courseId: current.id,
+                      package: tier,
+                      paymentReference,
+                      ...(workspacePlatformId ? { workspacePlatformId } : {}),
+                      paymentVerified: true,
+                    });
                 setDeliveryEnrollment(recorded.id);
                 setRepairWorkspace('');
                 setVerifiedPayment(false);
               });
             }}
           >
+            <label className="block" htmlFor="convert-enrollment">
+              Paid training record
+              <select
+                id="convert-enrollment"
+                className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
+                value={conversionEnrollment}
+                onChange={(event) => {
+                  const row = enrollments.data?.find(
+                    (item) => item.id === event.target.value,
+                  );
+                  setConversionEnrollment(event.target.value);
+                  setLearnerEmail(row?.learnerEmail ?? '');
+                  setLearner(null);
+                  setWorkspacePlatformId('');
+                  setVerifiedPayment(false);
+                }}
+              >
+                <option value="">New paid enrollment</option>
+                {enrollments.data
+                  ?.filter(
+                    (item) =>
+                      item.accessType === 'partner_course' &&
+                      item.status === 'active',
+                  )
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      Convert existing course access ·{' '}
+                      {item.learnerEmail || 'Learner'}
+                    </option>
+                  ))}
+              </select>
+              <span className="mt-2 block text-sm text-gray-11">
+                Converting keeps this learner’s progress, exam attempts and any
+                existing credential. Hosting activation is separate.
+              </span>
+            </label>
             {hosted ? (
               <div className="space-y-3">
                 <label className="block" htmlFor="learner-email">
@@ -945,7 +1037,9 @@ function CourseEditor({
                 )}
                 {learner?.verified && (
                   <p className="break-words text-sm">
-                    {learner.admissionSource === 'tenant_admin'
+                    {learner.admissionSource === 'trainer'
+                      ? 'Trainer admitted'
+                      : learner.admissionSource === 'tenant_admin'
                       ? 'Client admin admitted'
                       : learner.admissionSource === 'operator'
                       ? 'Operator admitted'
@@ -1070,7 +1164,9 @@ function CourseEditor({
               }
               type="submit"
             >
-              Record enrollment
+              {conversionEnrollment
+                ? 'Convert to paid training'
+                : 'Record enrollment'}
             </Button>
           </form>
         </section>
@@ -1110,6 +1206,61 @@ function CourseEditor({
           </label>
           {delivery && (
             <div className="space-y-4">
+              {delivery.package === 'core' && delivery.training && (
+                <section
+                  className="space-y-3 border-y border-gray-6 py-4"
+                  aria-labelledby="assessment-access-heading"
+                >
+                  <h3 id="assessment-access-heading" className="font-semibold">
+                    Limited assessment workspace
+                  </h3>
+                  <p className="text-sm text-gray-11">
+                    After the original 60-day training term, a Sydekyks assessor
+                    can open one assessment allowance: 100 Credits and a fixed
+                    $1 managed AI budget. It ends at the original 90-day
+                    assessment deadline and cannot renew or restart.
+                  </p>
+                  {delivery.assessment ? (
+                    <>
+                      <p role="status" className="text-sm">
+                        {delivery.assessment.revoked
+                          ? 'Assessment access revoked'
+                          : 'Assessment allowance created'}{' '}
+                        · ends{' '}
+                        {new Date(delivery.assessment.endsAt).toLocaleString()}.
+                        Repeating activation does not reset usage or dates.
+                      </p>
+                      <Button
+                        variant="outline"
+                        disabled={busy || delivery.assessment.revoked}
+                        onClick={() =>
+                          run(() => lmsApi.revokeAssessment(delivery.id))
+                        }
+                      >
+                        Revoke assessment workspace access
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      disabled={
+                        busy ||
+                        delivery.status !== 'active' ||
+                        delivery.training.revoked ||
+                        new Date(delivery.training.endsAt).getTime() >
+                          Date.now() ||
+                        new Date(delivery.assessmentUntil).getTime() <=
+                          Date.now()
+                      }
+                      onClick={() =>
+                        run(() => lmsApi.activateAssessment(delivery.id))
+                      }
+                    >
+                      Open one-time assessment access
+                    </Button>
+                  )}
+                </section>
+              )}
               <p className="break-words text-sm">
                 Receipt: {delivery.paymentReference} ·{' '}
                 {delivery.package === 'core'

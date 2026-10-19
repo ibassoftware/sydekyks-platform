@@ -14,7 +14,7 @@ export const hostingAssessmentController: FastifyPluginAsyncZod = async app => {
     app.addHook('onSend', async (_request, reply) => {
         void reply.header('Cache-Control', 'private, no-store').header('Vary', 'Authorization') 
     })
-    for (const action of ['activate', 'revoke'] as const) app.post(`/assessment/enrollments/:id/${action}`, { config, schema }, async request => {
+    for (const action of ['activate', 'revoke'] as const) app.post(`/enrollments/:id/${action}`, { config, schema }, async request => {
         if (request.principal.type !== PrincipalType.USER) hostingFail('HOSTING_ACCESS_DENIED')
         const principal = request.principal
         const user = await databaseConnection().getRepository(UserEntity).findOneBy({ id: principal.id, platformId: principal.platform.id })

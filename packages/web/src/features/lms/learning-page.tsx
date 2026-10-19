@@ -103,7 +103,11 @@ function LearningCatalogue({
       </div>
       {manage ? (
         <main className="mx-auto w-full max-w-6xl p-4 md:p-8">
-          <LmsOperator scope={scope} globalOperator={catalogue.data.operator} />
+          <LmsOperator
+            scope={scope}
+            globalOperator={catalogue.data.operator}
+            trainer={catalogue.data.trainer}
+          />
         </main>
       ) : selected ? (
         <LearningSession
@@ -402,17 +406,41 @@ function LearningSession({
             </h2>
             <p className="mt-3 max-w-3xl leading-7">
               Pass the written exam and practical assessment, including every
-              safety check, then receive assessor approval. Both training
-              packages use the same standard. This is a platform-specific
-              credential issued by Sydekyks.
+              safety check, then receive assessor approval. This is a
+              platform-specific credential issued by Sydekyks.
             </p>
             <p className="mt-2 text-sm text-gray-11">
               Assessment window ends{' '}
               {new Date(enrollment.assessmentUntil).toLocaleDateString()}. One
               resit is included for each failed component. Contact your
-              instructor to arrange the practical walkthrough and your included
-              coaching sessions.
+              instructor to arrange the practical walkthrough. Coaching and
+              hosted workspace allowances depend on your package.
             </p>
+            {enrollment.accessType === 'partner_course' && (
+              <p className="mt-3 text-sm text-gray-11">
+                Your access covers this course and its assessments. Payment,
+                coaching and hosted workspace access are arranged separately.
+              </p>
+            )}
+            {enrollment.package === 'core' && (
+              <div className="mt-4 border-y border-gray-6 py-4 text-sm leading-6">
+                <p>
+                  The Core training workspace lasts 60 days. If you still need
+                  to demonstrate your work after that term, contact a Sydekyks
+                  assessor before your assessment deadline to request limited
+                  one-time assessment access.
+                </p>
+                {enrollment.assessment && (
+                  <p className="mt-2" role="status">
+                    {enrollment.assessment.revoked
+                      ? 'Assessment workspace access has been revoked.'
+                      : `Your one-time assessment workspace allowance ends ${new Date(
+                          enrollment.assessment.endsAt,
+                        ).toLocaleString()}. Usage and dates do not restart.`}
+                  </p>
+                )}
+              </div>
+            )}
             {certificate && (
               <div className="mt-4 border-y border-gray-6 py-4">
                 <p className="font-medium">
