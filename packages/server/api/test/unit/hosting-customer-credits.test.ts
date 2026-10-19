@@ -20,6 +20,8 @@ import { saveManagedSettings } from '../../src/app/hosting/hosting-managed-setti
 import { createHostedOnboarding } from '../../src/app/hosting/hosting-onboarding'
 import { createHostedPricing, hostedPricingView } from '../../src/app/hosting/hosting-pricing'
 import { PRICING_CALENDAR } from '../../src/app/hosting/hosting-pricing-source'
+import { createHostedStripe } from '../../src/app/hosting/hosting-stripe'
+import { HostingStripeCommandEntity } from '../../src/app/hosting/hosting-stripe-entities'
 import { HostingActor, hostingTransactions as tx } from '../../src/app/hosting/hosting-transactions'
 import { readHostedCredits } from '../../src/app/hosting/hosting-usage'
 import { bootstrapHostedOperator, migratedHostedPGlite } from '../helpers/hosting-fixtures'
@@ -80,6 +82,22 @@ beforeEach(async () => {
 })
 
 describe('customer execution-credit boundary', () => {
+    it('defaults to manual billing and rejects checkout and portal before Stripe configuration or commands', async () => {
+        vi.stubEnv('AP_HOSTED_BILLING_MODE', 'manual')
+        vi.stubEnv('AP_HOSTED_STRIPE_SECRET_KEY', ''); vi.stubEnv('AP_HOSTED_STRIPE_CATALOG_JSON', '')
+        const auth = await headers(), before = await ds.getRepository(HostingStripeCommandEntity).count()
+        const overview = await app.inject({ url: '/api/v1/hosting/billing/overview', headers: auth })
+        expect(overview.statusCode).toBe(200)
+        expect(overview.json()).toMatchObject({ billingMode: 'manual', environment: 'manual', portal: { enabled: false, reason: 'manual_billing' } })
+        expect(overview.json().plans.every((plan: { checkout: { enabled: boolean, reason: string } }) => !plan.checkout.enabled && plan.checkout.reason === 'manual_billing')).toBe(true)
+        for (const path of ['checkout', 'portal']) {
+            const result = await app.inject({ method: 'POST', url: '/api/v1/hosting/billing/' + path, headers: auth, payload: path === 'checkout' ? { planId: 'starter' } : {} })
+            expect(result.statusCode).toBe(403)
+            expect(result.json()).toEqual({ code: 'HOSTING_MANUAL_BILLING_REQUIRED' })
+        }
+        await expect(createHostedStripe({ dataSource: ds })).rejects.toThrow('HOSTING_MANUAL_BILLING_REQUIRED')
+        expect(await ds.getRepository(HostingStripeCommandEntity).count()).toBe(before)
+    })
     it('strips supplier budgets from customer billing DTOs while preserving the full internal service/schema', async () => {
         const full = await createHostedBillingView({ dataSource: ds }).read(client.actor)
         expect(HostedBillingOverview.parse(full)).toEqual(full)

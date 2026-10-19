@@ -14,6 +14,8 @@ import { HostingActor, HostingError, hostingFail, hostingTransactions as tx } fr
 const EVENTS = new Set(['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.async_payment_failed', 'invoice.paid', 'invoice.payment_failed', 'invoice.payment_action_required', 'invoice.finalization_failed', 'customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted', 'charge.refunded', 'refund.updated', 'charge.dispute.created', 'charge.dispute.updated', 'charge.dispute.closed', 'credit_note.created', 'credit_note.updated', 'credit_note.voided'])
 export async function createHostedStripe({ dataSource }: { dataSource: DataSource }) {
     if (hostingConfiguration.getServiceMode() !== 'hosted') hostingFail('HOSTED_INSTALLATION_REQUIRED')
+    // Block before reading Stripe configuration or constructing its network adapter.
+    if (hostingConfiguration.getBillingMode() !== 'stripe_test') hostingFail('HOSTING_MANUAL_BILLING_REQUIRED')
     const policy = readStripePolicy()
     const adapter = await createStripeAdapter(policy)
     async function binding(manager: EntityManager, platformId: string): Promise<StripeBinding> {

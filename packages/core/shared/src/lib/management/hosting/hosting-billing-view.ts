@@ -2,13 +2,13 @@ import { z } from 'zod'
 
 const quantity = z.string().regex(/^\d{1,30}$/)
 const date = z.iso.datetime()
-export const HostedBillingActionReason = z.enum(['billing_unavailable', 'account_paused', 'billing_review', 'resource_limit', 'subscription_exists', 'checkout_pending', 'session_changed', 'recovery_required', 'customer_missing'])
+export const HostedBillingActionReason = z.enum(['manual_billing', 'billing_unavailable', 'account_paused', 'billing_review', 'resource_limit', 'subscription_exists', 'checkout_pending', 'session_changed', 'recovery_required', 'customer_missing'])
 const action = z.object({ enabled: z.boolean(), reason: HostedBillingActionReason.nullable(), continuing: z.boolean() })
 const meter = z.object({ state: z.enum(['active', 'expired', 'revoked', 'missing']), amount: quantity, consumed: quantity, reserved: quantity, available: quantity, validFrom: date.nullable(), validUntil: date.nullable() })
 const limits = z.object({ users: z.number().int().nonnegative(), projects: z.number().int().nonnegative(), executions: z.number().int().nonnegative(), concurrency: z.number().int().nonnegative(), aiCredits: z.number().int().nonnegative(), byokEnabled: z.literal(true) })
 export const HostedBillingOverview = z.object({
     schemaVersion: z.literal(1), platformId: z.string(), userId: z.string(), catalogVersion: z.string(), serverTime: date,
-    environment: z.literal('test'), planId: z.enum(['trial', 'training', 'assessment', 'starter', 'team']), status: z.enum(['trialing', 'active', 'suspended']),
+    billingMode: z.enum(['manual', 'stripe_test']).default('manual'), environment: z.enum(['manual', 'test']), planId: z.enum(['trial', 'training', 'assessment', 'starter', 'team']), status: z.enum(['trialing', 'active', 'suspended']),
     entitlementState: z.enum(['trial', 'training', 'assessment', 'paid', 'expired', 'paused']), validUntil: date, trialEndsAt: date, billingHold: z.boolean(),
     subscriptionStatus: z.string().nullable(), planChangesEnabled: z.literal(false),
     notice: z.enum(['account_paused', 'billing_review', 'billing_delayed']).nullable(),

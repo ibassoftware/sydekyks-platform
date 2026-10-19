@@ -47,6 +47,7 @@ async function training() {
     return binding
 }
 async function paid() {
+    vi.stubEnv('AP_HOSTED_BILLING_MODE', 'stripe_test')
     vi.stubEnv('AP_HOSTED_STRIPE_SECRET_KEY', 'sk_test_synthetic')
     vi.stubEnv('AP_HOSTED_STRIPE_WEBHOOK_SECRET', 'whsec_synthetic')
     vi.stubEnv('AP_HOSTED_STRIPE_CATALOG_JSON', JSON.stringify({ version: hostingCatalog.version, accountId: 'acct_synthetic', portalConfigurationId: 'bpc_synthetic', origin: 'http://localhost', plans: { starter: { priceId: 'price_starter', amountMinor: 1000, currency: 'usd' }, team: { priceId: 'price_team', amountMinor: 2000, currency: 'usd' } } }))

@@ -33,6 +33,7 @@ export function HostedBillingView({
   onCheckout,
   onPortal,
 }: Props) {
+  const manual = info.billingMode === 'manual';
   const blocked = stale || refreshing || pending !== null;
   return (
     <CenteredPage
@@ -55,9 +56,13 @@ export function HostedBillingView({
       <div className="space-y-6">
         <Alert role="status">
           <AlertDescription>
-            {t(
-              'Test billing. Stripe actions use test mode; no live payments are enabled.',
-            )}
+            {manual
+              ? t(
+                  'Payments are handled directly by Sydekyks. Contact the team to arrange a plan, renewal or invoice. Online checkout is unavailable.',
+                )
+              : t(
+                  'Test billing. Stripe actions use test mode; no live payments are enabled.',
+                )}
           </AlertDescription>
         </Alert>
         {stale && (
@@ -74,14 +79,14 @@ export function HostedBillingView({
             )}
           </Notice>
         )}
-        {checkoutReturn === 'success' && (
+        {!manual && checkoutReturn === 'success' && (
           <Notice>
             {t(
               'You returned from Checkout. Payment confirmation may still be pending. Your plan changes only after the server verifies payment.',
             )}
           </Notice>
         )}
-        {checkoutReturn === 'cancel' && (
+        {!manual && checkoutReturn === 'cancel' && (
           <Notice>
             {t(
               'Checkout closed. No plan change is confirmed by this return link.',
@@ -229,6 +234,8 @@ export function HostedBillingView({
                 <p className="mt-2 text-xl font-medium">
                   {plan.price
                     ? t('{price} / month', { price: price(plan.price) })
+                    : manual
+                    ? t('Arrange with Sydekyks')
                     : t('Purchasing unavailable')}
                 </p>
                 <ul className="my-4 space-y-2 text-sm text-gray-11">
@@ -252,22 +259,30 @@ export function HostedBillingView({
                   <li>{t('Managed AI is subject to service limits')}</li>
                 </ul>
                 <div className="mt-auto space-y-2">
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    disabled={blocked || !plan.checkout.enabled}
-                    onClick={() => onCheckout(plan.id)}
-                    aria-describedby={`hosted-plan-reason-${plan.id}`}
-                    aria-busy={pending === plan.id}
-                  >
-                    {pending === plan.id
-                      ? t('Opening Checkout…')
-                      : plan.checkout.continuing
-                      ? t('Continue test Checkout')
-                      : t('Choose {plan} in test mode', {
-                          plan: planName(plan.id),
-                        })}
-                  </Button>
+                  {manual ? (
+                    <p className="text-sm leading-6">
+                      {t(
+                        'Contact Sydekyks to request this plan. Access and renewal dates change only after the team confirms your payment and entitlement.',
+                      )}
+                    </p>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      disabled={blocked || !plan.checkout.enabled}
+                      onClick={() => onCheckout(plan.id)}
+                      aria-describedby={`hosted-plan-reason-${plan.id}`}
+                      aria-busy={pending === plan.id}
+                    >
+                      {pending === plan.id
+                        ? t('Opening Checkout…')
+                        : plan.checkout.continuing
+                        ? t('Continue test Checkout')
+                        : t('Choose {plan} in test mode', {
+                            plan: planName(plan.id),
+                          })}
+                    </Button>
+                  )}
                   <p
                     id={`hosted-plan-reason-${plan.id}`}
                     className="min-h-10 text-xs text-gray-11"
@@ -285,22 +300,28 @@ export function HostedBillingView({
             {t('Payments & invoices')}
           </h2>
           <p className="text-sm text-gray-11">
-            {t(
-              'Use Stripe to manage payment details, view invoices or cancel at the end of the paid period. Cancellation does not add a free hosted plan.',
-            )}
+            {manual
+              ? t(
+                  'Ask the Sydekyks team for payment instructions, invoices, changes or cancellation. This page shows your current recorded access and Credits; it does not collect payment.',
+                )
+              : t(
+                  'Use Stripe to manage payment details, view invoices or cancel at the end of the paid period. Cancellation does not add a free hosted plan.',
+                )}
           </p>
-          <Button
-            variant="outline"
-            disabled={blocked || !info.portal.enabled}
-            onClick={onPortal}
-            aria-describedby="hosted-portal-reason"
-            aria-busy={pending === 'portal'}
-          >
-            {pending === 'portal'
-              ? t('Opening Stripe…')
-              : t('Open test billing portal')}
-            <ExternalLink className="ml-2 size-4" aria-hidden="true" />
-          </Button>
+          {!manual && (
+            <Button
+              variant="outline"
+              disabled={blocked || !info.portal.enabled}
+              onClick={onPortal}
+              aria-describedby="hosted-portal-reason"
+              aria-busy={pending === 'portal'}
+            >
+              {pending === 'portal'
+                ? t('Opening Stripe…')
+                : t('Open test billing portal')}
+              <ExternalLink className="ml-2 size-4" aria-hidden="true" />
+            </Button>
+          )}
           <p id="hosted-portal-reason" className="text-xs text-gray-11">
             {reason(info.portal.reason)}
           </p>
@@ -418,6 +439,7 @@ function stateName(state: HostedCustomerBillingOverview['entitlementState']) {
 function reason(value: HostedBillingActionReason | null) {
   if (!value) return '';
   const messages: Record<HostedBillingActionReason, string> = {
+    manual_billing: t('Contact Sydekyks for manual billing support.'),
     billing_unavailable: t(
       'Purchasing is not configured. Your verified usage remains available.',
     ),

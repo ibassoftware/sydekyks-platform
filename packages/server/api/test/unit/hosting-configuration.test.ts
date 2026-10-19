@@ -17,6 +17,7 @@ describe('hosting configuration', () => {
         values.set('DB_TYPE', 'POSTGRES')
         values.set('REDIS_TYPE', 'STANDALONE')
         values.set('EXECUTION_MODE', 'SANDBOX_CODE_ONLY')
+        values.set('HOSTED_BILLING_MODE', 'stripe_test')
         values.set('HOSTED_STRIPE_SECRET_KEY', 'sk_test_disposable')
         values.set('HOSTED_STRIPE_WEBHOOK_SECRET', 'whsec_disposable')
         values.set('HOSTED_OPERATOR_IDENTITY_IDS', 'testoperatoridentity1')
@@ -48,6 +49,16 @@ describe('hosting configuration', () => {
         catch (error) {
             if (key) expect(String(error)).not.toContain(key)
         }
+    })
+
+    it('defaults to manual billing without requiring Stripe secrets and rejects invalid selection', () => {
+        hostedDefaults()
+        values.delete('HOSTED_BILLING_MODE'); values.delete('HOSTED_STRIPE_SECRET_KEY'); values.delete('HOSTED_STRIPE_WEBHOOK_SECRET')
+        expect(hostingConfiguration.getBillingMode()).toBe('manual')
+        expect(hostingConfiguration.validate()).toBe('hosted')
+        expect(() => hostingConfiguration.assertStripeBilling()).toThrow('HOSTING_MANUAL_BILLING_REQUIRED')
+        values.set('HOSTED_BILLING_MODE', 'live')
+        expect(() => hostingConfiguration.validate()).toThrow('AP_HOSTED_BILLING_MODE')
     })
 
     it('permits only validated bounded hosted configuration', () => {
