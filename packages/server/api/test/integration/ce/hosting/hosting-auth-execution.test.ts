@@ -1,11 +1,13 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { apId } from '@activepieces/core-utils'
+import { readFileSync } from 'node:fs'
+import { AIProviderName, apId } from '@activepieces/core-utils'
 import { AgentRunSource, EngineResponseStatus, ExecuteAgentRunJobData, ExecuteFlowJobData, ExecutionType, FileType, FlowRunStatus, FlowVersionState, LATEST_JOB_DATA_SCHEMA_VERSION, OtpType, PlatformRole, PrincipalType, RunEnvironment, StreamStepProgress, UserIdentityProvider, WorkerJobType } from '@activepieces/shared'
 import { Job } from 'bullmq'
 import fastify, { FastifyInstance } from 'fastify'
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
 import { DataSource } from 'typeorm'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AIProviderEntity } from '../../../../src/app/ai/ai-provider-entity'
 import { authenticationUtils } from '../../../../src/app/authentication/authentication-utils'
 import { authenticationController } from '../../../../src/app/authentication/authentication.controller'
 import { accessTokenManager } from '../../../../src/app/authentication/lib/access-token-manager'
@@ -20,14 +22,17 @@ import { FlagEntity } from '../../../../src/app/flags/flag.entity'
 import { FlowEntity } from '../../../../src/app/flows/flow/flow.entity'
 import { FlowRunEntity } from '../../../../src/app/flows/flow-run/flow-run-entity'
 import { FlowVersionEntity } from '../../../../src/app/flows/flow-version/flow-version-entity'
+import { encryptUtils } from '../../../../src/app/helper/encryption'
 import { errorHandler } from '../../../../src/app/helper/error-handler'
 import { jwtUtils } from '../../../../src/app/helper/jwt-utils'
+import { createHostedAiGateway } from '../../../../src/app/hosting/hosting-ai-gateway'
 import { hostingController } from '../../../../src/app/hosting/hosting-controller'
 import { HostingDispatchEntity } from '../../../../src/app/hosting/hosting-dispatch-entity'
 import { HostingAccountEntity, HostingGrantEntity, HostingReservationEntity } from '../../../../src/app/hosting/hosting-entities'
 import { createHostedExecution } from '../../../../src/app/hosting/hosting-execution'
 import { INSTALLATION_MODE_FLAG_ID } from '../../../../src/app/hosting/hosting-installation'
 import { createHostedLedger } from '../../../../src/app/hosting/hosting-ledger'
+import { HostingModelCallEntity } from '../../../../src/app/hosting/hosting-model-call-entity'
 import { createHostedOnboarding } from '../../../../src/app/hosting/hosting-onboarding'
 import { hostingServices } from '../../../../src/app/hosting/hosting-services'
 import { hostingTransactions } from '../../../../src/app/hosting/hosting-transactions'
@@ -524,5 +529,56 @@ describe('durable hosted execution coordinator', () => {
         await jobBroker(app.log).completeJob({ ...delivered, status: EngineResponseStatus.OK }, 'socket-real')
         expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(0)
         await job.queue.obliterate({ force: true })
+    })
+})
+
+
+// Real dispatch and accounting; only trusted provider transport is replayed.
+describe('persisted workflow AI payer admission', () => {
+    function textFlow(payer: 'managed' | 'byok', configId = apId()) {
+        const trigger = JSON.parse(readFileSync('packages/web/public/learning/templates/draft-ai-opportunity.json', 'utf8')).flows[0].trigger
+        const ai = trigger.nextAction.nextAction
+        ai.settings.input.provider = payer === 'byok' ? { provider: 'deepseek', configId } : { provider: 'activepieces' }
+        ai.settings.input.model = payer === 'byok' ? 'deepseek-flash' : 'sydekyks'
+        return trigger
+    }
+    function transport() {
+        return vi.fn(async () => ({ status: 200, data: { id: 'synthetic-replay', model: 'deepseek-flash', created: Math.floor(Date.now() / 1000), object: 'chat.completion', choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'Synthetic draft' } }], usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3, prompt_cache_hit_tokens: 0, prompt_cache_miss_tokens: 2 } } }))
+    }
+    it('admits DRAFT BYOK through normal dispatch, replays one reservation and settles without managed spending', async () => {
+        const value = await flow(), configId = apId()
+        await ds.getRepository(AIProviderEntity).insert({ id: configId, platformId: value.platformId, provider: AIProviderName.DEEPSEEK, displayName: 'Synthetic exact key', auth: await encryptUtils.encryptObject({ apiKey: 'synthetic-workflow-byok-not-a-real-key' }), config: {}, status: 'active', enabledForChat: false, projectScope: 'selected', projectIds: [value.projectId], modelScope: 'selected', modelIds: ['deepseek-flash'], statusVersion: 0 })
+        await ds.getRepository(FlowVersionEntity).update({ id: value.data.flowVersionId }, { trigger: textFlow('byok', configId), state: FlowVersionState.DRAFT })
+        await execution.prepare({ ...value.delivery, origin: value.origin }); await execution.admit({ ...value.delivery, queueToken: 'byok-root' })
+        const admissionId = await execution.admit({ ...value.delivery, queueToken: 'byok-root' }), fence = { ...value.delivery, admissionId, queueToken: 'byok-root', connectionId: 'byok-socket' }
+        const dispatch = await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ admissionId })
+        expect((await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: dispatch.reservationId! })).payer).toBe('byok')
+        expect(await ds.getRepository(HostingReservationEntity).countBy({ platformId: value.platformId, kind: 'execution' })).toBe(1)
+        expect(await execution.start(fence)).toBe(true)
+        const before = await ds.getRepository(HostingGrantEntity).findBy({ platformId: value.platformId, meter: 'managed_ai' }), complete = transport()
+        await createHostedAiGateway({ dataSource: ds, provider: { id: 'trusted-test-transport', endpoint: 'diagnostic://no-network', complete } }).execute({ scope: { admissionId, platformId: value.platformId, projectId: value.projectId }, request: { callKey: 'actual-step', attempt: 0, payer: { type: 'byok', configId }, model: 'deepseek-flash', messages: [{ role: 'user', content: 'Synthetic draft' }], max_tokens: 1 } })
+        expect(complete).toHaveBeenCalledTimes(1)
+        expect((await ds.getRepository(HostingModelCallEntity).findOneByOrFail({ admissionId })).state).toBe('settled')
+        expect(await ds.getRepository(HostingGrantEntity).findBy({ platformId: value.platformId, meter: 'managed_ai' })).toEqual(before)
+        await execution.complete({ ...fence, status: EngineResponseStatus.OK }); await execution.flowReceipt({ admissionId, connectionId: 'byok-socket', projectId: value.projectId, runId: value.data.runId, status: FlowRunStatus.SUCCEEDED })
+        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ platformId: value.platformId, meter: 'execution' })).consumed).toBe(1n)
+        expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(0)
+    })
+    it('rejects mixed paths before dispatch creation or charging', async () => {
+        const value = await flow(), trigger = textFlow('managed'); trigger.nextAction.nextAction.nextAction = textFlow('byok').nextAction.nextAction
+        await ds.getRepository(FlowVersionEntity).update({ id: value.data.flowVersionId }, { trigger, state: FlowVersionState.DRAFT })
+        await expect(execution.prepare({ ...value.delivery, origin: value.origin })).rejects.toThrow('MIXED_AI_PAYERS_UNSUPPORTED')
+        expect(await ds.getRepository(HostingDispatchEntity).countBy({ platformId: value.platformId })).toBe(0)
+        expect(await ds.getRepository(HostingReservationEntity).countBy({ platformId: value.platformId })).toBe(0)
+    })
+    it('blocks a later DRAFT payer flip before supplier send, preserving the original payer', async () => {
+        const value = await flow(), configId = apId(); await ds.getRepository(FlowVersionEntity).update({ id: value.data.flowVersionId }, { trigger: textFlow('managed'), state: FlowVersionState.DRAFT })
+        await execution.prepare({ ...value.delivery, origin: value.origin }); const admissionId = await execution.admit({ ...value.delivery, queueToken: 'draft-flip' }), fence = { ...value.delivery, admissionId, queueToken: 'draft-flip', connectionId: 'flip-socket' }
+        expect(await execution.start(fence)).toBe(true)
+        const dispatch = await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ admissionId }); await ds.getRepository(FlowVersionEntity).update({ id: value.data.flowVersionId }, { trigger: textFlow('byok', configId) })
+        const complete = transport(), gateway = createHostedAiGateway({ dataSource: ds, provider: { id: 'trusted-test-transport', endpoint: 'diagnostic://no-network', complete } })
+        await expect(gateway.execute({ scope: { admissionId, platformId: value.platformId, projectId: value.projectId }, request: { callKey: 'flipped-step', attempt: 0, payer: { type: 'byok', configId }, model: 'deepseek-flash', messages: [{ role: 'user', content: 'Must not send' }], max_tokens: 1 } })).rejects.toThrow('PAYER_CONFLICT')
+        expect(complete).not.toHaveBeenCalled(); expect(await ds.getRepository(HostingModelCallEntity).countBy({ admissionId })).toBe(0)
+        expect((await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: dispatch.reservationId! })).payer).toBe('managed')
     })
 })

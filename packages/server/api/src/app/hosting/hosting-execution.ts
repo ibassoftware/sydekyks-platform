@@ -14,6 +14,7 @@ import { WaitpointEntity } from '../waitpoints/waitpoint-entity'
 import { WaitpointStatus } from '../waitpoints/waitpoint-types'
 import { HostingDispatch, HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingReservationEntity } from './hosting-entities'
+import { currentHostedFlowPayer, hostedFlowPayer } from './hosting-flow-payer'
 import { createHostedLedger } from './hosting-ledger'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { HostingActor, HostingError, hostingFail, hostingTransactions as tx } from './hosting-transactions'
@@ -46,9 +47,11 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
             let generation = 0
             if (data.jobType === WorkerJobType.EXECUTE_FLOW) {
                 const flow = await manager.getRepository(FlowEntity).findOneBy({ id: data.flowId, projectId })
-                const version = await manager.getRepository(FlowVersionEntity).findOneBy({ id: data.flowVersionId, flowId: data.flowId })
+                const version = await manager.getRepository(FlowVersionEntity).findOne({ where: { id: data.flowVersionId, flowId: data.flowId }, lock: { mode: 'pessimistic_read' } })
                 const run = await manager.getRepository(FlowRunEntity).findOneBy({ id: data.runId, projectId, flowId: data.flowId, flowVersionId: data.flowVersionId })
                 if (!flow || !version || !run) hostingFail('HOSTING_FLOW_SCOPE_MISMATCH')
+                // Fail unsupported/mixed AI selections before creating a dispatch.
+                hostedFlowPayer(version, data.stepNameToTest)
                 flowRunId = data.runId
                 if (data.executionType === ExecutionType.RESUME) {
                     if (origin?.type !== 'resume' || data.resumeReason !== ResumeReason.WAITPOINT) hostingFail('HOSTING_WAITPOINT_REQUIRED')
@@ -175,7 +178,7 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
                 const ledger = createHostedLedger({ dataSource, manager })
                 const reservation = root.reservationId
                     ? await manager.getRepository(HostingReservationEntity).findOneByOrFail({ id: root.reservationId, platformId: root.platformId })
-                    : await ledger.reserveExecution({ actor: actorOf(root), projectId: root.projectId, key: root.rootKey, payer: 'managed' })
+                    : await ledger.reserveExecution({ actor: actorOf(root), projectId: root.projectId, key: root.rootKey, payer: root.payload?.jobType === WorkerJobType.EXECUTE_FLOW ? await currentHostedFlowPayer({ manager, flowId: root.payload.flowId, flowVersionId: root.payload.flowVersionId, projectId: root.projectId, stepNameToTest: root.payload.stepNameToTest }) : 'managed' })
                 if (root.reservationId === null) await manager.getRepository(HostingDispatchEntity).update({ id: root.id }, { reservationId: reservation.id })
                 if (reservation.state !== 'reserved') await ledger.resumeExecution({ actor: actorOf(dispatch), reservationId: reservation.id })
                 const admissionId = apId()
