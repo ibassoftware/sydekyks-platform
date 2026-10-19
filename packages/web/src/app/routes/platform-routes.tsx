@@ -18,6 +18,12 @@ import {
 import { useAdminControlClicks } from './platform/use-admin-control-clicks';
 import { useAdminPageViewed } from './platform/use-admin-page-viewed';
 
+const AccountRecoveryAdminPage = React.lazy(() =>
+  import('@/features/hosted-operator/recovery-admin-page').then((m) => ({
+    default: m.AccountRecoveryAdminPage,
+  })),
+);
+
 const TrainersAdminPage = React.lazy(() =>
   import('@/features/hosted-operator/trainers-page').then((m) => ({
     default: m.TrainersAdminPage,
@@ -142,6 +148,18 @@ const AI_TAB_PATHS = {
 const PIECES_TAB_PATHS = { pieces: '', 'piece-sets': 'piece-sets' };
 
 export const platformRoutes = [
+  {
+    path: '/platform/account-recovery',
+    element: (
+      <PlatformLayout>
+        <PageTitle titleKey="Account recovery">
+          <SuspenseWrapper>
+            <AccountRecoveryAdminPage />
+          </SuspenseWrapper>
+        </PageTitle>
+      </PlatformLayout>
+    ),
+  },
   {
     path: '/platform/trainers',
     element: (

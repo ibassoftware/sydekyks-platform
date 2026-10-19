@@ -14,6 +14,8 @@ import { AppSystemProp } from '../helper/system/system-props'
 import { hostingConfiguration } from '../hosting/hosting-configuration'
 import { HostingReservationEntity } from '../hosting/hosting-entities'
 import { hostingFail } from '../hosting/hosting-transactions'
+import { databaseConnection } from '../database/database-connection'
+import { cleanupHostedFiles, hostedFileBytes, saveHostedFile } from '../hosting/hosting-storage'
 import { projectRepo } from '../project/project-repo'
 import { fileCompressor } from './file-compressor'
 import { FileEntity } from './file.entity'
@@ -52,6 +54,7 @@ export const fileService = (log: FastifyBaseLogger) => ({
             created: dayjs().toISOString(),
             updated: dayjs().toISOString(),
         }
+        if (hostingConfiguration.getServiceMode() === 'hosted') return saveHostedFile(databaseConnection(), baseFile, await hostedFileBytes(params.data))
         const location = getLocationForFile(params.type)
         switch (location) {
             case FileLocation.DB: {
@@ -171,7 +174,8 @@ export const fileService = (log: FastifyBaseLogger) => ({
         const maximumFilesToDeletePerIteration = 4000
         const maximumFilesToDeletePerRun = 1_000_000
         if (hostingConfiguration.getServiceMode() === 'hosted') {
-            log.info('[FileService#deleteStaleBulk] Hosted cleanup awaits root-aware reference retention')
+            const deleted = await cleanupHostedFiles(databaseConnection(), types, EXECUTION_DATA_RETENTION_DAYS)
+            log.info({ deleted }, '[FileService#deleteStaleBulk] Hosted terminal-project retention sweep')
             return
         }
         const customRetentionProjects = await projectRepo().find({

@@ -20,6 +20,10 @@ import { FlowVersionEntity } from '../flows/flow-version/flow-version-entity'
 import { FolderEntity } from '../flows/folder/folder.entity'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
+import { HOSTING_TRAINER_ENTITIES } from '../hosting/hosting-trainer-entities'
+import { HOSTING_RECOVERY_ENTITIES } from '../hosting/hosting-recovery-entities'
+import { HostingAssessmentEntity } from '../hosting/hosting-assessment-entity'
+import { HostingStorageLockEntity } from '../hosting/hosting-storage'
 import { HOSTING_ACCESS_ENTITIES } from '../hosting/hosting-access-entities'
 import { HOSTING_AI_ALLOWANCE_ENTITIES } from '../hosting/hosting-ai-allowance-entities'
 import { HostingDispatchEntity } from '../hosting/hosting-dispatch-entity'
@@ -75,6 +79,10 @@ function getEntities(): EntitySchema<unknown>[] {
     return [
         ...LMS_ENTITIES,
         ...HOSTING_ENTITIES,
+        ...HOSTING_TRAINER_ENTITIES,
+        ...HOSTING_RECOVERY_ENTITIES,
+        HostingAssessmentEntity,
+        HostingStorageLockEntity,
         ...HOSTING_ACCESS_ENTITIES,
         ...HOSTING_AI_ALLOWANCE_ENTITIES,
         ...HOSTING_PARTNER_ADMIN_ENTITIES,

@@ -2,6 +2,7 @@ import { apId } from '@activepieces/core-utils'
 import { hostingCatalog } from '@activepieces/shared'
 import { DataSource, EntityManager, In } from 'typeorm'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrant, HostingGrantEntity, HostingReservation, HostingReservationEntity } from './hosting-entities'
+import { assertHostedStorageAdmission } from './hosting-storage'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
@@ -20,6 +21,7 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             }
             const now = await tx.now(manager)
             tx.assertActive({ account, now })
+            await assertHostedStorageAdmission(manager, account.id)
             const grant = await activeGrant({ manager, platformId: account.id, meter: 'execution', now, planId: account.planId })
             if (grant.amount - grant.reserved - grant.consumed < 1n) hostingFail('HOSTING_CREDITS_EXHAUSTED')
             if (account.activeExecutions >= hostingCatalog.getPlan({ planId: account.planId }).concurrency) hostingFail('HOSTING_CONCURRENCY_LIMIT')

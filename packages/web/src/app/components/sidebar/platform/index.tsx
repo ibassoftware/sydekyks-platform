@@ -317,6 +317,11 @@ export function PlatformSidebar() {
         ...(operator.allowed
           ? [
               {
+                to: '/platform/account-recovery',
+                label: t('Account recovery'),
+                icon: UsersIcon,
+              },
+              {
                 to: '/platform/trainers',
                 label: t('Platform Trainers'),
                 icon: GraduationCap,

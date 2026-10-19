@@ -1,5 +1,6 @@
 import { ServiceMode, serviceModePolicy } from '@activepieces/shared'
 import { system } from '../helper/system/system'
+import { hostedStorageLimits } from './hosting-storage'
 import { AppSystemProp } from '../helper/system/system-props'
 
 function getServiceMode(): ServiceMode {
@@ -12,6 +13,8 @@ function validate(): ServiceMode {
     if (system.get(AppSystemProp.DB_TYPE) !== 'POSTGRES') throw new Error('Hosted service mode requires PostgreSQL')
     if (system.get(AppSystemProp.REDIS_TYPE) !== 'STANDALONE') throw new Error('Hosted service mode requires shared Redis')
     if (system.get(AppSystemProp.EXECUTION_MODE) !== 'SANDBOX_CODE_ONLY') throw new Error('Hosted service mode requires code sandboxing')
+    if (system.get(AppSystemProp.FILE_STORAGE_LOCATION) !== 'DB' || system.getBoolean(AppSystemProp.S3_USE_SIGNED_URLS)) throw new Error('Hosted pilot requires bounded database file storage and unsigned uploads')
+    hostedStorageLimits()
     const stripeKey = system.get(AppSystemProp.HOSTED_STRIPE_SECRET_KEY)
     if (!stripeKey || !/^(sk|rk)_test_[A-Za-z0-9]+$/.test(stripeKey)) {
         throw new Error('Hosted Stripe configuration requires a test secret key; live billing is disabled')

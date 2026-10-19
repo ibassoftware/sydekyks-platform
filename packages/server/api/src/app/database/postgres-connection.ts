@@ -34,7 +34,12 @@ import { SydekyksTenantMembers1896000000000 } from './migration/postgres/1896000
 
 import { SydekyksCourseAccess1897000000000 } from './migration/postgres/1897000000000-SydekyksCourseAccess'
 
-export const getMigrations = () => [SydekyksInitialSchema1880000000000, SydekyksUpstream1031881000000000, SydekyksUpstreamOctober211882000000000, SydekyksHostingLedger1882000000000, SydekyksHostingDispatch1883000000000, SydekyksHostingSegments1884000000000, SydekyksHostingModelCalls1885000000000, SydekyksHostingStripe1886000000000, SydekyksHostingAccess1887000000000, SydekyksLearning1888000000000, SydekyksTrainingGrants1889000000000, SydekyksManagedPricing1890000000000, SydekyksClientAiAllowance1892000000000, SydekyksPricingValidation1893000000000, SydekyksPartnerAdmin1894000000000, SydekyksPartnerSetup1895000000000, SydekyksTenantMembers1896000000000, SydekyksCourseAccess1897000000000]
+import { SydekyksPlatformTrainers1898000000000 } from './migration/postgres/1898000000000-SydekyksPlatformTrainers'
+import { SydekyksAssessmentAccess1899000000000 } from './migration/postgres/1899000000000-SydekyksAssessmentAccess'
+import { SydekyksRecovery1900000000000 } from './migration/postgres/1900000000000-SydekyksRecovery'
+import { SydekyksStorageLimits1901000000000 } from './migration/postgres/1901000000000-SydekyksStorageLimits'
+
+export const getMigrations = () => [SydekyksInitialSchema1880000000000, SydekyksUpstream1031881000000000, SydekyksUpstreamOctober211882000000000, SydekyksHostingLedger1882000000000, SydekyksHostingDispatch1883000000000, SydekyksHostingSegments1884000000000, SydekyksHostingModelCalls1885000000000, SydekyksHostingStripe1886000000000, SydekyksHostingAccess1887000000000, SydekyksLearning1888000000000, SydekyksTrainingGrants1889000000000, SydekyksManagedPricing1890000000000, SydekyksClientAiAllowance1892000000000, SydekyksPricingValidation1893000000000, SydekyksPartnerAdmin1894000000000, SydekyksPartnerSetup1895000000000, SydekyksTenantMembers1896000000000, SydekyksCourseAccess1897000000000, SydekyksPlatformTrainers1898000000000, SydekyksAssessmentAccess1899000000000, SydekyksRecovery1900000000000, SydekyksStorageLimits1901000000000]
 
 function getSslConfig() {
     return system.getBoolean(AppSystemProp.POSTGRES_USE_SSL) ? { rejectUnauthorized: true } : false

@@ -16,6 +16,10 @@ import { hostingLearningController } from './hosting-learning-controller'
 import { hostingOnboardingController } from './hosting-onboarding-controller'
 import { hostingOperatorController } from './hosting-operator-controller'
 import { hostingPartnerAdminController } from './hosting-partner-admin-controller'
+import { hostingStorageController } from './hosting-storage-controller'
+import { hostingAssessmentController } from './hosting-assessment-controller'
+import { hostingRecoveryController, hostingRecoveryPublicController } from './hosting-recovery-controller'
+import { hostingTrainerAdminController, hostingTrainerController, hostingTrainerSetupController } from './hosting-trainers-controller'
 import { hostingPartnerSetupController, hostingPartnerSetupPublicController } from './hosting-partner-setup-controller'
 import { hostingPricingController } from './hosting-pricing-controller'
 import { hostingServices } from './hosting-services'
@@ -25,9 +29,16 @@ import { HostingActor, HostingError } from './hosting-transactions'
 
 export const hostingController: FastifyPluginAsyncZod = async app => {
     if (hostingConfiguration.getServiceMode() !== 'hosted') return
+    await app.register(hostingStorageController, { prefix: '/operator' })
     await app.register(hostingAccessController, { prefix: '/operator' })
     await app.register(hostingAiAllowanceController, { prefix: '/operator/ai-allowance' })
     await app.register(hostingPartnerAdminController, { prefix: '/operator/partners' })
+    await app.register(hostingAssessmentController, { prefix: '/operator/assessment' })
+    await app.register(hostingRecoveryController, { prefix: '/operator/account-recovery' })
+    await app.register(hostingRecoveryPublicController, { prefix: '/account-recovery' })
+    await app.register(hostingTrainerAdminController, { prefix: '/operator/trainers' })
+    await app.register(hostingTrainerController, { prefix: '/trainer' })
+    await app.register(hostingTrainerSetupController, { prefix: '/trainer-setup' })
     await app.register(hostingPartnerSetupController, { prefix: '/operator/partner-setup' })
     await app.register(hostingPartnerSetupPublicController, { prefix: '/partner-setup' })
     await app.register(hostingTenantMembersController, { prefix: '/tenant-members' })

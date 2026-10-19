@@ -3,9 +3,12 @@
 let setupSecret: string | null = null;
 if (
   typeof window !== 'undefined' &&
-  ['/partner-setup', '/tenant-join', '/trainer-setup'].includes(
-    window.location.pathname.replace(/\/+$/, '').toLowerCase(),
-  )
+  [
+    '/partner-setup',
+    '/tenant-join',
+    '/trainer-setup',
+    '/account-recovery',
+  ].includes(window.location.pathname.replace(/\/+$/, '').toLowerCase())
 ) {
   const token = new URLSearchParams(window.location.hash.slice(1)).get('token');
   if (token && /^[a-zA-Z0-9_-]{43}$/.test(token)) setupSecret = token;
