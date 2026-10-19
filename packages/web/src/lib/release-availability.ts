@@ -18,8 +18,17 @@ function isRouteAvailable({
   );
 }
 
+function isTeamProjectCreationAvailable({
+  hostedBilling = false,
+}: {
+  hostedBilling?: boolean;
+} = {}): boolean {
+  return !hostedBilling;
+}
+
 export const releaseAvailability = {
   isRouteAvailable,
+  isTeamProjectCreationAvailable,
   teamProjects: true,
   projectAdministration: true,
   projectMembers: false,

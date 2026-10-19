@@ -154,7 +154,9 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                   )
                 : password
                 ? t(
-                    'Use your existing account password. You can also sign in with an email code.',
+                    offer?.emailCodesAvailable
+                      ? 'Use your existing account password. You can also sign in with an email code.'
+                      : 'Use the password you chose from your private setup link. For a new account, ask the Sydekyks team or your workspace admin for a setup link.',
                   )
                 : t(
                     'Use your email to create an account or return to an existing workspace. We’ll send a sign-in code.',
@@ -179,7 +181,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
               <Alert className="mt-5">
                 <AlertDescription>
                   {t(
-                    'New hosted signup is unavailable. Email delivery and verification must be configured before codes can be sent. Existing members can use their password.',
+                    'Email codes are unavailable. Sign in with your chosen password, or open your private setup link to finish creating your account.',
                   )}
                 </AlertDescription>
               </Alert>
@@ -353,7 +355,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                       })
                     : status.entitlementState === 'expired'
                     ? t(
-                        'Your access period has ended. A platform administrator can review paid plans in Billing.',
+                        'Your access period has ended. Contact Sydekyks to arrange continued access; a workspace admin can review the recorded allowances in Billing.',
                       )
                     : t(
                         'This workspace is paused. Contact support or your platform administrator.',
@@ -379,7 +381,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                 {t('Refresh access status')}
               </Button>
             )}
-            {(code || verification) && (
+            {(code || verification) && offer?.emailCodesAvailable && (
               <div className="mt-5 space-y-3">
                 <Button
                   variant="outline"
@@ -404,7 +406,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
             )}
             {(emailStage || code || password || verification) && (
               <div className="mt-5 flex flex-wrap gap-x-5 gap-y-3 text-sm">
-                {stage !== 'email' && (
+                {stage !== 'email' && offer?.emailCodesAvailable && (
                   <button
                     type="button"
                     disabled={pending}
@@ -425,7 +427,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                     {t('Use password')}
                   </button>
                 )}
-                {password && (
+                {password && offer?.emailCodesAvailable && (
                   <button
                     type="button"
                     disabled={pending}
@@ -478,11 +480,11 @@ export function HostedAuthView(props: HostedAuthViewProps) {
           >
             <div>
               <h2 id="hosted-trial-heading" className="text-base font-semibold">
-                {t('Try hosted Sydekyks')}
+                {t('Hosted pilot access')}
               </h2>
               <p className="mt-2 leading-relaxed text-gray-11">
                 {t(
-                  'A limited trial to build and run your first workflows. Choose a paid plan when you need to continue.',
+                  'Contact Sydekyks to arrange pilot access and build your first workflows. Trial access is time limited; continued access and payments are arranged directly with the team.',
                 )}
               </p>
             </div>
@@ -515,7 +517,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
             </div>
             <p className="rounded-lg bg-gray-3 p-4 leading-relaxed text-gray-11">
               {t(
-                'Hosted setup is under development. Live signup and payments have not been enabled. Self-hosting stays free.',
+                'Pilot accounts use a private setup link and a password you choose. Ask your inviter for a link if you do not have one. Payments and renewals are handled directly by Sydekyks during the pilot.',
               )}
             </p>
           </aside>

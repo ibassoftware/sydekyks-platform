@@ -98,9 +98,11 @@ const learningRoutes = [
     path: '/learn',
     element: (
       <AllowOnlyLoggedInUserOnlyGuard>
-        <Suspense fallback={<RouteLoadingBar />}>
-          <LearningPage />
-        </Suspense>
+        <PageTitle titleKey="Learning & certification">
+          <Suspense fallback={<RouteLoadingBar />}>
+            <LearningPage />
+          </Suspense>
+        </PageTitle>
       </AllowOnlyLoggedInUserOnlyGuard>
     ),
   },

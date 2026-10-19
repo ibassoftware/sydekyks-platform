@@ -9,7 +9,6 @@ import {
 } from '@activepieces/shared';
 import { queryCollectionOptions } from '@tanstack/query-db-collection';
 import {
-  and,
   createCollection,
   eq,
   like,
@@ -22,8 +21,11 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { useEmbedding } from '@/components/providers/embed-provider';
+import { userHooks } from '@/hooks/user-hooks';
 import { api } from '@/lib/api';
 import { authenticationSession } from '@/lib/authentication-session';
+
+import { isProjectVisibleInNavigation } from './project-navigation';
 
 const collectionQueryClient = new QueryClient();
 
@@ -185,24 +187,29 @@ export const projectCollectionUtils = {
   },
   useAll: () => {
     const currentUserId = authenticationSession.getCurrentUserId();
-    return useLiveSuspenseQuery(
+    const platformId = authenticationSession.getPlatformId();
+    const { data: user } = userHooks.useCurrentUser();
+    const result = useLiveSuspenseQuery(
       (q) =>
         q
           .from({ project: projectCollection })
-          .where(({ project }) =>
-            or(
-              eq(project.type, ProjectType.TEAM),
-              and(
-                eq(project.type, ProjectType.PERSONAL),
-                eq(project.ownerId, currentUserId),
-              ),
-            ),
-          )
+          .where(({ project }) => eq(project.platformId, platformId))
           .orderBy(({ project }) => project.type, 'asc')
           .orderBy(({ project }) => project.created, 'asc')
           .select(({ project }) => ({ ...project })),
-      [currentUserId],
+      [platformId],
     );
+    return {
+      ...result,
+      data: result.data.filter((project) =>
+        isProjectVisibleInNavigation({
+          project,
+          user,
+          userId: currentUserId,
+          platformId,
+        }),
+      ),
+    };
   },
   useAllPlatformProjects: (filters?: {
     displayName?: string;

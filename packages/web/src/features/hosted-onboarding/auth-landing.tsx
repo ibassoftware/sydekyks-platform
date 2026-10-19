@@ -84,6 +84,18 @@ function SessionAuth({
     gcTime: 0,
     refetchOnWindowFocus: true,
   });
+  useEffect(() => {
+    // Choose the usable anonymous entry only after the server offer resolves.
+    // Never replace verification links, an in-progress code flow or a resumed session.
+    if (
+      session.kind !== 'anonymous' ||
+      initialStage !== 'email' ||
+      pending ||
+      offer.data?.emailCodesAvailable !== false
+    )
+      return;
+    setStage((current) => (current === 'email' ? 'password' : current));
+  }, [session.kind, initialStage, pending, offer.data?.emailCodesAvailable]);
   const status = useQuery({
     queryKey: [...prefix, 'status', session.platformId, session.id],
     queryFn: ({ signal }) => hostedAuthApi.status(session, signal),

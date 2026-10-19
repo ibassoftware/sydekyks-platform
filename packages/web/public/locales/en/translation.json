@@ -3784,5 +3784,6 @@
   "Describe the task for your agent": "Describe the task for your Sydekyk",
   "Could not create your agent. Try again with Create manually. Your instructions can be entered in Configure.": "Could not create your Sydekyk. Try again with Create manually. Your instructions can be entered in Configure.",
   "Set instructions, choose a model and add tools in Configure. Review and publish before using your agent in a Mission.": "Set instructions, choose a model and add gadgets in Configure. Review and publish before using your Sydekyk in a Mission.",
+  "reservedHeaderName": "Delivery headers such as Host and Connection are reserved and cannot be set.",
   "Return to agent setup to create manually. Your task will be kept.": "Return to Sydekyk setup to create manually. Your task will be kept."
 }

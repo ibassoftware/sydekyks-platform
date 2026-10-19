@@ -12,9 +12,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { t } from 'i18next';
 import {
   Bot,
+  BriefcaseBusiness,
   ChartLine,
   ChevronsUpDown,
   Compass,
+  GraduationCap,
   MessageCircle,
   Radar,
   LogOut,
@@ -25,6 +27,7 @@ import {
   SlidersHorizontal,
   Unplug,
   UserCogIcon,
+  Users,
 } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { ComponentType, useState } from 'react';
@@ -52,6 +55,10 @@ import {
 import { useAgentsNavVisible } from '@/features/agents';
 import { SidebarUsageLimits } from '@/features/billing';
 import { chatUtils } from '@/features/chat/lib/chat-utils';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
+import { useHostedOperatorAccess } from '@/features/hosted-operator/operator-api';
+import { usePlatformTrainerAccess } from '@/features/hosted-operator/trainers-api';
+import { useOperationalWorkspaces } from '@/features/hosted-operator/workspaces-api';
 import {
   CreateProjectButton,
   getProjectName,
@@ -354,6 +361,8 @@ function RailHeader({
 
 function RailPlatformAdminButton({ collapsed }: { collapsed: boolean }) {
   const showPlatformAdmin = useIsPlatformAdmin();
+  const hosted = useHostedBillingEnabled();
+  const operator = useHostedOperatorAccess();
   const { embedState } = useEmbedding();
 
   if (embedState.isEmbedded || !showPlatformAdmin) {
@@ -372,7 +381,11 @@ function RailPlatformAdminButton({ collapsed }: { collapsed: boolean }) {
         collapsed={collapsed}
         to="/platform/projects"
         icon={Shield}
-        label={t('Platform Admin')}
+        label={
+          hosted && !operator.allowed
+            ? t('Workspace settings')
+            : t('Platform Admin')
+        }
         isActive={({ pathname }) => pathname.startsWith('/platform')}
       />
     </div>
@@ -444,13 +457,14 @@ function RailNavButton({
 }
 
 function RailPinnedProjects({ collapsed }: { collapsed: boolean }) {
+  const hostedBilling = useHostedBillingEnabled();
   const { data: projects } = projectCollectionUtils.useAll();
   const { platform } = platformHooks.useCurrentPlatform();
   const { data: currentUser } = userHooks.useCurrentUser();
   const location = useLocation();
   const navigate = useNavigate();
   const showCreateProject =
-    releaseAvailability.teamProjects &&
+    releaseAvailability.isTeamProjectCreationAvailable({ hostedBilling }) &&
     platform.plan.billedTeamProjectsLimit !== 0 &&
     currentUser?.platformRole === PlatformRole.ADMIN;
   const [sort, setSort] = useState<PinnedSort>(() =>
@@ -722,6 +736,9 @@ function RailAccountRow({ collapsed }: { collapsed: boolean }) {
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
   const { data: user } = userHooks.useCurrentUser();
   const queryClient = useQueryClient();
+  const hosted = useHostedBillingEnabled();
+  const trainer = usePlatformTrainerAccess();
+  const workspaces = useOperationalWorkspaces();
   const navigate = useNavigate();
 
   if (!user) {
@@ -808,6 +825,37 @@ function RailAccountRow({ collapsed }: { collapsed: boolean }) {
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
+            <DropdownMenuItem asChild>
+              <Link to="/learn">
+                <GraduationCap className="w-4 h-4 mr-2" />
+                {t('Learning & certification')}
+              </Link>
+            </DropdownMenuItem>
+            {trainer.allowed && (
+              <DropdownMenuItem asChild>
+                <Link to="/trainer">
+                  <GraduationCap className="w-4 h-4 mr-2" />
+                  {t('Trainer workspace')}
+                </Link>
+              </DropdownMenuItem>
+            )}
+            {workspaces.allowed && (
+              <DropdownMenuItem asChild>
+                <Link to="/partners/workspaces">
+                  <BriefcaseBusiness className="w-4 h-4 mr-2" />
+                  {t('Client workspaces')}
+                </Link>
+              </DropdownMenuItem>
+            )}
+            {hosted && user.platformRole === PlatformRole.ADMIN && (
+              <DropdownMenuItem asChild>
+                <Link to="/platform/users">
+                  <Users className="w-4 h-4 mr-2" />
+                  {t('Workspace users')}
+                </Link>
+              </DropdownMenuItem>
+            )}
+
             <DropdownMenuItem onClick={() => setAccountSettingsOpen(true)}>
               <UserCogIcon className="w-4 h-4 mr-2" />
               {t('Account Settings')}

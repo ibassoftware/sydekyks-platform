@@ -13,6 +13,7 @@ import {
   useFeatureGate,
   useTeamProjectLimitGuard,
 } from '@/features/billing';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import { AdminControl, adminControl } from '@/lib/admin-control';
 import { releaseAvailability } from '@/lib/release-availability';
 import { cn } from '@/lib/utils';
@@ -25,6 +26,7 @@ export function CreateProjectButton({
   onCreate,
   className,
 }: CreateProjectButtonProps) {
+  const hostedBilling = useHostedBillingEnabled();
   const { hasReachedLimit, teamProjectLimitContent } = useTeamProjectLimitGuard(
     { projects },
   );
@@ -41,7 +43,8 @@ export function CreateProjectButton({
     locked: projectsGate.locked,
   });
 
-  if (!releaseAvailability.teamProjects) return null;
+  if (!releaseAvailability.isTeamProjectCreationAvailable({ hostedBilling }))
+    return null;
 
   return (
     <NewProjectDialog

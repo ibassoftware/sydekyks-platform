@@ -1,8 +1,14 @@
 import { ApEdition, ApFlagId } from '@activepieces/shared';
-import React from 'react';
+import { t } from 'i18next';
+import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar-shadcn';
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from '@/components/ui/sidebar-shadcn';
 import { ManagePlanDialog } from '@/features/billing';
 import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import { useIsPlatformAdmin } from '@/hooks/authorization-hooks';
@@ -25,7 +31,8 @@ export function PlatformLayout({ children }: { children: React.ReactNode }) {
         {showPlatformAdminDashboard ? (
           <SidebarProvider open={true} style={PLATFORM_SIDEBAR_STYLE}>
             <PlatformSidebar />
-            <SidebarInset className="flex flex-col h-full overflow-hidden bg-gray-2">
+            <SidebarInset className="flex min-w-0 flex-col h-full overflow-hidden bg-gray-2">
+              <PlatformMobileHeader />
               <div className="flex-1 flex flex-col pr-2 pt-3 pb-3 overflow-hidden">
                 <div
                   id="dashboard-content-container"
@@ -51,6 +58,24 @@ export function PlatformLayout({ children }: { children: React.ReactNode }) {
         {edition !== ApEdition.COMMUNITY && <ManagePlanDialog />}
       </GlobalSearchProvider>
     </AllowOnlyLoggedInUserOnlyGuard>
+  );
+}
+
+function PlatformMobileHeader() {
+  const { pathname } = useLocation();
+  const { setOpenMobile, openMobile } = useSidebar();
+  useEffect(() => {
+    setOpenMobile(false);
+  }, [pathname, setOpenMobile]);
+  return (
+    <header className="flex shrink-0 items-center gap-2 border-b border-gray-6 px-3 py-2 md:hidden">
+      <SidebarTrigger
+        className="size-9"
+        aria-label={t('Open platform navigation')}
+        aria-expanded={openMobile}
+      />
+      <span className="text-sm font-medium">{t('Workspace navigation')}</span>
+    </header>
   );
 }
 

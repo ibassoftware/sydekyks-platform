@@ -22,6 +22,7 @@ import {
   ResolvedUseCase,
   UseCaseCard,
 } from '@/features/chat/use-cases/use-case-card';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import { piecesHooks } from '@/features/pieces/hooks/pieces-hooks';
 import { userHooks } from '@/hooks/user-hooks';
 import { cn } from '@/lib/utils';
@@ -38,16 +39,22 @@ export function EmptyState({
 }) {
   const { data: currentUser } = userHooks.useCurrentUser();
   const firstName = currentUser?.firstName ?? '';
-  const personalization = usePersonalization({ enabled: !incognito });
+  const hosted = useHostedBillingEnabled();
+  const personalization = usePersonalization({
+    enabled: !incognito && !hosted,
+  });
   const cards = useMemo(
-    () => resolveCards({ researched: personalization.useCases }),
-    [personalization.useCases],
+    () =>
+      hosted
+        ? HOSTED_DRAFT_CARDS
+        : resolveCards({ researched: personalization.useCases }),
+    [hosted, personalization.useCases],
   );
 
   if (incognito) {
     return (
-      <div className="flex min-h-full flex-col justify-center px-3 pt-8 pb-6 sm:px-6">
-        <div className="max-w-3xl mx-auto w-full">
+      <div className="flex min-w-0 w-full max-w-full min-h-full flex-col justify-center px-3 pt-8 pb-6 sm:px-6">
+        <div className="min-w-0 max-w-3xl mx-auto w-full">
           <Greeting firstName={firstName} incognito />
         </div>
       </div>
@@ -55,15 +62,17 @@ export function EmptyState({
   }
 
   return (
-    <div className="flex min-h-full flex-col px-3 pt-12 pb-6 sm:px-6 sm:pt-16">
-      <div className="max-w-3xl mx-auto w-full">
+    <div className="flex min-w-0 w-full max-w-full min-h-full flex-col px-3 pt-12 pb-6 sm:px-6 sm:pt-16">
+      <div className="min-w-0 max-w-3xl mx-auto w-full">
         <div className="flex flex-col sm:flex-row sm:items-center gap-8 sm:gap-10">
           <div className="min-w-0 sm:flex-1 sm:max-w-md">
             <Greeting firstName={firstName} incognito={false} />
           </div>
-          <div className="hidden sm:contents">
-            <AppMarquee />
-          </div>
+          {!hosted && (
+            <div className="hidden sm:contents">
+              <AppMarquee />
+            </div>
+          )}
         </div>
         <CollapseOnInput collapsed={hasInput}>
           <ExampleCards cards={cards} onSuggestionClick={onSuggestionClick} />
@@ -83,11 +92,13 @@ function CollapseOnInput({
   return (
     <div
       className={cn(
-        'grid transition-all duration-300',
+        'grid min-w-0 w-full max-w-full transition-all duration-300',
         collapsed ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100',
       )}
     >
-      <div className="min-h-0 overflow-y-clip">{children}</div>
+      <div className="min-h-0 min-w-0 w-full max-w-full overflow-y-clip">
+        {children}
+      </div>
     </div>
   );
 }
@@ -140,6 +151,7 @@ function Greeting({
   firstName: string;
   incognito: boolean;
 }) {
+  const hosted = useHostedBillingEnabled();
   const headline = useMemo(
     () =>
       GREETING_HEADLINES[Math.floor(Math.random() * GREETING_HEADLINES.length)],
@@ -163,7 +175,9 @@ function Greeting({
       {!incognito && (
         <p className="text-base text-gray-11 max-w-xl">
           {t(
-            "I don't just answer questions — I do the work, end to end, across every app you use. Whatever you're picturing, I can probably go further.",
+            hosted
+              ? 'Talk through an AI opportunity, draft a client proposal or review your assumptions. Check the details yourself before sharing or taking action.'
+              : "I don't just answer questions — I do the work, end to end, across every app you use. Whatever you're picturing, I can probably go further.",
           )}
         </p>
       )}
@@ -296,7 +310,7 @@ function ExampleCards({
   const handleToggle = () => setExpanded((value) => !value);
 
   return (
-    <div className={cn('mt-16', expanded && 'pb-16')}>
+    <div className={cn('mt-16 min-w-0 w-full max-w-full', expanded && 'pb-16')}>
       {expanded ? (
         <motion.div
           className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
@@ -407,7 +421,7 @@ function CardCarousel({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0 w-full max-w-full">
       <div
         aria-hidden
         className={cn(
@@ -431,7 +445,7 @@ function CardCarousel({ children }: { children: ReactNode }) {
       <div
         ref={scrollerRef}
         onScroll={updateEdges}
-        className="-mx-0.5 flex snap-x gap-4 overflow-x-auto scroll-smooth px-0.5 pt-0.5 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="min-w-0 w-full max-w-full flex snap-x gap-4 overflow-x-auto scroll-smooth px-0.5 pt-0.5 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {children}
       </div>
@@ -478,6 +492,37 @@ function CarouselArrow({
     </button>
   );
 }
+
+const HOSTED_DRAFT_CARDS: ResolvedUseCase[] = [
+  {
+    key: 'pilot-opportunity',
+    imageId: 'write-reports',
+    title: 'Draft an AI opportunity',
+    prompt:
+      'Help me draft an AI opportunity from the business context I provide. Ask about the problem and desired outcome, and identify assumptions for human review.',
+  },
+  {
+    key: 'pilot-proposal',
+    imageId: 'write-emails',
+    title: 'Draft a client proposal',
+    prompt:
+      'Help me draft a client proposal using the scope and value I provide. Include assumptions, a suggested fixed price and a handover checklist for me to review.',
+  },
+  {
+    key: 'pilot-value',
+    imageId: 'plan-week',
+    title: 'Estimate client value',
+    prompt:
+      'Help me estimate monthly client value from hours saved each week and hourly cost. Show the calculation and distinguish my assumptions from confirmed facts.',
+  },
+  {
+    key: 'pilot-review',
+    imageId: 'prep-meetings',
+    title: 'Review a draft',
+    prompt:
+      'Review the draft I provide for unclear scope, unsupported claims and missing handover steps. Suggest questions I should answer before sharing it.',
+  },
+];
 
 const GREETING_HEADLINES: GreetingHeadline[] = [
   { withName: 'Dream big, {name}.', plain: 'Dream big.' },

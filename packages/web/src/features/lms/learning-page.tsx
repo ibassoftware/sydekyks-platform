@@ -28,12 +28,19 @@ export function LearningPage() {
     capabilities.length === HOSTED_RUNTIME_CAPABILITIES.length &&
     HOSTED_RUNTIME_CAPABILITIES.every((value) => capabilities.includes(value));
   return (
-    <LearningCatalogue
-      key={scope}
-      scope={scope}
-      hosted={hosted}
-      pilotReady={pilotReady}
-    />
+    <>
+      <header className="mx-auto flex w-full max-w-6xl px-4 pt-6 md:px-8">
+        <Button asChild variant="outline">
+          <Link to="/">Back to workspace</Link>
+        </Button>
+      </header>
+      <LearningCatalogue
+        key={scope}
+        scope={scope}
+        hosted={hosted}
+        pilotReady={pilotReady}
+      />
+    </>
   );
 }
 function LearningCatalogue({
@@ -124,9 +131,6 @@ function LearningCatalogue({
             Your instructor will give you access to the courses included in your
             training.
           </p>
-          <Button asChild variant="outline" className="mt-4">
-            <Link to="/">Back to workspace</Link>
-          </Button>
         </main>
       )}
     </>
@@ -204,9 +208,6 @@ function LearningSession({
             your pace, then demonstrate your skills.
           </p>
         </div>
-        <Button asChild variant="outline">
-          <Link to="/">Back to workspace</Link>
-        </Button>
       </header>
       {hosted && course?.audience === 'partner' && (
         <section
