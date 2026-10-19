@@ -435,6 +435,8 @@ function MemberRow({
             ? t('Client admin admitted')
             : member.admissionSource === 'operator'
             ? t('Operator admitted')
+            : member.admissionSource === 'trainer'
+            ? t('Trainer admitted')
             : t('Email verified')}
         </p>
       </div>

@@ -28,6 +28,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar-shadcn';
+import { usePlatformTrainerAccess } from '@/features/hosted-operator/trainers-api';
 import { useOperationalWorkspaces } from '@/features/hosted-operator/workspaces-api';
 import { userHooks } from '@/hooks/user-hooks';
 import { authenticationSession } from '@/lib/authentication-session';
@@ -41,6 +42,7 @@ export function SidebarUser() {
   const { data: user } = userHooks.useCurrentUser();
   const queryClient = useQueryClient();
   const workspaces = useOperationalWorkspaces();
+  const trainer = usePlatformTrainerAccess();
   const { state } = useSidebar();
   const isCollapsed = state === 'collapsed';
   if (!user || embedState.isEmbedded) {
@@ -116,6 +118,14 @@ export function SidebarUser() {
                   {t('Learning & certification')}
                 </Link>
               </DropdownMenuItem>
+              {trainer.allowed && (
+                <DropdownMenuItem asChild>
+                  <Link to="/trainer">
+                    <GraduationCap className="w-4 h-4 mr-2" />
+                    {t('Trainer workspace')}
+                  </Link>
+                </DropdownMenuItem>
+              )}
               {workspaces.allowed && (
                 <DropdownMenuItem asChild>
                   <Link to="/partners/workspaces">

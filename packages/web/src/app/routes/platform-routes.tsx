@@ -18,6 +18,16 @@ import {
 import { useAdminControlClicks } from './platform/use-admin-control-clicks';
 import { useAdminPageViewed } from './platform/use-admin-page-viewed';
 
+const TrainersAdminPage = React.lazy(() =>
+  import('@/features/hosted-operator/trainers-page').then((m) => ({
+    default: m.TrainersAdminPage,
+  })),
+);
+const TrainerWorkspacePage = React.lazy(() =>
+  import('@/features/hosted-operator/trainers-page').then((m) => ({
+    default: m.TrainerWorkspacePage,
+  })),
+);
 const ManagedAiSettingsPage = React.lazy(() =>
   import('@/features/hosted-operator/ai-settings-page').then((m) => ({
     default: m.ManagedAiSettingsPage,
@@ -132,6 +142,30 @@ const AI_TAB_PATHS = {
 const PIECES_TAB_PATHS = { pieces: '', 'piece-sets': 'piece-sets' };
 
 export const platformRoutes = [
+  {
+    path: '/platform/trainers',
+    element: (
+      <PlatformLayout>
+        <PageTitle titleKey="Platform Trainers">
+          <SuspenseWrapper>
+            <TrainersAdminPage />
+          </SuspenseWrapper>
+        </PageTitle>
+      </PlatformLayout>
+    ),
+  },
+  {
+    path: '/trainer',
+    element: (
+      <AllowOnlyLoggedInUserOnlyGuard>
+        <PageTitle titleKey="Trainer workspace">
+          <SuspenseWrapper>
+            <TrainerWorkspacePage />
+          </SuspenseWrapper>
+        </PageTitle>
+      </AllowOnlyLoggedInUserOnlyGuard>
+    ),
+  },
   {
     path: '/platform/partners',
     element: (

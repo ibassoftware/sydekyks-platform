@@ -289,7 +289,9 @@ function PartnerSession({ access }: { access: Access }) {
                   </p>
                   <p className="mt-2 text-sm">
                     {candidate.verificationMethod === 'operator'
-                      ? candidate.admissionSource === 'tenant_admin'
+                      ? candidate.admissionSource === 'trainer'
+                        ? t('Trainer admitted')
+                        : candidate.admissionSource === 'tenant_admin'
                         ? t('Client admin admitted')
                         : t('Operator admitted')
                       : candidate.verificationMethod === 'email' &&

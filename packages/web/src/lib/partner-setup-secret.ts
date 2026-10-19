@@ -3,7 +3,7 @@
 let setupSecret: string | null = null;
 if (
   typeof window !== 'undefined' &&
-  ['/partner-setup', '/tenant-join'].includes(
+  ['/partner-setup', '/tenant-join', '/trainer-setup'].includes(
     window.location.pathname.replace(/\/+$/, '').toLowerCase(),
   )
 ) {

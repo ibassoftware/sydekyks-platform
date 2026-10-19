@@ -41,6 +41,7 @@ import {
 import { PLATFORM_FEATURES } from '@/features/billing';
 import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import { useHostedOperatorAccess } from '@/features/hosted-operator/operator-api';
+import { usePlatformTrainerAccess } from '@/features/hosted-operator/trainers-api';
 import { useOperationalWorkspaces } from '@/features/hosted-operator/workspaces-api';
 import { useAuthorization } from '@/hooks/authorization-hooks';
 import { flagsHooks } from '@/hooks/flags-hooks';
@@ -58,6 +59,7 @@ export function PlatformSidebar() {
   const hostedBilling = useHostedBillingEnabled();
   const operator = useHostedOperatorAccess();
   const workspaces = useOperationalWorkspaces();
+  const trainer = usePlatformTrainerAccess();
   const { checkAccess } = useAuthorization();
   const defaultRoute = determineDefaultRoute({
     checkAccess,
@@ -74,6 +76,15 @@ export function PlatformSidebar() {
           label: t('Learning & certification'),
           icon: GraduationCap,
         },
+        ...(trainer.allowed
+          ? [
+              {
+                to: '/trainer',
+                label: t('Trainer workspace'),
+                icon: GraduationCap,
+              },
+            ]
+          : []),
         ...(workspaces.allowed
           ? [
               {
@@ -305,6 +316,11 @@ export function PlatformSidebar() {
         },
         ...(operator.allowed
           ? [
+              {
+                to: '/platform/trainers',
+                label: t('Platform Trainers'),
+                icon: GraduationCap,
+              },
               {
                 to: '/platform/partners',
                 label: t('Partners'),
