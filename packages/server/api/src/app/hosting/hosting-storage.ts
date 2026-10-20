@@ -9,7 +9,7 @@ import { hostingFail } from './hosting-transactions'
 
 export const HostingStorageLockEntity = new EntitySchema<{ id: string }>({ name: 'hosting_storage_lock', columns: { id: { type: String, primary: true } } })
 const MiB = 1024 * 1024
-const defaults = { trial: 64 * MiB, training: 256 * MiB, assessment: 256 * MiB, starter: 1024 * MiB, team: 4096 * MiB, global: 8192 * MiB }
+const defaults = { trial: 64 * MiB, training: 256 * MiB, assessment: 256 * MiB, starter: 1024 * MiB, team: 4096 * MiB, scale: 8192 * MiB, global: 8192 * MiB }
 export function hostedStorageLimits(): typeof defaults {
     const raw = system.get(AppSystemProp.HOSTED_STORAGE_LIMITS_JSON)
     const limits = { ...defaults }

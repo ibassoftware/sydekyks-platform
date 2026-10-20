@@ -5,6 +5,7 @@ import { FastifyBaseLogger } from 'fastify'
 import pLimit from 'p-limit'
 import { ArrayContains, In, IsNull, Not, Repository, SelectQueryBuilder } from 'typeorm'
 import { repoFactory } from '../../core/db/repo-factory'
+import { databaseConnection } from '../../database/database-connection'
 import { distributedLock } from '../../database/redis-connections'
 import { fileCompressor } from '../../file/file-compressor'
 import { fileService, getEffectiveExecutionDataRetentionDays } from '../../file/file.service'
@@ -15,7 +16,8 @@ import { system } from '../../helper/system/system'
 import { AppSystemProp } from '../../helper/system/system-props'
 import { hostingConfiguration } from '../../hosting/hosting-configuration'
 import { HostedRunStartRefused, HostingJobOrigin } from '../../hosting/hosting-execution'
-import { hostingFail } from '../../hosting/hosting-transactions'
+import { createHostedExplicitRetry } from '../../hosting/hosting-explicit-retry'
+import { HostingError, hostingFail } from '../../hosting/hosting-transactions'
 import { assertRunCreditsNotExceeded, shouldBlockRunOnCredits } from '../../platform/billing-provider'
 import { projectLifecycle } from '../../project/project-lifecycle'
 import { projectService } from '../../project/project-service'
@@ -128,8 +130,7 @@ export const flowRunService = (log: FastifyBaseLogger) => ({
         const { data, cursor: newCursor } = await paginator.paginate(query)
         return paginationHelper.createPage<FlowRun>(data, newCursor)
     },
-    async retry({ flowRunId, strategy, projectId }: RetryParams): Promise<FlowRun> {
-        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_EXPLICIT_RETRY_POLICY_REQUIRED')
+    async retry({ flowRunId, strategy, projectId, hostedOrigin }: RetryParams): Promise<FlowRun> {
         const oldFlowRun = await flowRunService(log).getOnePopulatedOrThrow({
             id: flowRunId,
             projectId,
@@ -157,6 +158,22 @@ export const flowRunService = (log: FastifyBaseLogger) => ({
                     failedJobRetentionDays: retentionDays,
                 },
             })
+        }
+
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            return distributedLock(log).runExclusive({ key: `hosting_explicit_retry_${flowRunId}`, timeoutInSeconds: 30, fn: async () => {
+                const latest = await flowVersionService(log).getLatestLockedVersionOrThrow(oldFlowRun.flowId)
+                const original = await flowVersionService(log).getOneOrThrow(oldFlowRun.flowVersionId)
+                const triggerStep = oldFlowRun.steps?.[original.trigger.name]
+                const payload = triggerStep ? await resolveStepOutput({ step: triggerStep, flowRun: oldFlowRun, log }) : undefined
+                return projectLifecycle.runWhileActive({ projectId, log, operation: async () => {
+                    const prepared = await createHostedExplicitRetry({ dataSource: databaseConnection() }).prepare({ platformId: project.platformId, projectId, flowRunId, flowVersionId: latest.id, strategy, origin: hostedOrigin, hasTriggerPayload: !!triggerStep })
+                    if (!prepared.enqueue) return prepared.run
+                    const run = await addToQueue({ flowRun: prepared.run, logsFileId: prepared.logsFileId, hostedOrigin, platformId: project.platformId, payload, jobPayload: prepared.unsent?.payload, executeTrigger: prepared.unsent?.executeTrigger ?? triggerStep?.status === StepOutputStatus.FAILED, executionType: ExecutionType.BEGIN, streamStepProgress: StreamStepProgress.NONE, workerHandlerId: undefined, httpRequestId: undefined }, log)
+                    await flowRunSideEffects(log).onStart({ flowRun: run, platformId: project.platformId })
+                    return run
+                } })
+            } })
         }
 
         await assertRunCreditsNotExceeded({
@@ -278,7 +295,7 @@ export const flowRunService = (log: FastifyBaseLogger) => ({
         const limit = pLimit(10)
         const results = await Promise.allSettled(
             filteredFlowRuns.map(flowRun =>
-                limit(() => this.retry({ flowRunId: flowRun.id, strategy: params.strategy, projectId: params.projectId })),
+                limit(() => this.retry({ flowRunId: flowRun.id, strategy: params.strategy, projectId: params.projectId, hostedOrigin: params.hostedOrigin })),
             ),
         )
         return results.map((result, i) => {
@@ -289,8 +306,8 @@ export const flowRunService = (log: FastifyBaseLogger) => ({
             return {
                 ...filteredFlowRuns[i],
                 error: {
-                    errorCode: error?.error.code ?? ErrorCode.INTERNAL_SERVER_ERROR,
-                    errorMessage: error?.message ?? 'Internal server error',
+                    errorCode: error?.error?.code ?? ErrorCode.INTERNAL_SERVER_ERROR,
+                    errorMessage: result.reason instanceof HostingError ? 'This workflow could not be restarted. Check Credits and workspace access. If an earlier attempt is still pending, wait for its outcome or contact support.' : error?.message ?? 'Internal server error',
                 },
             }
         })
@@ -654,13 +671,13 @@ async function filterFlowRunsAndApplyFilters(
 
 
 export async function addToQueue(params: AddToQueueParams, log: FastifyBaseLogger): Promise<FlowRun> {
-    const logsFileId = params.flowRun.logsFileId ?? apId()
+    const logsFileId = params.logsFileId ?? params.flowRun.logsFileId ?? apId()
 
-    let jobPayload: JobPayload = { type: 'inline', value: null }
-    if (!isNil(params.payload) && isNil(params.workerHandlerId)) {
+    let jobPayload: JobPayload = params.jobPayload ?? { type: 'inline', value: null }
+    if (!params.jobPayload && !isNil(params.payload) && isNil(params.workerHandlerId)) {
         jobPayload = await payloadOffloader.offloadPayload(log, params.payload, params.flowRun.projectId, params.platformId)
     }
-    else if (!isNil(params.payload)) {
+    else if (!params.jobPayload && !isNil(params.payload)) {
         jobPayload = await payloadOffloader.maybeOffloadPayload(log, params.payload, params.flowRun.projectId, params.platformId)
     }
 
@@ -896,6 +913,9 @@ type ResolveStepOutputParams = {
 }
 
 type AddToQueueParamsCommon = {
+    // Trusted persisted payload for a proven never-dispatched hosted retry.
+    jobPayload?: JobPayload
+    logsFileId?: string
     hostedOrigin?: HostingJobOrigin
     flowRun: FlowRun
     platformId: PlatformId
@@ -970,6 +990,7 @@ type StartManualTriggerParams = {
     triggeredBy: string
 }
 type RetryParams = {
+    hostedOrigin?: HostingJobOrigin
     flowRunId: FlowRunId
     strategy: FlowRetryStrategy
     projectId: ProjectId
@@ -987,6 +1008,7 @@ type CancelParams = {
 }
 
 type BulkRetryParams = {
+    hostedOrigin?: HostingJobOrigin
     projectId: ProjectId
     flowRunIds?: FlowRunId[]
     strategy: FlowRetryStrategy

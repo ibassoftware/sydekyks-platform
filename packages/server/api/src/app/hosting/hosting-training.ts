@@ -1,14 +1,15 @@
 import { apId } from '@activepieces/core-utils'
-import { HOSTED_MICRO_USD_PER_CREDIT, hostingCatalog } from '@activepieces/shared'
+import { hostingCatalog } from '@activepieces/shared'
 import { DataSource, EntityManager, In } from 'typeorm'
 import { z } from 'zod'
 import { LmsCourseEntity, LmsEnrollment, LmsEnrollmentEntity } from '../lms/lms-entities'
 import { assertHostingOperator } from './hosting-access-policy'
-import { effectiveManagedAiCredits } from './hosting-ai-allowance'
 import { revokeAssessmentAccess } from './hosting-assessment'
+import { effectiveHostedCredits } from './hosting-credit-allowance'
 import { HostingAccountEntity, HostingGrantEntity, HostingLedgerEntity, HostingReservationEntity } from './hosting-entities'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { HostingStripeBindingEntity } from './hosting-stripe-entities'
+import { newPartnerTrainingPeriods } from './hosting-training-periods'
 import { HostingTraining, HostingTrainingEntity } from './hosting-training-entity'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
@@ -53,25 +54,23 @@ export function createHostedTraining({ dataSource, manager: existingManager }: {
                 await manager.getRepository(HostingReservationEntity).existsBy({ platformId: account.id, state: In(['reserved', 'running', 'uncertain', 'paused']) }) ||
                 await manager.getRepository(HostingModelCallEntity).existsBy({ platformId: account.id, state: In(['prepared', 'running', 'uncertain']) })) hostingFail('HOSTING_TRAINING_ACTIVATION_REQUIRES_REVIEW')
             const startsAt = await tx.now(manager)
-            const periods = hostingCatalog.trainingPeriods[input.tier]
-            const periodMs = hostingCatalog.trainingPeriodDays * 86_400_000
-            const endsAt = new Date(startsAt.getTime() + periods * periodMs)
+            const periods = newPartnerTrainingPeriods(startsAt)
+            const endsAt = periods[periods.length - 1].until
             const record = await manager.getRepository(HostingTrainingEntity).save({ id: apId(), ...input, operatorIdentityId: actor.identityId, startsAt, endsAt, revokedAt: null })
-            const limits = hostingCatalog.getPlan({ planId: 'training' })
-            const managedCredits = await effectiveManagedAiCredits(manager, account.id, 'training')
+            const credits = await effectiveHostedCredits(manager, account.id, 'training')
             // All periods are created exactly once. Future allowances cannot be used early;
             // balance reads never grant credits and no renewal scheduler can duplicate them.
-            for (let period = 0; period < periods; period++) {
-                for (const [meter, amount] of [['execution', BigInt(limits.executions)], ['managed_ai', BigInt(managedCredits) * HOSTED_MICRO_USD_PER_CREDIT]] as const) {
+            for (let period = 0; period < periods.length; period++) {
+                for (const [meter, amount] of [['execution', BigInt(credits)], ['managed_ai', 0n]] as const) {
                     const grantId = apId()
                     await manager.getRepository(HostingGrantEntity).insert({
                         id: grantId, platformId: account.id, sourceKey: `training:${record.id}:${period}`, meter, amount, reserved: 0n, consumed: 0n,
-                        validFrom: new Date(startsAt.getTime() + period * periodMs), validUntil: new Date(startsAt.getTime() + (period + 1) * periodMs),
+                        validFrom: periods[period].from, validUntil: periods[period].until,
                     })
                     await manager.getRepository(HostingLedgerEntity).insert({ id: apId(), platformId: account.id, grantId, reservationId: null, operation: 'grant', key: `grant:${grantId}`, amount })
                 }
             }
-            await manager.getRepository(HostingAccountEntity).update({ id: account.id }, { planId: 'training', status: 'active', validUntil: endsAt })
+            await manager.getRepository(HostingAccountEntity).update({ id: account.id }, { planId: 'training', status: 'active', validUntil: endsAt, catalogVersion: hostingCatalog.version })
             await tx.event({ manager, platformId: account.id, event: 'training.activated', payload: { trainingId: record.id, enrollmentId: input.enrollmentId, tier: input.tier, operatorIdentityId: actor.identityId } })
             return record
         } })

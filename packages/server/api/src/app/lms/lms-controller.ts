@@ -1,3 +1,4 @@
+import { hostingMonthAnniversary } from '../hosting/hosting-training-periods'
 import { ActivepiecesError, apId } from '@activepieces/core-utils'
 import { PrincipalType, UserStatus } from '@activepieces/shared'
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
@@ -282,7 +283,7 @@ export const lmsController: FastifyPluginAsyncZod = async app => {
         }
         else if (course.audience !== 'end_user' || course.certificationMode !== 'none') fail('LMS_LEARNING_ACCESS_INVALID')
         if (await manager.getRepository(LmsEnrollmentEntity).existsBy({ identityId: body.identityId, courseId: course.id, grantPlatformId: grantPlatformId === null ? IsNull() : grantPlatformId })) fail('LMS_ALREADY_ENROLLED', 409)
-        const enrollment = await manager.getRepository(LmsEnrollmentEntity).save({ id: apId(), identityId: body.identityId, courseId: course.id, grantPlatformId, accessType: body.accessType, package: body.accessType === 'partner_training' ? body.package : null, paymentReference: body.accessType === 'partner_training' ? body.paymentReference : null, workspacePlatformId: body.accessType === 'partner_training' ? body.workspacePlatformId ?? null : null, startsAt: now, accessUntil: addDays(now, 365), assessmentUntil: addDays(now, body.accessType === 'learning' ? 365 : 90), status: 'active', completedLessons: [], assignment: null, practicalReviews: [], enrolledBy: actor.identityId })
+        const enrollment = await manager.getRepository(LmsEnrollmentEntity).save({ id: apId(), identityId: body.identityId, courseId: course.id, grantPlatformId, accessType: body.accessType, package: body.accessType === 'partner_training' ? body.package : null, paymentReference: body.accessType === 'partner_training' ? body.paymentReference : null, workspacePlatformId: body.accessType === 'partner_training' ? body.workspacePlatformId ?? null : null, startsAt: now, accessUntil: body.accessType === 'partner_training' ? hostingMonthAnniversary(now, 12) : addDays(now, 365), assessmentUntil: addDays(now, body.accessType === 'learning' ? 365 : 90), status: 'active', completedLessons: [], assignment: null, practicalReviews: [], enrolledBy: actor.identityId })
         if (hostingConfiguration.getServiceMode() === 'hosted') await tx.event({ manager, platformId: grantPlatformId ?? actor.platformId, event: 'learning.course.enrolled', payload: { enrollmentId: enrollment.id, courseId: course.id, grantPlatformId, accessType: enrollment.accessType, actorIdentityId: actor.identityId, learnerIdentityId: enrollment.identityId } })
         return enrollment
     }))

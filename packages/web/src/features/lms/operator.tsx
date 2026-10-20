@@ -53,13 +53,13 @@ export function LmsOperator({
     operatorClientsQuery(
       access.session,
       after,
-      globalOperator && access.allowed,
-    ),
+      globalOperator && access.allowed
+    )
   );
   const [selected, setSelected] = useState('');
   const [title, setTitle] = useState('');
   const [kind, setKind] = useState<'partner' | 'global' | 'private'>(
-    globalOperator ? 'global' : 'private',
+    globalOperator ? 'global' : 'private'
   );
   const [owner, setOwner] = useState('');
   const [busy, setBusy] = useState(false);
@@ -123,11 +123,11 @@ export function LmsOperator({
               setSelected(created.id);
               setTitle('');
               setMessage(
-                'Course draft created. Review the content before publishing.',
+                'Course draft created. Review the content before publishing.'
               );
             } catch {
               setMessage(
-                'The draft could not be created. Check your access and try again.',
+                'The draft could not be created. Check your access and try again.'
               );
             } finally {
               setBusy(false);
@@ -188,7 +188,7 @@ export function LmsOperator({
                       <option key={item.platformId} value={item.platformId}>
                         {item.name}
                       </option>
-                    ),
+                    )
                   )}
                 </select>
               </label>
@@ -319,7 +319,7 @@ function CourseEditor({
   const [feedback, setFeedback] = useState('');
   const [walkthrough, setWalkthrough] = useState(false);
   const [safety, setSafety] = useState<Record<string, boolean>>(
-    Object.fromEntries(Object.keys(safetyLabels).map((key) => [key, false])),
+    Object.fromEntries(Object.keys(safetyLabels).map((key) => [key, false]))
   );
   useEffect(() => {
     if (course.data) {
@@ -336,14 +336,14 @@ function CourseEditor({
       setMessage('Saved.');
     } catch {
       setMessage(
-        'This action was not completed. Check the requirements and refresh before retrying.',
+        'This action was not completed. Check the requirements and refresh before retrying.'
       );
     } finally {
       setBusy(false);
     }
   };
   const delivery = enrollments.data?.find(
-    (item) => item.id === deliveryEnrollment,
+    (item) => item.id === deliveryEnrollment
   );
   const deliveryLookup = useQuery({
     queryKey: [
@@ -372,13 +372,13 @@ function CourseEditor({
   const repairTarget =
     repairWorkspace ||
     deliveryWorkspaces.find(
-      (item) => item.platformId === delivery?.workspacePlatformId,
+      (item) => item.platformId === delivery?.workspacePlatformId
     )?.platformId ||
     (deliveryWorkspaces.length === 1 ? deliveryWorkspaces[0].platformId : '');
   const deliveryOwned =
     !!delivery?.workspacePlatformId &&
     deliveryWorkspaces.some(
-      (item) => item.platformId === delivery.workspacePlatformId,
+      (item) => item.platformId === delivery.workspacePlatformId
     );
   async function findLearner() {
     setBusy(true);
@@ -392,23 +392,23 @@ function CourseEditor({
       setLearner(found);
       if (!found)
         setLookupMessage(
-          'No account was found. Add the account in Partners and ask the learner to complete secure account setup, then search again.',
+          'No account was found. Add the account in Partners and ask the learner to complete secure account setup, then search again.'
         );
       else if (!found.verified)
         setLookupMessage(
-          'This learner needs email verification or an operator-issued account setup link before enrollment.',
+          'This learner needs email verification or an operator-issued account setup link before enrollment.'
         );
       else if (!partnerTraining)
         setLookupMessage('This learner is eligible for course access.');
       else if (!found.workspaces.length)
         setLookupMessage(
-          'This eligible learner needs a training workspace before enrollment. Create it below; partner approval is separate.',
+          'This eligible learner needs a training workspace before enrollment. Create it below; partner approval is separate.'
         );
       else if (found.workspaces.length === 1)
         setWorkspacePlatformId(found.workspaces[0].platformId);
     } catch {
       setLookupMessage(
-        'The learner could not be checked. Confirm the email and refresh before retrying.',
+        'The learner could not be checked. Confirm the email and refresh before retrying.'
       );
     } finally {
       setBusy(false);
@@ -437,7 +437,7 @@ function CourseEditor({
         'Learner';
       const result = await lmsApi.createTrainingWorkspace(
         candidate.identityId,
-        `${person.slice(0, 96)} training workspace`,
+        `${person.slice(0, 96)} training workspace`
       );
       const refreshed = await lmsApi.lookupLearner(candidate.email);
       if (session !== lmsSessionVersion()) return;
@@ -445,23 +445,23 @@ function CourseEditor({
         throw new Error('Learner lookup changed');
       setLearner(refreshed);
       const owned = refreshed.workspaces.find(
-        (item) => item.platformId === result.platformId,
+        (item) => item.platformId === result.platformId
       );
       if (owned) {
         setWorkspacePlatformId(owned.platformId);
         setLookupMessage(
-          'Training workspace is ready. Verify the receipt before recording enrollment. Partner status has not changed.',
+          'Training workspace is ready. Verify the receipt before recording enrollment. Partner status has not changed.'
         );
       } else {
         setWorkspaceReviewRequired(true);
         setLookupMessage(
-          'The returned workspace is not owned by this learner. Operator review is required before enrollment; no workspace has been selected.',
+          'The returned workspace is not owned by this learner. Operator review is required before enrollment; no workspace has been selected.'
         );
       }
     } catch {
       if (session === lmsSessionVersion())
         setLookupMessage(
-          'Workspace setup could not be confirmed. Find the learner again before retrying.',
+          'Workspace setup could not be confirmed. Find the learner again before retrying.'
         );
     } finally {
       workspaceCreating.current = false;
@@ -475,7 +475,7 @@ function CourseEditor({
       <p role="alert">Instructor tools could not load. Refresh to try again.</p>
     );
   const enrollment = enrollments.data?.find(
-    (item) => item.id === selectedEnrollment,
+    (item) => item.id === selectedEnrollment
   );
   const lesson = content?.lessons[selectedLesson];
   const question = content?.questions[selectedQuestion];
@@ -584,7 +584,7 @@ function CourseEditor({
                       changeContent({
                         ...content,
                         lessons: content.lessons.filter(
-                          (_, index) => index !== selectedLesson,
+                          (_, index) => index !== selectedLesson
                         ),
                       });
                       setSelectedLesson(0);
@@ -608,7 +608,7 @@ function CourseEditor({
                           lessons: content.lessons.map((item, index) =>
                             index === selectedLesson
                               ? { ...item, title: event.target.value }
-                              : item,
+                              : item
                           ),
                         })
                       }
@@ -627,7 +627,7 @@ function CourseEditor({
                           lessons: content.lessons.map((item, index) =>
                             index === selectedLesson
                               ? { ...item, body: event.target.value }
-                              : item,
+                              : item
                           ),
                         })
                       }
@@ -646,7 +646,7 @@ function CourseEditor({
                           lessons: content.lessons.map((item, index) =>
                             index === selectedLesson
                               ? { ...item, exercise: event.target.value }
-                              : item,
+                              : item
                           ),
                         })
                       }
@@ -689,7 +689,7 @@ function CourseEditor({
                           questions: content.questions.map((item, index) =>
                             index === selectedQuestion
                               ? { ...item, prompt: event.target.value }
-                              : item,
+                              : item
                           ),
                         })
                       }
@@ -715,10 +715,10 @@ function CourseEditor({
                                     options: item.options.map((value, index) =>
                                       index === optionIndex
                                         ? event.target.value
-                                        : value,
+                                        : value
                                     ),
                                   }
-                                : item,
+                                : item
                             ),
                           })
                         }
@@ -740,7 +740,7 @@ function CourseEditor({
                                   ...item,
                                   correctIndex: Number(event.target.value),
                                 }
-                              : item,
+                              : item
                           ),
                         })
                       }
@@ -761,11 +761,7 @@ function CourseEditor({
                     variant="outline"
                     onClick={() =>
                       run(() =>
-                        lmsApi.saveCourse(
-                          current.id,
-                          current.revision,
-                          content,
-                        ),
+                        lmsApi.saveCourse(current.id, current.revision, content)
                       )
                     }
                   >
@@ -872,8 +868,8 @@ function CourseEditor({
                   ? lmsApi.enrollPartnerCourse
                   : lmsApi.enrollLearning)(
                   globalLookup ? learner!.identityId : identityId,
-                  current.id,
-                ),
+                  current.id
+                )
               )
             }
           >
@@ -934,7 +930,7 @@ function CourseEditor({
                 return;
               void run(async () => {
                 const converting = enrollments.data?.find(
-                  (item) => item.id === conversionEnrollment,
+                  (item) => item.id === conversionEnrollment
                 );
                 if (
                   converting &&
@@ -942,7 +938,7 @@ function CourseEditor({
                     (hosted ? learner!.identityId : identityId)
                 )
                   throw new Error(
-                    'Choose the same learner as the course enrollment.',
+                    'Choose the same learner as the course enrollment.'
                   );
                 const recorded = conversionEnrollment
                   ? await lmsApi.convertTraining(conversionEnrollment, {
@@ -974,7 +970,7 @@ function CourseEditor({
                 value={conversionEnrollment}
                 onChange={(event) => {
                   const row = enrollments.data?.find(
-                    (item) => item.id === event.target.value,
+                    (item) => item.id === event.target.value
                   );
                   setConversionEnrollment(event.target.value);
                   setLearnerEmail(row?.learnerEmail ?? '');
@@ -988,7 +984,7 @@ function CourseEditor({
                   ?.filter(
                     (item) =>
                       item.accessType === 'partner_course' &&
-                      item.status === 'active',
+                      item.status === 'active'
                   )
                   .map((item) => (
                     <option key={item.id} value={item.id}>
@@ -1139,10 +1135,11 @@ function CourseEditor({
                 }
               >
                 <option value="core">
-                  Core · two coaching hours · 60-day training workspace
+                  Core · $1,000 · two coaching hours · 12-month workspace
                 </option>
                 <option value="launch">
-                  Launch · four coaching hours · 90-day training workspace
+                  Guided · $1,200 · four coaching hours · one proposal review ·
+                  12-month workspace
                 </option>
               </select>
             </label>
@@ -1263,9 +1260,7 @@ function CourseEditor({
               )}
               <p className="break-words text-sm">
                 Receipt: {delivery.paymentReference} ·{' '}
-                {delivery.package === 'core'
-                  ? 'Core: 60 days'
-                  : 'Launch: 90 days'}
+                {delivery.package === 'core' ? 'Core' : 'Guided'}
               </p>
               {delivery.training ? (
                 <p role="status">
@@ -1346,8 +1341,8 @@ function CourseEditor({
                               lmsApi.bindWorkspace(
                                 delivery.id,
                                 repairTarget,
-                                delivery.workspacePlatformId,
-                              ),
+                                delivery.workspacePlatformId
+                              )
                             )
                           }
                         >
@@ -1409,8 +1404,8 @@ function CourseEditor({
                 setWalkthrough(false);
                 setSafety(
                   Object.fromEntries(
-                    Object.keys(safetyLabels).map((key) => [key, false]),
-                  ),
+                    Object.keys(safetyLabels).map((key) => [key, false])
+                  )
                 );
               }}
             >
@@ -1560,7 +1555,7 @@ function ReviewForm({
                 safety,
                 feedback,
                 walkthroughCompleted: true,
-              }),
+              })
             )
           }
         >

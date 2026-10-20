@@ -20,6 +20,7 @@ import { createHostedLedger } from '../../src/app/hosting/hosting-ledger'
 import { createHostedOnboarding } from '../../src/app/hosting/hosting-onboarding'
 import { hostingServices } from '../../src/app/hosting/hosting-services'
 import { createHostedTraining } from '../../src/app/hosting/hosting-training'
+import { newPartnerTrainingPeriods } from '../../src/app/hosting/hosting-training-periods'
 import { HostingTrainingEntity } from '../../src/app/hosting/hosting-training-entity'
 import { HostingActor } from '../../src/app/hosting/hosting-transactions'
 import { foundingCourseDraft } from '../../src/app/lms/lms-content'
@@ -132,19 +133,19 @@ describe('operator learning workspace repair', () => {
         expect(await grants()).toEqual(credits)
         expect(await ds.getRepository(HostingTrainingEntity).countBy({ id: activation.trainingId })).toBe(1)
     })
-    it('activates repaired Core enrollment exactly once with two real fixed periods and preserves usage on replay', async () => {
+    it('activates repaired Core enrollment exactly once with twelve real calendar periods and preserves usage on replay', async () => {
         const clocksBefore = await readEnrollment()
         await bind()
         expect((await readEnrollment()).startsAt).toEqual(clocksBefore.startsAt)
         const activation = await fulfillment().activate({ actor, enrollmentId: enrollment.id })
         const record = await ds.getRepository(HostingTrainingEntity).findOneByOrFail({ id: activation.trainingId })
         expect(record).toMatchObject({ platformId: learner.platformId, identityId: learner.identityId, enrollmentId: enrollment.id, receiptId: enrollment.paymentReference, tier: 'core' })
-        expect(record.endsAt.getTime() - record.startsAt.getTime()).toBe(60 * 86400000)
+        expect(record.endsAt).toEqual(newPartnerTrainingPeriods(record.startsAt).at(-1)!.until)
         const issued = (await grants()).filter(grant => grant.sourceKey.startsWith(`training:${record.id}:`))
-        expect(issued).toHaveLength(4)
-        expect(issued.filter(grant => grant.meter === 'managed_ai').map(grant => grant.amount)).toEqual([5000000n, 5000000n])
-        expect(issued.filter(grant => grant.meter === 'execution').map(grant => grant.amount)).toEqual([1000n, 1000n])
-        expect(issued.every(grant => grant.validUntil.getTime() - grant.validFrom.getTime() === 30 * 86400000)).toBe(true)
+        expect(issued).toHaveLength(24)
+        expect(issued.filter(grant => grant.meter === 'managed_ai').map(grant => grant.amount)).toEqual(Array(12).fill(0n))
+        expect(issued.filter(grant => grant.meter === 'execution').map(grant => grant.amount)).toEqual(Array(12).fill(10000n))
+        expect(issued.every(grant => grant.validUntil.getTime() > grant.validFrom.getTime())).toBe(true)
         const ledger = createHostedLedger({ dataSource: ds }), root = await ledger.reserveExecution({ actor: learner.actor, projectId: learner.projectId!, key: 'learning-replay', payer: 'managed' }), rootClaim = await ledger.claimExecution({ actor: learner.actor, reservationId: root.id })
         const call = await ledger.reserveManagedCall({ actor: learner.actor, rootReservationId: root.id, key: 'learning-replay-call', maxCostMicroUsd: 100n }), claim = await ledger.claimManagedCall({ actor: learner.actor, reservationId: call.id })
         await ledger.settleManagedCall({ platformId: learner.platformId, reservationId: call.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 50n })

@@ -6,8 +6,8 @@ import { UserIdentityEntity } from '../../../../src/app/authentication/user-iden
 import { commonProperties } from '../../../../src/app/database/database-connection'
 import { getMigrations } from '../../../../src/app/database/postgres-connection'
 import { FlagEntity } from '../../../../src/app/flags/flag.entity'
-import { createHostedAiAllowance } from '../../../../src/app/hosting/hosting-ai-allowance'
-import { HostingAiAllowanceChangeEntity } from '../../../../src/app/hosting/hosting-ai-allowance-entities'
+import { createHostedCreditAllowance } from '../../../../src/app/hosting/hosting-credit-allowance'
+import { HostingCreditAllowanceChangeEntity } from '../../../../src/app/hosting/hosting-credit-allowance-entities'
 import { HostingGrantEntity } from '../../../../src/app/hosting/hosting-entities'
 import { INSTALLATION_MODE_FLAG_ID } from '../../../../src/app/hosting/hosting-installation'
 import { createHostedLedger } from '../../../../src/app/hosting/hosting-ledger'
@@ -23,7 +23,7 @@ const schema = `hosting_allowance_${randomBytes(6).toString('hex')}`
 const ds = new DataSource({ type: 'postgres', host: '127.0.0.1', port: Number(process.env['HOSTING_TEST_POSTGRES_PORT']), username: process.env['HOSTING_TEST_POSTGRES_USER'] ?? 'sydekyks_ci', password: process.env['HOSTING_TEST_POSTGRES_PASSWORD'] ?? 'disposable-ci-only', database: process.env['HOSTING_TEST_POSTGRES_DATABASE'] ?? 'sydekyks_ci', schema, extra: { options: `-c search_path=${schema},public` }, migrations: getMigrations(), ...commonProperties })
 let actor: HostingActor, client: Awaited<ReturnType<typeof makeClient>>
 const onboarding = createHostedOnboarding({ dataSource: ds, subjectSecret: 'synthetic-allowance-race-subject-at-least32characters' })
-const allowance = createHostedAiAllowance({ dataSource: ds }), ledger = createHostedLedger({ dataSource: ds }), training = createHostedTraining({ dataSource: ds })
+const allowance = createHostedCreditAllowance({ dataSource: ds }), ledger = createHostedLedger({ dataSource: ds }), training = createHostedTraining({ dataSource: ds })
 async function identity() {
     const id = apId()
     await ds.getRepository(UserIdentityEntity).insert({ id, email: `${id}@test.invalid`, verified: true, provider: 'EMAIL', password: 'unused', firstName: 'Race', lastName: 'Fixture', tokenVersion: 'initial' })
@@ -88,14 +88,14 @@ beforeEach(async () => {
 })
 
 describe('PostgreSQL allowance serialization', () => {
-    it('serializes a zero cap against reservation and preserves any reservation that won first', async () => {
+    it('serializes allowance reduction against an AI reservation without erasing committed Credits', async () => {
         await activate()
         const execution = await root(), unlock = await holdAccount()
         let completed = 0
-        const cap = allowance.save({ actor, input: { platformId: client.platformId, expectedRevision: 0, requestKey: 'race:cap', monthlyCredits: 0 } }).finally(() => {
+        const cap = allowance.save({ actor, input: { platformId: client.platformId, expectedRevision: 0, requestKey: 'race:cap', monthlyCredits: 1, reason: 'Reduce to the committed base run' } }).finally(() => {
             completed++
         })
-        const reserve = ledger.reserveManagedCall({ actor: client.actor, rootReservationId: execution.reservation.id, key: 'race:reservation', maxCostMicroUsd: 1000000n }).finally(() => {
+        const reserve = ledger.reserveManagedCall({ actor: client.actor, rootReservationId: execution.reservation.id, key: 'race:reservation', maxCostMicroUsd: 1000n }).finally(() => {
             completed++
         })
         try {
@@ -106,35 +106,50 @@ describe('PostgreSQL allowance serialization', () => {
             await unlock()
         }
         const [saved, held] = await Promise.allSettled([cap, reserve])
-        expect(saved.status).toBe('fulfilled')
+        if (saved.status === 'rejected') expect(String(saved.reason)).toContain('BELOW_COMMITTED')
         if (held.status === 'fulfilled') {
             const claim = await ledger.claimManagedCall({ actor: client.actor, reservationId: held.value.id })
             expect(claim.claimed).toBe(true)
-            await ledger.settleManagedCall({ platformId: client.platformId, reservationId: held.value.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 500000n })
+            await ledger.settleManagedCall({ platformId: client.platformId, reservationId: held.value.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 500n })
         }
         else expect(String(held.reason)).toContain('CREDITS_EXHAUSTED')
         const view = await allowance.read({ actor, platformId: client.platformId })
-        expect(view.period).toMatchObject({ amountMicroUsd: '0', reservedMicroUsd: '0', consumedMicroUsd: held.status === 'fulfilled' ? '500000' : '0', availableMicroUsd: '0' })
+        expect(view.period).toMatchObject({ amount: saved.status === 'fulfilled' ? '1' : '10000', reserved: '0', consumed: held.status === 'fulfilled' ? '2' : '1', available: held.status === 'fulfilled' ? '9998' : '0' })
+        expect([saved, held].filter(result => result.status === 'fulfilled')).toHaveLength(1)
         await ledger.finishExecution({ platformId: client.platformId, reservationId: execution.reservation.id, dispatchId: execution.dispatchId })
     })
     it('serializes receipt revocation against allowance changes without reviving grants or losing held calls', async () => {
         const enrollmentId = await activate(), execution = await root()
-        const held = await ledger.reserveManagedCall({ actor: client.actor, rootReservationId: execution.reservation.id, key: 'held', maxCostMicroUsd: 500000n }), claim = await ledger.claimManagedCall({ actor: client.actor, reservationId: held.id })
+        const held = await ledger.reserveManagedCall({ actor: client.actor, rootReservationId: execution.reservation.id, key: 'held', maxCostMicroUsd: 5000n }), claim = await ledger.claimManagedCall({ actor: client.actor, reservationId: held.id })
         const unlock = await holdAccount()
-        const cap = allowance.save({ actor, input: { platformId: client.platformId, expectedRevision: 0, requestKey: 'race:refund-cap', monthlyCredits: 7000 } })
+        const cap = allowance.save({ actor, input: { platformId: client.platformId, expectedRevision: 0, requestKey: 'race:refund-cap', monthlyCredits: 7000, reason: 'Synthetic agreed allowance' } })
         const refund = training.revoke({ actor, enrollmentId })
         await unlock()
         const results = await Promise.allSettled([cap, refund])
         expect(results.map(result => result.status)).toEqual(['fulfilled', 'fulfilled'])
-        const trainingGrants = (await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId, meter: 'managed_ai' })).filter(grant => grant.sourceKey.startsWith('training:'))
+        const trainingGrants = (await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId, meter: 'execution' })).filter(grant => grant.sourceKey.startsWith('training:'))
         expect(trainingGrants.every(grant => grant.revokedAt !== null)).toBe(true)
         expect((await allowance.read({ actor, platformId: client.platformId })).period).toBeNull()
-        await ledger.settleManagedCall({ platformId: client.platformId, reservationId: held.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 100000n })
-        expect(await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: held.grantId })).toMatchObject({ consumed: 100000n, reserved: 0n, revokedAt: expect.any(Date) })
+        await ledger.settleManagedCall({ platformId: client.platformId, reservationId: held.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 1000n })
+        expect(await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: held.grantId })).toMatchObject({ consumed: 3n, reserved: 0n, revokedAt: expect.any(Date) })
         await ledger.finishExecution({ platformId: client.platformId, reservationId: execution.reservation.id, dispatchId: execution.dispatchId })
     })
+    it('rechecks operator credentials after waiting for a target account lock', async () => {
+        await activate()
+        const before = await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId })
+        const unlock = await holdAccount()
+        const pending = allowance.save({ actor, input: { platformId: client.platformId, expectedRevision: 0, requestKey: 'race:revoked-operator', monthlyCredits: 8000, reason: 'Synthetic revoke while blocked' } })
+        await new Promise(resolve => setTimeout(resolve, 30))
+        await ds.getRepository(UserIdentityEntity).update({ id: actor.identityId }, { tokenVersion: 'revoked-while-waiting' })
+        await unlock()
+        await expect(pending).rejects.toThrow('OPERATOR_REQUIRED')
+        expect(await ds.getRepository(HostingCreditAllowanceChangeEntity).count()).toBe(0)
+        expect(await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId })).toEqual(before)
+    })
     it('rolls back one of two different clients using the same actor/request key concurrently', async () => {
-        const other = await makeClient(), createRunner = ds.createQueryRunner.bind(ds)
+        await activate()
+        const original = client, other = await makeClient(), createRunner = ds.createQueryRunner.bind(ds)
+        client = other; await activate(); client = original
         let arrived = 0, release!: () => void
         const gate = new Promise<void>(resolve => {
             release = resolve
@@ -144,7 +159,7 @@ describe('PostgreSQL allowance serialization', () => {
         const spy = vi.spyOn(ds, 'createQueryRunner').mockImplementation((...args) => {
             const runner = createRunner(...args), query = runner.query.bind(runner)
             runner.query = async (sql, ...rest) => {
-                if (/^INSERT INTO .*hosting_ai_allowance_change/.test(sql)) {
+                if (/^INSERT INTO .*hosting_credit_allowance_change/.test(sql)) {
                     if (++arrived === 2) release()
                     await gate
                 }
@@ -153,14 +168,14 @@ describe('PostgreSQL allowance serialization', () => {
             return runner
         })
         try {
-            const outcomes = await Promise.allSettled([client.platformId, other.platformId].map((platformId, i) => allowance.save({ actor, input: { platformId, expectedRevision: 0, requestKey: 'race:shared-key', monthlyCredits: 7000 + i } })))
+            const outcomes = await Promise.allSettled([client.platformId, other.platformId].map((platformId, i) => allowance.save({ actor, input: { platformId, expectedRevision: 0, requestKey: 'race:shared-key', monthlyCredits: 7000 + i, reason: 'Synthetic agreed allowance' } })))
             expect(outcomes.filter(value => value.status === 'fulfilled')).toHaveLength(1)
             const failed = outcomes.find(value => value.status === 'rejected') as PromiseRejectedResult
             expect(String(failed.reason)).toContain('IDEMPOTENCY_CONFLICT')
-            expect(await ds.getRepository(HostingAiAllowanceChangeEntity).count()).toBe(1)
+            expect(await ds.getRepository(HostingCreditAllowanceChangeEntity).count()).toBe(1)
             const views = await Promise.all([client.platformId, other.platformId].map(platformId => allowance.read({ actor, platformId })))
             expect(views.map(view => view.revision).sort()).toEqual([0, 1])
-            expect(views.every(view => view.period?.amountMicroUsd === '1000000')).toBe(true)
+            expect(views.map(view => view.period?.amount).sort()).toEqual(expect.arrayContaining(['10000']))
         }
         finally {
             release(); spy.mockRestore()

@@ -23,6 +23,9 @@ import { assertTenantAdministrator, assertTenantMemberTarget } from './hosting-t
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 const id = z.string().length(21)
+// A full 100-seat workspace also retains inactive users and operational staff.
+// Keep the directory bounded without confusing that bound with paid seats.
+const MEMBER_DIRECTORY_LIMIT = 1000
 const cas = z.object({ expectedRevision: z.number().int().min(0).max(10000), expectedState: z.string().regex(/^[a-f0-9]{64}$/), requestKey: z.string().regex(/^[a-zA-Z0-9_.:-]{1,100}$/) })
 export const TenantMemberInviteInput = cas.extend({ email: z.email().max(254).transform(value => value.trim().toLowerCase()), role: z.enum(PlatformRole) }).strict()
 export const TenantMemberChangeInput = cas.extend({ userId: id, role: z.enum(PlatformRole).optional(), deactivate: z.literal(true).optional() }).strict().refine(value => value.role !== undefined || value.deactivate === true)
@@ -172,8 +175,8 @@ async function assertUnused(manager: EntityManager, identityId: string) {
 }
 async function view(manager: EntityManager, actor: HostingActor) {
     const admin = await assertTenantAdministrator({ manager, actor }), account = await tx.account({ manager, platformId: actor.platformId }), now = await tx.now(manager)
-    const users = await manager.getRepository(UserEntity).find({ where: { platformId: account.id }, order: { created: 'ASC' }, take: 101 })
-    if (users.length > 100) hostingFail('HOSTING_MEMBER_LIST_LIMIT')
+    const users = await manager.getRepository(UserEntity).find({ where: { platformId: account.id }, order: { created: 'ASC' }, take: MEMBER_DIRECTORY_LIMIT + 1 })
+    if (users.length > MEMBER_DIRECTORY_LIMIT) hostingFail('HOSTING_MEMBER_LIST_LIMIT')
     const members = []
     for (const user of users) {
         const identity = await manager.getRepository(UserIdentityEntity).findOneByOrFail({ id: user.identityId })

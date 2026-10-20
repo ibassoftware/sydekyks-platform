@@ -28,7 +28,7 @@ vi.mock('../../builder-hooks', () => ({
 }));
 vi.mock(
   '../../builder-header/flow-status/view-draft-or-edit-flow-button',
-  () => ({ EditFlowOrViewDraftButton: () => null }),
+  () => ({ EditFlowOrViewDraftButton: () => null })
 );
 vi.mock('../utils/flow-canvas-utils', () => ({
   flowCanvasUtils: {
@@ -72,6 +72,36 @@ beforeEach(() => {
 });
 
 describe('run access refusal display', () => {
+  it('explains a removed BYOK key before dispatch without a dead failed-step action', () => {
+    const connectionMessage =
+      'The selected client AI key is unavailable for this Mission. Ask your workspace administrator to update its AI connection, then try again.';
+    mocks.state.run = {
+      ...refusal(),
+      failedStep: {
+        name: 'trigger',
+        displayName: 'AI connection',
+        message: connectionMessage,
+      },
+    };
+    render(<RunInfoWidget />);
+    expect(screen.getByRole('alert').textContent).toBe(connectionMessage);
+    expect(screen.queryByRole('button', { name: 'See error' })).toBeNull();
+  });
+  it('explains an undispatched Credit refusal without a dead failed-step action', () => {
+    const creditMessage =
+      'Not enough Credits are available to start this Mission. Check billing or contact your workspace administrator.';
+    mocks.state.run = {
+      ...refusal(),
+      failedStep: {
+        name: 'trigger',
+        displayName: 'Credits',
+        message: creditMessage,
+      },
+    };
+    render(<RunInfoWidget />);
+    expect(screen.getByRole('alert').textContent).toBe(creditMessage);
+    expect(screen.queryByRole('button', { name: 'See error' })).toBeNull();
+  });
   it('shows the safe expiry reason directly without a dead See error action or invented duration', () => {
     const { container } = render(<RunInfoWidget />);
     expect(screen.getByRole('alert').textContent).toBe(message);

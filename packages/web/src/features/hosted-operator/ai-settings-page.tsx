@@ -1,3 +1,4 @@
+import { ClientCreditAllowanceSection } from './credit-allowance-section';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
@@ -5,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { assertAuthSession } from '@/features/hosted-onboarding/auth-session';
 
-import { ClientAiAllowanceSection } from './ai-allowance-section';
 import {
   AiSettings,
   AiSettingsError,
@@ -51,12 +51,12 @@ function SessionSettings({ access }: { access: Access }) {
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const after = cursors[cursors.length - 1];
   const clients = useQuery(
-    operatorClientsQuery(access.session, after, access.allowed),
+    operatorClientsQuery(access.session, after, access.allowed)
   );
   const settings = useAiSettings(
     access.session,
     access.allowed,
-    target || undefined,
+    target || undefined
   );
   const global = useAiSettings(access.session, access.allowed);
   const scopeAvailable =
@@ -66,7 +66,7 @@ function SessionSettings({ access }: { access: Access }) {
     setTarget('');
     setTargetName('Global default');
     setCursors((values) =>
-      next ? [...values, clients.data?.next ?? null] : values.slice(0, -1),
+      next ? [...values, clients.data?.next ?? null] : values.slice(0, -1)
     );
   }
   return (
@@ -190,7 +190,7 @@ function SessionSettings({ access }: { access: Access }) {
                   }}
                 />
               )}
-              <ClientAiAllowanceSection
+              <ClientCreditAllowanceSection
                 access={access}
                 platformId={target}
                 clientName={targetName}
@@ -227,10 +227,10 @@ function SettingsEditor({
   const cache = useQueryClient();
   const isClient = state.scopePlatformId !== null;
   const [mode, setMode] = useState(
-    !isClient && state.mode === 'inherit' ? 'set' : state.mode,
+    !isClient && state.mode === 'inherit' ? 'set' : state.mode
   );
   const [model, setModel] = useState<'inherit' | ManagedModel>(
-    state.model ?? (isClient ? 'inherit' : 'deepseek-flash'),
+    state.model ?? (isClient ? 'inherit' : 'deepseek-flash')
   );
   const [credentialAction, setCredentialAction] = useState<
     'keep' | 'replace' | 'inherit'
@@ -239,7 +239,7 @@ function SettingsEditor({
       ? 'inherit'
       : state.credential.configured
       ? 'keep'
-      : 'replace',
+      : 'replace'
   );
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -282,7 +282,7 @@ function SettingsEditor({
         (!key || /\s/.test(key) || key.length < 16 || key.length > 512)
       ) {
         setStatus(
-          'Enter a provider key between 16 and 512 characters, without spaces.',
+          'Enter a provider key between 16 and 512 characters, without spaces.'
         );
         return;
       }
@@ -300,12 +300,12 @@ function SettingsEditor({
           credentialAction: action,
           ...(key ? { apiKey: key } : {}),
         },
-        attempt.signal,
+        attempt.signal
       );
       assertAuthSession(access.session);
       if (!active.current || attempt.signal.aborted) return;
       setStatus(
-        'Settings saved. The displayed effective settings have been refreshed.',
+        'Settings saved. The displayed effective settings have been refreshed.'
       );
       await cache.invalidateQueries({ queryKey: ['hosted-ai-settings'] });
     } catch (error) {
@@ -443,7 +443,7 @@ function SettingsEditor({
             disabled={disabledFields}
             onChange={(event) => {
               setCredentialAction(
-                event.target.value as typeof credentialAction,
+                event.target.value as typeof credentialAction
               );
               if (secret.current) secret.current.value = '';
             }}
@@ -533,7 +533,7 @@ function PricingReview({
   const [confirmed, setConfirmed] = useState(false);
   const [status, setStatus] = useState('');
   const [approvalUntil, setApprovalUntil] = useState(
-    state.pricing.calendar.until.slice(0, 16),
+    state.pricing.calendar.until.slice(0, 16)
   );
   const controller = useRef<AbortController | null>(null);
   const active = useRef(true);
@@ -589,7 +589,7 @@ function PricingReview({
       setStatus(
         approve
           ? 'Published pricing and calendar approved.'
-          : 'Pricing observation requested. Refresh to check the result.',
+          : 'Pricing observation requested. Refresh to check the result.'
       );
       await cache.invalidateQueries({ queryKey: ['hosted-ai-settings'] });
     } catch (error) {
@@ -690,7 +690,7 @@ function PricingReview({
                       {money(pricing.terms!.models[model][window].output)}
                     </td>
                   </tr>
-                )),
+                ))
               )}
             </tbody>
           </table>

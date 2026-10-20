@@ -23,6 +23,7 @@ import { api } from '@/lib/api';
 import { authenticationSession } from '@/lib/authentication-session';
 
 import { flowRunsApi } from '../api/flow-runs-api';
+import { hostedRetryErrorMessage } from '../utils/hosted-retry-policy';
 
 export const flowRunKeys = {
   detail: (runId: string) => ['flow-run', runId] as const,
@@ -75,7 +76,7 @@ function groupByCategory(data: FlowRunCountByStatus[]) {
     color: cat.color,
     count: cat.statuses.reduce(
       (sum, s) => sum + (statusToCount.get(s) ?? 0),
-      0,
+      0
     ),
   })).filter((cat) => cat.count > 0);
 }
@@ -108,7 +109,7 @@ export const flowRunQueries = {
     const categories = useMemo(() => groupByCategory(data?.data ?? []), [data]);
     const total = useMemo(
       () => categories.reduce((sum, c) => sum + c.count, 0),
-      [categories],
+      [categories]
     );
 
     return { categories, total, isLoading, dataUpdatedAt, refetch };
@@ -147,13 +148,22 @@ export const flowRunMutations = {
       onError: (error: unknown) => {
         if (api.isError(error)) {
           const apError = error.response?.data as ApErrorParams;
-          if (apError.code === ErrorCode.FLOW_RUN_RETRY_OUTSIDE_RETENTION) {
+          if (
+            typeof apError.code === 'string' &&
+            apError.code.startsWith('HOSTING_')
+          ) {
+            toast.error(t('Workflow was not restarted'), {
+              description: t(hostedRetryErrorMessage(apError.code)),
+            });
+          } else if (
+            apError.code === ErrorCode.FLOW_RUN_RETRY_OUTSIDE_RETENTION
+          ) {
             toast.error(t('Retry failed'), {
               description: t(
                 'Retry is only available for {failedJobRetentionDays} after a run fails.',
                 {
                   failedJobRetentionDays: apError.params.failedJobRetentionDays,
-                },
+                }
               ),
               duration: 5000,
               closeButton: true,
@@ -181,7 +191,7 @@ export const flowRunMutations = {
       onSuccess: (runs) => {
         const succeededRuns = runs.filter((r) => !r.error) as FlowRun[];
         const failedRuns = runs.filter(
-          (r) => !!r.error,
+          (r) => !!r.error
         ) as Required<FlowRunWithRetryError>[];
         onSuccess(succeededRuns);
         if (failedRuns.length > 0) {

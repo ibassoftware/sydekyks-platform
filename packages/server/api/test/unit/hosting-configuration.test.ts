@@ -30,6 +30,18 @@ describe('hosting configuration', () => {
         expect(() => hostingConfiguration.assertRuntimeAvailable({ mode: 'self_hosted' })).not.toThrow()
     })
 
+    it.each([undefined, 'self_hosted'])('does not inspect hosted billing, supplier or storage settings in mode %s', mode => {
+        if (mode !== undefined) values.set('SERVICE_MODE', mode)
+        values.set('DB_TYPE', 'PGLITE')
+        values.set('REDIS_TYPE', 'MEMORY')
+        values.set('EXECUTION_MODE', 'UNSANDBOXED')
+        values.set('HOSTED_BILLING_MODE', 'unsupported')
+        values.set('HOSTED_STORAGE_INSTANCE_LIMIT_BYTES', 'invalid')
+        expect(hostingConfiguration.validate()).toBe('self_hosted')
+        expect(() => hostingConfiguration.assertRuntimeAvailable({ mode: 'self_hosted' })).not.toThrow()
+        expect(hostingWorkerGate.isCompatible({})).toBe(true)
+    })
+
     it.each(['', 'cloud', 'invalid'])('rejects invalid mode %s instead of disabling billing', (mode) => {
         values.set('SERVICE_MODE', mode)
         expect(() => hostingConfiguration.validate()).toThrow('AP_SERVICE_MODE')

@@ -103,15 +103,15 @@ describe('customer execution-credit boundary', () => {
         expect(HostedBillingOverview.parse(full)).toEqual(full)
         expect(full.meters.managedAi.amount).toBe('1000000')
         expect(full.meters.previousPeriodHeldMicroUsd).toBe('0')
-        expect(full.limits.aiCredits).toBe(1000)
-        expect(full.plans.map(plan => plan.limits.aiCredits)).toEqual([5000, 20000])
+        expect(full.limits.aiCredits).toBe(0)
+        expect(full.plans.map(plan => plan.limits.aiCredits)).toEqual([5000, 20000, 0])
         const customer = HostedCustomerBillingOverview.parse(full)
         expect(Object.keys(customer.meters)).toEqual(['execution'])
         expect(customer.limits).not.toHaveProperty('aiCredits')
         expect(customer.plans.every(plan => !('aiCredits' in plan.limits))).toBe(true)
         expect(customer.meters.execution).toEqual(full.meters.execution)
         expect(full.meters).toHaveProperty('managedAi')
-        expect(full.limits.aiCredits).toBe(1000)
+        expect(full.limits.aiCredits).toBe(0)
     })
     it('returns only execution balances and sanitized billing data through real authenticated HTTP routes', async () => {
         const auth = await headers()
@@ -148,12 +148,12 @@ describe('customer execution-credit boundary', () => {
         expect(JSON.stringify(visible)).not.toContain('deepseek')
         expect(JSON.stringify(visible)).not.toContain('synthetic-dto-test-key')
     })
-    it.each(['managed_ai', 'execution'] as const)('withholds managed availability when internal%s is exhausted without exposing its supplier balance', async meter => {
+    it.each(['managed_ai', 'execution'] as const)('uses only shared Credits for admission when historical %s is exhausted', async meter => {
         await configureManaged()
         const grant = await ds.getRepository(HostingGrantEntity).findOneByOrFail({ platformId: client.platformId, meter })
         await ds.getRepository(HostingGrantEntity).update({ id: grant.id }, { consumed: grant.amount })
         const visible = await options()
-        expect(visible.managedAvailable).toBe(false)
+        expect(visible.managedAvailable).toBe(meter === 'managed_ai')
         expect(Object.keys(visible.credits)).toEqual(['execution'])
         expect(visible.credits.execution.available).toBe(meter === 'execution' ? '0' : '1000')
         const internal = await tx.run({ dataSource: ds, fn: async manager => {

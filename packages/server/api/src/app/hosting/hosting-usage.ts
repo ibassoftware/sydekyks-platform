@@ -1,5 +1,6 @@
 import { hostingCatalog } from '@activepieces/shared'
 import { EntityManager } from 'typeorm'
+import { hostedCreditLiability } from './hosting-credit-policy'
 import { HostingAccount, HostingGrant, HostingGrantEntity } from './hosting-entities'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
 import { subscriptionAccountActive, subscriptionGrantActive, subscriptionGrantUntil } from './hosting-subscription-policy'
@@ -9,6 +10,8 @@ export async function readHostedCredits(manager: EntityManager, account: Hosting
     const grants = await manager.getRepository(HostingGrantEntity).find({ where: { platformId: account.id }, order: { validFrom: 'DESC', id: 'ASC' } })
     const candidates = grants.filter(grant => grant.meter === 'execution' && hostingGrantMatchesPlan(grant, account.planId) && grant.validFrom <= now)
     const current = candidates.find(grant => subscriptionGrantActive(account, grant, now)) ?? candidates[0]
+    const legacy = current ? await hostedCreditLiability(manager, current.id) : { reserved: 0n, consumed: 0n }
+    const unified = current ? { ...current, reserved: current.reserved + legacy.reserved, consumed: current.consumed + legacy.consumed } : undefined
     const ai = grants.find(grant => grant.meter === 'managed_ai' && grant.sourceKey === current?.sourceKey)
     const meter = (grant: HostingGrant | undefined, scale: bigint, multiplier: bigint) => {
         const active = grant && subscriptionGrantActive(account, grant, now)
@@ -16,5 +19,5 @@ export async function readHostedCredits(manager: EntityManager, account: Hosting
         const remaining = grant ? grant.amount - grant.reserved - grant.consumed : 0n
         return { scale: scale.toString(), amount: ((grant?.amount ?? 0n) * multiplier).toString(), consumed: ((grant?.consumed ?? 0n) * multiplier).toString(), reserved: ((grant?.reserved ?? 0n) * multiplier).toString(), available: (active && entitled && remaining > 0n ? remaining * multiplier : 0n).toString(), validUntil: grant ? subscriptionGrantUntil(account, grant).toISOString() : null }
     }
-    return { execution: meter(current, 1n, 1n), ai: meter(ai, 1_000_000n, BigInt(hostingCatalog.microcreditsPerMicroUsd)), previousHeldAi: (grants.filter(grant => grant.meter === 'managed_ai' && grant.id !== ai?.id).reduce((sum, grant) => sum + grant.reserved, 0n) * BigInt(hostingCatalog.microcreditsPerMicroUsd)).toString() }
+    return { execution: meter(unified, 1n, 1n), ai: meter(ai, 1_000_000n, BigInt(hostingCatalog.microcreditsPerMicroUsd)), previousHeldAi: (grants.filter(grant => grant.meter === 'managed_ai' && grant.id !== ai?.id).reduce((sum, grant) => sum + grant.reserved, 0n) * BigInt(hostingCatalog.microcreditsPerMicroUsd)).toString() }
 }

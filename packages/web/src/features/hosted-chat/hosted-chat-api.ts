@@ -55,6 +55,12 @@ export const HostedChatOptions = z.object({
     label: z.string().max(80),
   }),
   managedAvailable: z.boolean(),
+  creditPolicy: z
+    .object({
+      executionCredits: z.literal(1),
+      maxRunCredits: creditQuantity,
+    })
+    .optional(),
   keys: z.array(
     z.object({ id: z.string().length(21), name: z.string().min(1).max(80) }),
   ),
@@ -70,6 +76,9 @@ export class HostedChatError extends Error {
       | 'key'
       | 'project'
       | 'credits'
+      | 'budget'
+      | 'limit'
+      | 'access'
       | 'context'
       | 'send',
   ) {
@@ -90,7 +99,13 @@ export function hostedChatErrorText(kind: HostedChatError['kind']) {
     case 'project':
       return 'This conversation belongs to a different project. Reopen it or start a new chat.';
     case 'credits':
-      return 'This request is unavailable under the workspace limits. Check billing or contact your workspace administrator.';
+      return 'Not enough Credits are available. Check billing for usage and pending reservations.';
+    case 'budget':
+      return 'Sydekyks AI is temporarily paused. Contact your workspace administrator or use an available BYOK key.';
+    case 'limit':
+      return 'This run reached its Credit spending limit. Reduce the work before starting a new run.';
+    case 'access':
+      return 'Workspace access is paused or expired. Check billing or contact your workspace administrator.';
     case 'context':
       return 'This conversation exceeds the current chat limits. Start a new chat with a shorter message. No Credits were charged for this send.';
     case 'send':
@@ -141,11 +156,16 @@ export async function hostedChatRequest<T>(
       throw new HostedChatError('key');
     if (code === 'HOSTING_PROJECT_ACCESS_DENIED')
       throw new HostedChatError('project');
+    if (code === 'HOSTING_OPERATOR_BUDGET_EXHAUSTED')
+      throw new HostedChatError('budget');
+    if (code === 'HOSTING_RUN_CREDIT_LIMIT') throw new HostedChatError('limit');
+    if (code?.startsWith('HOSTING_') && /CREDITS/.test(code))
+      throw new HostedChatError('credits');
     if (
       code?.startsWith('HOSTING_') &&
-      /CREDITS|ENTITLEMENT|TRIAL|SUSPENDED|BUDGET/.test(code)
+      /ENTITLEMENT|TRIAL|SUSPENDED/.test(code)
     )
-      throw new HostedChatError('credits');
+      throw new HostedChatError('access');
     if (status === 403 || status === 404) throw new HostedChatError('denied');
     throw new HostedChatError(sending ? 'send' : 'unavailable');
   }

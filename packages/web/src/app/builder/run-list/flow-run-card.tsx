@@ -29,6 +29,8 @@ import {
 } from '@/components/ui/tooltip';
 import { flowRunUtils } from '@/features/flow-runs';
 import { flowRunMutations } from '@/features/flow-runs/hooks/flow-run-hooks';
+import { canRerunHostedRun } from '@/features/flow-runs/utils/hosted-retry-policy';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import { useAuthorization } from '@/hooks/authorization-hooks';
 import { authenticationSession } from '@/lib/authentication-session';
 import { formatUtils } from '@/lib/format-utils';
@@ -43,9 +45,10 @@ type FlowRunCardProps = {
 export const FLOW_CARD_HEIGHT = 70;
 const FlowRunCard = React.memo(
   ({ run, viewedRunId, refetchRuns }: FlowRunCardProps) => {
+    const hosted = useHostedBillingEnabled();
     const { Icon, variant } = flowRunUtils.getStatusIcon(run.status);
     const userHasPermissionToRetryRun = useAuthorization().checkAccess(
-      Permission.WRITE_RUN,
+      Permission.WRITE_RUN
     );
     const projectId = authenticationSession.getProjectId();
     const navigate = useNavigate();
@@ -119,7 +122,7 @@ const FlowRunCard = React.memo(
                   ? new Date(run.finishTime).getTime() -
                       new Date(run.startTime).getTime()
                   : undefined,
-                false,
+                false
               )}
             </p>
           )}
@@ -135,7 +138,7 @@ const FlowRunCard = React.memo(
             <LoadingSpinner className="size-4"></LoadingSpinner>
           )}
 
-          {!isRetryingRun && (
+          {!isRetryingRun && (!hosted || canRerunHostedRun(run)) && (
             <PermissionNeededTooltip
               hasPermission={userHasPermissionToRetryRun}
             >
@@ -148,13 +151,16 @@ const FlowRunCard = React.memo(
                   <TooltipTrigger>
                     <DropdownMenuTrigger>
                       <Button
+                        aria-label={
+                          hosted ? t('Rerun workflow') : t('Retry run')
+                        }
                         variant="ghost"
                         size={'icon'}
                         className={cn(
                           'group-hover:opacity-100 opacity-0 rounded-full bg-gray-4 drop-shadow-md',
                           {
                             'opacity-100': isRetryDropdownOpen,
-                          },
+                          }
                         )}
                         onClick={(e) => {
                           e.preventDefault();
@@ -165,7 +171,9 @@ const FlowRunCard = React.memo(
                       </Button>
                     </DropdownMenuTrigger>
                   </TooltipTrigger>
-                  <TooltipContent>{t('Retry run')}</TooltipContent>
+                  <TooltipContent>
+                    {hosted ? t('Rerun workflow') : t('Retry run')}
+                  </TooltipContent>
                 </Tooltip>
                 <DropdownMenuContent>
                   <DropdownMenuItem
@@ -183,11 +191,22 @@ const FlowRunCard = React.memo(
                     className="cursor-pointer"
                   >
                     <div className="flex flex-row gap-2 items-center">
-                      <span>{t('On latest version')}</span>
+                      <span>
+                        {hosted
+                          ? t('Rerun workflow on latest version')
+                          : t('On latest version')}
+                      </span>
                     </div>
                   </DropdownMenuItem>
 
-                  {isFailedState(run.status) && (
+                  {hosted && (
+                    <p className="max-w-64 px-2 py-1.5 text-xs text-muted-foreground">
+                      {t(
+                        'Starts from the beginning and uses Credits. Earlier actions may happen again.'
+                      )}
+                    </p>
+                  )}
+                  {!hosted && isFailedState(run.status) && (
                     <DropdownMenuItem
                       onClick={(e) => {
                         e.preventDefault();
@@ -215,7 +234,7 @@ const FlowRunCard = React.memo(
         </div>
       </CardListItem>
     );
-  },
+  }
 );
 
 FlowRunCard.displayName = 'FlowRunCard';

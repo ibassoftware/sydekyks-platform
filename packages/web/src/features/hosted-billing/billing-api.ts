@@ -55,7 +55,7 @@ export const hostedBillingApi = {
   async open(
     session: Session,
     kind: 'checkout' | 'portal',
-    planId?: 'starter' | 'team',
+    planId?: 'starter' | 'team' | 'scale',
   ) {
     const result = await safeRequest(
       session,

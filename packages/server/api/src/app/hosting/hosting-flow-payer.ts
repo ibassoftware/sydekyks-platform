@@ -3,6 +3,7 @@ import { FlowActionType, flowStructureUtil, FlowVersion } from '@activepieces/sh
 import { EntityManager } from 'typeorm'
 import { FlowEntity } from '../flows/flow/flow.entity'
 import { FlowVersionEntity } from '../flows/flow-version/flow-version-entity'
+import { hostedAiCredential } from './hosting-ai-credentials'
 import { HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL } from './hosting-ai-policy'
 import { hostingFail } from './hosting-transactions'
 
@@ -39,9 +40,20 @@ export function hostedFlowPayer(version: Pick<FlowVersion, 'trigger'>, stepNameT
     }
     return selected ?? 'managed'
 }
-export async function currentHostedFlowPayer({ manager, flowId, flowVersionId, projectId, stepNameToTest }: { manager: EntityManager, flowId: string, flowVersionId: string, projectId: string, stepNameToTest?: string }): Promise<'managed' | 'byok'> {
+export async function currentHostedFlowPayer({ manager, platformId, flowId, flowVersionId, projectId, stepNameToTest }: { manager: EntityManager, platformId: string, flowId: string, flowVersionId: string, projectId: string, stepNameToTest?: string }): Promise<'managed' | 'byok'> {
     if (!await manager.getRepository(FlowEntity).existsBy({ id: flowId, projectId })) hostingFail('HOSTING_FLOW_SCOPE_MISMATCH')
     const version = await manager.getRepository(FlowVersionEntity).findOne({ where: { id: flowVersionId, flowId }, lock: { mode: 'pessimistic_read' } })
     if (!version) hostingFail('HOSTING_FLOW_SCOPE_MISMATCH')
-    return hostedFlowPayer(version, stepNameToTest)
+    const payer = hostedFlowPayer(version, stepNameToTest)
+    if (payer === 'byok') {
+        const steps = flowStructureUtil.getAllSteps(version.trigger)
+        for (const step of stepNameToTest ? steps.filter(value => value.name === stepNameToTest) : steps) {
+            if (step.type !== FlowActionType.PIECE || step.settings.pieceName !== '@activepieces/piece-ai') continue
+            const provider = step.settings.input.provider
+            // hostedFlowPayer has already rejected dynamic/missing config IDs.
+            if (!provider || typeof provider !== 'object' || !('configId' in provider) || typeof provider.configId !== 'string') hostingFail('HOSTING_EXACT_BYOK_KEY_REQUIRED')
+            await hostedAiCredential({ manager, platformId, projectId, payer: { type: 'byok', configId: provider.configId }, model: HOSTED_DEEPSEEK_MODEL })
+        }
+    }
+    return payer
 }

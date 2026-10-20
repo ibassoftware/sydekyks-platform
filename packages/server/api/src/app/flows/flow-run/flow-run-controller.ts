@@ -61,6 +61,7 @@ export const flowRunController: FastifyPluginAsyncZod = async (app) => {
             flowRunId: req.params.id,
             strategy: req.body.strategy,
             projectId: req.body.projectId,
+            hostedOrigin: req.principal.type === PrincipalType.USER ? { type: 'user', userId: req.principal.id, tokenVersion: req.principal.tokenVersion ?? null } : undefined,
         })
 
         if (isNil(flowRun)) {
@@ -92,6 +93,7 @@ export const flowRunController: FastifyPluginAsyncZod = async (app) => {
     app.post('/retry', BulkRetryFlowRequest, async (req) => {
         return flowRunService(req.log).bulkRetry({
             projectId: req.projectId,
+            hostedOrigin: req.principal.type === PrincipalType.USER ? { type: 'user', userId: req.principal.id, tokenVersion: req.principal.tokenVersion ?? null } : undefined,
             flowRunIds: req.body.flowRunIds,
             excludeFlowRunIds: req.body.excludeFlowRunIds,
             strategy: req.body.strategy,

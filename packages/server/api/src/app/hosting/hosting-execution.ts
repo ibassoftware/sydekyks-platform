@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { apId } from '@activepieces/core-utils'
-import { AgentRunSource, EngineResponseStatus, ExecutionType, FileType, FlowRun, FlowRunStatus, FlowStatus, isFlowRunStateTerminal, JobData, LATEST_JOB_DATA_SCHEMA_VERSION, ResumeReason, StreamStepProgress, WorkerJobType } from '@activepieces/shared'
+import { AIProviderName, apId } from '@activepieces/core-utils'
+import { AgentConversationStatus, AgentRunSource, EngineResponseStatus, ExecutionType, FileType, FlowRun, FlowRunStatus, FlowStatus, isFlowRunStateTerminal, JobData, LATEST_JOB_DATA_SCHEMA_VERSION, ResumeReason, StreamStepProgress, WorkerJobType } from '@activepieces/shared'
 import { DataSource, EntityManager, In } from 'typeorm'
 import { FileEntity } from '../file/file.entity'
 import { FlowEntity } from '../flows/flow/flow.entity'
@@ -12,6 +12,8 @@ import { SydConversationEntity } from '../syd/copilot/models/conversation.entity
 import { UserEntity } from '../user/user-entity'
 import { WaitpointEntity } from '../waitpoints/waitpoint-entity'
 import { WaitpointStatus } from '../waitpoints/waitpoint-types'
+import { hostedAiCredential } from './hosting-ai-credentials'
+import { HOSTED_DEEPSEEK_MODEL } from './hosting-ai-policy'
 import { HostingDispatch, HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingReservationEntity } from './hosting-entities'
 import { currentHostedFlowPayer, hostedFlowPayer } from './hosting-flow-payer'
@@ -60,7 +62,7 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
                 const run = await manager.getRepository(FlowRunEntity).findOneBy({ id: data.runId, projectId, flowId: data.flowId, flowVersionId: data.flowVersionId })
                 if (!flow || !version || !run) hostingFail('HOSTING_FLOW_SCOPE_MISMATCH')
                 if (!existing && data.executionType === ExecutionType.BEGIN && run.status !== FlowRunStatus.QUEUED) hostingFail('HOSTING_REPLAY_DENIED')
-                if (!existing && origin?.type === 'user' && data.executionType === ExecutionType.BEGIN && data.streamStepProgress === StreamStepProgress.WEBSOCKET && !run.parentRunId && run.status === FlowRunStatus.QUEUED) freshRun = run
+                if (!existing && origin?.type === 'user' && data.executionType === ExecutionType.BEGIN && !run.parentRunId && run.status === FlowRunStatus.QUEUED) freshRun = run
                 // Fail unsupported/mixed AI selections before creating a dispatch.
                 hostedFlowPayer(version, data.stepNameToTest)
                 flowRunId = data.runId
@@ -115,8 +117,8 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
                         message: 'Workspace access has expired. Contact your administrator or Sydekyks to renew access before running this Mission.',
                     },
                 }
-                const updated = await manager.getRepository(FlowRunEntity).update({ id: refused.id, projectId, status: FlowRunStatus.QUEUED }, { status: refused.status, finishTime: refused.finishTime, failedStep: refused.failedStep })
-                if (updated.affected !== 1) throw error
+                const updated = await manager.getRepository(FlowRunEntity).createQueryBuilder().update().set({ status: refused.status, finishTime: refused.finishTime, failedStep: refused.failedStep }).where({ id: refused.id, projectId, status: FlowRunStatus.QUEUED }).returning(['id']).execute()
+                if (!Array.isArray(updated.raw) || updated.raw.length !== 1) throw error
                 // Return, rather than throw, so the refusal is committed without
                 // creating a dispatch, reservation, debit or queue job.
                 return new HostedRunStartRefused(refused)
@@ -214,7 +216,7 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
                 const ledger = createHostedLedger({ dataSource, manager })
                 const reservation = root.reservationId
                     ? await manager.getRepository(HostingReservationEntity).findOneByOrFail({ id: root.reservationId, platformId: root.platformId })
-                    : await ledger.reserveExecution({ actor: actorOf(root), projectId: root.projectId, key: root.rootKey, payer: root.payload?.jobType === WorkerJobType.EXECUTE_FLOW ? await currentHostedFlowPayer({ manager, flowId: root.payload.flowId, flowVersionId: root.payload.flowVersionId, projectId: root.projectId, stepNameToTest: root.payload.stepNameToTest }) : 'managed' })
+                    : await ledger.reserveExecution({ actor: actorOf(root), projectId: root.projectId, key: root.rootKey, payer: await currentHostedJobPayer({ manager, platformId: root.platformId, projectId: root.projectId, data: root.payload }) })
                 if (root.reservationId === null) await manager.getRepository(HostingDispatchEntity).update({ id: root.id }, { reservationId: reservation.id })
                 if (reservation.state !== 'reserved') await ledger.resumeExecution({ actor: actorOf(dispatch), reservationId: reservation.id })
                 const admissionId = apId()
@@ -241,6 +243,9 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
                 assertData({ dispatch, data })
                 await assertLiveContext({ manager, data })
                 const ledger = createHostedLedger({ dataSource, manager })
+                // Key removal between reservation and worker start is still a
+                // definitive unsent refusal, not a charged/uncertain workflow.
+                await currentHostedJobPayer({ manager, platformId: dispatch.platformId, projectId: dispatch.projectId, data: dispatch.payload })
                 const reservation = await manager.getRepository(HostingReservationEntity).findOneByOrFail({ id: required(dispatch.reservationId), platformId: dispatch.platformId })
                 const claim = reservation.state === 'reserved'
                     ? await ledger.claimExecution({ actor: actorOf(dispatch), reservationId: reservation.id })
@@ -370,12 +375,25 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
 
     async function cancelUnsentDispatch({ manager, dispatch, reason }: { manager: EntityManager, dispatch: HostingDispatch, reason: string }): Promise<void> {
         const root = await rootOf({ manager, dispatch })
+        let definitelyUnsent = !root.reservationId
         if (dispatch.id === root.id && root.reservationId) {
             const reservation = await manager.getRepository(HostingReservationEntity).findOneByOrFail({ id: root.reservationId, platformId: root.platformId })
-            if (reservation.state === 'reserved') await createHostedLedger({ dataSource, manager }).cancelUnsent({ platformId: root.platformId, reservationId: reservation.id })
+            if (reservation.state === 'reserved') {
+                definitelyUnsent = true
+                await createHostedLedger({ dataSource, manager }).cancelUnsent({ platformId: root.platformId, reservationId: reservation.id })
+            }
         }
         await manager.getRepository(HostingDispatchEntity).update({ id: dispatch.id }, { state: 'cancelled' })
-        if (dispatch.flowRunId) await manager.getRepository(FlowRunEntity).update({ id: dispatch.flowRunId, projectId: dispatch.projectId }, { status: FlowRunStatus.FAILED, finishTime: new Date().toISOString() })
+        const freshUnsentRoot = definitelyUnsent && dispatch.id === root.id && root.payload?.jobType === WorkerJobType.EXECUTE_FLOW && root.payload.executionType === ExecutionType.BEGIN
+        const failedStep = !freshUnsentRoot ? null : reason === 'HOSTING_CREDITS_EXHAUSTED'
+            ? { name: 'trigger', displayName: 'Credits', message: 'Not enough Credits are available to start this Mission. Check billing or contact your workspace administrator.' }
+            : ['HOSTING_BYOK_SCOPE_DENIED', 'HOSTING_EXACT_BYOK_KEY_REQUIRED'].includes(reason)
+                ? { name: 'trigger', displayName: 'AI connection', message: 'The selected client AI key is unavailable for this Mission. Ask your workspace administrator to update its AI connection, then try again.' }
+                : null
+        if (dispatch.flowRunId) await manager.getRepository(FlowRunEntity).update({ id: dispatch.flowRunId, projectId: dispatch.projectId }, { status: FlowRunStatus.FAILED, finishTime: new Date().toISOString(), ...(failedStep ? { failedStep } : {}) })
+        if (definitelyUnsent && dispatch.id === root.id && root.payload?.jobType === WorkerJobType.EXECUTE_AGENT_RUN && root.payload.source === AgentRunSource.CHAT) {
+            await manager.getRepository(SydConversationEntity).update({ id: root.payload.conversationId, platformId: root.platformId, userId: root.payload.userId, source: AgentRunSource.CHAT, activeRunId: root.payload.runId, status: In([AgentConversationStatus.IDLE, AgentConversationStatus.STREAMING]) }, { status: AgentConversationStatus.ERROR })
+        }
         await signalParentFailure({ manager, dispatch, status: FlowRunStatus.FAILED })
         await tx.event({ manager, platformId: dispatch.platformId, event: 'execution.denied', payload: { dispatchId: dispatch.id, reason } })
         await reconcileRoot({ manager, root })
@@ -488,6 +506,22 @@ async function assertBound({ manager, root }: { manager: EntityManager, root: Ho
 async function resetUnsent({ manager, dispatch }: { manager: EntityManager, dispatch: HostingDispatch }) {
     await manager.getRepository(HostingDispatchEntity).update({ id: dispatch.id }, { state: 'prepared', admissionId: null, queueTokenHash: null, connectionId: null, leaseUntil: null })
 }
+async function currentHostedJobPayer({ manager, platformId, projectId, data }: { manager: EntityManager, platformId: string, projectId: string, data: JobData | null }): Promise<'managed' | 'byok'> {
+    if (data?.jobType === WorkerJobType.EXECUTE_FLOW) return currentHostedFlowPayer({ manager, platformId, flowId: data.flowId, flowVersionId: data.flowVersionId, projectId, stepNameToTest: data.stepNameToTest })
+    if (data?.jobType !== WorkerJobType.EXECUTE_AGENT_RUN || data.source !== AgentRunSource.CHAT) hostingFail('HOSTING_JOB_PROVENANCE_REQUIRED')
+    const unresolved = await manager.getRepository(HostingModelCallEntity).createQueryBuilder('call')
+        .innerJoin('hosting_dispatch', 'prior', 'prior."reservationId" = call."rootReservationId" AND prior."platformId" = call."platformId"')
+        .where('call."platformId" = :platformId', { platformId })
+        .andWhere('call.state IN (:...states)', { states: ['prepared', 'running', 'uncertain'] })
+        .andWhere('prior.payload->>\'conversationId\' = :conversationId', { conversationId: data.conversationId })
+        .andWhere('prior.payload->>\'runId\' <> :runId', { runId: data.runId }).getExists()
+    if (unresolved) hostingFail('HOSTING_AI_OUTCOME_UNCERTAIN')
+    if ((!data.provider || data.provider === AIProviderName.ACTIVEPIECES) && !data.providerConfigId) return 'managed'
+    if (data.provider !== AIProviderName.DEEPSEEK || !data.providerConfigId) hostingFail('HOSTING_EXACT_BYOK_KEY_REQUIRED')
+    await hostedAiCredential({ manager, platformId, projectId, payer: { type: 'byok', configId: data.providerConfigId }, model: HOSTED_DEEPSEEK_MODEL })
+    return 'byok'
+}
+
 async function assertLiveContext({ manager, data }: { manager: EntityManager, data: JobData }): Promise<void> {
     if (data.jobType === WorkerJobType.EXECUTE_AGENT_RUN) {
         const conversation = await manager.getRepository(SydConversationEntity).findOneBy({ id: data.conversationId, platformId: data.platformId, userId: data.userId, source: AgentRunSource.CHAT, activeRunId: data.runId })

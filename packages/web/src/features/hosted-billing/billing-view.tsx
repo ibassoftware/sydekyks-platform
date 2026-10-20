@@ -19,7 +19,7 @@ type Props = {
   actionError: boolean;
   checkoutReturn: string | null;
   onRefresh: () => void;
-  onCheckout: (id: 'starter' | 'team') => void;
+  onCheckout: (id: 'starter' | 'team' | 'scale') => void;
   onPortal: () => void;
 };
 export function HostedBillingView({
@@ -38,7 +38,7 @@ export function HostedBillingView({
   return (
     <CenteredPage
       title={t('Billing & subscription')}
-      description={t('Your hosted plan, allowances and payments.')}
+      description={t('Your hosted plan, Credits and payments.')}
       widthClassName="max-w-[56rem]"
       actions={
         <Button
@@ -130,7 +130,7 @@ export function HostedBillingView({
                 )
               : info.planId === 'training'
               ? t(
-                  'Training access ends {date}. Credits refresh every 30 days during included access, with no rollover.',
+                  'Included hosting ends {date}. The Credit period below shows your next refresh; unused Credits do not roll over.',
                   { date: date(info.validUntil) },
                 )
               : t(
@@ -189,7 +189,7 @@ export function HostedBillingView({
             </h2>
             <p className="mt-1 text-sm text-gray-11">
               {t(
-                'Credits cover workflow runs and chat. Held Credits are reserved for work in progress. Managed AI remains subject to service limits.',
+                'One Credit starts a workflow or message. Sydekyks AI calls use additional Credits based on actual usage, rounded up per call. Held Credits reserve the maximum charge for work in progress; unused holds are released.',
               )}
             </p>
           </div>
@@ -204,7 +204,7 @@ export function HostedBillingView({
             </h3>
             <p className="mt-1 text-gray-11">
               {t(
-                'BYOK is included in every plan and uses Credits. Your provider bills AI usage separately. Managed AI is provided by Sydekyks. BYOK currently supports DeepSeek.',
+                'BYOK uses Credits for workflow runs, with no additional managed-AI charge. Your provider bills AI usage separately. BYOK currently supports DeepSeek.',
               )}
             </p>
           </div>
@@ -217,11 +217,11 @@ export function HostedBillingView({
             </h2>
             <p className="mt-1 text-sm text-gray-11">
               {t(
-                'Monthly allowances. Plan switching is not available yet for an existing subscription.',
+                'Credits and user limits are shared by one workspace. Assigned Partner and Sydekyks support access does not use client seats. Plan changes currently require the Sydekyks team.',
               )}
             </p>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             {info.plans.map((plan) => (
               <article
                 key={plan.id}
@@ -256,10 +256,16 @@ export function HostedBillingView({
                     })}
                   </li>
                   <li>{t('BYOK included')}</li>
-                  <li>{t('Managed AI is subject to service limits')}</li>
+                  <li>{t('Sydekyks AI uses the same Credits balance')}</li>
                 </ul>
                 <div className="mt-auto space-y-2">
-                  {manual ? (
+                  {plan.salesAssisted ? (
+                    <p className="text-sm leading-6">
+                      {t(
+                        'Contact Sydekyks for a capacity review before activating Scale.',
+                      )}
+                    </p>
+                  ) : manual ? (
                     <p className="text-sm leading-6">
                       {t(
                         'Contact Sydekyks to request this plan. Access and renewal dates change only after the team confirms your payment and entitlement.',
@@ -293,6 +299,40 @@ export function HostedBillingView({
               </article>
             ))}
           </div>
+        </section>
+        <section aria-labelledby="hosted-enterprise" className="space-y-2">
+          <h3 id="hosted-enterprise" className="font-semibold">
+            {t('Enterprise')}
+          </h3>
+          <p className="text-sm text-gray-11">
+            {t(
+              'Custom Credits, users and support. Contact Sydekyks to agree capacity, requirements and pricing.',
+            )}
+          </p>
+        </section>
+        <Separator />
+        <section
+          aria-labelledby="hosted-partner-packages"
+          className="space-y-3"
+        >
+          <h2 id="hosted-partner-packages" className="text-base font-semibold">
+            {t('Partner training packages')}
+          </h2>
+          <p className="text-sm text-gray-11">
+            {t(
+              'Core: $1,000 once, including 2 coaching hours. Guided: $1,200 once, including 4 coaching hours and 1 written proposal review.',
+            )}
+          </p>
+          <p className="text-sm text-gray-11">
+            {t(
+              'Both include self-paced training, 2 certification assessment attempts, marketing resources, and 12 months of Partner workspace hosting with 10,000 monthly Credits. Clients subscribe separately. Certification and directory listing require qualification and approval.',
+            )}
+          </p>
+          <p className="text-sm text-gray-11">
+            {t(
+              'Partner purchases are arranged with the Sydekyks team. Access starts only after verified payment and enrollment. Continuing hosting after the included year is optional and requires a separate agreement. Prices are USD, before applicable taxes.',
+            )}
+          </p>
         </section>
         <Separator />
         <section aria-labelledby="hosted-payments" className="space-y-3">
@@ -421,7 +461,9 @@ function planName(id: HostedCustomerBillingOverview['planId']) {
     ? t('Assessment access')
     : id === 'starter'
     ? t('Starter')
-    : t('Team');
+    : id === 'team'
+    ? t('Growth')
+    : t('Scale');
 }
 function stateName(state: HostedCustomerBillingOverview['entitlementState']) {
   return state === 'trial'
@@ -459,6 +501,9 @@ function reason(value: HostedBillingActionReason | null) {
     ),
     recovery_required: t(
       'An earlier billing action needs review. Contact support before retrying.',
+    ),
+    sales_assisted: t(
+      'This plan requires a capacity review. Contact Sydekyks.',
     ),
     customer_missing: t(
       'The billing portal becomes available after a billing customer has been created.',

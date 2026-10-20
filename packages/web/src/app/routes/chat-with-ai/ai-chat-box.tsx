@@ -472,7 +472,7 @@ function ChatBoxContent({
                       {hostedChat && (
                         <span className="mt-1 block text-xs">
                           {t(
-                            'Sending again creates a new run and may use another execution. Your selected billing option will be checked again.',
+                            'Sending again starts a new run and uses Credits. Check pending work before sending again.',
                           )}
                         </div>
                     <Button

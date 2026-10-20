@@ -1,13 +1,14 @@
 import { createHash } from 'node:crypto'
 import { apId } from '@activepieces/core-utils'
-import { HOSTED_MICRO_USD_PER_CREDIT, hostingCatalog } from '@activepieces/shared'
+import { hostingCatalog } from '@activepieces/shared'
 import { DataSource, EntityManager, LessThanOrEqual } from 'typeorm'
-import { effectiveManagedAiCredits } from './hosting-ai-allowance'
 import { hostingResourceFits as resourceFits } from './hosting-billing-resources'
 import { hostingConfiguration } from './hosting-configuration'
+import { effectiveHostedCredits } from './hosting-credit-allowance'
 import { HostingAccount, HostingAccountEntity, HostingGrant, HostingGrantEntity, HostingLedgerEntity } from './hosting-entities'
 import { createStripeAdapter, PaidPeriodEvidence } from './hosting-stripe-adapter'
 import { HostingStripeBindingEntity, HostingStripeCommandEntity, HostingStripeInboxEntity, HostingStripePeriodEntity, StripeBinding, StripeCommand, StripePeriod } from './hosting-stripe-entities'
+import { subscriptionAccountUntil } from './hosting-subscription-policy'
 import { readStripePolicy, stripeDigest, stripeId } from './hosting-stripe-policy'
 import { HostingActor, HostingError, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
@@ -25,7 +26,8 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
         if (value.stripeAccountId !== policy.catalog.accountId || value.catalogHash !== policy.hash) hostingFail('HOSTING_STRIPE_BINDING_POLICY_CHANGED')
         return value
     }
-    async function assertCheckoutPolicy(manager: EntityManager, account: HostingAccount, bound: StripeBinding, planId: 'starter' | 'team', now: Date): Promise<void> {
+    async function assertCheckoutPolicy(manager: EntityManager, account: HostingAccount, bound: StripeBinding, planId: 'starter' | 'team' | 'scale', now: Date): Promise<void> {
+        if (hostingCatalog.paidPlans[planId].salesAssisted) hostingFail('HOSTING_STRIPE_SALES_REVIEW_REQUIRED')
         const endedOnly = bound.holds.length === 1 && bound.holds[0] === 'subscription_ended'
         if (account.status === 'suspended' || bound.holds.some(reason => reason !== 'subscription_ended') || (account.billingHold && !endedOnly)) hostingFail('HOSTING_STRIPE_PURCHASE_BLOCKED')
         if (!await resourceFits(manager, account.id, planId, now)) hostingFail('HOSTING_STRIPE_PLAN_RESOURCE_LIMIT')
@@ -115,7 +117,7 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
         if (!result.objectId) hostingFail('HOSTING_STRIPE_CUSTOMER_UNAVAILABLE')
         return result.objectId
     }
-    async function checkout(actor: HostingActor, planId: 'starter' | 'team') {
+    async function checkout(actor: HostingActor, planId: 'starter' | 'team' | 'scale') {
         const customerId = await customer(actor)
         const previous = await dataSource.getRepository(HostingStripeCommandEntity).findOne({ where: { platformId: actor.platformId, kind: 'checkout', state: 'ready' }, order: { created: 'DESC' } })
         if (previous?.objectId && previous.expiresAt && previous.expiresAt <= new Date()) {
@@ -253,9 +255,9 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
                     }
                     if (!await resourceFits(manager, platformId, current.planId, now)) holds.push('resource_limits')
                     if (current.revokedAt) holds.push('current_period_revoked')
-                    await manager.getRepository(HostingAccountEntity).update({ id: platformId }, { planId: current.planId, validUntil: current.periodEnd, ...(account.status === 'trialing' ? { status: 'active' as const } : {}) })
+                    await manager.getRepository(HostingAccountEntity).update({ id: platformId }, { planId: current.planId, validUntil: current.periodEnd, catalogVersion: hostingCatalog.version, ...(account.status === 'trialing' ? { status: 'active' as const } : {}) })
                 }
-                if (observed.subscriptionStatus === 'canceled' && !current) holds.push('subscription_ended')
+                if (observed.subscriptionStatus === 'canceled' && !current && now >= subscriptionAccountUntil(account)) holds.push('subscription_ended')
                 await manager.getRepository(HostingAccountEntity).update({ id: platformId }, { billingHold: holds.length > 0 })
                 await manager.getRepository(HostingStripeBindingEntity).save({ ...bound, ...(!issues.length ? { subscriptionId: observed.subscriptionId, subscriptionStatus: observed.subscriptionStatus } : {}), lastError: issues.join(',') || null, holds: [...new Set(holds)], fence: null, leaseUntil: null, reconcileAt: new Date(now.getTime() + 300_000) })
                 if (!issues.length && observed.subscriptionId && observed.commandId) await manager.getRepository(HostingStripeCommandEntity).update({ id: observed.commandId, platformId, kind: 'checkout' }, { state: 'closed' })
@@ -309,9 +311,8 @@ async function recordPeriod({ manager, bound, evidence }: { manager: EntityManag
     if (existing && (existing.invoiceIds.length > 100 || existing.lineIds.length > 100 || existing.chargeIds.length > 100)) hostingFail('HOSTING_STRIPE_EVIDENCE_LIMIT')
     await repo.save(repo.create({ ...existing, id: existing?.id ?? apId(), platformId: bound.platformId, stripeAccountId: bound.stripeAccountId, customerId: bound.customerId ?? '', subscriptionId: evidence.subscriptionId, itemId: evidence.itemId, priceId: evidence.priceId, planId: evidence.planId, sourceKey, periodStart: start, periodEnd: end, invoiceIds: [...new Set([...(existing?.invoiceIds ?? []), evidence.invoiceId])], lineIds: [...new Set([...(existing?.lineIds ?? []), evidence.lineId])], chargeIds: [...new Set([...(existing?.chargeIds ?? []), evidence.chargeId])] }))
     if (existing) return
-    const plan = hostingCatalog.getPlan({ planId: evidence.planId })
-    const managedCredits = await effectiveManagedAiCredits(manager, bound.platformId, evidence.planId)
-    for (const [meter, amount] of [['execution', BigInt(plan.executions)], ['managed_ai', BigInt(managedCredits) * HOSTED_MICRO_USD_PER_CREDIT]] as const) {
+    const credits = await effectiveHostedCredits(manager, bound.platformId, evidence.planId)
+    for (const [meter, amount] of [['execution', BigInt(credits)], ['managed_ai', 0n]] as const) {
         const id = apId()
         await manager.getRepository(HostingGrantEntity).insert({ id, platformId: bound.platformId, sourceKey, meter, amount, consumed: 0n, reserved: 0n, validFrom: start, validUntil: end })
         await manager.getRepository(HostingLedgerEntity).insert({ id: apId(), platformId: bound.platformId, grantId: id, reservationId: null, operation: 'grant', key: `grant:${id}`, amount })
@@ -331,7 +332,7 @@ async function revokeGrant({ manager, grant, now }: { manager: EntityManager, gr
     await manager.getRepository(HostingLedgerEntity).insert({ id: apId(), platformId: grant.platformId, grantId: grant.id, reservationId: null, operation: 'revoke', key: `revoke:${grant.id}`, amount: remaining > 0n ? remaining : 0n })
 }
 
-function selectedPlan(value: unknown): 'starter' | 'team' {
-    if (value !== 'starter' && value !== 'team') hostingFail('HOSTING_STRIPE_PRICE_DENIED')
+function selectedPlan(value: unknown): 'starter' | 'team' | 'scale' {
+    if (value !== 'starter' && value !== 'team' && value !== 'scale') hostingFail('HOSTING_STRIPE_PRICE_DENIED')
     return value
 }

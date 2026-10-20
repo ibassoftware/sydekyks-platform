@@ -48,7 +48,7 @@ async function member({ manager, actor, admin = false, projectId, write = false 
 }
 
 function assertActive({ account: value, now: instant }: { account: HostingAccount, now: Date }): void {
-    if (value.catalogVersion !== hostingCatalog.version) hostingFail('HOSTING_CATALOG_UNAVAILABLE')
+    if (!(hostingCatalog.supportedVersions as readonly string[]).includes(value.catalogVersion)) hostingFail('HOSTING_CATALOG_UNAVAILABLE')
     if (!subscriptionAccountActive(value, instant)) hostingFail('HOSTING_ENTITLEMENT_EXPIRED')
 }
 

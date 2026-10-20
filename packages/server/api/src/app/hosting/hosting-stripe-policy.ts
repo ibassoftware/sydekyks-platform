@@ -7,7 +7,7 @@ import { hostingFail } from './hosting-transactions'
 
 export const STRIPE_API_VERSION = '2025-05-28.basil'
 const price = z.strictObject({ priceId: z.string().regex(/^price_[a-zA-Z0-9]+$/), amountMinor: z.number().int().positive().max(100_000_000), currency: z.string().regex(/^[a-z]{3}$/) })
-export const StripeCatalog = z.strictObject({ version: z.literal(hostingCatalog.version), accountId: z.string().regex(/^acct_[a-zA-Z0-9]+$/), portalConfigurationId: z.string().regex(/^bpc_[a-zA-Z0-9]+$/), origin: z.url(), plans: z.strictObject({ starter: price, team: price }) })
+export const StripeCatalog = z.strictObject({ version: z.literal(hostingCatalog.version), accountId: z.string().regex(/^acct_[a-zA-Z0-9]+$/), portalConfigurationId: z.string().regex(/^bpc_[a-zA-Z0-9]+$/), origin: z.url(), plans: z.strictObject({ starter: price, team: price, scale: price }) })
 export type HostedStripeCatalog = z.infer<typeof StripeCatalog>
 export function readStripePolicy() {
     const secret = system.get(AppSystemProp.HOSTED_STRIPE_SECRET_KEY) ?? ''
@@ -25,7 +25,8 @@ export function readStripePolicy() {
     const catalog = parsed.data
     const origin = new URL(catalog.origin)
     if (origin.origin !== catalog.origin || origin.username || origin.password || (origin.protocol !== 'https:' && !(origin.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(origin.hostname)))) hostingFail('HOSTING_STRIPE_RETURN_ORIGIN_DENIED')
-    if (catalog.plans.starter.priceId === catalog.plans.team.priceId || catalog.plans.starter.currency !== catalog.plans.team.currency) hostingFail('HOSTING_STRIPE_CATALOG_INVALID')
+    const plans = Object.entries(catalog.plans)
+    if (new Set(plans.map(([, value]) => value.priceId)).size !== plans.length || plans.some(([id, value]) => value.currency !== 'usd' || value.amountMinor !== hostingCatalog.paidPlans[id as keyof typeof catalog.plans].amountMinor)) hostingFail('HOSTING_STRIPE_CATALOG_INVALID')
     return { secret, signingSecret, catalog, hash: stripeDigest(catalog) }
 }
 export function stripeDigest(value: unknown): string {

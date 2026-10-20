@@ -167,7 +167,7 @@ function LearningSession({
       setMessage('Saved.');
     } catch {
       setMessage(
-        'We could not save this change. Check your access and try again, or contact your instructor.',
+        'We could not save this change. Check your access and try again, or contact your instructor.'
       );
     } finally {
       setBusy(false);
@@ -369,7 +369,7 @@ function LearningSession({
                   )}
                 {course.certificationMode === 'none' &&
                   course.lessons.every((item) =>
-                    enrollment.completedLessons.includes(item.id),
+                    enrollment.completedLessons.includes(item.id)
                   ) && (
                     <p className="mt-6 font-medium" role="status">
                       All lessons complete. This course does not issue a partner
@@ -384,8 +384,8 @@ function LearningSession({
                         lmsApi.progress(
                           enrollmentId,
                           lesson.id,
-                          !enrollment.completedLessons.includes(lesson.id),
-                        ),
+                          !enrollment.completedLessons.includes(lesson.id)
+                        )
                       )
                     }
                   >
@@ -426,17 +426,17 @@ function LearningSession({
             {enrollment.package === 'core' && (
               <div className="mt-4 border-y border-gray-6 py-4 text-sm leading-6">
                 <p>
-                  The Core training workspace lasts 60 days. If you still need
-                  to demonstrate your work after that term, contact a Sydekyks
-                  assessor before your assessment deadline to request limited
-                  one-time assessment access.
+                  Your recorded hosting dates and remaining Credits are shown in
+                  Billing. If hosting ends before your assessment deadline,
+                  contact a Sydekyks assessor to request limited one-time
+                  assessment access.
                 </p>
                 {enrollment.assessment && (
                   <p className="mt-2" role="status">
                     {enrollment.assessment.revoked
                       ? 'Assessment workspace access has been revoked.'
                       : `Your one-time assessment workspace allowance ends ${new Date(
-                          enrollment.assessment.endsAt,
+                          enrollment.assessment.endsAt
                         ).toLocaleString()}. Usage and dates do not restart.`}
                   </p>
                 )}
@@ -582,9 +582,9 @@ function WrittenExam({
         Math.max(
           0,
           Math.ceil(
-            (new Date(exam.deadline).getTime() - Date.now() - offset) / 1000,
-          ),
-        ),
+            (new Date(exam.deadline).getTime() - Date.now() - offset) / 1000
+          )
+        )
       );
     tick();
     const timer = window.setInterval(tick, 1000);
@@ -602,7 +602,7 @@ function WrittenExam({
         });
     } catch {
       setError(
-        'Your answer could not be saved. Check your connection and try again. The exam clock continues.',
+        'Your answer could not be saved. Check your connection and try again. The exam clock continues.'
       );
     } finally {
       setBusy(false);
@@ -676,7 +676,7 @@ function WrittenExam({
                             lmsApi.saveExam(enrollmentId, exam.id, {
                               ...exam.answers,
                               [question.id]: optionIndex,
-                            }),
+                            })
                           )
                         }
                       />
@@ -692,7 +692,7 @@ function WrittenExam({
               disabled={busy}
               onClick={() =>
                 act(() =>
-                  lmsApi.saveExam(enrollmentId, exam.id, exam.answers, true),
+                  lmsApi.saveExam(enrollmentId, exam.id, exam.answers, true)
                 )
               }
             >

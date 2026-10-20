@@ -100,7 +100,7 @@ function SessionBillingPage({
   }, [checkoutReturn, denied, refetch, session]);
   async function open(
     kind: 'checkout' | 'portal',
-    planId?: 'starter' | 'team',
+    planId?: 'starter' | 'team' | 'scale',
   ) {
     if (actionLock.current || query.isError || query.isFetching) return;
     actionLock.current = true;

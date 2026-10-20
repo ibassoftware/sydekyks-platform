@@ -27,8 +27,13 @@ export const pieceExecutor: BaseExecutor<PieceAction> = {
         if (executionState.isCompleted({ stepName: action.name })) {
             return executionState
         }
-        const resultExecution = await runWithExponentialBackoff(executionState, action, constants, executeAction)
-        return continueIfFailureHandler(resultExecution, action, constants)
+        // A hosted AI denial must stop the run. Each actual AI call needs its
+        // own admission; generic piece retries/continue cannot bypass that gate.
+        const admittedAction = constants.hostedAccounting && action.settings.pieceName === '@activepieces/piece-ai'
+            ? { ...action, settings: { ...action.settings, errorHandlingOptions: { ...action.settings.errorHandlingOptions, retryOnFailure: { value: false }, continueOnFailure: { value: false } } } }
+            : action
+        const resultExecution = await runWithExponentialBackoff(executionState, admittedAction, constants, executeAction)
+        return continueIfFailureHandler(resultExecution, admittedAction, constants)
     },
 }
 
@@ -132,7 +137,15 @@ const executeAction: ActionHandler<PieceAction> = async ({ action, executionStat
                 ...(constants.hostedAccounting ? { callAi: async (request: Record<string, unknown>) => {
                     const callKey = createHash('sha256').update(executionState.currentPath.waitpointKeyFor({ stepName: action.name })).digest('hex')
                     const response = await fetch(`${constants.internalApiUrl}v1/engine/hosting-ai/step`, { method: 'POST', headers: { Authorization: `Bearer ${constants.engineToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...request, callKey }) })
-                    if (!response.ok) throw new EngineGenericError('HostedAiDenied', `AI request failed (${response.status})`)
+                    if (!response.ok) {
+                        const body: unknown = await response.json().catch(() => null)
+                        const refusal = hostedAiRefusalMessage(response.status, body)
+                        // Only verified, allowlisted unsent gateway refusals are
+                        // ordinary FAILED steps. Unknown outcomes retain the
+                        // existing engine-uncertainty accounting path.
+                        if (refusal) throw new Error(refusal)
+                        throw new EngineGenericError('HostedAiDenied', `AI request failed (${response.status})`)
+                    }
                     return response.json()
                 }, callSubflow: async (params: { flowId: string, data: unknown, callbackUrl?: string, failParentOnFailure: boolean, key?: string }) => {
                     const key = createHash('sha256').update(JSON.stringify([executionState.currentPath.waitpointKeyFor({ stepName: action.name }), params.key ?? 'call'])).digest('hex')
@@ -339,5 +352,23 @@ function assertDelayWithinTimeout(resumeDateTime?: string): void {
     const diffInDays = dayjs(resumeDateTime).diff(dayjs(), 'days')
     if (diffInDays > AP_PAUSED_FLOW_TIMEOUT_DAYS) {
         throw new PausedFlowTimeoutError(undefined, AP_PAUSED_FLOW_TIMEOUT_DAYS)
+    }
+}
+
+export function hostedAiRefusalMessage(status: number, body: unknown): string | null {
+    if (status !== 403 || !body || typeof body !== 'object' || !('code' in body)) return null
+    switch (body.code) {
+        case 'HOSTING_CREDITS_EXHAUSTED':
+            return 'Not enough Credits are available for this AI step. Check billing or contact your workspace administrator.'
+        case 'HOSTING_RUN_CREDIT_LIMIT':
+        case 'HOSTING_AI_CALL_LIMIT':
+            return 'This Mission reached its AI safety limit. Reduce its AI workload or contact your workspace administrator.'
+        case 'HOSTING_OPERATOR_BUDGET_EXHAUSTED':
+            return 'Sydekyks AI is temporarily unavailable. Contact your workspace administrator before trying again.'
+        case 'HOSTING_BYOK_SCOPE_DENIED':
+        case 'HOSTING_EXACT_BYOK_KEY_REQUIRED':
+            return 'The selected client AI key is unavailable for this Mission. Ask your workspace administrator to update its AI connection, then try again.'
+        default:
+            return null
     }
 }

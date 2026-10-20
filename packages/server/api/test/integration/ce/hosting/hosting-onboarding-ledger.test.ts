@@ -142,10 +142,10 @@ describe('hosted tenant onboarding', () => {
         const value = await tenant(true)
         await ds.getRepository(HostingAccountEntity).update({ id: value.platformId }, { planId: 'starter', status: 'active' })
         const invitation = await onboarding.invite({ actor: value.actor, email: 'one@example.com', role: PlatformRole.MEMBER })
-        const invites = await Promise.allSettled(['two', 'three', 'four'].map(name => onboarding.invite({ actor: value.actor, email: `${name}@example.com`, role: PlatformRole.MEMBER })))
-        expect(invites.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+        const invites = await Promise.allSettled(Array.from({ length: 9 }, (_, index) => `pending-${index}`).map(name => onboarding.invite({ actor: value.actor, email: `${name}@example.com`, role: PlatformRole.MEMBER })))
+        expect(invites.filter(result => result.status === 'fulfilled')).toHaveLength(8)
         const pending = await ds.getRepository(HostingInvitationEntity).findBy({ platformId: value.platformId, status: 'pending' })
-        expect(pending).toHaveLength(2)
+        expect(pending).toHaveLength(9)
         {
             const outsider = await identity()
             await expect(onboarding.acceptInvitation({ identityId: outsider, token: invitation.token })).rejects.toThrow('HOSTING_INVALID_INVITATION')
@@ -165,6 +165,11 @@ describe('hosted tenant onboarding', () => {
         const joined = await onboarding.acceptInvitation({ identityId: member, token: invitation.token })
         const third = await onboarding.invite({ actor: value.actor, email: 'third@example.com', role: PlatformRole.OPERATOR })
         await onboarding.acceptInvitation({ identityId: await identity({ email: 'third@example.com' }), token: third.token })
+        for (let index = 0; index < 7; index++) {
+            const email = `capacity-${index}@example.com`
+            const extra = await onboarding.invite({ actor: value.actor, email, role: PlatformRole.MEMBER })
+            await onboarding.acceptInvitation({ identityId: await identity({ email }), token: extra.token })
+        }
         await ds.getRepository(McpOAuthTokenEntity).insert({ id: apId(), platformId: value.platformId, userId: joined.userId, projectId: joined.projectId, clientId: 'test', refreshToken: 'test-refresh', revoked: false, expiresAt: new Date(Date.now() + 86400000).toISOString() })
         const before = await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: member })
         await onboarding.changeMember({ actor: value.actor, userId: joined.userId, deactivate: true })
@@ -173,7 +178,7 @@ describe('hosted tenant onboarding', () => {
         await expect(onboarding.selectTenant({ actor: { identityId: member, platformId: value.platformId } })).rejects.toThrow('HOSTING_ACCESS_DENIED')
         const reinvite = await onboarding.invite({ actor: value.actor, email: 'member@example.com', role: PlatformRole.OPERATOR })
         expect((await onboarding.acceptInvitation({ identityId: member, token: reinvite.token })).projectId).toBe(joined.projectId)
-        expect(await ds.getRepository(ProjectEntity).countBy({ platformId: value.platformId })).toBe(3)
+        expect(await ds.getRepository(ProjectEntity).countBy({ platformId: value.platformId })).toBe(10)
         await expect(onboarding.changeMember({ actor: value.actor, userId: value.userId, deactivate: true })).rejects.toThrow('HOSTING_MEMBER_PROTECTED')
         expect(await ds.getRepository(UserEntity).findOneBy({ id: value.userId })).toMatchObject({ status: UserStatus.ACTIVE, platformRole: PlatformRole.ADMIN })
     })
@@ -223,7 +228,7 @@ describe('hosted credit and liability ledger', () => {
         const outcomes = await Promise.allSettled(Array.from({ length: 8 }, (_, i) => ledger.reserveManagedCall({ actor: value.actor, rootReservationId: value.root.id, key: `call:${i}`, maxCostMicroUsd: 100n })))
         expect(outcomes.filter(result => result.status === 'fulfilled')).toHaveLength(1)
         expect((await ds.getRepository(HostingDailyBudgetEntity).findOneByOrFail({ id: today })).reserved).toBe(100n)
-        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ platformId: value.platformId, meter: 'managed_ai' })).reserved).toBe(100n)
+        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ platformId: value.platformId, meter: 'execution' })).reserved).toBe(1n)
     })
     it('keeps uncertain liabilities reserved, disallows resend/refund and reconciles once', async () => {
         const value = await managed()
@@ -232,20 +237,20 @@ describe('hosted credit and liability ledger', () => {
         expect((await ledger.claimManagedCall({ actor: value.actor, reservationId: value.call.id })).claimed).toBe(false)
         await expect(ledger.releaseUnsent({ actor: value.actor, reservationId: value.call.id })).rejects.toThrow('HOSTING_INVALID_TRANSITION')
         await expect(ledger.finishExecution(value.fence)).rejects.toThrow('HOSTING_UNSETTLED_CHILDREN')
-        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: value.call.grantId })).reserved).toBe(100n)
+        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: value.call.grantId })).reserved).toBe(1n)
         await ledger.settleManagedCall({ ...value.callFence, actualCostMicroUsd: 40n })
         await ledger.settleManagedCall({ ...value.callFence, actualCostMicroUsd: 40n })
         await expect(ledger.settleManagedCall({ ...value.callFence, actualCostMicroUsd: 41n })).rejects.toThrow('HOSTING_IDEMPOTENCY_CONFLICT')
         await ledger.finishExecution(value.fence)
         const grant = await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: value.call.grantId })
-        expect([grant.reserved, grant.consumed]).toEqual([0n, 40n])
+        expect([grant.reserved, grant.consumed]).toEqual([0n, 2n])
         expect(await ds.getRepository(HostingLedgerEntity).countBy({ reservationId: value.call.id, operation: 'settle' })).toBe(1)
     })
     it('records over-bound actual cost and suspends further admission', async () => {
         const value = await managed()
         await ledger.settleManagedCall({ ...value.callFence, actualCostMicroUsd: 150n })
         expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).status).toBe('suspended')
-        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: value.call.grantId })).consumed).toBe(150n)
+        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: value.call.grantId })).consumed).toBe(2n)
         await ledger.finishExecution(value.fence)
         await expect(ledger.reserveExecution({ actor: value.actor, projectId: value.projectId, key: 'blocked', payer: 'byok' })).rejects.toThrow('HOSTING_ENTITLEMENT_EXPIRED')
     })
@@ -292,14 +297,28 @@ describe('hosted credit and liability ledger', () => {
             if (runner.isTransactionActive) await runner.rollbackTransaction(); await runner.release()
         }
     })
-    it('enforces the last managed grant unit and rejects conflicting call retries', async () => {
+    it('enforces the last shared Credit and rejects conflicting call retries', async () => {
         const value = await running()
-        await ds.getRepository(HostingGrantEntity).update({ platformId: value.platformId, meter: 'managed_ai' }, { amount: 100n })
+        await ds.getRepository(HostingGrantEntity).update({ platformId: value.platformId, meter: 'execution' }, { amount: 2n })
         const outcomes = await Promise.allSettled(Array.from({ length: 6 }, (_, i) => ledger.reserveManagedCall({ actor: value.actor, rootReservationId: value.root.id, key: `grant:${i}`, maxCostMicroUsd: 100n })))
         expect(outcomes.filter(result => result.status === 'fulfilled')).toHaveLength(1)
         const call = await ds.getRepository(HostingReservationEntity).findOneByOrFail({ platformId: value.platformId, kind: 'managed_ai' })
         expect((await ledger.reserveManagedCall({ actor: value.actor, rootReservationId: value.root.id, key: call.key, maxCostMicroUsd: 100n })).id).toBe(call.id)
         await expect(ledger.reserveManagedCall({ actor: value.actor, rootReservationId: value.root.id, key: call.key, maxCostMicroUsd: 101n })).rejects.toThrow('HOSTING_IDEMPOTENCY_CONFLICT')
+    })
+    it('serializes mixed execution and AI reservations against the very last shared Credit', async () => {
+        const value = await running()
+        await ds.getRepository(HostingAccountEntity).update({ id: value.platformId }, { planId: 'team', status: 'active' })
+        await ds.getRepository(HostingGrantEntity).update({ platformId: value.platformId }, { sourceKey: 'stripe:synthetic-team-period' })
+        await ds.getRepository(HostingGrantEntity).update({ id: value.root.grantId }, { amount: 2n })
+        const requests = Array.from({ length: 12 }, (_, i) => i % 2
+            ? ledger.reserveExecution({ actor: value.actor, projectId: value.projectId, key: `mixed:execution:${i}`, payer: 'byok' })
+            : ledger.reserveManagedCall({ actor: value.actor, rootReservationId: value.root.id, key: `mixed:ai:${i}`, maxCostMicroUsd: 500n }))
+        const outcomes = await Promise.allSettled(requests)
+        expect(outcomes.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+        const grant = await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: value.root.grantId })
+        expect([grant.consumed, grant.reserved]).toEqual([1n, 1n])
+        for (const result of outcomes) if (result.status === 'rejected') expect(String(result.reason)).toContain('HOSTING_CREDITS_EXHAUSTED')
     })
     it('releases an unsent managed call once under concurrent cancellation', async () => {
         const value = await running()
@@ -325,7 +344,7 @@ describe('hosted credit and liability ledger', () => {
     it('keeps a running execution tied to its original grant period', async () => {
         const value = await running()
         const original = await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: value.root.grantId })
-        await ds.getRepository(HostingGrantEntity).update({ id: original.id }, { validUntil: new Date(Date.now() - 1) })
+        await ds.getRepository(HostingGrantEntity).update({ id: original.id }, { validFrom: new Date(Date.now() - 120_000), validUntil: new Date(Date.now() - 60_000) })
         await ds.getRepository(HostingGrantEntity).insert({ id: apId(), platformId: value.platformId, sourceKey: 'new-period', meter: 'managed_ai', amount: 1000000n, consumed: 0n, reserved: 0n, validFrom: new Date(), validUntil: new Date(Date.now() + 86400000) })
         await expect(ledger.reserveManagedCall({ actor: value.actor, rootReservationId: value.root.id, key: 'new-period', maxCostMicroUsd: 100n })).rejects.toThrow('HOSTING_GRANT_EXPIRED')
     })
@@ -334,7 +353,7 @@ describe('hosted credit and liability ledger', () => {
         const other = await tenant()
         await expect(ledger.settleManagedCall({ ...value.callFence, platformId: other.platformId, actualCostMicroUsd: 40n })).rejects.toThrow('HOSTING_RESERVATION_NOT_FOUND')
         await Promise.all(Array.from({ length: 8 }, () => ledger.settleManagedCall({ ...value.callFence, actualCostMicroUsd: 40n })))
-        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: value.call.grantId })).consumed).toBe(40n)
+        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: value.call.grantId })).consumed).toBe(2n)
     })
     it('rolls back settlement and release when their ledger entries fail', async () => {
         const value = await managed()
@@ -345,7 +364,7 @@ describe('hosted credit and liability ledger', () => {
         finally {
             await ds.query('ALTER TABLE hosting_ledger DROP CONSTRAINT test_reject_settle')
         }
-        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: value.call.grantId })).reserved).toBe(100n)
+        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: value.call.grantId })).reserved).toBe(1n)
         expect((await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: value.call.id })).state).toBe('running')
         await ledger.settleManagedCall({ ...value.callFence, actualCostMicroUsd: 0n })
         const unsent = await ledger.reserveManagedCall({ actor: value.actor, rootReservationId: value.root.id, key: 'rollback-release', maxCostMicroUsd: 50n })
@@ -356,7 +375,7 @@ describe('hosted credit and liability ledger', () => {
         finally {
             await ds.query('ALTER TABLE hosting_ledger DROP CONSTRAINT test_reject_release')
         }
-        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: unsent.grantId })).reserved).toBe(50n)
+        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: unsent.grantId })).reserved).toBe(1n)
         expect((await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: unsent.id })).state).toBe('reserved')
     })
     it('enforces ledger immutability in PostgreSQL', async () => {
@@ -392,7 +411,7 @@ describe('hosted credit and liability ledger', () => {
     it('rechecks the execution grant at managed dispatch, after reservation', async () => {
         const value = await running()
         const call = await ledger.reserveManagedCall({ actor: value.actor, rootReservationId: value.root.id, key: 'period-expired', maxCostMicroUsd: 100n })
-        await ds.getRepository(HostingGrantEntity).update({ id: value.root.grantId }, { validUntil: new Date(Date.now() - 1) })
+        await ds.getRepository(HostingGrantEntity).update({ id: value.root.grantId }, { validFrom: new Date(Date.now() - 120_000), validUntil: new Date(Date.now() - 60_000) })
         expect((await ledger.claimManagedCall({ actor: value.actor, reservationId: call.id })).claimed).toBe(false)
         expect((await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: call.id })).state).toBe('released')
         expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: call.grantId })).reserved).toBe(0n)

@@ -5,7 +5,7 @@ import { HostedStripeCatalog, STRIPE_API_VERSION, stripeId } from './hosting-str
 import { HostingError, hostingFail } from './hosting-transactions'
 
 type Policy = { secret: string, signingSecret: string, catalog: HostedStripeCatalog, hash: string }
-export type PaidPeriodEvidence = { subscriptionId: string, itemId: string, priceId: string, planId: 'starter' | 'team', start: number, end: number, invoiceId: string, lineId: string, chargeId: string }
+export type PaidPeriodEvidence = { subscriptionId: string, itemId: string, priceId: string, planId: 'starter' | 'team' | 'scale', start: number, end: number, invoiceId: string, lineId: string, chargeId: string }
 export type ChargeEvidence = { id: string, refunded: boolean, lost: boolean, holds: string[] }
 export async function createStripeAdapter(policy: Policy) {
     const { default: StripeSdk } = await import('stripe')
@@ -34,7 +34,7 @@ export async function createStripeAdapter(policy: Policy) {
         }
         const customer = z.string().regex(/^cus_[a-zA-Z0-9]+$/).parse(command.payload.customerId)
         if (command.kind === 'checkout') {
-            const plan = z.enum(['starter', 'team']).parse(command.payload.planId)
+            const plan = z.enum(['starter', 'team', 'scale']).parse(command.payload.planId)
             const expected = policy.catalog.plans[plan]
             await price(expected)
             const result = await client.checkout.sessions.create({ customer, mode: 'subscription', payment_method_types: ['card'], line_items: [{ price: expected.priceId, quantity: 1 }], allow_promotion_codes: false, automatic_tax: { enabled: false }, success_url: `${policy.catalog.origin}/settings/billing?checkout=success`, cancel_url: `${policy.catalog.origin}/settings/billing?checkout=cancel`, expires_at: Math.floor(requiredTime(command.firstSentAt).getTime() / 1000) + 3600, client_reference_id: command.platformId, metadata: { hostingCommandId: command.id, hostingPlatformId: command.platformId }, subscription_data: { metadata: { hostingCommandId: command.id, hostingPlatformId: command.platformId } } }, options)
@@ -80,7 +80,7 @@ export async function createStripeAdapter(policy: Policy) {
                 if (stripeId(sub.customer) !== customerId || sub.items.has_more || sub.items.data.length !== 1 || sub.pause_collection || sub.pending_update || sub.schedule || sub.trial_start || sub.trial_end || sub.discounts.length || sub.collection_method !== 'charge_automatically') hostingFail('HOSTING_STRIPE_SUBSCRIPTION_UNSUPPORTED')
                 if (!['active', 'canceled', 'incomplete_expired'].includes(sub.status)) hostingFail('HOSTING_STRIPE_PAYMENT_REQUIRED')
                 const item = sub.items.data[0]
-                const selected = (['starter', 'team'] as const).find(plan => policy.catalog.plans[plan].priceId === item.price.id)
+                const selected = (['starter', 'team', 'scale'] as const).find(plan => policy.catalog.plans[plan].priceId === item.price.id)
                 if (!selected || item.quantity !== 1) hostingFail('HOSTING_STRIPE_PRICE_DENIED')
                 await price(policy.catalog.plans[selected])
                 if (sub.latest_invoice) {
@@ -100,7 +100,7 @@ export async function createStripeAdapter(policy: Policy) {
         }
     }
 
-    async function paid(invoice: Stripe.Invoice, sub: Stripe.Subscription, item: Stripe.SubscriptionItem, planId: 'starter' | 'team'): Promise<PaidPeriodEvidence> {
+    async function paid(invoice: Stripe.Invoice, sub: Stripe.Subscription, item: Stripe.SubscriptionItem, planId: 'starter' | 'team' | 'scale'): Promise<PaidPeriodEvidence> {
         test(invoice)
         const invoiceId = requiredId(invoice)
         const lines = await client.invoices.listLineItems(invoiceId, { limit: 100 })

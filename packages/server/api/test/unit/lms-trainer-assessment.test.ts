@@ -13,7 +13,7 @@ import { HostingAccessRoleEntity } from '../../src/app/hosting/hosting-access-en
 import { createHostedAiAllowance } from '../../src/app/hosting/hosting-ai-allowance'
 import { createHostedAssessment } from '../../src/app/hosting/hosting-assessment'
 import { HostingAssessmentEntity } from '../../src/app/hosting/hosting-assessment-entity'
-import { HostingAccountEntity, HostingGrantEntity } from '../../src/app/hosting/hosting-entities'
+import { HostingAccountEntity, HostingGrantEntity, HostingLedgerEntity } from '../../src/app/hosting/hosting-entities'
 import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
 import { createLearningFulfillment } from '../../src/app/hosting/hosting-learning-fulfillment'
 import { createHostedLedger } from '../../src/app/hosting/hosting-ledger'
@@ -102,8 +102,21 @@ async function paidCore(tier: 'core' | 'launch' = 'core') {
     const response = await request(operator, '/operator/enroll', { accessType: 'partner_training', courseId: course.id, identityId: client.identityId, package: tier, paymentReference: `synthetic-${apId()}`, workspacePlatformId: client.platformId, paymentVerified: true })
     expect(response.statusCode, response.body).toBe(200)
     const enrollment = response.json()
-    const delivered = await createLearningFulfillment({ dataSource: ds }).activate({ actor: actor(operator), enrollmentId: enrollment.id })
-    return { course, enrollment, delivered, start: Date.parse(delivered.startsAt) }
+    // Explicit pre-upgrade funding: this suite exercises the retained day61
+    // assessment fallback, which new twelve-month Partner packages never need.
+    const startsAt = new Date(enrollment.startsAt), periods = tier === 'core' ? 2 : 3
+    const endsAt = new Date(startsAt.getTime() + periods * 30 * days)
+    const record = await ds.getRepository(HostingTrainingEntity).save({ id: apId(), enrollmentId: enrollment.id, receiptId: enrollment.paymentReference, platformId: client.platformId, identityId: client.identityId, tier, operatorIdentityId: operator.identityId, startsAt, endsAt, revokedAt: null })
+    for (let period = 0; period < periods; period++) {
+        for (const [meter, amount] of [['execution', 1000n], ['managed_ai', 5000000n]] as const) {
+            const id = apId()
+            await ds.getRepository(HostingGrantEntity).insert({ id, platformId: client.platformId, sourceKey: `training:${record.id}:${period}`, meter, amount, consumed: 0n, reserved: 0n, validFrom: new Date(startsAt.getTime() + period * 30 * days), validUntil: new Date(startsAt.getTime() + (period + 1) * 30 * days) })
+            await ds.getRepository(HostingLedgerEntity).insert({ id: apId(), platformId: client.platformId, grantId: id, reservationId: null, operation: 'grant', key: `grant:${id}`, amount })
+        }
+    }
+    await ds.getRepository(HostingAccountEntity).update({ id: client.platformId }, { planId: 'training', status: 'active', catalogVersion: '2026-10-15.v1', validUntil: endsAt })
+    const delivered = { startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString() }
+    return { course, enrollment, delivered, start: startsAt.getTime() }
 }
 const assessment = () => createHostedAssessment({ dataSource: ds })
 const activate = (id: string, who = operator) => assessment().activate({ actor: actor(who), enrollmentId: id })
@@ -209,16 +222,16 @@ describe('one-time Core assessment allowance', () => {
         const ledger = createHostedLedger({ dataSource: ds }), root = await ledger.reserveExecution({ actor: actor(client), projectId: client.projectId!, key: 'assessment-source', payer: 'managed' })
         expect(root.grantId).toBe(issued.find(grant => grant.meter === 'execution')?.id)
         const rootClaim = await ledger.claimExecution({ actor: actor(client), reservationId: root.id })
-        const call = await ledger.reserveManagedCall({ actor: actor(client), rootReservationId: root.id, key: 'one-dollar-budget', maxCostMicroUsd: 1000000n })
-        await expect(ledger.reserveManagedCall({ actor: actor(client), rootReservationId: root.id, key: 'over-one-dollar', maxCostMicroUsd: 1n })).rejects.toThrow('CREDITS_EXHAUSTED')
+        const call = await ledger.reserveManagedCall({ actor: actor(client), rootReservationId: root.id, key: 'last-assessment-credits', maxCostMicroUsd: 49500n })
+        await expect(ledger.reserveManagedCall({ actor: actor(client), rootReservationId: root.id, key: 'over-shared-credit-balance', maxCostMicroUsd: 1n })).rejects.toThrow('CREDITS_EXHAUSTED')
         const claim = await ledger.claimManagedCall({ actor: actor(client), reservationId: call.id })
-        await ledger.settleManagedCall({ platformId: client.platformId, reservationId: call.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 1000000n })
+        await ledger.settleManagedCall({ platformId: client.platformId, reservationId: call.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 49500n })
         await ledger.finishExecution({ platformId: client.platformId, reservationId: root.id, dispatchId: rootClaim.dispatchId! })
         expect((await activate(enrollment.id)).id).toBe(record.id)
         expect(await ds.getRepository(HostingAssessmentEntity).count()).toBe(1)
         expect((await grants()).filter(grant => grant.sourceKey.startsWith('assessment:'))).toHaveLength(2)
-        expect((await grants()).find(grant => grant.id === call.grantId)?.consumed).toBe(1000000n)
-        await expect(createHostedAiAllowance({ dataSource: ds }).save({ actor: actor(operator), input: { platformId: client.platformId, expectedRevision: 0, requestKey: 'forbidden-increase', monthlyCredits: 1000000 } })).rejects.toThrow('ASSESSMENT_ALLOWANCE_FIXED')
+        expect((await grants()).find(grant => grant.id === call.grantId)?.consumed).toBe(100n)
+        await expect(createHostedAiAllowance({ dataSource: ds }).save({ actor: actor(operator), input: { platformId: client.platformId, expectedRevision: 0, requestKey: 'forbidden-increase', monthlyCredits: 1000000 } })).rejects.toThrow('HOSTING_AI_ALLOWANCE_RETIRED')
     })
     it.each(['too-early', 'day90', 'launch', 'nonoperator', 'suspended', 'paid-account'] as const)('denies %s without minting or altering old grants', async reason => {
         const { enrollment, start } = await paidCore(reason === 'launch' ? 'launch' : 'core'), before = await grants()
@@ -233,13 +246,13 @@ describe('one-time Core assessment allowance', () => {
         const { enrollment, start } = await paidCore()
         const clock = vi.spyOn(hostingTransactions, 'now').mockResolvedValue(new Date(start + 61 * days)), record = await activate(enrollment.id)
         const ledger = createHostedLedger({ dataSource: ds }), root = await ledger.reserveExecution({ actor: actor(client), projectId: client.projectId!, key: 'held-assessment', payer: 'managed' }), rootClaim = await ledger.claimExecution({ actor: actor(client), reservationId: root.id })
-        const call = await ledger.reserveManagedCall({ actor: actor(client), rootReservationId: root.id, key: 'held-before-revoke', maxCostMicroUsd: 500000n }), claim = await ledger.claimManagedCall({ actor: actor(client), reservationId: call.id })
+        const call = await ledger.reserveManagedCall({ actor: actor(client), rootReservationId: root.id, key: 'held-before-revoke', maxCostMicroUsd: 5000n }), claim = await ledger.claimManagedCall({ actor: actor(client), reservationId: call.id })
         await assessment().revoke({ actor: actor(operator), enrollmentId: enrollment.id })
-        expect((await grants()).find(grant => grant.id === call.grantId)?.reserved).toBe(500000n)
+        expect((await grants()).find(grant => grant.id === call.grantId)?.reserved).toBe(10n)
         await expect(ledger.reserveExecution({ actor: actor(client), projectId: client.projectId!, key: 'old-session-after-revoke', payer: 'byok' })).rejects.toThrow('ENTITLEMENT_EXPIRED')
-        await ledger.settleManagedCall({ platformId: client.platformId, reservationId: call.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 200000n })
+        await ledger.settleManagedCall({ platformId: client.platformId, reservationId: call.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 2000n })
         await ledger.finishExecution({ platformId: client.platformId, reservationId: root.id, dispatchId: rootClaim.dispatchId! })
-        expect((await grants()).find(grant => grant.id === call.grantId)?.consumed).toBe(200000n)
+        expect((await grants()).find(grant => grant.id === call.grantId)?.consumed).toBe(5n)
         await expect(activate(enrollment.id)).rejects.toThrow('ASSESSMENT_CLOSED')
         await expect(ds.getRepository(HostingAssessmentEntity).update({ id: record.id }, { endsAt: new Date(start + 91 * days) })).rejects.toThrow('HISTORY_IMMUTABLE')
         await expect(ds.getRepository(HostingAssessmentEntity).delete({ id: record.id })).rejects.toThrow('HISTORY_IMMUTABLE')

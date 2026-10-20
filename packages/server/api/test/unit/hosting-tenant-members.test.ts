@@ -64,7 +64,7 @@ describe('tenant-scoped member administration', () => {
         const target = await identity(false), accounts = await ds.getRepository(HostingAccountEntity).count(), grants = await ds.getRepository(HostingGrantEntity).count()
         const issued = await invite(target.email, PlatformRole.MEMBER)
         expect(new URL(issued.result.setupUrl!).pathname).toBe('/tenant-join')
-        expect(issued.result.seats).toMatchObject({ used: 1, reserved: 1, limit: 3 })
+        expect(issued.result.seats).toMatchObject({ used: 1, reserved: 1, limit: 10 })
         expect(JSON.stringify(issued.result.invitations)).not.toContain('mode')
         expect(await service().inspect(issued.token)).toMatchObject({ mode: 'setup', email: target.email })
         const joined = await service().redeem({ token: issued.token, password: chosen, fullName: 'New Member' })
@@ -95,15 +95,22 @@ describe('tenant-scoped member administration', () => {
         expect(await ds.getRepository(UserEntity).countBy({ identityId: target.id })).toBe(1)
         expect(await ds.getRepository(HostingAccountEntity).countBy({ ownerIdentityId: target.id })).toBe(0)
     })
-    it('reserves pending users/projects across old and new invitations and enforces the training one-seat cap', async () => {
+    it('makes all ten seats reachable and bounds pending users/projects across old and new invitations', async () => {
         const one = await identity(), two = await identity(), three = await identity()
         await onboarding().invite({ actor: admin, email: one.email, role: PlatformRole.MEMBER })
         await invite(two.email)
+        for (let i = 0; i < 7; i++) await invite(`pending-${i}@test.invalid`)
         await expect(invite(three.email)).rejects.toThrow('RESOURCE_LIMIT')
-        expect((await service().list({ actor: admin })).seats).toEqual({ used: 1, reserved: 2, limit: 3 })
+        expect((await service().list({ actor: admin })).seats).toEqual({ used: 1, reserved: 9, limit: 10 })
         const other = await identity(), own = await onboarding().provision({ identityId: other.id, name: 'Training client', operator })
         await ds.getRepository(HostingAccountEntity).update({ id: own.platformId }, { planId: 'training' })
-        const training = { identityId: other.id, platformId: own.platformId, tokenVersion: own.tokenVersion }, current = await service().list({ actor: training })
+        const training = { identityId: other.id, platformId: own.platformId, tokenVersion: own.tokenVersion }
+        for (let i = 0; i < 9; i++) {
+            const view = await service().list({ actor: training })
+            await service().command({ actor: training, action: 'invite', input: { email: `training-pending-${i}@test.invalid`, role: PlatformRole.MEMBER, expectedRevision: view.revision, expectedState: view.stateHash, requestKey: apId() } })
+        }
+        const current = await service().list({ actor: training })
+        expect(current.seats).toEqual({ used: 1, reserved: 9, limit: 10 })
         await expect(service().command({ actor: training, action: 'invite', input: { email: three.email, role: PlatformRole.MEMBER, expectedRevision: current.revision, expectedState: current.stateHash, requestKey: apId() } })).rejects.toThrow('RESOURCE_LIMIT')
     })
     it('revokes a legacy pending reservation and safely replays its request', async () => {
@@ -112,6 +119,25 @@ describe('tenant-scoped member administration', () => {
         await service().command({ actor: admin, action: 'revoke', input })
         expect((await service().command({ actor: admin, action: 'revoke', input })).replayed).toBe(true)
         expect((await service().list({ actor: admin })).seats.reserved).toBe(0)
+    })
+    it('manages a full Scale directory with inactive users and operational staff outside the paid seats', async () => {
+        await ds.getRepository(HostingAccountEntity).update({ id: admin.platformId }, { planId: 'scale' })
+        let memberToDeactivate = ''
+        for (let i = 0; i < 101; i++) {
+            const person = await identity(), userId = apId()
+            if (i === 0) memberToDeactivate = userId
+            await ds.getRepository(UserEntity).insert({ id: userId, identityId: person.id, platformId: admin.platformId, platformRole: i === 100 ? PlatformRole.OPERATOR : PlatformRole.MEMBER, status: i === 99 ? UserStatus.INACTIVE : UserStatus.ACTIVE, externalId: i === 100 ? `sydekyks-operational:${person.id}` : null })
+        }
+        const full = await service().list({ actor: admin })
+        expect(full.members).toHaveLength(102)
+        expect(full.seats).toEqual({ used: 100, reserved: 0, limit: 100 })
+        expect(full.members.find(user => user.operational)?.protected).toBe(true)
+        await expect(invite('over-scale-limit@test.invalid')).rejects.toThrow('RESOURCE_LIMIT')
+        await command('change', { userId: memberToDeactivate, deactivate: true })
+        await invite('replacement-scale-member@test.invalid')
+        const replacement = await service().list({ actor: admin })
+        expect(replacement.members).toHaveLength(102)
+        expect(replacement.seats).toEqual({ used: 99, reserved: 1, limit: 100 })
     })
     it('returns a secret once, revokes replaced links, rejects stale CAS and conflicting idempotency', async () => {
         const target = await identity(false), first = await invite(target.email, PlatformRole.MEMBER, 'once')

@@ -20,7 +20,7 @@ export function HostedClientsPage() {
           {t(
             access.hosted
               ? 'Sign in again to view client usage.'
-              : 'Client usage is available only for hosted service operators.',
+              : 'Client usage is available only for hosted service operators.'
           )}
         </p>
       </main>
@@ -35,7 +35,7 @@ function SessionClients({
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const after = cursors[cursors.length - 1];
   const query = useQuery(
-    operatorClientsQuery(access.session, after, access.allowed),
+    operatorClientsQuery(access.session, after, access.allowed)
   );
   const denied = !access.isPending && !access.allowed;
   return (
@@ -45,7 +45,7 @@ function SessionClients({
           <h1 className="text-xl font-semibold">{t('Client usage')}</h1>
           <p className="mt-1 max-w-prose text-sm text-gray-11">
             {t(
-              'Credit consumption across your hosted clients. Access is restricted to your service operators.',
+              'Credit consumption across your hosted clients. Access is restricted to your service operators.'
             )}
           </p>
         </div>
@@ -66,7 +66,7 @@ function SessionClients({
       ) : denied ? (
         <p role="alert" className="text-sm text-gray-11">
           {t(
-            'This view is available only to configured service operators. A client workspace administrator cannot access other clients.',
+            'This view is available only to configured service operators. A client workspace administrator cannot access other clients.'
           )}
         </p>
       ) : query.isPending ? (
@@ -76,7 +76,7 @@ function SessionClients({
       ) : query.error ? (
         <p role="alert" className="text-sm text-gray-11">
           {t(
-            'Client usage could not be loaded. Refresh to check your access and connection.',
+            'Client usage could not be loaded. Refresh to check your access and connection.'
           )}
         </p>
       ) : query.data ? (
@@ -127,8 +127,7 @@ function ClientUsageTable({ data }: { data: HostedClients }) {
             <tr>
               {[
                 'Client',
-                'Execution credits',
-                'AI credits',
+                'Credits',
                 'Active runs',
                 'Recorded model attempts · all time',
               ].map((label) => (
@@ -152,44 +151,25 @@ function ClientUsageTable({ data }: { data: HostedClients }) {
                     })}
                   </span>
                 </th>
-                {[client.credits.execution, client.credits.ai].map(
-                  (meter, index) => (
-                    <td key={index} className="px-4 py-4 tabular-nums">
-                      <span className="block">
-                        {t('{used} used / {total}', {
-                          used: formatHostedCredits(
-                            meter.consumed,
-                            meter.scale,
-                          ),
-                          total: formatHostedCredits(meter.amount, meter.scale),
-                        })}
-                      </span>
-                      <span className="mt-1 block text-xs text-gray-11">
-                        {t('{available} available · {held} held', {
-                          available: formatHostedCredits(
-                            meter.available,
-                            meter.scale,
-                          ),
-                          held: formatHostedCredits(
-                            meter.reserved,
-                            meter.scale,
-                          ),
-                        })}
-                      </span>
-                      {index === 1 &&
-                        BigInt(client.credits.previousHeldAi) > 0n && (
-                          <span className="mt-1 block text-xs text-gray-11">
-                            {t('{value} held from previous periods', {
-                              value: formatHostedCredits(
-                                client.credits.previousHeldAi,
-                                client.credits.ai.scale,
-                              ),
-                            })}
-                          </span>
-                        )}
-                    </td>
-                  ),
-                )}
+                {[client.credits.execution].map((meter, index) => (
+                  <td key={index} className="px-4 py-4 tabular-nums">
+                    <span className="block">
+                      {t('{used} used / {total}', {
+                        used: formatHostedCredits(meter.consumed, meter.scale),
+                        total: formatHostedCredits(meter.amount, meter.scale),
+                      })}
+                    </span>
+                    <span className="mt-1 block text-xs text-gray-11">
+                      {t('{available} available · {held} held', {
+                        available: formatHostedCredits(
+                          meter.available,
+                          meter.scale
+                        ),
+                        held: formatHostedCredits(meter.reserved, meter.scale),
+                      })}
+                    </span>
+                  </td>
+                ))}
                 <td className="px-4 py-4 tabular-nums">
                   {client.activeExecutions}
                 </td>
@@ -219,7 +199,7 @@ function ClientUsageTable({ data }: { data: HostedClients }) {
       </div>
       <p className="max-w-prose text-xs text-gray-11">
         {t(
-          'Credit totals refer to each client’s current or most recent credit period. Model-call counts and verified token totals cover all recorded history. Uncertain calls keep their holds until resolved. Provider secrets and conversation contents are never included.',
+          'Credit totals refer to each client’s current or most recent credit period. Model-call counts and verified token totals cover all recorded history. Uncertain calls keep their holds until resolved. Provider secrets and conversation contents are never included.'
         )}
       </p>
     </>

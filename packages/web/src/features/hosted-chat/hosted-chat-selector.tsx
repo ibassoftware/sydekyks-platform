@@ -73,6 +73,18 @@ export function HostedChatSelector({ disabled }: { disabled: boolean }) {
           >
             <span className="min-w-0">
               <span className="block font-medium">{t('Sydekyks')}</span>
+              <span className="block text-xs text-gray-11">
+                {t('Uses Credits for the run and its AI usage.')}
+              </span>
+              {chat.options?.creditPolicy && (
+                <span className="block text-xs text-gray-11">
+                  {t('Maximum {maximum} Credits per run.', {
+                    maximum: formatHostedCredits(
+                      chat.options.creditPolicy.maxRunCredits,
+                    ),
+                  })}
+                </span>
+              )}
               {!chat.options?.managedAvailable && (
                 <span className="block text-xs text-gray-11">
                   {chat.options?.keys.length
@@ -133,6 +145,16 @@ export function HostedChatBillingNote() {
             })}
           </p>
         )}
+        {chat.options &&
+          BigInt(chat.options.credits.execution.reserved) > 0n && (
+            <p className="mb-1 tabular-nums">
+              {t('{held} Credits held for pending work.', {
+                held: formatHostedCredits(
+                  chat.options.credits.execution.reserved,
+                ),
+              })}
+            </p>
+          )}
         {text && <span>{text}</span>}
       </div>
       {!chat.denied && !chat.loading && (

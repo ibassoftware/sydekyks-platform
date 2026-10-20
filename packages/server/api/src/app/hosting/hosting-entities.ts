@@ -20,7 +20,7 @@ export const HostingAccountEntity = new EntitySchema<HostingAccount>({
         trialStartedAt: timestamp, trialEndsAt: timestamp, validUntil: timestamp,
         activeExecutions: { type: Number, default: 0 }, billingHold: { type: Boolean, default: false },
     },
-    checks: [{ expression: '"activeExecutions" >= 0' }, { expression: '"status" IN (\'trialing\', \'active\', \'suspended\')' }, { name: 'CHK_7a22f26b8fb98d989a5326db4b', expression: '"planId" IN (\'trial\', \'training\', \'assessment\', \'starter\', \'team\')' }],
+    checks: [{ expression: '"activeExecutions" >= 0' }, { expression: '"status" IN (\'trialing\', \'active\', \'suspended\')' }, { name: 'CHK_7a22f26b8fb98d989a5326db4b', expression: '"planId" IN (\'trial\', \'training\', \'assessment\', \'starter\', \'team\', \'scale\')' }],
     foreignKeys: [{ target: 'platform', columnNames: ['id'], referencedColumnNames: ['id'], onDelete: 'RESTRICT' }],
 })
 
@@ -51,6 +51,10 @@ export const HostingReservationEntity = new EntitySchema<HostingReservation>({
         key: { type: String, length: 120 }, kind: { type: String }, payer: { type: String }, state: { type: String },
         rootReservationId: { ...ApIdSchema, nullable: true }, day: { type: String, length: 10, nullable: true },
         amount: quantity, actualAmount: { ...quantity, nullable: true, default: undefined },
+        // Null version is the retained pre-unification microUSD accounting contract.
+        accountingVersion: { type: String, nullable: true }, supplierMaxMicroUsd: { ...quantity, nullable: true, default: undefined },
+        actualSupplierMicroUsd: { ...quantity, nullable: true, default: undefined }, microUsdPerCredit: { ...quantity, nullable: true, default: undefined },
+        legacyCreditGrantId: { ...ApIdSchema, nullable: true }, maxRootCredits: { ...quantity, nullable: true, default: undefined },
         dispatchId: { ...ApIdSchema, nullable: true },
     },
     uniques: [{ columns: ['platformId', 'kind', 'key'] }, { columns: ['id', 'platformId'] }],
@@ -107,7 +111,7 @@ export type HostingEligibility = HostingBase & { identityId: string, platformId:
 export type HostingPolicy = HostingBase & { subjectKeyFingerprint: string }
 export type HostingMeter = 'execution' | 'managed_ai'
 export type HostingGrant = HostingBase & { platformId: string, sourceKey: string, meter: HostingMeter, amount: bigint, reserved: bigint, consumed: bigint, validFrom: Date, validUntil: Date, revokedAt?: Date | null }
-export type HostingReservation = HostingBase & { platformId: string, projectId: string, identityId: string, grantId: string, key: string, kind: HostingMeter, payer: 'managed' | 'byok', state: 'reserved' | 'running' | 'settled' | 'released' | 'uncertain' | 'paused', rootReservationId: string | null, day: string | null, amount: bigint, actualAmount: bigint | null, dispatchId: string | null }
+export type HostingReservation = HostingBase & { platformId: string, projectId: string, identityId: string, grantId: string, key: string, kind: HostingMeter, payer: 'managed' | 'byok', state: 'reserved' | 'running' | 'settled' | 'released' | 'uncertain' | 'paused', rootReservationId: string | null, day: string | null, amount: bigint, actualAmount: bigint | null, dispatchId: string | null, accountingVersion?: string | null, supplierMaxMicroUsd?: bigint | null, actualSupplierMicroUsd?: bigint | null, microUsdPerCredit?: bigint | null, legacyCreditGrantId?: string | null, maxRootCredits?: bigint | null }
 export type HostingLedgerEntry = HostingBase & { platformId: string, grantId: string, reservationId: string | null, operation: 'grant' | 'reserve' | 'dispatch' | 'settle' | 'release' | 'uncertain' | 'revoke', key: string, amount: bigint }
 export type HostingDailyBudget = HostingBase & { reserved: bigint, consumed: bigint, limit: bigint }
 export type HostingInvitation = HostingBase & { platformId: string, subject: string, tokenDigest: string, role: PlatformRole, projectUnits: number, status: 'pending' | 'accepted' | 'revoked', expiresAt: Date, acceptedIdentityId: string | null }

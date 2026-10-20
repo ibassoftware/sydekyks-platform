@@ -61,3 +61,19 @@ export function validateHostedAiQuote(value: unknown, now: Date): HostedAiPrice 
 export function hostedAiCost({ hit, miss, output, prices }: { hit: number, miss: number, output: number, prices: HostedAiPrice['rates'] }): bigint {
     return (BigInt(hit) * BigInt(prices.cacheHit) + BigInt(miss) * BigInt(prices.cacheMiss) + BigInt(output) * BigInt(prices.output) + 999_999n) / 1_000_000n
 }
+
+/** Conservative UTF-8 byte envelope, not a guessed words-per-token estimate.
+ * Every serialized input field (including tools/schema) is counted; 4x bytes plus
+ * bounded per-message/tool framing leaves headroom for the approved supplier's
+ * chat template. New supplier adapters must review this bound before admission.
+ * Supplier usage beyond it is a pricing-contract violation and quarantines the
+ * tenant instead of silently allowing unbounded subsequent spend.
+ */
+export function hostedAiInputBound(input: HostedAiInput): number {
+    const serialized = JSON.stringify({ messages: input.messages, tools: input.tools, tool_choice: input.tool_choice, response_format: input.response_format })
+    const bytes = Buffer.byteLength(serialized, 'utf8')
+    if (Buffer.byteLength(JSON.stringify(input), 'utf8') > 65536) hostingFail('HOSTING_AI_REQUEST_LIMIT')
+    const bound = bytes * 4 + 4096 + (input.messages.length + (input.tools?.length ?? 0)) * 256
+    if (bound + input.max_tokens > HOSTED_AI_CONTEXT_TOKENS) hostingFail('HOSTING_AI_REQUEST_LIMIT')
+    return bound
+}

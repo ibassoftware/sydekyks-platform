@@ -81,17 +81,35 @@ function getStatusText({
 
 const EXPIRED_RUN_ACCESS_MESSAGE =
   'Workspace access has expired. Contact your administrator or Sydekyks to renew access before running this Mission.';
+const INSUFFICIENT_RUN_CREDITS_MESSAGE =
+  'Not enough Credits are available to start this Mission. Check billing or contact your workspace administrator.';
+const UNAVAILABLE_RUN_AI_CONNECTION_MESSAGE =
+  'The selected client AI key is unavailable for this Mission. Ask your workspace administrator to update its AI connection, then try again.';
 
-function isExpiredRunAccessRefusal(run: FlowRun): boolean {
-  return (
+function runAdmissionRefusal(run: FlowRun): string | null {
+  const refused =
     run.status === FlowRunStatus.FAILED &&
     !!run.finishTime &&
     !run.startTime &&
     Object.keys(run.steps ?? {}).length === 0 &&
-    run.failedStep?.name === 'trigger' &&
-    run.failedStep.displayName === 'Run access' &&
+    run.failedStep?.name === 'trigger';
+  if (!refused) return null;
+  if (
+    run.failedStep?.displayName === 'Run access' &&
     run.failedStep.message === EXPIRED_RUN_ACCESS_MESSAGE
-  );
+  )
+    return EXPIRED_RUN_ACCESS_MESSAGE;
+  if (
+    run.failedStep?.displayName === 'Credits' &&
+    run.failedStep.message === INSUFFICIENT_RUN_CREDITS_MESSAGE
+  )
+    return INSUFFICIENT_RUN_CREDITS_MESSAGE;
+  if (
+    run.failedStep?.displayName === 'AI connection' &&
+    run.failedStep.message === UNAVAILABLE_RUN_AI_CONNECTION_MESSAGE
+  )
+    return UNAVAILABLE_RUN_AI_CONNECTION_MESSAGE;
+  return null;
 }
 
 const RunInfoWidget = () => {
@@ -115,7 +133,7 @@ const RunInfoWidget = () => {
     status: run.status,
     ignoreInternalError: false,
   });
-  const expiredRunAccess = isExpiredRunAccessRefusal(run);
+  const admissionRefusal = runAdmissionRefusal(run);
   return (
     <LargeWidgetWrapper
       containerClassName={cn(
@@ -178,19 +196,19 @@ const RunInfoWidget = () => {
 
         <div className="flex items-center gap-2">
           <ResumeLiveFollowButton isRunTerminal={isRunTerminal} />
-          {run.failedStep && !expiredRunAccess && (
+          {run.failedStep && !admissionRefusal && (
             <JumpToFailedStepButton failedStepName={run.failedStep.name} />
           )}
           <EditFlowOrViewDraftButton
             onCanvas={false}
           ></EditFlowOrViewDraftButton>
         </div>
-        {expiredRunAccess && (
+        {admissionRefusal && (
           <p
             role="alert"
             className="mt-2 w-full max-w-prose text-sm text-gray-12 break-words"
           >
-            {t(EXPIRED_RUN_ACCESS_MESSAGE)}
+            {t(admissionRefusal)}
           </p>
         )}
       </div>

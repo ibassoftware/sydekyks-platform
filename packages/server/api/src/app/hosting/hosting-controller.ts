@@ -9,9 +9,9 @@ import { authnRateLimit, emailCodeRateLimit } from '../core/security/rate-limit'
 import { networkUtils } from '../helper/network-utils'
 import { userService } from '../user/user-service'
 import { hostingAccessController } from './hosting-access-controller'
-import { hostingAiAllowanceController } from './hosting-ai-allowance-controller'
 import { hostingAssessmentController } from './hosting-assessment-controller'
 import { resendHostedVerification } from './hosting-auth-policy'
+import { hostingCreditAllowanceController } from './hosting-credit-allowance-controller'
 import { hostingConfiguration } from './hosting-configuration'
 import { hostingLearningController } from './hosting-learning-controller'
 import { hostingOnboardingController } from './hosting-onboarding-controller'
@@ -30,10 +30,10 @@ import { HostingActor, HostingError } from './hosting-transactions'
 
 export const hostingController: FastifyPluginAsyncZod = async app => {
     if (hostingConfiguration.getServiceMode() !== 'hosted') return
+    await app.register(hostingCreditAllowanceController, { prefix: '/operator/credits-allowance' })
     await app.register(hostingSubscriptionController, { prefix: '/operator/subscriptions' })
     await app.register(hostingStorageController, { prefix: '/operator' })
     await app.register(hostingAccessController, { prefix: '/operator' })
-    await app.register(hostingAiAllowanceController, { prefix: '/operator/ai-allowance' })
     await app.register(hostingPartnerAdminController, { prefix: '/operator/partners' })
     await app.register(hostingAssessmentController, { prefix: '/operator/assessment' })
     await app.register(hostingRecoveryController, { prefix: '/operator/account-recovery' })

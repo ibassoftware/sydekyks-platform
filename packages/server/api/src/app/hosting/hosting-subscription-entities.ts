@@ -8,7 +8,7 @@ export type HostingSubscription = {
     updated: Date
     revision: number
     renewalDueAt: Date | null
-    planId: 'training' | 'starter' | 'team'
+    planId: 'training' | 'starter' | 'team' | 'scale'
     entitlementId: string
     sourceKey: string
     accountValidUntil: Date
@@ -37,7 +37,7 @@ export const HostingSubscriptionEntity = new EntitySchema<HostingSubscription>({
         accountValidUntil: time, validFrom: time, originalValidUntil: time,
         executionGrantId: ApIdSchema, managedAiGrantId: ApIdSchema,
     },
-    checks: [{ expression: 'revision > 0' }, { expression: '"planId" IN (\'training\',\'starter\',\'team\')' }, { expression: '"originalValidUntil" > "validFrom"' }],
+    checks: [{ expression: 'revision > 0' }, { expression: '"planId" IN (\'training\',\'starter\',\'team\',\'scale\')' }, { expression: '"originalValidUntil" > "validFrom"' }],
     foreignKeys: [
         { target: 'hosting_account', columnNames: ['id'], referencedColumnNames: ['id'], onDelete: 'RESTRICT' },
         { target: 'hosting_grant', columnNames: ['executionGrantId', 'id'], referencedColumnNames: ['id', 'platformId'], onDelete: 'RESTRICT' },

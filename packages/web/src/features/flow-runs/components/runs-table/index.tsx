@@ -46,6 +46,7 @@ import {
   flowRunMutations,
 } from '@/features/flow-runs/hooks/flow-run-hooks';
 import { flowRunUtils } from '@/features/flow-runs/utils/flow-run-utils';
+import { canRerunHostedRun } from '@/features/flow-runs/utils/hosted-retry-policy';
 import { flowHooks } from '@/features/flows/hooks/flow-hooks';
 import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import {
@@ -68,6 +69,8 @@ import { RunsStatusChart } from './runs-status-chart';
 type SelectedRow = {
   id: string;
   status: FlowRunStatus;
+  parentRunId?: string;
+  stepNameToTest?: string;
 };
 export const RunsTable = () => {
   const hostedPilot = useHostedBillingEnabled();
@@ -85,7 +88,7 @@ export const RunsTable = () => {
   const [errorDialogRun, setErrorDialogRun] = useState<FlowRun | null>(null);
 
   const [hasSeededDefaultRange, setHasSeededDefaultRange] = useState(() =>
-    searchParams.has('createdAfter'),
+    searchParams.has('createdAfter')
   );
   useEffect(() => {
     if (hasSeededDefaultRange) return;
@@ -99,7 +102,7 @@ export const RunsTable = () => {
         }
         return next;
       },
-      { replace: true },
+      { replace: true }
     );
     setHasSeededDefaultRange(true);
   }, [hasSeededDefaultRange, setSearchParams]);
@@ -146,7 +149,7 @@ export const RunsTable = () => {
           !isFlowRunStateTerminal({
             status: run.status,
             ignoreInternalError: false,
-          }),
+          })
       );
       return runningRuns?.length ? 15 * 1000 : false;
     },
@@ -166,7 +169,7 @@ export const RunsTable = () => {
     onViewError: setErrorDialogRun,
     onViewRun: (run) =>
       navigate(
-        authenticationSession.appendProjectRoutePrefix(`/runs/${run.id}`),
+        authenticationSession.appendProjectRoutePrefix(`/runs/${run.id}`)
       ),
   });
 
@@ -227,7 +230,7 @@ export const RunsTable = () => {
           accessorKey: 'archivedAt',
         },
       ],
-      [flows],
+      [flows]
     );
 
   const retryRuns = flowRunMutations.useBulkRetryRuns({
@@ -256,7 +259,7 @@ export const RunsTable = () => {
           duration: 15000,
           closeButton: true,
           dismissible: true,
-        },
+        }
       );
     },
   });
@@ -337,7 +340,7 @@ export const RunsTable = () => {
           const allCancellable = selectedRows.every(
             (row) =>
               row.status === FlowRunStatus.PAUSED ||
-              row.status === FlowRunStatus.QUEUED,
+              row.status === FlowRunStatus.QUEUED
           );
           const isDisabled =
             hostedPilot ||
@@ -354,7 +357,7 @@ export const RunsTable = () => {
                   message={
                     hostedPilot
                       ? t(
-                          'Queued-run cancellation is unavailable in the hosted pilot',
+                          'Queued-run cancellation is unavailable in the hosted pilot'
                         )
                       : t('Only paused or queued runs can be cancelled')
                   }
@@ -369,7 +372,7 @@ export const RunsTable = () => {
                       if (hostedPilot) return;
                       const runIds = selectedRows.map((row) => row.id);
                       const status = searchParams.getAll(
-                        'status',
+                        'status'
                       ) as FlowRunStatus[];
                       cancelRuns.mutate({
                         projectId,
@@ -382,7 +385,7 @@ export const RunsTable = () => {
                             ? (status.filter(
                                 (s) =>
                                   s === FlowRunStatus.PAUSED ||
-                                  s === FlowRunStatus.QUEUED,
+                                  s === FlowRunStatus.QUEUED
                               ) as (
                                 | typeof FlowRunStatus.PAUSED
                                 | typeof FlowRunStatus.QUEUED
@@ -417,10 +420,12 @@ export const RunsTable = () => {
       {
         render: (_, resetSelection) => {
           const allFailed = selectedRows.every((row) =>
-            isFailedState(row.status),
+            isFailedState(row.status)
           );
           const isDisabled =
-            selectedRows.length === 0 || !userHasPermissionToRetryRun;
+            selectedRows.length === 0 ||
+            !userHasPermissionToRetryRun ||
+            (hostedPilot && !selectedRows.every(canRerunHostedRun));
 
           return (
             <div onClick={(e) => e.stopPropagation()}>
@@ -437,7 +442,7 @@ export const RunsTable = () => {
                     >
                       <RotateCw className="size-4 mr-1" />
                       {selectedRows.length > 0
-                        ? `${t('Retry')} ${
+                        ? `${hostedPilot ? t('Rerun workflow') : t('Retry')} ${
                             !isDisabled
                               ? selectedAll
                                 ? excludedRows.size > 0
@@ -446,6 +451,8 @@ export const RunsTable = () => {
                                 : `(${selectedRows.length})`
                               : ''
                           }`
+                        : hostedPilot
+                        ? t('Rerun workflow')
                         : t('Retry')}
                       <ChevronDown className="h-3 w-4 ml-1" />
                     </Button>
@@ -465,9 +472,11 @@ export const RunsTable = () => {
                             excludeFlowRunIds: selectedAll
                               ? Array.from(excludedRows)
                               : undefined,
-                            status: searchParams.getAll(
-                              'status',
-                            ) as FlowRunStatus[],
+                            status: hostedPilot
+                              ? [FlowRunStatus.FAILED]
+                              : (searchParams.getAll(
+                                  'status'
+                                ) as FlowRunStatus[]),
                             flowId: searchParams.getAll('flowId'),
                             createdAfter:
                               searchParams.get('createdAfter') || undefined,
@@ -486,57 +495,73 @@ export const RunsTable = () => {
                       >
                         <div className="flex flex-row gap-2 items-center">
                           <RotateCw className="h-4 w-4" />
-                          <span>{t('on latest version')}</span>
+                          <span>
+                            {hostedPilot
+                              ? t('Rerun workflow on latest version')
+                              : t('on latest version')}
+                          </span>
                         </div>
                       </DropdownMenuItem>
                     </PermissionNeededTooltip>
 
-                    {selectedRows.some((row) => isFailedState(row.status)) && (
-                      <MessageTooltip
-                        message={t(
-                          'Only failed runs can be retried from failed step',
+                    {hostedPilot && (
+                      <p className="max-w-64 px-2 py-1.5 text-xs text-muted-foreground">
+                        {t(
+                          'Starts from the beginning and uses Credits. Earlier actions may happen again.'
                         )}
-                        isDisabled={!allFailed}
-                      >
-                        <DropdownMenuItem
-                          disabled={!userHasPermissionToRetryRun || !allFailed}
-                          onClick={() => {
-                            const runIds = selectedRows.map((row) => row.id);
-                            retryRuns.mutate({
-                              projectId,
-                              flowRunIds: selectedAll ? undefined : runIds,
-                              strategy: FlowRetryStrategy.FROM_FAILED_STEP,
-                              excludeFlowRunIds: selectedAll
-                                ? Array.from(excludedRows)
-                                : undefined,
-                              status: searchParams.getAll(
-                                'status',
-                              ) as FlowRunStatus[],
-                              flowId: searchParams.getAll('flowId'),
-                              createdAfter:
-                                searchParams.get('createdAfter') || undefined,
-                              createdBefore:
-                                searchParams.get('createdBefore') || undefined,
-                              failedStepName:
-                                searchParams.get('failedStepName') || undefined,
-                              failedStepMessage:
-                                searchParams.get('failedStepMessage') ||
-                                undefined,
-                            });
-                            resetSelection();
-                            setSelectedRows([]);
-                            setSelectedAll(false);
-                            setExcludedRows(new Set());
-                          }}
-                          className="cursor-pointer"
-                        >
-                          <div className="flex flex-row gap-2 items-center">
-                            <Redo className="h-4 w-4" />
-                            <span>{t('from failed step')}</span>
-                          </div>
-                        </DropdownMenuItem>
-                      </MessageTooltip>
+                      </p>
                     )}
+                    {!hostedPilot &&
+                      selectedRows.some((row) => isFailedState(row.status)) && (
+                        <MessageTooltip
+                          message={t(
+                            'Only failed runs can be retried from failed step'
+                          )}
+                          isDisabled={!allFailed}
+                        >
+                          <DropdownMenuItem
+                            disabled={
+                              !userHasPermissionToRetryRun || !allFailed
+                            }
+                            onClick={() => {
+                              const runIds = selectedRows.map((row) => row.id);
+                              retryRuns.mutate({
+                                projectId,
+                                flowRunIds: selectedAll ? undefined : runIds,
+                                strategy: FlowRetryStrategy.FROM_FAILED_STEP,
+                                excludeFlowRunIds: selectedAll
+                                  ? Array.from(excludedRows)
+                                  : undefined,
+                                status: searchParams.getAll(
+                                  'status'
+                                ) as FlowRunStatus[],
+                                flowId: searchParams.getAll('flowId'),
+                                createdAfter:
+                                  searchParams.get('createdAfter') || undefined,
+                                createdBefore:
+                                  searchParams.get('createdBefore') ||
+                                  undefined,
+                                failedStepName:
+                                  searchParams.get('failedStepName') ||
+                                  undefined,
+                                failedStepMessage:
+                                  searchParams.get('failedStepMessage') ||
+                                  undefined,
+                              });
+                              resetSelection();
+                              setSelectedRows([]);
+                              setSelectedAll(false);
+                              setExcludedRows(new Set());
+                            }}
+                            className="cursor-pointer"
+                          >
+                            <div className="flex flex-row gap-2 items-center">
+                              <Redo className="h-4 w-4" />
+                              <span>{t('from failed step')}</span>
+                            </div>
+                          </DropdownMenuItem>
+                        </MessageTooltip>
+                      )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </PermissionNeededTooltip>
@@ -556,22 +581,22 @@ export const RunsTable = () => {
       hostedPilot,
       projectId,
       searchParams,
-    ],
+    ]
   );
 
   const handleRowClick = useCallback(
     (row: FlowRun, newWindow: boolean) => {
       if (newWindow) {
         openNewWindow(
-          authenticationSession.appendProjectRoutePrefix(`/runs/${row.id}`),
+          authenticationSession.appendProjectRoutePrefix(`/runs/${row.id}`)
         );
       } else {
         navigate(
-          authenticationSession.appendProjectRoutePrefix(`/runs/${row.id}`),
+          authenticationSession.appendProjectRoutePrefix(`/runs/${row.id}`)
         );
       }
     },
-    [navigate, openNewWindow],
+    [navigate, openNewWindow]
   );
 
   const retriedRunsInQueryParams = searchParams.getAll(RUN_IDS_QUERY_PARAM);
@@ -599,7 +624,7 @@ export const RunsTable = () => {
       <DataTable
         emptyStateTextTitle={t('No flow runs found')}
         emptyStateTextDescription={t(
-          'Come back later when your automations start running',
+          'Come back later when your automations start running'
         )}
         emptyStateIcon={<History className="size-14" />}
         columns={columns}
