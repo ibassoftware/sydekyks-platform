@@ -313,7 +313,7 @@ describe('hosted credit and liability ledger', () => {
         await ds.getRepository(HostingGrantEntity).update({ id: value.root.grantId }, { amount: 2n })
         const requests = Array.from({ length: 12 }, (_, i) => i % 2
             ? ledger.reserveExecution({ actor: value.actor, projectId: value.projectId, key: `mixed:execution:${i}`, payer: 'byok' })
-            : ledger.reserveManagedCall({ actor: value.actor, rootReservationId: value.root.id, key: `mixed:ai:${i}`, maxCostMicroUsd: 500n }))
+            : ledger.reserveManagedCall({ actor: value.actor, rootReservationId: value.root.id, key: `mixed:ai:${i}`, maxCostMicroUsd: 250n }))
         const outcomes = await Promise.allSettled(requests)
         expect(outcomes.filter(result => result.status === 'fulfilled')).toHaveLength(1)
         const grant = await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: value.root.grantId })

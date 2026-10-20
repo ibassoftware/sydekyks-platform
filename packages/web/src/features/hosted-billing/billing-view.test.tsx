@@ -139,6 +139,7 @@ describe('hosted commercial billing experience', () => {
     expect(text).toContain('Sydekyks AI calls use additional Credits');
     expect(text).toContain('no additional managed-AI charge');
     expect(text).not.toContain('AI credits available');
+    expect(text).toContain('2 Credits per US$0.0005');
     expect(text).not.toContain('AI allowance');
     expect(text).toContain('Core: $1,000 once');
     expect(text).toContain('Guided: $1,200 once');

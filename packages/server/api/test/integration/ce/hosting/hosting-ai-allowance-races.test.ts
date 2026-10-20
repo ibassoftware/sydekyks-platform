@@ -114,7 +114,7 @@ describe('PostgreSQL allowance serialization', () => {
         }
         else expect(String(held.reason)).toContain('CREDITS_EXHAUSTED')
         const view = await allowance.read({ actor, platformId: client.platformId })
-        expect(view.period).toMatchObject({ amount: saved.status === 'fulfilled' ? '1' : '10000', reserved: '0', consumed: held.status === 'fulfilled' ? '2' : '1', available: held.status === 'fulfilled' ? '9998' : '0' })
+        expect(view.period).toMatchObject({ amount: saved.status === 'fulfilled' ? '1' : '10000', reserved: '0', consumed: held.status === 'fulfilled' ? '3' : '1', available: held.status === 'fulfilled' ? '9997' : '0' })
         expect([saved, held].filter(result => result.status === 'fulfilled')).toHaveLength(1)
         await ledger.finishExecution({ platformId: client.platformId, reservationId: execution.reservation.id, dispatchId: execution.dispatchId })
     })
@@ -131,7 +131,7 @@ describe('PostgreSQL allowance serialization', () => {
         expect(trainingGrants.every(grant => grant.revokedAt !== null)).toBe(true)
         expect((await allowance.read({ actor, platformId: client.platformId })).period).toBeNull()
         await ledger.settleManagedCall({ platformId: client.platformId, reservationId: held.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 1000n })
-        expect(await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: held.grantId })).toMatchObject({ consumed: 3n, reserved: 0n, revokedAt: expect.any(Date) })
+        expect(await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: held.grantId })).toMatchObject({ consumed: 5n, reserved: 0n, revokedAt: expect.any(Date) })
         await ledger.finishExecution({ platformId: client.platformId, reservationId: execution.reservation.id, dispatchId: execution.dispatchId })
     })
     it('rechecks operator credentials after waiting for a target account lock', async () => {

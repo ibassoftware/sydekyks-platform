@@ -1,7 +1,7 @@
 import { apId } from '@activepieces/core-utils'
 import { hostingCatalog } from '@activepieces/shared'
 import { DataSource, EntityManager, In } from 'typeorm'
-import { HOSTED_CREDIT_ACCOUNTING_VERSION, HOSTED_MAX_ROOT_CREDITS, hostedAiCredits, hostedCreditLiability, hostedCreditRate } from './hosting-credit-policy'
+import { HOSTED_CREDIT_ACCOUNTING_VERSION, HOSTED_LEGACY_MICRO_USD_PER_CREDIT, HOSTED_MAX_ROOT_CREDITS, hostedAiCredits, hostedCreditLiability, hostedCreditRate, hostedUsesCreditAccounting } from './hosting-credit-policy'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrant, HostingGrantEntity, HostingReservation, HostingReservationEntity } from './hosting-entities'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
@@ -150,7 +150,7 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             await tx.account({ manager, platformId })
             const reservation = await findReservation({ manager, platformId, reservationId, kind: 'managed_ai' })
             assertFence({ reservation, dispatchId })
-            const unified = reservation.accountingVersion === HOSTED_CREDIT_ACCOUNTING_VERSION
+            const unified = hostedUsesCreditAccounting(reservation.accountingVersion)
             const maxSupplierCost = reservation.supplierMaxMicroUsd ?? reservation.amount
             const actualCredits = unified ? hostedAiCredits(actualCostMicroUsd, reservation.microUsdPerCredit ?? 0n) : actualCostMicroUsd
             if (reservation.state === 'settled') {
@@ -314,7 +314,7 @@ type Claim = { claimed: boolean, dispatchId: string | null }
 function reservationCreditExposure(reservation: HostingReservation): bigint {
     if (reservation.state === 'released') return 0n
     const quantity = reservation.state === 'settled' ? reservation.actualAmount ?? reservation.amount : reservation.amount
-    return reservation.accountingVersion === HOSTED_CREDIT_ACCOUNTING_VERSION ? quantity : hostedAiCredits(quantity, reservation.microUsdPerCredit ?? hostedCreditRate())
+    return hostedUsesCreditAccounting(reservation.accountingVersion) ? quantity : hostedAiCredits(quantity, reservation.microUsdPerCredit ?? HOSTED_LEGACY_MICRO_USD_PER_CREDIT)
 }
 
 export { lockBudget as lockHostedBudget }

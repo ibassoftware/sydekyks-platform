@@ -1,19 +1,20 @@
 import { safeHttp } from '@activepieces/server-utils'
 import { HostedPlanId } from '@activepieces/shared'
 import { HOSTED_AI_TIMEOUT_MS, HOSTED_DEEPSEEK_ENDPOINT, HOSTED_DEEPSEEK_MODEL, HOSTED_DEEPSEEK_PRO_MODEL, HOSTED_MANAGED_MODEL, HostedAiInput } from './hosting-ai-policy'
+import { HOSTED_CREDIT_ACCOUNTING_VERSION } from './hosting-credit-policy'
 
 // Logical customer model stays stable when another reviewed supplier is added.
 // Only this server catalog controls routing; browser input cannot supply endpoints.
 export const hostedModelCatalog = Object.freeze({
     [HOSTED_DEEPSEEK_MODEL]: Object.freeze({
         id: HOSTED_MANAGED_MODEL, provider: 'deepseek', upstreamModel: HOSTED_DEEPSEEK_MODEL,
-        endpoint: HOSTED_DEEPSEEK_ENDPOINT, accountingVersion: 'deepseek-verified-usage-v1', creditConversionVersion: 'single-credits-500-microusd-v1',
+        endpoint: HOSTED_DEEPSEEK_ENDPOINT, accountingVersion: 'deepseek-verified-usage-v1', creditConversionVersion: HOSTED_CREDIT_ACCOUNTING_VERSION,
         capabilities: Object.freeze({ tools: true, json: true, stream: true }),
         allowedPlans: Object.freeze(['trial', 'training', 'assessment', 'starter', 'team', 'scale'] as HostedPlanId[]),
     }),
     [HOSTED_DEEPSEEK_PRO_MODEL]: Object.freeze({
         id: HOSTED_MANAGED_MODEL, provider: 'deepseek', upstreamModel: HOSTED_DEEPSEEK_PRO_MODEL,
-        endpoint: HOSTED_DEEPSEEK_ENDPOINT, accountingVersion: 'deepseek-verified-usage-v1', creditConversionVersion: 'single-credits-500-microusd-v1',
+        endpoint: HOSTED_DEEPSEEK_ENDPOINT, accountingVersion: 'deepseek-verified-usage-v1', creditConversionVersion: HOSTED_CREDIT_ACCOUNTING_VERSION,
         capabilities: Object.freeze({ tools: true, json: true, stream: true }),
         allowedPlans: Object.freeze(['trial', 'training', 'assessment', 'starter', 'team', 'scale'] as HostedPlanId[]),
     }),

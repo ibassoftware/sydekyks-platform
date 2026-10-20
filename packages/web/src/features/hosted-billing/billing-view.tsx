@@ -1,6 +1,7 @@
 import {
   HostedBillingActionReason,
   HostedCustomerBillingOverview,
+  hostingCatalog,
 } from '@activepieces/shared';
 import { t } from 'i18next';
 import { ExternalLink, RefreshCw } from 'lucide-react';
@@ -193,6 +194,17 @@ export function HostedBillingView({
               )}
             </p>
           </div>
+          <p className="text-sm text-muted-foreground">
+            {t(
+              'New Sydekyks AI calls use 2 Credits per US${cost} of supplier cost, rounded up per call. Existing holds keep their recorded rate.',
+              {
+                cost: (
+                  (hostingCatalog.aiMicroUsdPerCredit * 2) /
+                  1_000_000
+                ).toFixed(4),
+              },
+            )}
+          </p>
           <Allowance
             title={t('Credits')}
             meter={info.meters.execution}
