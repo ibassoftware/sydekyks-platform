@@ -1,5 +1,5 @@
 import { isManualPieceTrigger, isNil, tryCatch } from '@activepieces/core-utils'
-import { ApEdition, ConsumableFeatureId, FlowRun, FlowRunStatus, FlowTriggerType, isFlowRunStateTerminal, RunEnvironment, WebsocketClientEvent } from '@activepieces/shared'
+import { ApEdition, ConsumableFeatureId, FlowActionType, FlowRun, FlowRunStatus, flowStructureUtil, FlowTriggerType, FlowVersion, isFailedState, isFlowRunStateTerminal, RunEnvironment, WebsocketClientEvent } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { websocketService } from '../../core/websockets.service'
 import { system } from '../../helper/system/system'
@@ -24,6 +24,9 @@ export const flowRunHooks = (log: FastifyBaseLogger) => ({
                 flowRun,
             })
         }
+        if (isFailedState(flowRun.status) && flowRun.environment === RunEnvironment.PRODUCTION) {
+            logFailedCodeStep({ log, flowRun, flowVersion })
+        }
         if (!paidEditions) {
             return
         }
@@ -35,6 +38,25 @@ export const flowRunHooks = (log: FastifyBaseLogger) => ({
         }
     },
 })
+
+function logFailedCodeStep({ log, flowRun, flowVersion }: LogFailedCodeStepParams): void {
+    if (isNil(flowVersion) || isNil(flowRun.failedStep)) {
+        return
+    }
+    const failedStep = flowStructureUtil.getStep(flowRun.failedStep.name, flowVersion.trigger)
+    if (isNil(failedStep) || failedStep.type !== FlowActionType.CODE) {
+        return
+    }
+    log.warn({
+        flowRun: { id: flowRun.id, status: flowRun.status, environment: flowRun.environment },
+        flow: { id: flowRun.flowId },
+        flowVersion: { id: flowRun.flowVersionId },
+        project: { id: flowRun.projectId },
+        step: { name: flowRun.failedStep.name },
+        codeRuntime: failedStep.settings.useDeno !== false ? 'deno' : 'legacy',
+        error: flowRun.failedStep.message,
+    }, 'Code step failed')
+}
 
 async function trackProductionRunCredit(log: FastifyBaseLogger, flowRun: FlowRun): Promise<void> {
     const project = await projectService(log).getOne(flowRun.projectId)
@@ -49,4 +71,11 @@ async function trackProductionRunCredit(log: FastifyBaseLogger, flowRun: FlowRun
         idempotencyKey: `${flowRun.id}:run`,
         properties: toFlowRunCreditProperties({ platformId: project.platformId, flowRun }),
     })
+}
+
+
+type LogFailedCodeStepParams = {
+    log: FastifyBaseLogger
+    flowRun: FlowRun
+    flowVersion: FlowVersion | null
 }

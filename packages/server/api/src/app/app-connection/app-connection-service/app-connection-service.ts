@@ -695,6 +695,7 @@ const validateConnectionValue = async (
                     authorizationMethod: value.authorization_method,
                     codeVerifier: value.code_challenge,
                     redirectUrl: value.redirect_url,
+                    resource: value.resource,
                 },
             })
         }
@@ -717,6 +718,7 @@ const validateConnectionValue = async (
                     clientId: value.client_id,
                     authorizationMethod: value.authorization_method,
                     codeVerifier: value.code_challenge,
+                    resource: value.resource,
                 },
             })
         }
@@ -743,6 +745,7 @@ const validateConnectionValue = async (
                     authorizationMethod: value.authorization_method,
                     codeVerifier: value.code_challenge,
                     scope: value.scope,
+                    resource: value.resource,
                 },
             })
             await engineValidateAuth({

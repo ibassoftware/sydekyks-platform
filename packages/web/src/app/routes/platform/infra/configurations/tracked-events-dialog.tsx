@@ -1,6 +1,7 @@
 import { t } from 'i18next';
 import { List } from 'lucide-react';
 
+import { adminLayout } from '@/app/components/admin';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -34,7 +35,7 @@ export const TrackedEventsDialog = () => {
           <List className="size-4" /> {t('See the events we track')}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className={adminLayout.dialog.md}>
         <DialogHeader>
           <DialogTitle>{t('Events we track')}</DialogTitle>
         </DialogHeader>

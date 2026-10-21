@@ -3,8 +3,9 @@ import {
   AIProviderModel,
   AIProviderModelType,
   ALLOWED_CHAT_MODELS_BY_PROVIDER,
+  ModelOptionsSurface,
 } from '@activepieces/shared';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
 import {
@@ -93,4 +94,24 @@ export const aiModelHooks = {
       select,
     });
   },
+  useModelOptions: ({
+    projectId,
+    surface,
+    tierId,
+    enabled = true,
+  }: {
+    projectId?: string;
+    surface: ModelOptionsSurface;
+    tierId?: string;
+    enabled?: boolean;
+  }) =>
+    useQuery({
+      enabled,
+      queryKey: ['ai-model-options', projectId ?? 'platform', surface, tierId],
+      queryFn: () =>
+        projectId === undefined
+          ? aiProviderApi.listPlatformModelOptions({ surface })
+          : aiProviderApi.listModelOptions({ projectId, surface, tierId }),
+      placeholderData: keepPreviousData,
+    }),
 };

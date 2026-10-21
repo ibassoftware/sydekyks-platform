@@ -110,7 +110,7 @@ beforeEach(() => {
 });
 
 describe('release feature availability', () => {
-  it.each(['ce', 'ee', 'cloud'])('hides unsupported team creation in %s for every plan and button variant', (currentEdition) => {
+  it.each(['ce', 'ee', 'cloud'])('retains team creation controls in %s for every plan and button variant', (currentEdition) => {
     edition = currentEdition;
     for (const limit of [0, 3, null]) {
       teamProjectsLimit = limit;
@@ -119,8 +119,8 @@ describe('release feature availability', () => {
           ? <CreateProjectButton variant="full" projects={[]} />
           : <CreateProjectButton variant="icon" projects={[]} />;
         const { unmount } = renderWithQueryClient(ui);
-        expect(screen.queryByRole('button')).toBeNull();
-        expect(screen.queryByTestId('crown')).toBeNull();
+        expect(screen.getByRole('button')).toBeDefined();
+        expect(screen.queryByTestId('crown') !== null).toBe(limit === 0);
         expect(createProject).not.toHaveBeenCalled();
         unmount();
       }
