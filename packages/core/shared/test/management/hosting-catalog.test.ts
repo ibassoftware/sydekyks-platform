@@ -22,6 +22,12 @@ describe('hosted plan catalog', () => {
         expect(Object.isFrozen(hostingCatalog.trainingPeriods)).toBe(true)
     })
 
+    it('keeps Partner hosting single-user while client plans retain their contracted seats', () => {
+        expect(hostingCatalog.getPlan({ planId: 'training' }).users).toBe(1)
+        expect(hostingCatalog.getPlan({ planId: 'training' }).projects).toBe(1)
+        expect(['starter', 'team', 'scale'].map(planId => hostingCatalog.getPlan({ planId: planId as 'starter' | 'team' | 'scale' }).users)).toEqual([10, 30, 100])
+    })
+
     it('does not permit changing the catalog or a shared plan object', () => {
         expect(Object.isFrozen(hostingCatalog)).toBe(true)
         expect(Object.isFrozen(hostingCatalog.getPlan({ planId: 'trial' }))).toBe(true)

@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
+import { ManualAccountForm } from './manual-account-form';
 import { operatorClientsQuery, useHostedOperatorAccess } from './operator-api';
 import { PartnerSetupControls } from './partner-setup-controls';
 import {
@@ -186,13 +187,24 @@ function PartnerSession({ access }: { access: Access }) {
         </p>
       ) : (
         <>
+          <ManualAccountForm
+            session={access.session}
+            kind="partner"
+            onCreated={(account) => {
+              setEmail(account.email);
+              setCandidate(null);
+              setSearched(false);
+              void list.refetch();
+              void clients.refetch();
+            }}
+          />
           <section aria-labelledby="add-partner-heading" className="max-w-3xl">
             <h2 id="add-partner-heading" className="text-lg font-semibold">
-              {t('Add partner')}
+              {t('Private setup links and existing Partners')}
             </h2>
             <p className="mt-2 text-sm leading-6 text-gray-11">
               {t(
-                'Find an existing account by its exact email. For a new account, create a one-time setup link below. The recipient chooses a password without email delivery; you approve partner access afterward.',
+                'Use the form above to set an initial password and hosting term. To let a new person choose their own password instead, find their email here, then create and copy their private setup link. You can also manage existing Partner approvals and client assignments here.',
               )}
             </p>
             <p className="mt-2 text-sm leading-6 text-gray-11">
@@ -200,16 +212,7 @@ function PartnerSession({ access }: { access: Access }) {
                 'No email is sent by this page. Secure signup with email verification remains available when email delivery is configured.',
               )}
             </p>
-            <p className="mt-3 text-sm">
-              <a
-                className="text-primary underline underline-offset-4"
-                href={new URL('/sign-up', window.location.origin).href}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {t('Open secure account signup')}
-              </a>
-            </p>
+
             <form
               onSubmit={find}
               className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"

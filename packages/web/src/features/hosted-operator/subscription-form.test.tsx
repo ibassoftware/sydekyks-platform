@@ -19,6 +19,7 @@ vi.mock('@tanstack/react-query', () => ({
     invalidateQueries: mocks.invalidate,
   }),
 }));
+vi.mock('./manual-term-controls', () => ({ ManualTermControls: () => null }));
 vi.mock('./operator-api', () => ({
   operatorClientsQuery: vi.fn(),
   useHostedOperatorAccess: vi.fn(),

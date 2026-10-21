@@ -474,7 +474,9 @@ function ChatBoxContent({
                           {t(
                             'Sending again starts a new run and uses Credits. Check pending work before sending again.',
                           )}
-                        </div>
+                        </span>
+                      )}
+                    </div>
                     <Button
                       variant="ghost"
                       size="sm"

@@ -226,7 +226,12 @@ export function PartnerSetupControls({
         {t('Refresh setup status')}
       </Button>
       {url && (
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+        <div className="mt-4 flex flex-col gap-3">
+          <p className="text-sm leading-6">
+            {t(
+              'This is the private one-time setup link, including its access token. Use Copy setup link or open the setup page below; the generic signup page is not this link.',
+            )}
+          </p>
           <Input
             type="password"
             aria-label={t('Private setup link')}
@@ -241,6 +246,14 @@ export function PartnerSetupControls({
           <Button variant="ghost" onClick={() => setUrl(null)}>
             {t('Hide link')}
           </Button>
+          <a
+            className="w-fit text-primary underline underline-offset-4"
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t('Open private setup page')}
+          </a>
         </div>
       )}
       {notice && (

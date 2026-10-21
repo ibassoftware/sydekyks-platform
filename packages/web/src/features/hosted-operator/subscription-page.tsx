@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { assertAuthSession } from '@/features/hosted-onboarding/auth-session';
 
+import { ManualTermControls } from './manual-term-controls';
 import { operatorClientsQuery, useHostedOperatorAccess } from './operator-api';
 import {
   OperatorSubscription,
@@ -67,9 +68,10 @@ function SubscriptionScope({
         <h1 className="text-2xl font-semibold">Subscription renewal dates</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-11">
           Manage Partner and client due dates. Expiration means the renewal due
-          date. Funded paid plans automatically include 15 days using remaining
-          Credits only. Core training stays fixed unless you set an override;
-          trials and assessment access keep their fixed windows.
+          date. Manually funded accounts and paid client subscriptions
+          automatically include 15 days using remaining Credits only. Core
+          training stays fixed unless you set an override; trials and assessment
+          access keep their fixed windows.
         </p>
       </header>
       <section
@@ -197,6 +199,17 @@ function SubscriptionScope({
               'Subscription date saved. Credits and payment records were not changed.',
             )
           }
+        />
+      )}
+      {selected && (
+        <ManualTermControls
+          key={`${access.session.epoch}:${target}`}
+          session={access.session}
+          platformId={target}
+          onSaved={() => {
+            void state.refetch();
+            void clients.refetch();
+          }}
         />
       )}
     </main>

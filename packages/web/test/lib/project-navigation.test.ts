@@ -25,7 +25,7 @@ const visible = (row = project, currentUser = user) =>
     project: row,
     user: currentUser,
     userId: user.id,
-    platformId: user.platformId,
+    platformId: user.platformId ?? null,
   });
 
 describe('server-scoped project navigation', () => {

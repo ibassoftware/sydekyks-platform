@@ -252,7 +252,7 @@ function AllowanceEditor({
         <dd>
           {state.effectiveMonthlyCredits.toLocaleString()} Credits
           {state.overrideMonthlyCredits === null
-            ? ' · plan default'
+            ? ' · default allowance'
             : ' · client override'}
         </dd>
         <dt className="font-medium">Plan default</dt>
@@ -321,7 +321,7 @@ function AllowanceEditor({
             className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-9"
           >
             <option value="plan">
-              Use the plan default —{' '}
+              Use the default allowance —{' '}
               {state.defaultMonthlyCredits.toLocaleString()} credits
             </option>
             <option value="override">Set a client allowance</option>
@@ -437,7 +437,7 @@ function AllowanceEditor({
             }
             onClick={() => void save(true)}
           >
-            Restore plan default
+            Restore default allowance
           </Button>
         </div>
         {error && (

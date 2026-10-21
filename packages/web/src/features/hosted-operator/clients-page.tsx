@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { formatHostedCredits } from '@/features/hosted-chat/hosted-chat-api';
 
+import { ManualAccountForm } from './manual-account-form';
 import {
   HostedClients,
   operatorClientsQuery,
@@ -20,7 +21,7 @@ export function HostedClientsPage() {
           {t(
             access.hosted
               ? 'Sign in again to view client usage.'
-              : 'Client usage is available only for hosted service operators.'
+              : 'Client usage is available only for hosted service operators.',
           )}
         </p>
       </main>
@@ -35,17 +36,17 @@ function SessionClients({
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const after = cursors[cursors.length - 1];
   const query = useQuery(
-    operatorClientsQuery(access.session, after, access.allowed)
+    operatorClientsQuery(access.session, after, access.allowed),
   );
   const denied = !access.isPending && !access.allowed;
   return (
     <main className="flex min-w-0 flex-col gap-6 p-4 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">{t('Client usage')}</h1>
+          <h1 className="text-xl font-semibold">{t('Clients')}</h1>
           <p className="mt-1 max-w-prose text-sm text-gray-11">
             {t(
-              'Credit consumption across your hosted clients. Access is restricted to your service operators.'
+              'Credit consumption across your hosted clients. Access is restricted to your service operators.',
             )}
           </p>
         </div>
@@ -59,6 +60,13 @@ function SessionClients({
           </Button>
         )}
       </div>
+      {access.allowed && (
+        <ManualAccountForm
+          session={access.session}
+          kind="client"
+          onCreated={() => void query.refetch()}
+        />
+      )}
       {access.isPending ? (
         <p role="status" className="text-sm text-gray-11">
           {t('Checking operator access…')}
@@ -66,7 +74,7 @@ function SessionClients({
       ) : denied ? (
         <p role="alert" className="text-sm text-gray-11">
           {t(
-            'This view is available only to configured service operators. A client workspace administrator cannot access other clients.'
+            'This view is available only to configured service operators. A client workspace administrator cannot access other clients.',
           )}
         </p>
       ) : query.isPending ? (
@@ -76,7 +84,7 @@ function SessionClients({
       ) : query.error ? (
         <p role="alert" className="text-sm text-gray-11">
           {t(
-            'Client usage could not be loaded. Refresh to check your access and connection.'
+            'Client usage could not be loaded. Refresh to check your access and connection.',
           )}
         </p>
       ) : query.data ? (
@@ -163,7 +171,7 @@ function ClientUsageTable({ data }: { data: HostedClients }) {
                       {t('{available} available · {held} held', {
                         available: formatHostedCredits(
                           meter.available,
-                          meter.scale
+                          meter.scale,
                         ),
                         held: formatHostedCredits(meter.reserved, meter.scale),
                       })}
@@ -199,7 +207,7 @@ function ClientUsageTable({ data }: { data: HostedClients }) {
       </div>
       <p className="max-w-prose text-xs text-gray-11">
         {t(
-          'Credit totals refer to each client’s current or most recent credit period. Model-call counts and verified token totals cover all recorded history. Uncertain calls keep their holds until resolved. Provider secrets and conversation contents are never included.'
+          'Credit totals refer to each client’s current or most recent credit period. Model-call counts and verified token totals cover all recorded history. Uncertain calls keep their holds until resolved. Provider secrets and conversation contents are never included.',
         )}
       </p>
     </>

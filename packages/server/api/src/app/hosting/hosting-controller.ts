@@ -15,6 +15,7 @@ import { hostingChargeResolutionController } from './hosting-charge-resolution-c
 import { hostingConfiguration } from './hosting-configuration'
 import { hostingCreditAllowanceController } from './hosting-credit-allowance-controller'
 import { hostingLearningController } from './hosting-learning-controller'
+import { hostingManualAccountsController } from './hosting-manual-accounts-controller'
 import { hostingOnboardingController } from './hosting-onboarding-controller'
 import { hostingOperatorController } from './hosting-operator-controller'
 import { hostingPartnerAdminController } from './hosting-partner-admin-controller'
@@ -37,6 +38,7 @@ export const hostingController: FastifyPluginAsyncZod = async app => {
     await app.register(hostingStripeCatalogController, { prefix: '/operator/stripe-catalog' })
     await app.register(hostingCreditAllowanceController, { prefix: '/operator/credits-allowance' })
     await app.register(hostingSubscriptionController, { prefix: '/operator/subscriptions' })
+    await app.register(hostingManualAccountsController, { prefix: '/operator/manual-accounts' })
     await app.register(hostingStorageController, { prefix: '/operator' })
     await app.register(hostingAccessController, { prefix: '/operator' })
     await app.register(hostingPartnerAdminController, { prefix: '/operator/partners' })

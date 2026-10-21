@@ -156,7 +156,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                 ? t(
                     offer?.emailCodesAvailable
                       ? 'Use your existing account password. You can also sign in with an email code.'
-                      : 'Use the password you chose from your private setup link. For a new account, ask the Sydekyks team or your workspace admin for a setup link.',
+                      : 'Use the password provided by your administrator or chosen from your private setup link. For a new account, ask the Sydekyks team or your workspace admin for access.',
                   )
                 : t(
                     'Use your email to create an account or return to an existing workspace. We’ll send a sign-in code.',
@@ -517,7 +517,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
             </div>
             <p className="rounded-lg bg-gray-3 p-4 leading-relaxed text-gray-11">
               {t(
-                'Pilot accounts use a private setup link and a password you choose. Ask your inviter for a link if you do not have one. Payments and renewals are handled directly by Sydekyks during the pilot.',
+                'Your administrator can provide an initial password or a private setup link. Payments and renewals are handled directly by Sydekyks during the pilot.',
               )}
             </p>
           </aside>

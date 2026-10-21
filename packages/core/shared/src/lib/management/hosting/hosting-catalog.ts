@@ -9,7 +9,7 @@ const PLANS = Object.freeze({
     assessment: Object.freeze({ users: 1, projects: 1, executions: 100, concurrency: 1, aiCredits: 1_000, byokEnabled: true }),
     // Invitations currently reserve one project per client member. Keep every
     // advertised seat reachable; operational staff do not consume these seats.
-    training: Object.freeze({ users: 10, projects: 10, executions: 10_000, concurrency: 2, aiCredits: 5_000, byokEnabled: true }),
+    training: Object.freeze({ users: 1, projects: 1, executions: 10_000, concurrency: 2, aiCredits: 5_000, byokEnabled: true }),
     starter: Object.freeze({ users: 10, projects: 10, executions: 10_000, concurrency: 2, aiCredits: 5_000, byokEnabled: true }),
     // Keep the persisted team identifier; its customer-facing name is Growth.
     team: Object.freeze({ users: 30, projects: 30, executions: 100_000, concurrency: 5, aiCredits: 20_000, byokEnabled: true }),
