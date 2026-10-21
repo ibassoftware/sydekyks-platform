@@ -9,6 +9,7 @@ import { flowRunProgressReporter } from '../helper/flow-run-progress-reporter'
 import { pieceLoader } from '../helper/piece-loader'
 import { createFileUploader } from '../piece-context/file-uploader'
 import { createFlowsContext } from '../piece-context/flows'
+import { prepareLegacyTodo } from '../piece-context/legacy-todo'
 import { createContextStore } from '../piece-context/store'
 import { waitpointClient } from '../piece-context/waitpoint-client'
 import { HookResponse, utils } from '../utils'
@@ -170,7 +171,16 @@ const executeAction: ActionHandler<PieceAction> = async ({ action, executionStat
         })
         const testSingleStepMode = !isNil(constants.stepNameToTest)
         const runMethodToExecute = (testSingleStepMode && !isNil(pieceAction.test)) ? pieceAction.test : pieceAction.run
-        const output = await runMethodToExecute(backwardCompatibleContext)
+        const todoBridge = constants.hostedAccounting ? await prepareLegacyTodo({
+            context: backwardCompatibleContext,
+            pieceName: action.settings.pieceName,
+            actionName: action.settings.actionName,
+            waitpointKey: executionState.currentPath.waitpointKeyFor({ stepName: action.name }),
+            isSingleStepTest: testSingleStepMode,
+            createTodoWaitpoint: createWaitpointHook({ constants, waitpointKey: `__catalogue_todo__/${executionState.currentPath.waitpointKeyFor({ stepName: action.name })}`, hookParams: params }),
+        }) : { context: backwardCompatibleContext, complete: async (_output: unknown): Promise<void> => undefined }
+        const output = await runMethodToExecute(todoBridge.context)
+        await todoBridge.complete(output)
         const newExecutionContext = executionState.addTags(params.hookResponse.tags)
 
         const webhookResponse = getResponse(params.hookResponse)

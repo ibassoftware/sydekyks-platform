@@ -70,6 +70,8 @@ import { sydCopilotContext } from './syd/copilot/copilot-context'
 import { sydCopilotModule } from './syd/copilot/copilot.module'
 import { communityProjectModule } from './sydekyks-community/project.module'
 import { communityUserModule } from './sydekyks-community/user.module'
+import { todoService } from './todos/todo-service'
+import { todoController } from './todos/todo-controller'
 import { tablesModule } from './tables/tables.module'
 import { templateModule } from './template/template.module'
 import { toolSearchReindexJob } from './tool-search/tool-search-reindex.job'
@@ -198,6 +200,7 @@ export const setupApp = async (app: FastifyInstance): Promise<FastifyInstance> =
     await app.register(appEventRoutingModule)
     await app.register(authenticationModule)
     await app.register(hostingController, { prefix: '/v1/hosting' })
+    await app.register(todoController, { prefix: '/v1/todos' })
     await app.register(lmsController, { prefix: '/v1/lms' })
     await app.register(triggerModule)
     await app.register(platformModule)
@@ -246,6 +249,7 @@ export const setupApp = async (app: FastifyInstance): Promise<FastifyInstance> =
     })
 
     systemJobHandlers.registerJobHandler(SystemJobName.WAITPOINT_DEADLINE_SWEEP, async () => {
+        await todoService(app.log).recoverDeliveries()
         await sweepOverdueDeadlines({ log: app.log })
     })
     await systemJobsSchedule(app.log).upsertJob({

@@ -19,6 +19,30 @@ const route = (pathname: string, search = '', hash = '') => ({
 });
 
 describe('hosted document reload navigation', () => {
+  it('returns a freshly signed-in account to its validated task confirmation', () => {
+    const anonymous = { ...initial, kind: 'anonymous' as const, token: null };
+    const link = route(
+      '/sign-in',
+      '?from=%2Ftodos%2Ftask_123%2Fresolve%3Fstatus%3DAccepted',
+    );
+    expect(hostedDocumentReloadPath(anonymous, initial, link)).toBe(
+      '/todos/task_123/resolve?status=Accepted',
+    );
+    expect(hostedDocumentReloadPath(anonymous, initial, link, true)).toBe(
+      '/platform/billing',
+    );
+    expect(hostedDocumentReloadPath(initial, initial, link)).toBe('/');
+    expect(
+      hostedDocumentReloadPath(
+        anonymous,
+        initial,
+        route(
+          '/sign-in',
+          '?from=https%3A%2F%2Fevil.invalid%2Ftodos%2Fx%2Fresolve',
+        ),
+      ),
+    ).toBe('/');
+  });
   it('resumes only the fixed billing review after login or a workspace change', () => {
     for (const current of [
       initial,

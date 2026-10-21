@@ -23,10 +23,10 @@ function assertWorkerSettings({ localMode, serverMode, accountingProtocol, runti
 export const ServiceMode = z.enum(['self_hosted', 'hosted'])
 export type ServiceMode = z.infer<typeof ServiceMode>
 export const HOSTED_ACCOUNTING_PROTOCOL = 1
-// Exact profile: catalogue setup and connection maintenance must use the same
-// durable admission, tenant fences and settlement as flows and saved Agents.
-export const HOSTED_RUNTIME_PROFILE = 'partner-pilot-v3'
-export const HOSTED_RUNTIME_CAPABILITIES = ['flow-admission-v1', 'root-chat-v1', 'ai-hard-cap-v1', 'durable-settlement-v1', 'connection-fencing-v1', 'code-isolation-v1', 'saved-agents-v1', 'agent-tools-v1', 'trigger-lifecycle-v1', 'ai-router-v1', 'gadget-maintenance-v1'] as const
+// Exact profile: old workers must not accept Todo jobs without the durable
+// task/waitpoint binding and the single-root pause/resume accounting contract.
+export const HOSTED_RUNTIME_PROFILE = 'partner-pilot-v4'
+export const HOSTED_RUNTIME_CAPABILITIES = ['flow-admission-v1', 'root-chat-v1', 'ai-hard-cap-v1', 'durable-settlement-v1', 'connection-fencing-v1', 'code-isolation-v1', 'saved-agents-v1', 'agent-tools-v1', 'trigger-lifecycle-v1', 'ai-router-v1', 'gadget-maintenance-v1', 'catalogue-todos-v1'] as const
 export const serviceModePolicy = { resolve, workerIsCompatible, assertWorkerSettings }
 
 type WorkerCompatibilityParams = {

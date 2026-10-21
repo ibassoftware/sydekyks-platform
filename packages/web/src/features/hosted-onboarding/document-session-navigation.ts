@@ -1,3 +1,5 @@
+import { todoReturnPath } from '@/features/todos/todo-links';
+
 export type HostedDocumentSession = {
   token: string | null;
   projectId: string | null;
@@ -16,6 +18,22 @@ export function hostedDocumentReloadPath(
 ): string {
   if (current.kind === 'anonymous') return '/sign-in';
   if (current.kind === 'user' && checkoutPending) return '/platform/billing';
+  // A fresh document is still required after authentication. Preserve only the
+  // narrowly validated task destination; the new account must authorize its GET.
+  if (
+    initial.kind === 'anonymous' &&
+    current.kind === 'user' &&
+    current.token &&
+    current.id &&
+    current.platformId &&
+    location.pathname === '/sign-in' &&
+    location.hash === ''
+  ) {
+    const taskPath = todoReturnPath(
+      new URLSearchParams(location.search).get('from'),
+    );
+    if (taskPath) return taskPath;
+  }
   const sameAccount =
     initial.kind === 'user' &&
     current.kind === 'user' &&

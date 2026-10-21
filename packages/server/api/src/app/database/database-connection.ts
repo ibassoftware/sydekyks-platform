@@ -74,6 +74,7 @@ import { UserInvitationEntity } from '../user-invitations/user-invitation.entity
 import { VariableEntity } from '../variable/variable.entity'
 import { WaitpointEntity } from '../waitpoints/waitpoint-entity'
 import { WaitpointSignalEntity } from '../waitpoints/waitpoint-signal-entity'
+import { CATALOGUE_TODO_ENTITIES } from '../todos/todo-entities'
 import { DatabaseType } from './database-type'
 import { createPGliteDataSource } from './pglite-connection'
 import { createPostgresDataSource, createPostgresMigrationDataSource } from './postgres-connection'
@@ -82,6 +83,7 @@ const databaseType = system.get(AppSystemProp.DB_TYPE)
 
 function getEntities(): EntitySchema<unknown>[] {
     return [
+        ...CATALOGUE_TODO_ENTITIES,
         ...LMS_ENTITIES,
         ...HOSTING_ENTITIES,
         ...HOSTING_MANUAL_ACCOUNT_ENTITIES,

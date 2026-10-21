@@ -7,6 +7,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { FullLogo } from '@/components/custom/full-logo';
 import { TurnstileWidget } from '@/features/authentication/components/auth-landing/turnstile-widget';
 import { useHostedOperatorAccess } from '@/features/hosted-operator/operator-api';
+import { todoReturnPath } from '@/features/todos/todo-links';
 import { flagsHooks } from '@/hooks/flags-hooks';
 import { authenticationSession } from '@/lib/authentication-session';
 import { publicLinkUtils } from '@/lib/public-link-utils';
@@ -350,7 +351,13 @@ function SessionAuth({
         authenticationSession.clearSession();
         navigate('/sign-in', { replace: true });
       }}
-      onContinue={() => navigate(checkoutIntent.billingPath() ?? '/')}
+      onContinue={() =>
+        navigate(
+          checkoutIntent.billingPath() ??
+            todoReturnPath(new URLSearchParams(location.search).get('from')) ??
+            '/',
+        )
+      }
       onBilling={() => navigate('/platform/billing')}
     />
   );

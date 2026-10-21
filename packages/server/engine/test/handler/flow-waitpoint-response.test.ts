@@ -56,6 +56,7 @@ describe('flow waitpoint response propagation', () => {
 
         expect(result.verdict).toEqual({
             status: FlowRunStatus.PAUSED,
+            waitpointId: 'mock-waitpoint-id',
         })
 
         expect(mockSendFlowResponse).toHaveBeenCalledWith({
@@ -100,6 +101,7 @@ describe('flow waitpoint response propagation', () => {
 
         expect(result.verdict).toEqual({
             status: FlowRunStatus.PAUSED,
+            waitpointId: 'mock-waitpoint-id',
         })
         expect(mockSendFlowResponse).not.toHaveBeenCalled()
     })

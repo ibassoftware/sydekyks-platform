@@ -7,15 +7,19 @@ import { addToQueue, findFlowRunOrThrow, flowRunService, WEBHOOK_TIMEOUT_MS } fr
 import { flowRunSideEffects } from '../flows/flow-run/flow-run-side-effects'
 import { hostingConfiguration } from '../hosting/hosting-configuration'
 import { HostingError } from '../hosting/hosting-transactions'
+import { databaseConnection } from '../database/database-connection'
+import { CatalogueTodoWaiterEntity } from '../todos/todo-entities'
 import { projectService } from '../project/project-service'
 import { engineResponseWatcher } from '../workers/engine-response-watcher'
 import { redisMetadataKey, RunsMetadataUpsertData } from '../workers/job'
+import { WaitpointEntity } from './waitpoint-entity'
 import { waitpointService } from './waitpoint-service'
 import { Waitpoint, WaitpointResumePayload, WaitpointStatus } from './waitpoint-types'
 
 export const resumeService = (log: FastifyBaseLogger) => ({
     async resumeFromWaitpoint({ flowRunId, waitpointId, resumePayload, workerHandlerId, httpRequestId }: ResumeFromWaitpointParams): Promise<ResumeFromWaitpointResult> {
         const flowRun = await findFlowRunOrThrow(flowRunId)
+        if (await isTodoWaitpoint({ flowRunId, waitpointId, projectId: flowRun.projectId, log })) return { flowRun, stale: true }
         const addressed = await addressedWaitpointIsBarrier({ flowRunId, waitpointId, projectId: flowRun.projectId, log })
         const refuse = addressed === 'no-such-waitpoint'
             ? await waitpointService(log).hasBarrier({ flowRunId, projectId: flowRun.projectId })
@@ -125,6 +129,7 @@ export const resumeService = (log: FastifyBaseLogger) => ({
                     log.warn({ flowRun: { id: flowRunId } }, '[resumeService#legacyResume] Refused a resume of a run whose terminal status is already queued')
                     return { flowRun, stale: true }
                 }
+                if (await hasTodoWaiter(flowRunId)) return { flowRun, stale: true }
                 if (await waitpointService(log).hasBarrier({ flowRunId, projectId: flowRun.projectId })) {
                     log.warn({ flowRun: { id: flowRunId } }, '[resumeService#legacyResume] Refused an external resume of a barrier; only the barrier predicate and its deadline may release it')
                     return { flowRun, stale: true }
@@ -194,6 +199,7 @@ export const resumeService = (log: FastifyBaseLogger) => ({
                         headers: {},
                     }
                 }
+                if (await hasTodoWaiter(runId)) return { status: StatusCodes.GONE, body: { message: 'Resolve this task from its authenticated task page.' }, headers: {} }
                 if (await waitpointService(log).hasBarrier({ flowRunId: runId, projectId: flowRun.projectId })) {
                     log.warn({ flowRun: { id: runId } }, '[resumeService#legacySyncResume] Refused an external resume of a barrier; only the barrier predicate and its deadline may release it')
                     return {
@@ -217,6 +223,17 @@ export const resumeService = (log: FastifyBaseLogger) => ({
         })
     },
 })
+
+
+// Catalogue task decisions require current tenant/assignee authorization. A leaked generic
+// callback (including the V0 fallback) must never bypass that decision route.
+async function isTodoWaitpoint({ flowRunId, waitpointId, projectId, log }: AddressedWaitpointIsBarrierParams): Promise<boolean> {
+    const waitpoint = await waitpointService(log).findByIdAndFlowRunId({ waitpointId, flowRunId, projectId })
+    return !!waitpoint?.stepName.startsWith('__catalogue_todo__/') || await databaseConnection().getRepository(CatalogueTodoWaiterEntity).existsBy({ flowRunId, waitpointId })
+}
+async function hasTodoWaiter(flowRunId: string): Promise<boolean> {
+    return await databaseConnection().getRepository(CatalogueTodoWaiterEntity).existsBy({ flowRunId }) || await databaseConnection().getRepository(WaitpointEntity).createQueryBuilder('taskWait').where('taskWait.\"flowRunId\" = :flowRunId', { flowRunId }).andWhere('left(taskWait.\"stepName\", 19) = :prefix', { prefix: '__catalogue_todo__/' }).getExists()
+}
 
 async function hasPendingTerminalStatus({ flowRunId, projectId }: HasPendingTerminalStatusParams): Promise<boolean> {
     const pending = await distributedStore.hgetJson<RunsMetadataUpsertData>(redisMetadataKey({ projectId, runId: flowRunId }))

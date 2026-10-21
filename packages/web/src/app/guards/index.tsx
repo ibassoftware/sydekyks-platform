@@ -116,6 +116,26 @@ const learningRoutes = [
   },
 ];
 
+const TodoResolutionPage = lazyWithRetry(
+  () =>
+    import('@/features/todos/todo-resolution-page').then((m) => ({
+      default: m.TodoResolutionPage,
+    })),
+  'todo-resolution',
+);
+const todoRoutes = [
+  {
+    path: '/todos/:id/resolve',
+    element: (
+      <PageTitle titleKey="Review task">
+        <Suspense fallback={<RouteLoadingBar />}>
+          <TodoResolutionPage />
+        </Suspense>
+      </PageTitle>
+    ),
+  },
+];
+
 const CrashTestPage = import.meta.env.DEV
   ? lazy(() =>
       import('../routes/crash-test').then((m) => ({
@@ -141,6 +161,7 @@ const devRoutes =
 const routes = [
   ...devRoutes,
   ...learningRoutes,
+  ...todoRoutes,
   ...publicRoutes,
   ...projectRoutes,
   ...authRoutes,
