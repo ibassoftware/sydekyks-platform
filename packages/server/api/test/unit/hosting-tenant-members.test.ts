@@ -95,7 +95,7 @@ describe('tenant-scoped member administration', () => {
         expect(await ds.getRepository(UserEntity).countBy({ identityId: target.id })).toBe(1)
         expect(await ds.getRepository(HostingAccountEntity).countBy({ ownerIdentityId: target.id })).toBe(0)
     })
-    it('makes all ten seats reachable and bounds pending users/projects across old and new invitations', async () => {
+    it('makes ten client seats reachable, bounds pending invitations and keeps Partner training at one seat', async () => {
         const one = await identity(), two = await identity(), three = await identity()
         await onboarding().invite({ actor: admin, email: one.email, role: PlatformRole.MEMBER })
         await invite(two.email)
@@ -105,12 +105,8 @@ describe('tenant-scoped member administration', () => {
         const other = await identity(), own = await onboarding().provision({ identityId: other.id, name: 'Training client', operator })
         await ds.getRepository(HostingAccountEntity).update({ id: own.platformId }, { planId: 'training' })
         const training = { identityId: other.id, platformId: own.platformId, tokenVersion: own.tokenVersion }
-        for (let i = 0; i < 9; i++) {
-            const view = await service().list({ actor: training })
-            await service().command({ actor: training, action: 'invite', input: { email: `training-pending-${i}@test.invalid`, role: PlatformRole.MEMBER, expectedRevision: view.revision, expectedState: view.stateHash, requestKey: apId() } })
-        }
         const current = await service().list({ actor: training })
-        expect(current.seats).toEqual({ used: 1, reserved: 9, limit: 10 })
+        expect(current.seats).toEqual({ used: 1, reserved: 0, limit: 1 })
         await expect(service().command({ actor: training, action: 'invite', input: { email: three.email, role: PlatformRole.MEMBER, expectedRevision: current.revision, expectedState: current.stateHash, requestKey: apId() } })).rejects.toThrow('RESOURCE_LIMIT')
     })
     it('revokes a legacy pending reservation and safely replays its request', async () => {

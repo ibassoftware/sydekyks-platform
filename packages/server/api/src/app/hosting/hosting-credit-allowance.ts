@@ -6,12 +6,13 @@ import { z } from 'zod'
 import { assertHostingOperator } from './hosting-access-policy'
 import { CreditAllowanceSnapshot, HostingCreditAllowanceBindingEntity, HostingCreditAllowanceChangeEntity } from './hosting-credit-allowance-entities'
 import { hostedCreditLiability } from './hosting-credit-policy'
-import { HostingAccount, HostingGrant, HostingGrantEntity, HostingLedgerEntity } from './hosting-entities'
+import { HostingAccount, HostingAccountEntity, HostingGrant, HostingGrantEntity, HostingLedgerEntity } from './hosting-entities'
+import { currentManualTerm, manualGrantPlan } from './hosting-manual-terms'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
 import { HostingStripePeriodEntity } from './hosting-stripe-entities'
 import { subscriptionAccountActive, subscriptionGrantActive, subscriptionGrantUntil } from './hosting-subscription-policy'
-import { fundedTrainingPeriods } from './hosting-training-periods'
 import { HostingTrainingEntity } from './hosting-training-entity'
+import { fundedTrainingPeriods } from './hosting-training-periods'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 export const HostingCreditAllowanceInput = z.strictObject({
@@ -25,11 +26,11 @@ export type HostingCreditAllowanceInput = z.input<typeof HostingCreditAllowanceI
 export async function effectiveHostedCredits(manager: EntityManager, platformId: string, planId: HostedPlanId): Promise<number> {
     if (planId === 'trial' || planId === 'assessment') return hostingCatalog.getPlan({ planId }).executions
     const { change } = await currentPolicy(manager, platformId)
-    return change?.monthlyCredits ?? hostingCatalog.getPlan({ planId }).executions
+    return change?.monthlyCredits ?? await fundedDefaultCredits(manager, platformId, planId)
 }
-export function createHostedCreditAllowance({ dataSource }: { dataSource: DataSource }) {
+export function createHostedCreditAllowance({ dataSource, manager: existingManager }: { dataSource: DataSource, manager?: EntityManager }) {
     async function read({ actor, platformId }: { actor: HostingActor, platformId: string }) {
-        return tx.run({ dataSource, fn: async manager => {
+        return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             const user = await assertHostingOperator({ manager, actor }), account = await tx.account({ manager, platformId })
             await assertHostingOperator({ manager, actor })
             return { ...await view(manager, account, await tx.now(manager)), platformId: actor.platformId, userId: user.id }
@@ -38,7 +39,7 @@ export function createHostedCreditAllowance({ dataSource }: { dataSource: DataSo
     async function save({ actor, input }: { actor: HostingActor, input: HostingCreditAllowanceInput }) {
         const value = HostingCreditAllowanceInput.parse(input), payloadHash = createHash('sha256').update(JSON.stringify(value)).digest('hex')
         try {
-            return await tx.run({ dataSource, fn: async manager => {
+            return await tx.run({ dataSource, manager: existingManager, fn: async manager => {
                 const user = await assertHostingOperator({ manager, actor }), account = await tx.account({ manager, platformId: value.platformId })
                 await assertHostingOperator({ manager, actor })
                 const prior = await manager.getRepository(HostingCreditAllowanceChangeEntity).findOneBy({ operatorIdentityId: actor.identityId, requestKey: value.requestKey })
@@ -60,7 +61,7 @@ export function createHostedCreditAllowance({ dataSource }: { dataSource: DataSo
                     const planId = await sourcePlan(manager, account, grant)
                     if (!planId) continue
                     const liability = await hostedCreditLiability(manager, grant.id), consumed = grant.consumed + liability.consumed, reserved = grant.reserved + liability.reserved
-                    const amount = BigInt(value.monthlyCredits ?? hostingCatalog.getPlan({ planId }).executions)
+                    const amount = BigInt(value.monthlyCredits ?? await fundedDefaultCredits(manager, account.id, planId))
                     if (amount < consumed + reserved) hostingFail('HOSTING_CREDIT_ALLOWANCE_BELOW_COMMITTED')
                     updates.push({ grant, planId, amount, consumed, reserved })
                 }
@@ -84,6 +85,13 @@ export function createHostedCreditAllowance({ dataSource }: { dataSource: DataSo
     }
     return { read, save }
 }
+// A manually funded contract is its own default. A separate audited allowance
+// override may change eligible grants; clearing it restores that funded amount.
+async function fundedDefaultCredits(manager: EntityManager, platformId: string, planId: HostedPlanId): Promise<number> {
+    const account = await manager.getRepository(HostingAccountEntity).findOneBy({ id: platformId })
+    const manual = account?.planId === planId ? await currentManualTerm(manager, account) : null
+    return manual?.monthlyCredits ?? hostingCatalog.getPlan({ planId }).executions
+}
 async function currentPolicy(manager: EntityManager, platformId: string) {
     const binding = await manager.getRepository(HostingCreditAllowanceBindingEntity).findOneBy({ platformId })
     const change = binding ? await manager.getRepository(HostingCreditAllowanceChangeEntity).findOneBy({ id: binding.changeId, platformId, revision: binding.revision }) : null
@@ -92,7 +100,7 @@ async function currentPolicy(manager: EntityManager, platformId: string) {
 }
 async function view(manager: EntityManager, account: HostingAccount, now: Date) {
     const { binding, change } = await currentPolicy(manager, account.id), fixed = account.planId === 'trial' || account.planId === 'assessment'
-    const defaultMonthlyCredits = hostingCatalog.getPlan({ planId: account.planId }).executions
+    const defaultMonthlyCredits = await fundedDefaultCredits(manager, account.id, account.planId)
     const grants = await manager.getRepository(HostingGrantEntity).find({ where: { platformId: account.id, meter: 'execution', revokedAt: IsNull() }, order: { validFrom: 'DESC', id: 'ASC' }, take: 257 })
     const current = grants.find(grant => hostingGrantMatchesPlan(grant, account.planId) && subscriptionGrantActive(account, grant, now))
     const liability = current ? await hostedCreditLiability(manager, current.id) : { reserved: 0n, consumed: 0n }
@@ -106,6 +114,7 @@ async function view(manager: EntityManager, account: HostingAccount, now: Date) 
 }
 async function sourcePlan(manager: EntityManager, account: HostingAccount, grant: HostingGrant): Promise<HostedPlanId | null> {
     if (grant.sourceKey.startsWith('trial:') || grant.sourceKey.startsWith('assessment:')) return null
+    if (grant.sourceKey.startsWith('manual:')) return manualGrantPlan(manager, account, grant)
     if (grant.sourceKey.startsWith('stripe:')) {
         const period = await manager.getRepository(HostingStripePeriodEntity).findOneBy({ platformId: account.id, sourceKey: grant.sourceKey })
         if (!period || period.revokedAt || !['starter', 'team', 'scale'].includes(period.planId) || !same(grant.validFrom, period.periodStart) || !same(grant.validUntil, period.periodEnd)) hostingFail('HOSTING_CREDIT_ALLOWANCE_SOURCE_INVALID')
@@ -120,4 +129,6 @@ async function sourcePlan(manager: EntityManager, account: HostingAccount, grant
     }
     hostingFail('HOSTING_CREDIT_ALLOWANCE_SOURCE_INVALID')
 }
-function same(a: Date, b: Date) { return a.getTime() === b.getTime() }
+function same(a: Date, b: Date) {
+    return a.getTime() === b.getTime()
+}

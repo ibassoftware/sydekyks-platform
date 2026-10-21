@@ -27,6 +27,7 @@ import { HOSTING_CHARGE_RESOLUTION_ENTITIES } from '../hosting/hosting-charge-re
 import { HOSTING_CREDIT_ALLOWANCE_ENTITIES } from '../hosting/hosting-credit-allowance-entities'
 import { HostingDispatchEntity } from '../hosting/hosting-dispatch-entity'
 import { HOSTING_ENTITIES } from '../hosting/hosting-entities'
+import { HOSTING_MANUAL_ACCOUNT_ENTITIES } from '../hosting/hosting-manual-accounts-entities'
 import { HostingModelCallEntity } from '../hosting/hosting-model-call-entity'
 import { HOSTING_PARTNER_ADMIN_ENTITIES } from '../hosting/hosting-partner-admin-entities'
 import { HOSTING_PARTNER_BILLING_ENTITIES } from '../hosting/hosting-partner-billing-entities'
@@ -83,6 +84,7 @@ function getEntities(): EntitySchema<unknown>[] {
     return [
         ...LMS_ENTITIES,
         ...HOSTING_ENTITIES,
+        ...HOSTING_MANUAL_ACCOUNT_ENTITIES,
         ...HOSTING_TRAINER_ENTITIES,
         ...HOSTING_SUBSCRIPTION_ENTITIES,
         ...HOSTING_RECOVERY_ENTITIES,

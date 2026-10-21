@@ -1,25 +1,32 @@
 import { EntityManager, In } from 'typeorm'
 import { HostingAccount, HostingAccountEntity, HostingEligibilityEntity, HostingGrant, HostingGrantEntity } from './hosting-entities'
+import { currentManualTerm, manualClosingPeriod, manualTermPeriods, manualTermSource } from './hosting-manual-terms'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
 import { HostingStripePeriodEntity } from './hosting-stripe-entities'
 import { HostingSubscription, HostingSubscriptionContext, HostingSubscriptionEntity } from './hosting-subscription-entities'
-import { fundedTrainingPeriods } from './hosting-training-periods'
 import { HostingTrainingEntity } from './hosting-training-entity'
+import { fundedClosingPeriod, fundedTrainingPeriods } from './hosting-training-periods'
 
 export type SubscriptionPeriodBinding = Omit<HostingSubscription, 'id' | 'created' | 'updated' | 'revision' | 'renewalDueAt'>
 const same = (a: Date, b: Date) => a.getTime() === b.getTime()
 
 // Only server-verified funding provenance may bind remaining credits. Core/Launch
 // preissue future periods, so bind the LAST period but never move its validFrom.
-export async function lastFundedSubscriptionPeriod(manager: EntityManager, account: HostingAccount): Promise<SubscriptionPeriodBinding | null> {
+// Earlier due-date overrides close their canonical prepaid month, blocking later refills.
+export async function lastFundedSubscriptionPeriod(manager: EntityManager, account: HostingAccount, renewalDueAt?: Date): Promise<SubscriptionPeriodBinding | null> {
     let binding: Omit<SubscriptionPeriodBinding, 'executionGrantId' | 'managedAiGrantId'> | null = null
-    if (account.planId === 'training') {
+    const manual = await currentManualTerm(manager, account)
+    if (manual) {
+        const periods = manualTermPeriods(manual), last = manualClosingPeriod(manual, renewalDueAt)
+        binding = { planId: manual.planId, entitlementId: manual.id, sourceKey: manualTermSource(manual, last), accountValidUntil: account.validUntil, validFrom: periods[last].from, originalValidUntil: periods[last].until }
+    }
+    else if (account.planId === 'training') {
         const training = await manager.getRepository(HostingTrainingEntity).findOneBy({ platformId: account.id, identityId: account.ownerIdentityId })
         if (!training || training.revokedAt || !same(training.endsAt, account.validUntil)) return null
         const periods = fundedTrainingPeriods(training)
         if (!periods) return null
-        const last = periods.length - 1
-        binding = { planId: 'training', entitlementId: training.id, sourceKey: `training:${training.id}:${last}`, accountValidUntil: account.validUntil, validFrom: periods[last].from, originalValidUntil: training.endsAt }
+        const last = fundedClosingPeriod(periods, renewalDueAt)
+        binding = { planId: 'training', entitlementId: training.id, sourceKey: `training:${training.id}:${last}`, accountValidUntil: account.validUntil, validFrom: periods[last].from, originalValidUntil: periods[last].until }
     }
     else if (account.planId === 'starter' || account.planId === 'team' || account.planId === 'scale') {
         const periods = await manager.getRepository(HostingStripePeriodEntity).find({ where: { platformId: account.id, planId: account.planId }, order: { periodEnd: 'DESC', id: 'ASC' }, take: 1 })
@@ -47,7 +54,8 @@ export async function loadSubscriptionContext(manager: EntityManager, account: H
     let policy = stored
     let origin: HostingSubscriptionContext['origin'] = 'override'
     if (!policy?.renewalDueAt) {
-        if (account.planId !== 'starter' && account.planId !== 'team' && account.planId !== 'scale') return { policy: null, bindingValid: true, revision, origin: 'fixed' }
+        const manual = await currentManualTerm(manager, account)
+        if (!manual && account.planId !== 'starter' && account.planId !== 'team' && account.planId !== 'scale') return { policy: null, bindingValid: true, revision, origin: 'fixed' }
         origin = 'paid_default'
         const bound = await lastFundedSubscriptionPeriod(manager, account)
         if (!bound) return { policy: null, bindingValid: true, revision, origin: 'fixed' }
@@ -61,11 +69,16 @@ export async function loadSubscriptionContext(manager: EntityManager, account: H
     const managed = grants.find(grant => grant.id === policy.managedAiGrantId && grant.meter === 'managed_ai')
     const pairValid = [execution, managed].every(grant => grant && !grant.revokedAt && grant.sourceKey === policy.sourceKey && same(grant.validFrom, policy.validFrom) && same(grant.validUntil, policy.originalValidUntil))
     if (!pairValid) return { ...context, bindingValid: false }
+    if (policy.sourceKey.startsWith('manual:')) {
+        const manual = await currentManualTerm(manager, account)
+        const periods = manual ? manualTermPeriods(manual) : null, last = manual ? manualClosingPeriod(manual, policy.renewalDueAt ?? undefined) : -1
+        return { ...context, bindingValid: !!manual && !!periods && manual.id === policy.entitlementId && manual.planId === policy.planId && same(policy.validFrom, periods[last].from) && same(policy.originalValidUntil, periods[last].until) && policy.sourceKey === manualTermSource(manual, last) }
+    }
     if (policy.planId === 'training') {
         const training = await manager.getRepository(HostingTrainingEntity).findOneBy({ id: policy.entitlementId, platformId: account.id, identityId: account.ownerIdentityId })
         const periods = training ? fundedTrainingPeriods(training) : null
-        const last = periods ? periods.length - 1 : -1
-        return { ...context, bindingValid: !!training && !!periods && !training.revokedAt && same(training.endsAt, policy.accountValidUntil) && same(policy.validFrom, periods[last].from) && same(policy.originalValidUntil, training.endsAt) && policy.sourceKey === `training:${training.id}:${last}` }
+        const last = periods ? fundedClosingPeriod(periods, policy.renewalDueAt ?? undefined) : -1
+        return { ...context, bindingValid: !!training && !!periods && !training.revokedAt && same(training.endsAt, policy.accountValidUntil) && same(policy.validFrom, periods[last].from) && same(policy.originalValidUntil, periods[last].until) && policy.sourceKey === `training:${training.id}:${last}` }
     }
     const period = await manager.getRepository(HostingStripePeriodEntity).findOneBy({ id: policy.entitlementId, platformId: account.id, planId: policy.planId, sourceKey: policy.sourceKey })
     return { ...context, bindingValid: !!period && !period.revokedAt && same(period.periodStart, policy.validFrom) && same(period.periodEnd, policy.originalValidUntil) && same(period.periodEnd, policy.accountValidUntil) }
@@ -85,6 +98,8 @@ export function subscriptionGrantUntil(account: HostingAccount, grant: HostingGr
     return new Date(Math.max(grant.validUntil.getTime(), subscriptionDisableAt(policy)!.getTime()))
 }
 export function subscriptionGrantActive(account: HostingAccount, grant: HostingGrant, now: Date): boolean {
+    const due = account.subscription?.policy?.renewalDueAt
+    if ((grant.sourceKey.startsWith('manual:') || grant.sourceKey.startsWith('training:')) && due && grant.validFrom >= due) return false
     return hostingGrantMatchesPlan(grant, account.planId) && !grant.revokedAt && grant.validFrom <= now && subscriptionGrantUntil(account, grant) > now
 }
 

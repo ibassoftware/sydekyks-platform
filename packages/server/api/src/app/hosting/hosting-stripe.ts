@@ -6,10 +6,11 @@ import { hostingResourceFits as resourceFits } from './hosting-billing-resources
 import { hostingConfiguration } from './hosting-configuration'
 import { effectiveHostedCredits } from './hosting-credit-allowance'
 import { HostingAccount, HostingAccountEntity, HostingGrant, HostingGrantEntity, HostingLedgerEntity } from './hosting-entities'
+import { HostingManualAccountEntity } from './hosting-manual-accounts-entities'
 import { createStripeAdapter, PaidPeriodEvidence } from './hosting-stripe-adapter'
 import { HostingStripeBindingEntity, HostingStripeCommandEntity, HostingStripeInboxEntity, HostingStripePeriodEntity, StripeBinding, StripeCommand, StripePeriod } from './hosting-stripe-entities'
-import { subscriptionAccountUntil } from './hosting-subscription-policy'
 import { readStripePolicy, stripeDigest, stripeId } from './hosting-stripe-policy'
+import { subscriptionAccountUntil } from './hosting-subscription-policy'
 import { HostingActor, HostingError, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 const EVENTS = new Set(['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.async_payment_failed', 'invoice.paid', 'invoice.payment_failed', 'invoice.payment_action_required', 'invoice.finalization_failed', 'customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted', 'charge.refunded', 'refund.updated', 'charge.dispute.created', 'charge.dispute.updated', 'charge.dispute.closed', 'credit_note.created', 'credit_note.updated', 'credit_note.voided'])
@@ -27,6 +28,7 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
         return value
     }
     async function assertCheckoutPolicy(manager: EntityManager, account: HostingAccount, bound: StripeBinding, planId: 'starter' | 'team' | 'scale', now: Date): Promise<void> {
+        if (await manager.getRepository(HostingManualAccountEntity).existsBy({ id: account.id })) hostingFail('HOSTING_MANUAL_FUNDING_REQUIRES_REVIEW')
         if (hostingCatalog.paidPlans[planId].salesAssisted) hostingFail('HOSTING_STRIPE_SALES_REVIEW_REQUIRED')
         const endedOnly = bound.holds.length === 1 && bound.holds[0] === 'subscription_ended'
         if (account.status === 'suspended' || bound.holds.some(reason => reason !== 'subscription_ended') || (account.billingHold && !endedOnly)) hostingFail('HOSTING_STRIPE_PURCHASE_BLOCKED')
@@ -110,7 +112,9 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
     }
     async function customer(actor: HostingActor): Promise<string> {
         const existing = await tx.run({ dataSource, fn: async manager => {
-            await tx.account({ manager, platformId: actor.platformId }); await tx.member({ manager, actor, admin: true }); return (await binding(manager, actor.platformId)).customerId
+            await tx.account({ manager, platformId: actor.platformId }); await tx.member({ manager, actor, admin: true })
+            if (await manager.getRepository(HostingManualAccountEntity).existsBy({ id: actor.platformId })) hostingFail('HOSTING_MANUAL_FUNDING_REQUIRES_REVIEW')
+            return (await binding(manager, actor.platformId)).customerId
         } })
         if (existing) return existing
         const result = await send(actor, await command(actor, 'customer', {}))

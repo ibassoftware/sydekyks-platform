@@ -16,15 +16,19 @@ import { HostingAccountEntity, HostingGrantEntity, HostingLedgerEntity, HostingR
 import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
 import { createHostedLedger } from '../../src/app/hosting/hosting-ledger'
 import { HostingModelCallEntity } from '../../src/app/hosting/hosting-model-call-entity'
+import { createHostedOnboarding } from '../../src/app/hosting/hosting-onboarding'
 import { HostingSubscriptionCommandEntity, HostingSubscriptionEntity } from '../../src/app/hosting/hosting-subscription-entities'
 import { SUBSCRIPTION_GRACE_MS, subscriptionAccountActive, subscriptionGrantActive } from '../../src/app/hosting/hosting-subscription-policy'
 import { createHostedSubscriptions } from '../../src/app/hosting/hosting-subscriptions'
+import { createHostedTraining } from '../../src/app/hosting/hosting-training'
+import { HostingTrainingEntity } from '../../src/app/hosting/hosting-training-entity'
+import { fundedTrainingPeriods, hostingMonthAnniversary } from '../../src/app/hosting/hosting-training-periods'
 import { HostingActor, hostingTransactions as tx } from '../../src/app/hosting/hosting-transactions'
 import { readHostedCredits } from '../../src/app/hosting/hosting-usage'
 import { LmsEnrollmentEntity } from '../../src/app/lms/lms-entities'
 import { UserEntity } from '../../src/app/user/user-entity'
 import { migratedHostedPGlite } from '../helpers/hosting-fixtures'
-import { fundedCore, positionCoreAfterEnd, subscriptionOperator } from '../helpers/hosting-subscription-fixtures'
+import { fundedCore, positionCoreAfterEnd, subscriptionIdentity, subscriptionOperator } from '../helpers/hosting-subscription-fixtures'
 
 let ds: DataSource, actor: HostingActor, client: Awaited<ReturnType<typeof fundedCore>>
 const subscriptions = () => createHostedSubscriptions({ dataSource: ds })
@@ -51,11 +55,11 @@ beforeEach(async () => {
 })
 
 describe('explicit manual subscription dates', () => {
-    it('preserves fixed Core defaults and binds only the last funded month without early credit use', async () => {
+    it('preserves fixed Core defaults and binds the closing prepaid month without early credit use', async () => {
         const before = await snapshot(), initial = await read()
         expect(initial.state).toBe('unmanaged'); expect(initial.origin).toBe('fixed'); expect(initial.revision).toBe(0)
         const result = await override(future())
-        expect(result.boundPeriod?.sourceKey).toMatch(new RegExp(`^training:${client.trainingId}:1$`))
+        expect(result.boundPeriod?.sourceKey).toMatch(new RegExp(`^training:${client.trainingId}:0$`))
         expect(result.graceEndsAt).toBe(new Date(Date.parse(result.renewalDueAt!) + SUBSCRIPTION_GRACE_MS).toISOString())
         expect(await snapshot()).toBe(before)
         const reservation = await ledger().reserveExecution({ actor: client.actor, projectId: client.projectId!, key: 'first-month', payer: 'byok' })
@@ -64,6 +68,43 @@ describe('explicit manual subscription dates', () => {
         const loaded = await tx.run({ dataSource: ds, fn: manager => tx.account({ manager, platformId: client.platformId }) })
         const last = await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: result.boundPeriod!.executionGrantId })
         expect(subscriptionGrantActive(loaded, last, new Date(last.validFrom.getTime() - 1))).toBe(false)
+    })
+    it.each(['legacy', 'calendar'] as const)('closes an early due date without another prepaid refill for %s training and preserves normal final-period grace', async schedule => {
+        let target = client
+        if (schedule === 'calendar') {
+            const identityId = await subscriptionIdentity(ds), home = await createHostedOnboarding({ dataSource: ds, subjectSecret: 'synthetic-subscription-fixture-secret-atleast32characters' }).provision({ identityId, name: 'Calendar prepaid training fixture', operator: actor })
+            const prior = await ds.getRepository(LmsEnrollmentEntity).findOneByOrFail({ id: client.enrollmentId }), now = await tx.now(ds.manager), receiptId = `synthetic-calendar:${apId()}`
+            const enrollment = await ds.getRepository(LmsEnrollmentEntity).save({ ...prior, id: apId(), identityId, workspacePlatformId: home.platformId, startsAt: now, accessUntil: hostingMonthAnniversary(now, 12), assessmentUntil: new Date(now.getTime() + 90 * 86400000), paymentReference: receiptId })
+            const training = await createHostedTraining({ dataSource: ds }).activate({ actor, platformId: home.platformId, identityId, enrollmentId: enrollment.id, receiptId, tier: 'core' })
+            target = { ...home, identityId, actor: { identityId, platformId: home.platformId, tokenVersion: home.tokenVersion }, trainingId: training.id, enrollmentId: enrollment.id }
+        }
+        const training = await ds.getRepository(HostingTrainingEntity).findOneByOrFail({ id: target.trainingId }), periods = fundedTrainingPeriods(training)!
+        const start = training.startsAt.getTime(), due = new Date(start + 25 * 86400000), before = await ds.getRepository(HostingGrantEntity).count()
+        const setDue = (date: Date, expectedRevision: number) => subscriptions().update({ actor, input: { platformId: target.platformId, expectedRevision, requestKey: apId(), renewalDueAt: date.toISOString(), reason: 'Synthetic prepaid expiration boundary' } })
+        const policy = await setDue(due, 0)
+        expect(policy.boundPeriod?.sourceKey).toBe(`training:${target.trainingId}:0`)
+        const first = policy.boundPeriod!.executionGrantId, clock = vi.spyOn(tx, 'now')
+        try {
+            for (const day of [25, 31, 39]) {
+                clock.mockResolvedValue(new Date(start + day * 86400000))
+                const reserve = await ledger().reserveExecution({ actor: target.actor, projectId: target.projectId!, key: `prepaid-${schedule}-day-${day}`, payer: 'byok' })
+                expect(reserve.grantId).toBe(first)
+                await ledger().releaseUnsent({ actor: target.actor, reservationId: reserve.id })
+            }
+            clock.mockResolvedValue(new Date(start + 40 * 86400000))
+            await expect(ledger().reserveExecution({ actor: target.actor, projectId: target.projectId!, key: `prepaid-${schedule}-cutoff`, payer: 'byok' })).rejects.toThrow('ENTITLEMENT_EXPIRED')
+            const anniversary = await setDue(periods[1].from, 1)
+            expect(anniversary.boundPeriod?.executionGrantId).toBe(first)
+            const normal = await setDue(training.endsAt, 2)
+            expect(normal.boundPeriod?.sourceKey).toBe(`training:${target.trainingId}:${periods.length - 1}`)
+            clock.mockResolvedValue(new Date(training.endsAt.getTime() + 86400000))
+            const final = await ledger().reserveExecution({ actor: target.actor, projectId: target.projectId!, key: `prepaid-${schedule}-normal-grace`, payer: 'byok' })
+            expect(final.grantId).toBe(normal.boundPeriod?.executionGrantId)
+            expect(await ds.getRepository(HostingGrantEntity).count()).toBe(before)
+        }
+        finally {
+            clock.mockRestore()
+        }
     })
     it('uses only remaining final-month credits during grace and clearing restores original expiry', async () => {
         await positionCoreAfterEnd(ds, client.platformId)

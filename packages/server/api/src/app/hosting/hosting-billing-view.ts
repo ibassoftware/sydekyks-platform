@@ -4,6 +4,7 @@ import { hostingResourceUsage } from './hosting-billing-resources'
 import { hostingConfiguration } from './hosting-configuration'
 import { hostedCreditLiability } from './hosting-credit-policy'
 import { HostingGrant, HostingGrantEntity } from './hosting-entities'
+import { HostingManualAccountEntity } from './hosting-manual-accounts-entities'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
 import { HostingStripeBindingEntity, HostingStripeCommandEntity, StripeCommand } from './hosting-stripe-entities'
 import { readStripePolicy, stripeDigest } from './hosting-stripe-policy'
@@ -16,6 +17,7 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
             const account = await tx.account({ manager, platformId: actor.platformId })
             const user = await tx.member({ manager, actor, admin: true })
             const now = await tx.now(manager)
+            const manualFunding = await manager.getRepository(HostingManualAccountEntity).existsBy({ id: account.id })
             const bound = await manager.getRepository(HostingStripeBindingEntity).findOneBy({ platformId: account.id })
             const commands = await manager.getRepository(HostingStripeCommandEntity).findBy({ platformId: account.id, state: Not('closed') })
             const open = commands.filter(value => value.state !== 'closed')
@@ -49,7 +51,7 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
             const paused = account.status === 'suspended' || (account.billingHold === true && !ended)
             const plans = (['starter', 'team', 'scale'] as const).map(id => {
                 const limits = hostingCatalog.getPlan({ planId: id })
-                let reason: HostedBillingActionReason | null = billingMode === 'manual' ? 'manual_billing' : !configured ? 'billing_unavailable' : account.status === 'suspended' ? 'account_paused' : null
+                let reason: HostedBillingActionReason | null = billingMode === 'manual' ? 'manual_billing' : manualFunding ? 'billing_review' : !configured ? 'billing_unavailable' : account.status === 'suspended' ? 'account_paused' : null
                 if (!reason && hostingCatalog.paidPlans[id].salesAssisted) reason = 'sales_assisted'
                 if (!reason && bound?.holds.some(value => value !== 'subscription_ended')) reason = 'billing_review'
                 if (!reason && account.billingHold && !(bound?.holds.length === 1 && bound.holds[0] === 'subscription_ended')) reason = 'billing_review'
@@ -62,7 +64,7 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
                 const price = { amountMinor: advertised.amountMinor, currency: advertised.currency, interval: 'month' as const }
                 return { id, salesAssisted: advertised.salesAssisted, limits: { ...limits, byokEnabled: true as const }, price, checkout: { enabled: reason === null, reason, continuing: !!checkout && (expiredCheckout || checkout.payload.planId === id) } }
             })
-            const portalReason = billingMode === 'manual' ? 'manual_billing' as const : !configured ? 'billing_unavailable' : !bound?.customerId ? 'customer_missing' : commandReason(portal)
+            const portalReason = billingMode === 'manual' ? 'manual_billing' as const : manualFunding ? 'billing_review' : !configured ? 'billing_unavailable' : !bound?.customerId ? 'customer_missing' : commandReason(portal)
             const legacyLiability = current ? await hostedCreditLiability(manager, current.id) : { reserved: 0n, consumed: 0n }
             const unified = current ? { ...current, reserved: current.reserved + legacyLiability.reserved, consumed: current.consumed + legacyLiability.consumed } : undefined
             const previousHeld = grants.filter(value => value.meter === 'managed_ai' && value.id !== managed?.id).reduce((sum, value) => sum + value.reserved, 0n)

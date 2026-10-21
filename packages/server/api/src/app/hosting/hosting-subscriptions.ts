@@ -49,9 +49,9 @@ export function createHostedSubscriptions({ dataSource }: { dataSource: DataSour
             }
             const policy = await manager.getRepository(HostingSubscriptionEntity).findOneBy({ id: account.id })
             if ((policy?.revision ?? 0) !== value.expectedRevision) hostingFail('HOSTING_SUBSCRIPTION_REVISION_CONFLICT')
-            const binding = value.renewalDueAt ? await lastFundedSubscriptionPeriod(manager, account) : policy
-            if (!binding) hostingFail('HOSTING_SUBSCRIPTION_FUNDED_ENTITLEMENT_REQUIRED')
             const due = value.renewalDueAt ? new Date(value.renewalDueAt) : null
+            const binding = due ? await lastFundedSubscriptionPeriod(manager, account, due) : policy
+            if (!binding) hostingFail('HOSTING_SUBSCRIPTION_FUNDED_ENTITLEMENT_REQUIRED')
             if (due && (due.getTime() < Date.parse('2000-01-01T00:00:00Z') || due.getTime() > Date.parse('9998-12-01T00:00:00Z'))) hostingFail('HOSTING_SUBSCRIPTION_INVALID_DATE')
             const revision = (policy?.revision ?? 0) + 1
             const saved = await manager.getRepository(HostingSubscriptionEntity).save({ ...binding, id: account.id, revision, renewalDueAt: due })

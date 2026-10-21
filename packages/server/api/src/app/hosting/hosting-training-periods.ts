@@ -29,3 +29,11 @@ export function fundedTrainingPeriods(training: { tier: 'core' | 'launch', start
     const periods = newPartnerTrainingPeriods(training.startsAt)
     return periods.at(-1)?.until.getTime() === training.endsAt.getTime() ? periods : null
 }
+
+// An earlier renewal due date closes the funded period containing that boundary.
+// Exact anniversaries close the preceding period; later prepaid periods cannot refill grace.
+export function fundedClosingPeriod(periods: { from: Date, until: Date }[], due?: Date): number {
+    if (!due) return periods.length - 1
+    const closing = periods.findIndex(period => period.until >= due)
+    return closing < 0 ? periods.length - 1 : closing
+}

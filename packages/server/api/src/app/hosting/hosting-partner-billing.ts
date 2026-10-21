@@ -5,6 +5,7 @@ import { isOperationalUser } from './hosting-access-policy'
 import { hostingResourceUsage } from './hosting-billing-resources'
 import { hostingConfiguration } from './hosting-configuration'
 import { HostingAccount, HostingReservationEntity } from './hosting-entities'
+import { HostingManualAccountEntity } from './hosting-manual-accounts-entities'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { createPartnerStripeAdapter, PartnerPaymentEvidence, PartnerStripePolicy, readPartnerStripePolicy } from './hosting-partner-billing-adapter'
 import { HostingPartnerPurchaseAuditEntity, HostingPartnerPurchaseEntity, PartnerPackage, PartnerPurchase } from './hosting-partner-billing-entities'
@@ -54,6 +55,7 @@ export async function createHostedPartnerBilling({ dataSource, policy: suppliedP
         return { account, member }
     }
     async function eligible(manager: EntityManager, account: HostingAccount, identityId: string, courseId: string): Promise<void> {
+        if (await manager.getRepository(HostingManualAccountEntity).existsBy({ id: account.id })) hostingFail('HOSTING_MANUAL_FUNDING_REQUIRES_REVIEW')
         const course = await manager.getRepository(LmsCourseEntity).findOneBy({ id: courseId, status: 'published', ownerPlatformId: IsNull(), audience: 'partner', certificationMode: 'partner' })
         if (!course) hostingFail('HOSTING_PARTNER_COURSE_UNAVAILABLE')
         if (account.ownerIdentityId !== identityId || account.planId !== 'trial' || account.status === 'suspended' || account.billingHold || account.activeExecutions !== 0 ||
