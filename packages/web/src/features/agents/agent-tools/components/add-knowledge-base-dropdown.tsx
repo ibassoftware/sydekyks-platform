@@ -10,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 
 import { useKnowledgeBaseToolDialogStore } from '../stores/knowledge-base-tools';
 
@@ -23,6 +24,7 @@ export const AddKnowledgeBaseDropdown = ({
   children,
 }: AddKnowledgeBaseDropdownProps) => {
   const [open, setOpen] = useState(false);
+  const hosted = useHostedBillingEnabled();
   const { setShowAddKbDialog } = useKnowledgeBaseToolDialogStore();
 
   return (
@@ -43,7 +45,7 @@ export const AddKnowledgeBaseDropdown = ({
           }
         >
           <FileText className="size-3.5 me-2" />
-          <span>{t('Upload File')}</span>
+          <span>{hosted ? t('Choose File') : t('Upload File')}</span>
         </DropdownMenuItem>
 
         <DropdownMenuItem

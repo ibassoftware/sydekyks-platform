@@ -20,6 +20,7 @@ import {
   KnowledgeBaseSection,
 } from '@/features/agents';
 import { AddRow } from '@/features/agents/agent-tools/components/add-row';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import { cn } from '@/lib/utils';
 
 import { AgentPieceDialog } from './piece-tool-dialog';
@@ -47,6 +48,7 @@ export const AgentTools = ({
   toolsField: agentToolsField,
   layout = 'card',
 }: AgentToolsProps) => {
+  const hosted = useHostedBillingEnabled();
   const tools = Array.isArray(agentToolsField.value)
     ? (agentToolsField.value as AgentTool[])
     : [];
@@ -157,7 +159,9 @@ export const AgentTools = ({
             </div>
 
             <p className="text-sm font-medium text-gray-11">
-              {t('Connect apps, flows, MCPs and more.')}
+              {hosted
+                ? t('Connect apps and Missions.')
+                : t('Connect apps, flows, MCPs and more.')}
             </p>
 
             <AddToolDropdown disabled={disabled} align="center">
@@ -169,6 +173,18 @@ export const AgentTools = ({
           </div>
         )}
       </div>
+
+      {hosted && (
+        <p className="mt-2 text-xs leading-5 text-gray-11">
+          {mcpTools.length > 0
+            ? t(
+                'Remove remote MCP tools before running this Agent. Use app tools, Missions or knowledge sources instead.',
+              )
+            : t(
+                'Remote MCP tools are not available in hosted Agents. App tools, Missions and knowledge sources are supported.',
+              )}
+        </p>
+      )}
 
       {!asRows && (
         <KnowledgeBaseSection
@@ -182,7 +198,9 @@ export const AgentTools = ({
 
       <AgentFlowToolDialog onToolsUpdate={onToolsUpdate} tools={tools} />
       <AgentPieceDialog tools={tools} onToolsUpdate={onToolsUpdate} />
-      <AgentMcpDialog tools={tools} onToolsUpdate={onToolsUpdate} />
+      {!hosted && (
+        <AgentMcpDialog tools={tools} onToolsUpdate={onToolsUpdate} />
+      )}
     </div>
   );
 };

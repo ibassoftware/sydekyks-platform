@@ -306,7 +306,7 @@ export function PlatformSidebar() {
                 subItems: [
                   {
                     to: '/platform/billing',
-                    label: t('My workspace'),
+                    label: t('Overview'),
                     end: true,
                   },
                   { to: '/platform/billing/clients', label: t('Client usage') },

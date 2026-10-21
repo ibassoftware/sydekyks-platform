@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import { tablesApi } from '@/features/tables/api/tables-api';
 import { authenticationSession } from '@/lib/authentication-session';
 
@@ -30,6 +31,7 @@ import { useKnowledgeBaseToolDialogStore } from '../stores/knowledge-base-tools'
 import {
   useDeleteKnowledgeBaseFile,
   useKnowledgeBaseFiles,
+  useKnowledgeBaseEmbeddingSource,
   useUploadKnowledgeBaseFile,
 } from './knowledge-base-hooks';
 
@@ -76,6 +78,9 @@ function KnowledgeBaseDialogContent({
   const [sourceId, setSourceId] = useState(editingKbTool?.sourceId ?? '');
   const [sourceName, setSourceName] = useState(editingKbTool?.sourceName ?? '');
 
+  const hosted = useHostedBillingEnabled();
+  const { data: embeddingSource } = useKnowledgeBaseEmbeddingSource();
+  const canUploadFiles = !hosted || !!embeddingSource?.provider;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadMutation = useUploadKnowledgeBaseFile();
   const deleteMutation = useDeleteKnowledgeBaseFile();
@@ -109,7 +114,7 @@ function KnowledgeBaseDialogContent({
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !canUploadFiles) return;
 
     const formData = new FormData();
     formData.append('file', file);
@@ -218,26 +223,37 @@ function KnowledgeBaseDialogContent({
                   });
                 }}
               />
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,.txt,.csv,.docx"
-                className="hidden"
-                onChange={handleFileUpload}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="self-start"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadMutation.isPending}
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                {uploadMutation.isPending
-                  ? t('Uploading...')
-                  : t('Upload new file')}
-              </Button>
+              {canUploadFiles && (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.txt,.csv,.docx"
+                    className="hidden"
+                    onChange={handleFileUpload}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadMutation.isPending}
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    {uploadMutation.isPending
+                      ? t('Uploading...')
+                      : t('Upload new file')}
+                  </Button>
+                </>
+              )}
+              {!canUploadFiles && (
+                <p className="text-xs leading-5 text-gray-11">
+                  {t(
+                    'Choose an existing indexed file. New file uploads require configured file indexing.',
+                  )}
+                </p>
+              )}
             </div>
           ) : (
             <SearchableSelect

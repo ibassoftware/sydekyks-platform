@@ -59,16 +59,12 @@ import { getTextFromParts } from './lib/message-parsers';
 export function AIChatBox(props: AIChatBoxProps) {
   const hosted = useHostedBillingEnabled();
   if (!hosted) return <LegacyAIChatBox {...props} />;
-  if (props.agentId !== undefined || props.builder)
-    return (
-      <p className="p-4 text-sm text-gray-11">
-        {t(
-          'Hosted Copilot currently supports workspace chat. Saved-agent and builder execution are not available yet.',
-        )}
-      </p>
-    );
   return (
-    <HostedChatBoundary conversationId={props.conversationId}>
+    <HostedChatBoundary
+      conversationId={props.conversationId}
+      agentId={props.agentId}
+      builder={props.builder}
+    >
       <ChatStoreProvider>
         <ChatBoxContent {...props} />
       </ChatStoreProvider>

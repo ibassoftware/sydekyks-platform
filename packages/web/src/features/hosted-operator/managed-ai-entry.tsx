@@ -5,18 +5,29 @@ import { Button } from '@/components/ui/button';
 import { AiSettings, useAiSettings } from './ai-settings-api';
 import { useHostedOperatorAccess } from './operator-api';
 
-export function managedAiNextStep(state: AiSettings) {
+export function managedAiNextStep(state: AiSettings, globallyPaused = false) {
+  if (globallyPaused && state.scopePlatformId !== null)
+    return 'Enable the global default to resume managed AI for this client.';
   if (state.mode === 'disabled')
-    return 'Enable the global default in Managed AI settings when you are ready to resume managed usage.';
+    return state.scopePlatformId === null
+      ? 'Enable the global default to resume managed AI.'
+      : 'Choose inheritance or a client override to enable managed AI.';
   if (!state.credential.configured)
-    return 'Save a provider key in Managed AI settings for the shared Sydekyks default.';
+    return 'Save a provider key to continue setup.';
   if (!state.effective.model)
-    return 'Select and save an upstream model in Managed AI settings.';
+    return 'Select and save a model to continue setup.';
   if (state.effective.managedAvailable)
-    return 'The saved default is available to eligible workspaces within their credit limits.';
-  if (!state.pricing.approval)
-    return 'The key and model are saved. Review and approve published pricing in Managed AI settings to finish setup.';
-  return 'Refresh the official pricing source and review the current approval in Managed AI settings.';
+    return 'Ready for eligible workspaces within their Credit limits.';
+  if (state.pricing.status === 'checking')
+    return 'Official pricing is being checked. Refresh pricing status when the check finishes.';
+  if (!state.pricing.terms || !state.pricing.observationId)
+    return 'Observe official pricing, then review and approve it to finish setup.';
+  if (
+    !state.pricing.approval ||
+    ['needs_approval', 'mismatch'].includes(state.pricing.status)
+  )
+    return 'Key and model saved. Review and approve published pricing to finish setup.';
+  return 'Refresh official pricing and review its approval to restore managed AI.';
 }
 
 export function HostedManagedAiEntry({
@@ -35,9 +46,7 @@ export function HostedManagedAiEntry({
         Sydekyks managed AI default
       </h1>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-11">
-        Set the shared service here through Managed AI settings. Customers see
-        Sydekyks and credits; client workspaces inherit the saved global default
-        unless they have an explicit override.
+        The shared Sydekyks service for clients that inherit the global default.
       </p>
       {settings.isPending ? (
         <p role="status" className="mt-4 text-sm">
@@ -63,7 +72,7 @@ export function HostedManagedAiEntry({
             <dt className="font-medium">Global default</dt>
             <dd>
               {settings.data.mode === 'set'
-                ? 'Sydekyks selected — clients inherit unless overridden'
+                ? 'Enabled for inheriting clients'
                 : settings.data.mode === 'disabled'
                 ? 'Paused for all clients'
                 : 'Setup required'}
@@ -74,21 +83,24 @@ export function HostedManagedAiEntry({
                 ? 'Saved securely · value hidden'
                 : 'Not configured'}
             </dd>
-            <dt className="font-medium">Managed service</dt>
+            <dt className="font-medium">Saved model</dt>
+            <dd>
+              {settings.data.effective.model === 'deepseek-flash'
+                ? 'DeepSeek Flash'
+                : settings.data.effective.model === 'deepseek-v4-pro'
+                ? 'DeepSeek V4 Pro'
+                : 'Not selected'}
+            </dd>
+            <dt className="font-medium">Service readiness</dt>
             <dd>
               {settings.data.effective.managedAvailable
-                ? 'Available with current approved pricing'
-                : 'Unavailable — action needed below'}
+                ? 'Ready'
+                : 'Setup required'}
             </dd>
           </dl>
           <p className="mt-4 max-w-3xl text-sm leading-6">
             {managedAiNextStep(settings.data)}
           </p>
-          {settings.data.effective.reason && (
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-11">
-              {settings.data.effective.reason}
-            </p>
-          )}
         </>
       )}
       <Button asChild className="mt-4">

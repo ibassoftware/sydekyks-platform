@@ -11,6 +11,9 @@ export type HostedChatScope = {
   session: ReturnType<typeof currentAuthSession>;
   projectPointer: string;
   conversationId: string | null;
+  agentId?: string;
+  builder?: boolean;
+  nativeAgent?: boolean;
 };
 export type HostedChatSubmission = {
   payer: HostedChatPayer;
@@ -54,6 +57,12 @@ export const HostedChatOptions = z.object({
     id: z.literal('sydekyks'),
     label: z.string().max(80),
   }),
+  payerLock: z
+    .discriminatedUnion('type', [
+      z.object({ type: z.literal('managed') }),
+      z.object({ type: z.literal('byok'), configId: z.string().length(21) }),
+    ])
+    .optional(),
   managedAvailable: z.boolean(),
   creditPolicy: z
     .object({
@@ -179,6 +188,8 @@ export const hostedChatApi = {
         method: 'GET',
         params: {
           projectId: scope.projectPointer,
+          ...(scope.agentId ? { agentId: scope.agentId } : {}),
+          ...(scope.builder ? { builder: true } : {}),
           ...(scope.conversationId
             ? { conversationId: scope.conversationId }
             : {}),

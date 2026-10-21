@@ -5,8 +5,10 @@ import { useSearchParams } from 'react-router-dom';
 
 import { CenteredPage } from '@/components/custom/centered-page';
 import { Button } from '@/components/ui/button';
+import { useHostedOperatorAccess } from '@/features/hosted-operator/operator-api';
 
 import { hostedBillingApi } from './billing-api';
+import { HostedBillingOperationsView } from './billing-operations-view';
 import {
   BillingError,
   assertBillingSession,
@@ -16,6 +18,27 @@ import { HostedBillingView } from './billing-view';
 
 export function HostedBillingPage() {
   const session = useBillingSession();
+  const operator = useHostedOperatorAccess();
+  if (session && operator.isPending) {
+    return (
+      <CenteredPage title={t('Billing')}>
+        <p role="status" className="py-6 text-sm text-gray-11">
+          {t('Checking billing access…')}
+        </p>
+      </CenteredPage>
+    );
+  }
+  if (session && operator.allowed) return <HostedBillingOperationsView />;
+  if (session && operator.isError) {
+    return (
+      <BillingFailure
+        message={t(
+          'Billing access could not be checked. Refresh to try again.',
+        )}
+        onRefresh={() => void operator.refetch()}
+      />
+    );
+  }
   // Remount on every credential change, including renewal for the same user.
   return session ? (
     <SessionBillingPage key={session.epoch} session={session} />
@@ -148,6 +171,15 @@ function SessionBillingPage({
         </p>
       </CenteredPage>
     );
+  if (query.data.accountKind === 'platform_admin') {
+    return (
+      <BillingFailure
+        message={t(
+          'Administrative billing access needs to be verified. Refresh the page to try again.',
+        )}
+      />
+    );
+  }
   return (
     <HostedBillingView
       overview={query.data}

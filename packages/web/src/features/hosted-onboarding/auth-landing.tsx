@@ -6,6 +6,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { FullLogo } from '@/components/custom/full-logo';
 import { TurnstileWidget } from '@/features/authentication/components/auth-landing/turnstile-widget';
+import { useHostedOperatorAccess } from '@/features/hosted-operator/operator-api';
 import { flagsHooks } from '@/hooks/flags-hooks';
 import { authenticationSession } from '@/lib/authentication-session';
 import { publicLinkUtils } from '@/lib/public-link-utils';
@@ -20,6 +21,7 @@ import {
   useHostedAuthSession,
 } from './auth-session';
 import { AuthStage, HostedAuthView } from './auth-view';
+import { HostedOperatorEntry } from './operator-entry';
 
 export function HostedAuthLanding({
   initialMode = 'signin',
@@ -49,6 +51,7 @@ function SessionAuth({
 }) {
   const client = useQueryClient();
   const navigate = useNavigate();
+  const operator = useHostedOperatorAccess();
   const terms = flagsHooks.useFlag<string>(ApFlagId.TERMS_OF_SERVICE_URL).data;
   const privacy = flagsHooks.useFlag<string>(ApFlagId.PRIVACY_POLICY_URL).data;
   const legalLinks = [
@@ -101,7 +104,12 @@ function SessionAuth({
   const status = useQuery({
     queryKey: [...prefix, 'status', session.platformId, session.id],
     queryFn: ({ signal }) => hostedAuthApi.status(session, signal),
-    enabled: session.kind === 'user' && !denied,
+    enabled:
+      session.kind === 'user' &&
+      !denied &&
+      !operator.isPending &&
+      !operator.allowed &&
+      !operator.isError,
     retry: false,
     gcTime: 0,
     refetchOnWindowFocus: true,
@@ -278,6 +286,23 @@ function SessionAuth({
         resetSignal={captchaReset}
       />
     ) : undefined;
+  if (
+    session.kind === 'user' &&
+    (operator.isPending || operator.isError || operator.allowed)
+  ) {
+    return (
+      <HostedOperatorEntry
+        checking={operator.isPending}
+        failed={operator.isError}
+        onRefresh={() => void operator.refetch()}
+        onExit={() => {
+          client.clear();
+          authenticationSession.clearSession();
+          navigate('/sign-in', { replace: true });
+        }}
+      />
+    );
+  }
   return (
     <HostedAuthView
       stage={stage}

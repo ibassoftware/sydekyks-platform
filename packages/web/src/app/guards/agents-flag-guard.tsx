@@ -1,3 +1,4 @@
+import { t } from 'i18next';
 import { Link, Navigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
@@ -11,18 +12,19 @@ type AgentsFlagGuardProps = {
 export const AgentsFlagGuard = ({ children }: AgentsFlagGuardProps) => {
   const agentsAvailable = useAgentsAvailable();
   const hosted = useHostedBillingEnabled();
-  if (hosted) {
+  if (hosted && !agentsAvailable) {
     return (
       <main className="mx-auto max-w-3xl p-6">
         <h1 className="text-xl font-semibold">
-          Agents are unavailable in this pilot
+          {t('Agents are not ready in this workspace')}
         </h1>
         <p className="my-4 text-sm leading-6 text-gray-11">
-          Use manually started workflows with Code and Ask AI, or use Sydekyks
-          chat for conversation. Review drafts yourself before sharing.
+          {t(
+            'Refresh the workspace to check availability. Contact Sydekyks support if Agents remain unavailable.',
+          )}
         </p>
         <Button asChild variant="outline">
-          <Link to="/chat">Open Sydekyks chat</Link>
+          <Link to="/chat">{t('Open Sydekyks chat')}</Link>
         </Button>
       </main>
     );

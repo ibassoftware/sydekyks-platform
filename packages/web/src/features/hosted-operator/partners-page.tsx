@@ -56,6 +56,15 @@ export function PartnersAdminPage() {
 }
 function PartnerSession({ access }: { access: Access }) {
   const client = useQueryClient();
+  const [view, setView] = useState<'directory' | 'add' | 'setup'>('directory');
+  const [directorySearch, setDirectorySearch] = useState('');
+  const [directoryStatus, setDirectoryStatus] = useState<
+    'all' | 'active' | 'pending' | 'inactive'
+  >('all');
+  const [filters, setFilters] = useState({
+    search: '',
+    status: 'all' as 'all' | 'active' | 'pending' | 'inactive',
+  });
   const [email, setEmail] = useState('');
   const [candidate, setCandidate] = useState<PartnerCandidate | null>(null);
   const [searched, setSearched] = useState(false);
@@ -75,7 +84,12 @@ function PartnerSession({ access }: { access: Access }) {
     };
   }, []);
   const list = useQuery(
-    partnersQuery(access.session, cursors[cursors.length - 1], access.allowed),
+    partnersQuery(
+      access.session,
+      cursors[cursors.length - 1],
+      access.allowed,
+      filters,
+    ),
   );
   const clients = useQuery(
     operatorClientsQuery(
@@ -97,6 +111,7 @@ function PartnerSession({ access }: { access: Access }) {
     ) ?? [];
   const chosen = available.some((item) => item.platformId === workspace);
   function select(value: PartnerCandidate) {
+    setView('directory');
     setCandidate(value);
     setEmail(value.email);
     setSearched(true);
@@ -105,7 +120,11 @@ function PartnerSession({ access }: { access: Access }) {
     setConfirmDeactivate(false);
     setWorkspace('');
   }
-  async function find(event?: FormEvent) {
+  async function find(
+    event?: FormEvent,
+    address = email,
+    successNotice?: string,
+  ) {
     event?.preventDefault();
     if (locked.current || !access.allowed) return;
     locked.current = true;
@@ -118,11 +137,13 @@ function PartnerSession({ access }: { access: Access }) {
     try {
       const response = await lookupPartner(
         access.session,
-        email.trim().toLowerCase(),
+        address.trim().toLowerCase(),
       );
       if (mounted.current) {
         setCandidate(response.candidate);
         setSearched(true);
+        if (response.candidate?.verified) setView('directory');
+        if (successNotice) setNotice(successNotice);
       }
     } catch (error) {
       if (mounted.current) setError(failure(error));
@@ -162,13 +183,11 @@ function PartnerSession({ access }: { access: Access }) {
     }
   }
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-8 p-4 sm:p-6">
+    <main className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 p-4 sm:p-6">
       <header>
         <h1 className="text-xl font-semibold">{t('Partners')}</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-11">
-          {t(
-            'Approve eligible accounts, then assign the client workspaces they can support. Partner access is a separate operator decision from course enrollment or certification.',
-          )}
+          {t('Onboard Partners, review their status and manage client access.')}
         </p>
       </header>
       {!access.hosted || access.session.kind !== 'user' ? (
@@ -187,57 +206,101 @@ function PartnerSession({ access }: { access: Access }) {
         </p>
       ) : (
         <>
-          <ManualAccountForm
-            session={access.session}
-            kind="partner"
-            onCreated={(account) => {
-              setEmail(account.email);
-              setCandidate(null);
-              setSearched(false);
-              void list.refetch();
-              void clients.refetch();
-            }}
-          />
-          <section aria-labelledby="add-partner-heading" className="max-w-3xl">
-            <h2 id="add-partner-heading" className="text-lg font-semibold">
-              {t('Private setup links and existing Partners')}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-gray-11">
-              {t(
-                'Use the form above to set an initial password and hosting term. To let a new person choose their own password instead, find their email here, then create and copy their private setup link. You can also manage existing Partner approvals and client assignments here.',
-              )}
-            </p>
-            <p className="mt-2 text-sm leading-6 text-gray-11">
-              {t(
-                'No email is sent by this page. Secure signup with email verification remains available when email delivery is configured.',
-              )}
-            </p>
-
-            <form
-              onSubmit={find}
-              className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
-            >
-              <div className="min-w-0 flex-1">
-                <label htmlFor="partner-email" className="text-sm font-medium">
-                  {t('Account email')}
-                </label>
-                <Input
-                  id="partner-email"
-                  className="mt-2"
-                  type="email"
-                  autoComplete="off"
-                  required
-                  maxLength={254}
-                  value={email}
-                  disabled={busy}
-                  onChange={(event) => setEmail(event.target.value)}
-                />
-              </div>
-              <Button type="submit" disabled={busy} aria-busy={busy}>
-                {busy ? t('Please wait…') : t('Find account')}
+          <nav
+            aria-label="Partner administration"
+            className="flex flex-wrap gap-2 border-b border-gray-6 pb-4"
+          >
+            {(
+              [
+                { id: 'directory', label: 'Directory' },
+                { id: 'add', label: 'Add Partner' },
+                { id: 'setup', label: 'Setup links' },
+              ] as const
+            ).map((tab) => (
+              <Button
+                key={tab.id}
+                variant={view === tab.id ? 'default' : 'ghost'}
+                disabled={busy}
+                aria-current={view === tab.id ? 'page' : undefined}
+                onClick={() => {
+                  setView(tab.id);
+                  setCandidate(null);
+                  setSearched(false);
+                  setError(null);
+                  setNotice(null);
+                  setConfirmDeactivate(false);
+                }}
+              >
+                {t(tab.label)}
               </Button>
-            </form>
-          </section>
+            ))}
+          </nav>
+          {view === 'add' && (
+            <ManualAccountForm
+              session={access.session}
+              kind="partner"
+              onCreated={(account) => {
+                setEmail(account.email);
+                void list.refetch();
+                void clients.refetch();
+                void find(
+                  undefined,
+                  account.email,
+                  t(
+                    'Partner account created. Review their saved access below.',
+                  ),
+                );
+              }}
+            />
+          )}
+          {view === 'setup' && (
+            <section
+              aria-labelledby="add-partner-heading"
+              className="max-w-3xl"
+            >
+              <h2 id="add-partner-heading" className="text-lg font-semibold">
+                {t('Let a Partner choose their password')}
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-gray-11">
+                {t(
+                  'Find their email to create a private setup link or open an existing account. To set an initial password and hosting term yourself, choose Add Partner.',
+                )}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-gray-11">
+                {t(
+                  'Share the one-time link privately. No email service is required.',
+                )}
+              </p>
+
+              <form
+                onSubmit={find}
+                className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
+              >
+                <div className="min-w-0 flex-1">
+                  <label
+                    htmlFor="partner-email"
+                    className="text-sm font-medium"
+                  >
+                    {t('Account email')}
+                  </label>
+                  <Input
+                    id="partner-email"
+                    className="mt-2"
+                    type="email"
+                    autoComplete="off"
+                    required
+                    maxLength={254}
+                    value={email}
+                    disabled={busy}
+                    onChange={(event) => setEmail(event.target.value)}
+                  />
+                </div>
+                <Button type="submit" disabled={busy} aria-busy={busy}>
+                  {busy ? t('Please wait…') : t('Find account')}
+                </Button>
+              </form>
+            </section>
+          )}
           <div aria-live="polite" className="space-y-2">
             {error && (
               <p role="alert" className="text-sm text-destructive">
@@ -257,7 +320,8 @@ function PartnerSession({ access }: { access: Access }) {
               </p>
             )}
           </div>
-          {searched &&
+          {view === 'setup' &&
+            searched &&
             !error &&
             (!candidate ||
               (!candidate.verified &&
@@ -274,11 +338,33 @@ function PartnerSession({ access }: { access: Access }) {
                 }}
               />
             )}
-          {candidate && (
+          {view === 'directory' && candidate && (
             <section
               aria-labelledby="partner-account-heading"
               className="border-t border-gray-6 pt-6"
             >
+              <div className="mb-5 flex flex-wrap items-center gap-3">
+                <Button
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => {
+                    setCandidate(null);
+                    setSearched(false);
+                    setError(null);
+                    setNotice(null);
+                  }}
+                >
+                  {t('Back to directory')}
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link to="/learn">{t('Manage training')}</Link>
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link to="/platform/billing/subscriptions">
+                    {t('Hosting & renewal dates')}
+                  </Link>
+                </Button>
+              </div>
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
                   <h2
@@ -289,6 +375,11 @@ function PartnerSession({ access }: { access: Access }) {
                   </h2>
                   <p className="mt-1 break-all text-sm text-gray-11">
                     {candidate.email}
+                  </p>
+                  <p className="mt-2 text-sm font-medium">
+                    {candidate.workspaces
+                      .map((item) => item.name)
+                      .join(' · ') || t('No workspace yet')}
                   </p>
                   <p className="mt-2 text-sm">
                     {candidate.verificationMethod === 'operator'
@@ -572,99 +663,241 @@ function PartnerSession({ access }: { access: Access }) {
               )}
             </section>
           )}
-          <section
-            aria-labelledby="partner-directory-heading"
-            className="border-t border-gray-6 pt-6"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2
-                id="partner-directory-heading"
-                className="text-lg font-semibold"
-              >
-                {t('Partner directory')}
-              </h2>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy || list.isFetching}
-                onClick={() => void list.refetch()}
-              >
-                {t('Refresh directory')}
-              </Button>
-            </div>
-            {list.isPending ? (
-              <p role="status" className="mt-4 text-sm">
-                {t('Loading partners…')}
-              </p>
-            ) : list.isError ? (
-              <p role="alert" className="mt-4 text-sm">
-                {t(
-                  'The partner directory could not load. Refresh to check your access and try again.',
-                )}
-              </p>
-            ) : (
-              <ul className="mt-4 divide-y divide-gray-6">
-                {list.data?.partners.map((item) => (
-                  <li
-                    key={item.identityId}
-                    className="flex flex-wrap items-center justify-between gap-3 py-4"
+          {view === 'directory' && !candidate && (
+            <section aria-labelledby="partner-directory-heading">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2
+                    id="partner-directory-heading"
+                    className="text-lg font-semibold"
                   >
-                    <div className="min-w-0">
-                      <p className="break-words text-sm font-medium">
-                        {name(item)}
-                      </p>
-                      <p className="mt-1 break-all text-sm text-gray-11">
-                        {item.email}
-                      </p>
-                      <p className="mt-1 text-sm text-gray-11">
-                        {item.active
-                          ? t('Active partner')
-                          : t('Inactive partner')}
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => select(item)}
-                      aria-label={t('Manage {email}', { email: item.email })}
-                    >
-                      {t('Manage')}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {!list.isPending &&
-              !list.isError &&
-              !list.data?.partners.length && (
-                <p className="mt-4 text-sm text-gray-11">
-                  {t(
-                    'No partners on this page. Find an eligible account above to approve your first partner.',
-                  )}
+                    {t('Partner directory')}
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-11">
+                    {t(
+                      'Search by person, company or email. Open a Partner to manage their access.',
+                    )}
+                  </p>
+                </div>
+                <Button disabled={busy} onClick={() => setView('add')}>
+                  {t('Add Partner')}
+                </Button>
+              </div>
+              <form
+                className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setCursors([null]);
+                  setFilters({
+                    search: directorySearch.trim(),
+                    status: directoryStatus,
+                  });
+                }}
+              >
+                <div className="min-w-0 flex-1">
+                  <label
+                    htmlFor="partner-directory-search"
+                    className="text-sm font-medium"
+                  >
+                    {t('Search Partners')}
+                  </label>
+                  <Input
+                    id="partner-directory-search"
+                    type="search"
+                    className="mt-2"
+                    maxLength={120}
+                    value={directorySearch}
+                    onChange={(event) => setDirectorySearch(event.target.value)}
+                    placeholder={t('Name, company or email')}
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="partner-directory-status"
+                    className="text-sm font-medium"
+                  >
+                    {t('Access status')}
+                  </label>
+                  <select
+                    id="partner-directory-status"
+                    className={selectStyle}
+                    value={directoryStatus}
+                    onChange={(event) =>
+                      setDirectoryStatus(
+                        event.target.value as typeof directoryStatus,
+                      )
+                    }
+                  >
+                    <option value="all">{t('All statuses')}</option>
+                    <option value="active">{t('Active')}</option>
+                    <option value="pending">{t('Awaiting approval')}</option>
+                    <option value="inactive">{t('Inactive')}</option>
+                  </select>
+                </div>
+                <Button
+                  type="submit"
+                  variant="outline"
+                  disabled={list.isFetching}
+                >
+                  {t('Search')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={list.isFetching}
+                  onClick={() => void list.refetch()}
+                >
+                  {t('Refresh')}
+                </Button>
+              </form>
+              {list.isPending ? (
+                <p role="status" className="py-8 text-sm">
+                  {t('Loading Partners…')}
                 </p>
+              ) : list.isError ? (
+                <div role="alert" className="py-8 text-sm">
+                  <p>
+                    {t(
+                      'The directory could not load. Refresh to check your access and try again.',
+                    )}
+                  </p>
+                </div>
+              ) : !list.data?.partners.length ? (
+                <div className="py-10 text-sm">
+                  <p className="font-medium">
+                    {filters.search || filters.status !== 'all'
+                      ? t('No Partners match these filters.')
+                      : t('No Partners yet.')}
+                  </p>
+                  <p className="mt-2 text-gray-11">
+                    {filters.search || filters.status !== 'all'
+                      ? t('Try another name, company or status.')
+                      : t(
+                          'Add your first Partner, or create a private setup link.',
+                        )}
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-5 overflow-x-auto rounded-md border border-gray-6">
+                  <table className="w-full text-left text-sm">
+                    <caption className="sr-only">
+                      {t('Partners and their operational client access')}
+                    </caption>
+                    <thead className="bg-gray-2 text-xs text-gray-11">
+                      <tr>
+                        <th scope="col" className="p-3 font-medium">
+                          {t('Partner')}
+                        </th>
+                        <th
+                          scope="col"
+                          className="hidden p-3 font-medium md:table-cell"
+                        >
+                          {t('Company / workspace')}
+                        </th>
+                        <th scope="col" className="p-3 font-medium">
+                          {t('Access')}
+                        </th>
+                        <th
+                          scope="col"
+                          className="hidden p-3 font-medium md:table-cell"
+                        >
+                          {t('Clients')}
+                        </th>
+                        <th scope="col" className="p-3">
+                          <span className="sr-only">{t('Actions')}</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-6">
+                      {list.data.partners.map((item) => (
+                        <tr key={item.identityId}>
+                          <th
+                            scope="row"
+                            className="max-w-[240px] p-3 font-normal"
+                          >
+                            <span className="block break-words font-medium">
+                              {name(item)}
+                            </span>
+                            <span className="mt-1 block break-all text-xs text-gray-11">
+                              {item.email}
+                            </span>
+                            <span className="mt-1 block break-words text-xs text-gray-11 md:hidden">
+                              {item.workspaces[0]?.name ??
+                                t('No workspace yet')}
+                            </span>
+                          </th>
+                          <td className="hidden max-w-[200px] break-words p-3 md:table-cell">
+                            {item.workspaces[0]?.name ?? t('No workspace yet')}
+                          </td>
+                          <td className="p-3">
+                            <span className="text-xs">
+                              {item.role !== 'partner'
+                                ? t('Awaiting approval')
+                                : item.active
+                                ? t('Active')
+                                : t('Inactive')}
+                            </span>
+                          </td>
+                          <td className="hidden p-3 tabular-nums md:table-cell">
+                            {
+                              item.assignments.filter(
+                                (assignment) => assignment.active,
+                              ).length
+                            }
+                          </td>
+                          <td className="p-3 text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={busy}
+                              onClick={() => select(item)}
+                              aria-label={t('Manage {email}', {
+                                email: item.email,
+                              })}
+                            >
+                              {t('Manage')}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
-            <div className="mt-4 flex flex-wrap gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy || list.isFetching || cursors.length === 1}
-                onClick={() => setCursors((values) => values.slice(0, -1))}
-              >
-                {t('Previous partners')}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy || list.isFetching || !list.data?.next}
-                onClick={() =>
-                  setCursors((values) => [...values, list.data?.next ?? null])
-                }
-              >
-                {t('More partners')}
-              </Button>
-            </div>
-          </section>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-gray-11" aria-live="polite">
+                  {list.data
+                    ? `${list.data.total ?? list.data.partners.length} ${t(
+                        'Partners found',
+                      )} · ${t('Page')} ${cursors.length}`
+                    : ''}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy || list.isFetching || cursors.length === 1}
+                    onClick={() => setCursors((values) => values.slice(0, -1))}
+                  >
+                    {t('Previous')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy || list.isFetching || !list.data?.next}
+                    onClick={() =>
+                      setCursors((values) => [
+                        ...values,
+                        list.data?.next ?? null,
+                      ])
+                    }
+                  >
+                    {t('Next')}
+                  </Button>
+                </div>
+              </div>
+            </section>
+          )}
         </>
       )}
     </main>

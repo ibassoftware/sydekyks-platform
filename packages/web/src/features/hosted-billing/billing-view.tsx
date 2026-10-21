@@ -1,7 +1,6 @@
 import {
   HostedBillingActionReason,
   HostedCustomerBillingOverview,
-  hostingCatalog,
 } from '@activepieces/shared';
 import { t } from 'i18next';
 import { ExternalLink, RefreshCw } from 'lucide-react';
@@ -53,12 +52,27 @@ export function HostedBillingView({
       : intent?.offer === 'partner-guided'
       ? 'guided'
       : null;
+  const partner =
+    info.accountKind === 'partner' ||
+    (!info.accountKind && ['training', 'assessment'].includes(info.planId));
+  const eligiblePlans = partner
+    ? []
+    : info.plans.filter(
+        (plan) => plan.checkout.enabled || plan.checkout.continuing,
+      );
+  const showPartnerPurchase =
+    !partner && info.planId === 'trial' && selectedPackage !== null;
+  const currentPlan = info.plans.find((plan) => plan.id === info.planId);
   const manual = info.billingMode === 'manual';
   const blocked = stale || refreshing || pending !== null;
   return (
     <CenteredPage
-      title={t('Billing & subscription')}
-      description={t('Your hosted plan, Credits and payments.')}
+      title={t('Billing')}
+      description={
+        partner
+          ? t('Your Partner package, hosting term and Credits.')
+          : t('Your workspace plan, Credits and payments.')
+      }
       widthClassName="max-w-[56rem]"
       actions={
         <Button
@@ -74,18 +88,16 @@ export function HostedBillingView({
       }
     >
       <div className="space-y-6">
-        <CheckoutIntentReview />
-        <Alert role="status">
-          <AlertDescription>
-            {manual
-              ? t(
-                  'Payments are handled directly by Sydekyks. Contact the team to arrange a plan, renewal or invoice. Online checkout is unavailable.',
-                )
-              : t(
-                  'Test billing. Stripe actions use test mode; no live payments are enabled.',
-                )}
-          </AlertDescription>
-        </Alert>
+        {!partner && <CheckoutIntentReview />}
+        {!manual && (
+          <Alert role="status">
+            <AlertDescription>
+              {t(
+                'Test billing. Stripe actions use test mode; no live payments are enabled.',
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
         {stale && (
           <Notice>
             {t(
@@ -132,39 +144,73 @@ export function HostedBillingView({
         <section aria-labelledby="hosted-current-plan" className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 id="hosted-current-plan" className="text-base font-semibold">
-              {planName(info.planId)}
+              {partner ? partnerPackageName(info) : planName(info.planId)}
             </h2>
             <span className="rounded-md border px-2 py-1 text-xs font-medium">
               {stateName(info.entitlementState)}
             </span>
           </div>
           <p className="text-sm text-gray-11">
-            {info.planId === 'trial'
+            {partner
+              ? info.planId === 'assessment'
+                ? t(
+                    'Assessment access includes a one-time Credit allowance. Contact Sydekyks to discuss training enrollment.',
+                  )
+                : t(
+                    'Your included Partner workspace uses the Credits below. Continuing hosting after the funded term requires a separate agreement.',
+                  )
+              : info.planId === 'trial'
               ? t(
-                  'Trial ends {date}. The trial has a time limit and limited allowances; there is no ongoing free hosted plan.',
-                  { date: date(info.trialEndsAt) },
-                )
-              : info.planId === 'assessment'
-              ? t(
-                  'Assessment access ends {date}. This is a one-time allowance for your assessment, with no renewal or rollover.',
-                  { date: date(info.validUntil) },
-                )
-              : info.planId === 'training'
-              ? t(
-                  'Included hosting ends {date}. The Credit period below shows your next refresh; unused Credits do not roll over.',
-                  { date: date(info.validUntil) },
+                  'Your trial has limited time and Credits. Contact Sydekyks to arrange continued hosting.',
                 )
               : t(
-                  'Workspace access ends {date}, including any applicable renewal grace period. Renewing adds Credits only after verified payment.',
-                  { date: date(info.validUntil) },
+                  'Your plan and Credits are shared across this workspace. Assigned Partner and Sydekyks support access does not use client seats.',
                 )}
           </p>
+          <dl className="grid gap-x-6 gap-y-4 rounded-lg bg-gray-2 p-4 text-sm sm:grid-cols-3">
+            <Detail
+              label={
+                info.planId === 'trial' ? t('Trial ends') : t('Hosting ends')
+              }
+              value={recordedDate(
+                info.hostingEndsAt ??
+                  (info.planId === 'trial' ? info.trialEndsAt : null),
+              )}
+            />
+            <Detail
+              label={t('Renewal')}
+              value={
+                info.renewalDueAt
+                  ? date(info.renewalDueAt)
+                  : info.planId === 'assessment'
+                  ? t('One-time assessment')
+                  : partner
+                  ? t('Arrange with Sydekyks')
+                  : t('No renewal date recorded')
+              }
+            />
+            <Detail
+              label={t('Next Credit allowance')}
+              value={
+                info.nextCreditAllowanceAt
+                  ? date(info.nextCreditAllowanceAt)
+                  : t('No funded allowance scheduled')
+              }
+            />
+          </dl>
           {(info.entitlementState === 'expired' ||
             info.entitlementState === 'paused') && (
             <p className="text-sm">
               {t(
                 'New work is unavailable until your account has an active entitlement. Previously held credits may still settle.',
               )}
+            </p>
+          )}
+          {currentPlan?.price && (
+            <p className="text-sm font-medium tabular-nums">
+              {t('Plan price: {price} / month', {
+                price: price(currentPlan.price),
+              })}
             </p>
           )}
           <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
@@ -183,7 +229,7 @@ export function HostedBillingView({
               })}
             />
             <Detail
-              label={t('Concurrent executions')}
+              label={t('Work in progress')}
               value={t('{used} of {limit}', {
                 used: info.usage.activeExecutions,
                 limit: info.limits.concurrency,
@@ -206,172 +252,131 @@ export function HostedBillingView({
         <section aria-labelledby="hosted-allowances" className="space-y-4">
           <div>
             <h2 id="hosted-allowances" className="text-base font-semibold">
-              {t('Usage & allowances')}
+              {t('Credits')}
             </h2>
             <p className="mt-1 text-sm text-gray-11">
               {t(
-                'One Credit starts a workflow or message. Sydekyks AI calls use additional Credits based on actual usage, rounded up per call. Held Credits reserve the maximum charge for work in progress; unused holds are released.',
+                'Workflows, messages and Sydekyks AI use this shared balance. Held Credits are reserved for work in progress; unused holds return to your available balance. Unused Credits do not roll over.',
               )}
             </p>
           </div>
-          <p className="text-sm text-muted-foreground">
-            {t(
-              'New Sydekyks AI calls use 2 Credits per US${cost} of supplier cost, rounded up per call. Existing holds keep their recorded rate.',
-              {
-                cost: (
-                  (hostingCatalog.aiMicroUsdPerCredit * 2) /
-                  1_000_000
-                ).toFixed(4),
-              },
-            )}
-          </p>
           <Allowance
-            title={t('Credits')}
+            title={t('Current Credit period')}
             meter={info.meters.execution}
             format={quantity}
           />
-          <div className="rounded-lg bg-gray-2 p-4 text-sm">
-            <h3 className="font-medium">
-              {t('Bring your own key on every plan')}
-            </h3>
-            <p className="mt-1 text-gray-11">
-              {t(
-                'BYOK uses Credits for workflow runs, with no additional managed-AI charge. Your provider bills AI usage separately. BYOK currently supports DeepSeek.',
-              )}
-            </p>
-          </div>
+          <p className="text-sm text-gray-11">
+            {t(
+              'With your own AI key, workflow runs use Credits and your provider bills AI usage separately.',
+            )}
+          </p>
         </section>
-        <Separator />
-        <section aria-labelledby="hosted-plans" className="space-y-4">
-          <div>
-            <h2 id="hosted-plans" className="text-base font-semibold">
-              {t('Hosted plans')}
-            </h2>
-            <p className="mt-1 text-sm text-gray-11">
-              {t(
-                'Credits and user limits are shared by one workspace. Assigned Partner and Sydekyks support access does not use client seats. Plan changes currently require the Sydekyks team.',
-              )}
-            </p>
-          </div>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            {info.plans.map((plan) => (
-              <article
-                key={plan.id}
-                aria-labelledby={`hosted-plan-${plan.id}`}
-                className="flex flex-col rounded-lg border p-5"
-              >
-                {selectedPlan === plan.id && (
-                  <p className="mb-2 text-sm font-medium">
-                    {t('Selected for review')}
-                  </p>
-                )}
-                <h3 id={`hosted-plan-${plan.id}`} className="font-semibold">
-                  {planName(plan.id)}
-                </h3>
-                <p className="mt-2 text-xl font-medium">
-                  {plan.price
-                    ? t('{price} / month', { price: price(plan.price) })
-                    : manual
-                    ? t('Arrange with Sydekyks')
-                    : t('Purchasing unavailable')}
-                </p>
-                <ul className="my-4 space-y-2 text-sm text-gray-11">
-                  <li>
-                    {t('{users} members · {projects} projects', {
-                      users: plan.limits.users,
-                      projects: plan.limits.projects,
-                    })}
-                  </li>
-                  <li>
-                    {t('{credits} Credits', {
-                      credits: quantity(String(plan.limits.executions)),
-                    })}
-                  </li>
-                  <li>
-                    {t('{count} concurrent executions', {
-                      count: plan.limits.concurrency,
-                    })}
-                  </li>
-                  <li>{t('BYOK included')}</li>
-                  <li>{t('Sydekyks AI uses the same Credits balance')}</li>
-                </ul>
-                <div className="mt-auto space-y-2">
-                  {plan.salesAssisted ? (
-                    <p className="text-sm leading-6">
-                      {t(
-                        'Contact Sydekyks for a capacity review before activating Scale.',
-                      )}
-                    </p>
-                  ) : manual ? (
-                    <p className="text-sm leading-6">
-                      {t(
-                        'Contact Sydekyks to request this plan. Access and renewal dates change only after the team confirms your payment and entitlement.',
-                      )}
-                    </p>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      disabled={blocked || !plan.checkout.enabled}
-                      onClick={() => onCheckout(plan.id)}
-                      aria-describedby={`hosted-plan-reason-${plan.id}`}
-                      aria-busy={pending === plan.id}
-                    >
-                      {pending === plan.id
-                        ? t('Opening Checkout…')
-                        : plan.checkout.continuing
-                        ? t('Continue test Checkout')
-                        : t('Choose {plan} in test mode', {
-                            plan: planName(plan.id),
-                          })}
-                    </Button>
+        {eligiblePlans.length > 0 && (
+          <>
+            <Separator />
+            <section aria-labelledby="hosted-plans" className="space-y-4">
+              <div>
+                <h2 id="hosted-plans" className="text-base font-semibold">
+                  {t('Available plan options')}
+                </h2>
+                <p className="mt-1 text-sm text-gray-11">
+                  {t(
+                    'Review the plan before continuing to test Checkout. Access changes only after verified payment.',
                   )}
-                  <p
-                    id={`hosted-plan-reason-${plan.id}`}
-                    className="min-h-10 text-xs text-gray-11"
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                {eligiblePlans.map((plan) => (
+                  <article
+                    key={plan.id}
+                    aria-labelledby={`hosted-plan-${plan.id}`}
+                    className="flex flex-col rounded-lg border p-5"
                   >
-                    {reason(plan.checkout.reason)}
-                  </p>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-        <section aria-labelledby="hosted-enterprise" className="space-y-2">
-          <h3 id="hosted-enterprise" className="font-semibold">
-            {t('Enterprise')}
-          </h3>
-          <p className="text-sm text-gray-11">
-            {t(
-              'Custom Credits, users and support. Contact Sydekyks to agree capacity, requirements and pricing.',
-            )}
-          </p>
-        </section>
-        <Separator />
-        <section
-          aria-labelledby="hosted-partner-packages"
-          className="space-y-3"
-        >
-          <h2 id="hosted-partner-packages" className="text-base font-semibold">
-            {t('Partner training packages')}
-          </h2>
-          <p className="text-sm text-gray-11">
-            {t(
-              'Core: $1,000 once, including 2 coaching hours. Guided: $1,200 once, including 4 coaching hours and 1 written proposal review.',
-            )}
-          </p>
-          <p className="text-sm text-gray-11">
-            {t(
-              'Both include self-paced training, 2 certification assessment attempts, marketing resources, and 12 months of Partner workspace hosting with 10,000 monthly Credits. Clients subscribe separately. Certification and directory listing require qualification and approval.',
-            )}
-          </p>
-          <p className="text-sm text-gray-11">
-            {t(
-              'Access starts only after verified payment and enrollment. Continuing hosting after the included year is optional and requires a separate agreement. Prices are USD, before applicable taxes.',
-            )}
-          </p>
-          <PartnerPurchaseSection selectedPackage={selectedPackage} />
-        </section>
+                    {selectedPlan === plan.id && (
+                      <p className="mb-2 text-sm font-medium">
+                        {t('Selected for review')}
+                      </p>
+                    )}
+                    <h3 id={`hosted-plan-${plan.id}`} className="font-semibold">
+                      {planName(plan.id)}
+                    </h3>
+                    <p className="mt-2 text-xl font-medium">
+                      {plan.price
+                        ? t('{price} / month', { price: price(plan.price) })
+                        : manual
+                        ? t('Arrange with Sydekyks')
+                        : t('Purchasing unavailable')}
+                    </p>
+                    <ul className="my-4 space-y-2 text-sm text-gray-11">
+                      <li>
+                        {t('{users} members · {projects} projects', {
+                          users: plan.limits.users,
+                          projects: plan.limits.projects,
+                        })}
+                      </li>
+                      <li>
+                        {t('{credits} Credits', {
+                          credits: quantity(String(plan.limits.executions)),
+                        })}
+                      </li>
+                      <li>
+                        {t('{count} concurrent executions', {
+                          count: plan.limits.concurrency,
+                        })}
+                      </li>
+                      <li>{t('BYOK included')}</li>
+                      <li>{t('Sydekyks AI uses the same Credits balance')}</li>
+                    </ul>
+                    <div className="mt-auto space-y-2">
+                      {plan.salesAssisted ? (
+                        <p className="text-sm leading-6">
+                          {t(
+                            'Contact Sydekyks for a capacity review before activating Scale.',
+                          )}
+                        </p>
+                      ) : manual ? (
+                        <p className="text-sm leading-6">
+                          {t(
+                            'Contact Sydekyks to request this plan. Access and renewal dates change only after the team confirms your payment and entitlement.',
+                          )}
+                        </p>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          disabled={blocked || !plan.checkout.enabled}
+                          onClick={() => onCheckout(plan.id)}
+                          aria-describedby={`hosted-plan-reason-${plan.id}`}
+                          aria-busy={pending === plan.id}
+                        >
+                          {pending === plan.id
+                            ? t('Opening Checkout…')
+                            : plan.checkout.continuing
+                            ? t('Continue test Checkout')
+                            : t('Choose {plan} in test mode', {
+                                plan: planName(plan.id),
+                              })}
+                        </Button>
+                      )}
+                      <p
+                        id={`hosted-plan-reason-${plan.id}`}
+                        className="min-h-10 text-xs text-gray-11"
+                      >
+                        {reason(plan.checkout.reason)}
+                      </p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
+        {showPartnerPurchase && (
+          <PartnerPurchaseSection
+            selectedPackage={selectedPackage}
+            disabled={blocked}
+          />
+        )}
         <Separator />
         <section aria-labelledby="hosted-payments" className="space-y-3">
           <h2 id="hosted-payments" className="text-base font-semibold">
@@ -380,7 +385,7 @@ export function HostedBillingView({
           <p className="text-sm text-gray-11">
             {manual
               ? t(
-                  'Ask the Sydekyks team for payment instructions, invoices, changes or cancellation. This page shows your current recorded access and Credits; it does not collect payment.',
+                  'Request payment instructions or an invoice from the Sydekyks team. Include your workspace name and the package or hosting term concerned. The team can also arrange changes or cancellation.',
                 )
               : t(
                   'Use Stripe to manage payment details, view invoices or cancel at the end of the paid period. Cancellation does not add a free hosted plan.',
@@ -400,9 +405,11 @@ export function HostedBillingView({
               <ExternalLink className="ml-2 size-4" aria-hidden="true" />
             </Button>
           )}
-          <p id="hosted-portal-reason" className="text-xs text-gray-11">
-            {reason(info.portal.reason)}
-          </p>
+          {!manual && (
+            <p id="hosted-portal-reason" className="text-xs text-gray-11">
+              {reason(info.portal.reason)}
+            </p>
+          )}
         </section>
         <p className="text-xs text-gray-11" role="status">
           {t('Last verified {date}', {
@@ -439,7 +446,7 @@ function Allowance({
         <Detail label={t('Available')} value={format(meter.available)} />
         <Detail label={t('Used')} value={format(meter.consumed)} />
         <Detail label={t('Held')} value={format(meter.reserved)} />
-        <Detail label={t('Allowance')} value={format(meter.amount)} />
+        <Detail label={t('Period allowance')} value={format(meter.amount)} />
       </dl>
       {meter.state !== 'active' && (
         <p className="mt-3 text-xs text-gray-11">
@@ -467,6 +474,15 @@ function Notice({ children }: { children: ReactNode }) {
       <AlertDescription>{children}</AlertDescription>
     </Alert>
   );
+}
+function partnerPackageName(info: HostedCustomerBillingOverview) {
+  if (info.planId === 'assessment') return t('Partner assessment');
+  if (info.trainingPackage === 'core') return t('Partner Core');
+  if (info.trainingPackage === 'launch') return t('Partner Guided');
+  return t('Partner training');
+}
+function recordedDate(value: string | null | undefined) {
+  return value ? date(value) : t('Not recorded');
 }
 function date(value: string) {
   return new Date(value).toLocaleDateString(undefined, {

@@ -11,6 +11,7 @@ import React from 'react';
 import { CardList } from '@/components/custom/card-list';
 import { useTelemetry } from '@/components/providers/telemetry-provider';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import {
   PieceSelectorItem,
   PieceSelectorOperation,
@@ -74,6 +75,7 @@ export const PieceActionsOrTriggersList: React.FC<
   operation,
 }) => {
   const { capture } = useTelemetry();
+  const hosted = useHostedBillingEnabled();
   const { searchQuery } = usePieceSearchContext();
   const [handleAddingOrUpdatingStep] = useBuilderStateContext((state) => [
     state.handleAddingOrUpdatingStep,
@@ -89,6 +91,14 @@ export const PieceActionsOrTriggersList: React.FC<
 
   const actionsOrTriggers = convertStepMetadataToPieceSelectorItems(
     stepMetadataWithSuggestions,
+  ).filter(
+    (item) =>
+      !(
+        hosted &&
+        item.type === FlowActionType.PIECE &&
+        item.pieceMetadata.pieceName === '@activepieces/piece-ai' &&
+        item.actionOrTrigger.name === 'generateImage'
+      ),
   );
   return (
     <ScrollArea className="h-full" viewPortClassName="h-full">

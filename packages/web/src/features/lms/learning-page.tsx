@@ -1,8 +1,3 @@
-import {
-  ApFlagId,
-  HOSTED_RUNTIME_CAPABILITIES,
-  HOSTED_RUNTIME_PROFILE,
-} from '@activepieces/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronRight, GraduationCap } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -10,8 +5,10 @@ import { Link } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
-import { flagsHooks } from '@/hooks/flags-hooks';
+import {
+  useHostedBillingEnabled,
+  useHostedRuntimeReady,
+} from '@/features/hosted-billing/service-mode';
 
 import { Exam, lmsApi } from './lms-api';
 import { LmsOperator } from './operator';
@@ -20,13 +17,7 @@ import { useLmsSession } from './session';
 export function LearningPage() {
   const scope = useLmsSession();
   const hosted = useHostedBillingEnabled();
-  const { data: flags } = flagsHooks.useFlags();
-  const capabilities: unknown = flags[ApFlagId.HOSTED_RUNTIME_CAPABILITIES];
-  const pilotReady =
-    flags[ApFlagId.HOSTED_RUNTIME_PROFILE] === HOSTED_RUNTIME_PROFILE &&
-    Array.isArray(capabilities) &&
-    capabilities.length === HOSTED_RUNTIME_CAPABILITIES.length &&
-    HOSTED_RUNTIME_CAPABILITIES.every((value) => capabilities.includes(value));
+  const pilotReady = useHostedRuntimeReady();
   return (
     <>
       <header className="mx-auto flex w-full max-w-6xl px-4 pt-6 md:px-8">
@@ -167,7 +158,7 @@ function LearningSession({
       setMessage('Saved.');
     } catch {
       setMessage(
-        'We could not save this change. Check your access and try again, or contact your instructor.'
+        'We could not save this change. Check your access and try again, or contact your instructor.',
       );
     } finally {
       setBusy(false);
@@ -215,18 +206,17 @@ function LearningSession({
           className="mb-6 border-y border-gray-6 py-4"
         >
           <h2 id="learning-pilot-scope" className="font-semibold">
-            Hosted pilot: manual calculations and AI drafts
+            Practice in your workspace
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-11">
-            Start your pilot workflows manually. Use Code and Ask AI, then
-            review drafts yourself before sharing. Sydekyks chat supports
-            conversation only.
+            Build Agents and workflows with the Gadgets available in your
+            workspace. Sydekyks AI uses your Credits; connected services may
+            require your own account. Review outputs before sharing them with a
+            client.
           </p>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-11">
-            Agents, webhooks, schedules, tools, file uploads, memory and
-            personalization are unavailable. You cannot pause for approval,
-            resume a run, start another workflow from a workflow, or cancel
-            queued runs. Include only available features in client proposals.
+            Use only configured tools and connections. Remote MCP and provider
+            search or image tools are not included in this hosted release.
           </p>
           {!pilotReady && (
             <p role="status" className="mt-3 text-sm">
@@ -369,7 +359,7 @@ function LearningSession({
                   )}
                 {course.certificationMode === 'none' &&
                   course.lessons.every((item) =>
-                    enrollment.completedLessons.includes(item.id)
+                    enrollment.completedLessons.includes(item.id),
                   ) && (
                     <p className="mt-6 font-medium" role="status">
                       All lessons complete. This course does not issue a partner
@@ -384,8 +374,8 @@ function LearningSession({
                         lmsApi.progress(
                           enrollmentId,
                           lesson.id,
-                          !enrollment.completedLessons.includes(lesson.id)
-                        )
+                          !enrollment.completedLessons.includes(lesson.id),
+                        ),
                       )
                     }
                   >
@@ -436,7 +426,7 @@ function LearningSession({
                     {enrollment.assessment.revoked
                       ? 'Assessment workspace access has been revoked.'
                       : `Your one-time assessment workspace allowance ends ${new Date(
-                          enrollment.assessment.endsAt
+                          enrollment.assessment.endsAt,
                         ).toLocaleString()}. Usage and dates do not restart.`}
                   </p>
                 )}
@@ -582,9 +572,9 @@ function WrittenExam({
         Math.max(
           0,
           Math.ceil(
-            (new Date(exam.deadline).getTime() - Date.now() - offset) / 1000
-          )
-        )
+            (new Date(exam.deadline).getTime() - Date.now() - offset) / 1000,
+          ),
+        ),
       );
     tick();
     const timer = window.setInterval(tick, 1000);
@@ -602,7 +592,7 @@ function WrittenExam({
         });
     } catch {
       setError(
-        'Your answer could not be saved. Check your connection and try again. The exam clock continues.'
+        'Your answer could not be saved. Check your connection and try again. The exam clock continues.',
       );
     } finally {
       setBusy(false);
@@ -676,7 +666,7 @@ function WrittenExam({
                             lmsApi.saveExam(enrollmentId, exam.id, {
                               ...exam.answers,
                               [question.id]: optionIndex,
-                            })
+                            }),
                           )
                         }
                       />
@@ -692,7 +682,7 @@ function WrittenExam({
               disabled={busy}
               onClick={() =>
                 act(() =>
-                  lmsApi.saveExam(enrollmentId, exam.id, exam.answers, true)
+                  lmsApi.saveExam(enrollmentId, exam.id, exam.answers, true),
                 )
               }
             >

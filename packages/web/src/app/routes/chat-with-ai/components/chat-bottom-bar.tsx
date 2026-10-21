@@ -158,7 +158,13 @@ export function ChatBottomBar({
               : placeholder ?? t('Reply...')
           }
           rightActions={
-            hostedChat ? (
+            hostedChat?.scope.nativeAgent ? (
+              <span className="px-2 text-xs text-gray-11">
+                {hostedChat.payer?.type === 'byok'
+                  ? t('BYOK · Agent configuration')
+                  : t('Sydekyks')}
+              </span>
+            ) : hostedChat ? (
               <HostedChatSelector disabled={isStreaming} />
             ) : hideModelSelector === true ? null : (
               <ChatModelSelector
@@ -168,6 +174,13 @@ export function ChatBottomBar({
             )
           }
         />
+        {hostedChat && (
+          <p className="px-3 pb-2 text-xs leading-5 text-gray-11">
+            {t(
+              'Direct attachments, native image generation and web search are not available in hosted chat. Use configured app tools or knowledge sources for supported tasks.',
+            )}
+          </p>
+        )}
         <HostedChatBillingNote />
       </div>
     </div>

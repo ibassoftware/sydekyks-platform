@@ -1,4 +1,3 @@
-import { ClientCreditAllowanceSection } from './credit-allowance-section';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
@@ -15,6 +14,7 @@ import {
   saveAiSettings,
   useAiSettings,
 } from './ai-settings-api';
+import { ClientCreditAllowanceSection } from './credit-allowance-section';
 import { managedAiNextStep } from './managed-ai-entry';
 import { operatorClientsQuery, useHostedOperatorAccess } from './operator-api';
 
@@ -51,12 +51,12 @@ function SessionSettings({ access }: { access: Access }) {
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const after = cursors[cursors.length - 1];
   const clients = useQuery(
-    operatorClientsQuery(access.session, after, access.allowed)
+    operatorClientsQuery(access.session, after, access.allowed),
   );
   const settings = useAiSettings(
     access.session,
     access.allowed,
-    target || undefined
+    target || undefined,
   );
   const global = useAiSettings(access.session, access.allowed);
   const scopeAvailable =
@@ -66,7 +66,7 @@ function SessionSettings({ access }: { access: Access }) {
     setTarget('');
     setTargetName('Global default');
     setCursors((values) =>
-      next ? [...values, clients.data?.next ?? null] : values.slice(0, -1)
+      next ? [...values, clients.data?.next ?? null] : values.slice(0, -1),
     );
   }
   return (
@@ -74,9 +74,8 @@ function SessionSettings({ access }: { access: Access }) {
       <header>
         <h1 className="text-xl font-semibold">Managed AI settings</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-11">
-          Configure the operator-funded service shown to customers as Sydekyks.
-          Global defaults apply unless a client has an explicit override. Client
-          BYOK remains a separate connection and payer.
+          Set the shared Sydekyks service or a client override. Customer-owned
+          AI keys are managed separately.
         </p>
       </header>
       {!access.hosted || access.session.kind !== 'user' ? (
@@ -95,12 +94,9 @@ function SessionSettings({ access }: { access: Access }) {
         <>
           <section aria-labelledby="settings-scope" className="max-w-3xl">
             <h2 id="settings-scope" className="text-lg font-semibold">
-              Choose the settings scope
+              Settings scope
             </h2>
-            <label
-              htmlFor="ai-settings-scope"
-              className="mt-4 block text-sm font-medium"
-            >
+            <label htmlFor="ai-settings-scope" className="sr-only">
               Global default or client workspace
             </label>
             <select
@@ -126,22 +122,26 @@ function SessionSettings({ access }: { access: Access }) {
               </p>
             )}
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={cursors.length === 1 || clients.isFetching}
-                onClick={() => page(false)}
-              >
-                Previous clients
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!clients.data?.next || clients.isFetching}
-                onClick={() => page(true)}
-              >
-                More clients
-              </Button>
+              {(cursors.length > 1 || clients.data?.next) && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={cursors.length === 1 || clients.isFetching}
+                    onClick={() => page(false)}
+                  >
+                    Previous clients
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!clients.data?.next || clients.isFetching}
+                    onClick={() => page(true)}
+                  >
+                    More clients
+                  </Button>
+                </>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -190,11 +190,13 @@ function SessionSettings({ access }: { access: Access }) {
                   }}
                 />
               )}
-              <ClientCreditAllowanceSection
-                access={access}
-                platformId={target}
-                clientName={targetName}
-              />
+              {target && (
+                <ClientCreditAllowanceSection
+                  access={access}
+                  platformId={target}
+                  clientName={targetName}
+                />
+              )}
               {global.data && !global.isError && (
                 <PricingReview
                   key={`${global.data.pricing.revision}:${global.data.pricing.observationId}`}
@@ -227,10 +229,10 @@ function SettingsEditor({
   const cache = useQueryClient();
   const isClient = state.scopePlatformId !== null;
   const [mode, setMode] = useState(
-    !isClient && state.mode === 'inherit' ? 'set' : state.mode
+    !isClient && state.mode === 'inherit' ? 'set' : state.mode,
   );
   const [model, setModel] = useState<'inherit' | ManagedModel>(
-    state.model ?? (isClient ? 'inherit' : 'deepseek-flash')
+    state.model ?? (isClient ? 'inherit' : 'deepseek-flash'),
   );
   const [credentialAction, setCredentialAction] = useState<
     'keep' | 'replace' | 'inherit'
@@ -239,7 +241,7 @@ function SettingsEditor({
       ? 'inherit'
       : state.credential.configured
       ? 'keep'
-      : 'replace'
+      : 'replace',
   );
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -282,7 +284,7 @@ function SettingsEditor({
         (!key || /\s/.test(key) || key.length < 16 || key.length > 512)
       ) {
         setStatus(
-          'Enter a provider key between 16 and 512 characters, without spaces.'
+          'Enter a provider key between 16 and 512 characters, without spaces.',
         );
         return;
       }
@@ -300,12 +302,12 @@ function SettingsEditor({
           credentialAction: action,
           ...(key ? { apiKey: key } : {}),
         },
-        attempt.signal
+        attempt.signal,
       );
       assertAuthSession(access.session);
       if (!active.current || attempt.signal.aborted) return;
       setStatus(
-        'Settings saved. The displayed effective settings have been refreshed.'
+        'Settings saved. The displayed effective settings have been refreshed.',
       );
       await cache.invalidateQueries({ queryKey: ['hosted-ai-settings'] });
     } catch (error) {
@@ -333,8 +335,11 @@ function SettingsEditor({
             {isClient ? targetName : 'Global managed AI default'}
           </h2>
           <p className="mt-2 text-sm text-gray-11">
-            Saved revision {state.revision} · Global revision{' '}
-            {state.globalRevision}
+            {isClient
+              ? state.mode === 'inherit'
+                ? 'Inheriting the global default'
+                : 'Settings for this client only'
+              : 'Applies to clients without an override'}
           </p>
         </div>
         <Button variant="outline" disabled={busy} onClick={refresh}>
@@ -342,19 +347,19 @@ function SettingsEditor({
         </Button>
       </div>
       <dl className="my-5 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
-        <dt className="font-medium">Saved effective model</dt>
+        <dt className="font-medium">Saved model</dt>
         <dd>{modelName(state.effective.model)}</dd>
-        <dt className="font-medium">Managed service</dt>
+        <dt className="font-medium">Service readiness</dt>
         <dd>
           {globalState.mode === 'disabled'
             ? 'Paused globally for all clients'
             : state.effective.managedAvailable
-            ? 'Available with current approved pricing'
+            ? 'Ready'
             : state.mode === 'disabled'
             ? 'Disabled for this scope'
-            : 'Unavailable — check key configuration and pricing approval'}
+            : 'Setup required'}
         </dd>
-        <dt className="font-medium">Saved credential</dt>
+        <dt className="font-medium">Saved key</dt>
         <dd>
           {state.credential.configured
             ? `${
@@ -365,22 +370,36 @@ function SettingsEditor({
             : 'No effective key configured'}
         </dd>
       </dl>
-      {!isClient && state.mode === 'set' && (
-        <p className="mb-4 max-w-3xl text-sm leading-6">
-          This saved configuration is already the global Sydekyks default.
-          Clients inherit it unless they have an explicit override.
+      <p className="mb-4 max-w-3xl text-sm leading-6">
+        {managedAiNextStep(state, globalState.mode === 'disabled')}
+        {!state.effective.managedAvailable &&
+          state.credential.configured &&
+          state.effective.model &&
+          state.mode !== 'disabled' &&
+          globalState.mode !== 'disabled' && (
+            <>
+              {' '}
+              <a
+                href="#managed-pricing"
+                className="text-accent-11 underline underline-offset-4"
+              >
+                Review pricing approval
+              </a>
+            </>
+          )}
+      </p>
+      <details className="mb-5 text-sm">
+        <summary className="cursor-pointer font-medium">
+          Configuration details
+        </summary>
+        <p className="mt-2 text-gray-11">
+          Saved revision {state.revision} · Global revision{' '}
+          {state.globalRevision}
         </p>
-      )}
-      {!isClient && !state.effective.managedAvailable && (
-        <p className="mb-4 max-w-3xl text-sm leading-6">
-          {managedAiNextStep(state)}
-        </p>
-      )}
-      {state.effective.reason && (
-        <p className="mb-4 max-w-3xl text-sm leading-6 text-gray-11">
-          {state.effective.reason}
-        </p>
-      )}
+        {state.effective.reason && (
+          <p className="mt-2 text-gray-11">{state.effective.reason}</p>
+        )}
+      </details>
       <form className="max-w-3xl space-y-5" onSubmit={save} autoComplete="off">
         <div>
           <label className="block text-sm font-medium" htmlFor="managed-mode">
@@ -443,7 +462,7 @@ function SettingsEditor({
             disabled={disabledFields}
             onChange={(event) => {
               setCredentialAction(
-                event.target.value as typeof credentialAction
+                event.target.value as typeof credentialAction,
               );
               if (secret.current) secret.current.value = '';
             }}
@@ -486,8 +505,7 @@ function SettingsEditor({
               aria-describedby="managed-secret-help"
             />
             <p id="managed-secret-help" className="mt-2 text-sm text-gray-11">
-              Write-only. The value is cleared after submission and is never
-              returned by this panel.
+              Saved securely. The value is cleared after submission.
             </p>
           </div>
         )}
@@ -502,9 +520,9 @@ function SettingsEditor({
                   ? 'from the global default'
                   : 'selected for this scope'
               }.`}{' '}
-          {isClient
-            ? 'A managed override still uses the client’s normal monthly credits and operator spending caps. It does not change BYOK.'
-            : 'Model and key changes affect inheriting clients. A global pause applies to every client; BYOK is unchanged.'}
+          {!isClient &&
+            mode === 'disabled' &&
+            'This also pauses clients with overrides.'}
         </p>
         <Button type="submit" disabled={busy}>
           {busy ? 'Saving settings…' : 'Save managed AI settings'}
@@ -533,7 +551,7 @@ function PricingReview({
   const [confirmed, setConfirmed] = useState(false);
   const [status, setStatus] = useState('');
   const [approvalUntil, setApprovalUntil] = useState(
-    state.pricing.calendar.until.slice(0, 16)
+    state.pricing.calendar.until.slice(0, 16),
   );
   const controller = useRef<AbortController | null>(null);
   const active = useRef(true);
@@ -589,7 +607,7 @@ function PricingReview({
       setStatus(
         approve
           ? 'Published pricing and calendar approved.'
-          : 'Pricing observation requested. Refresh to check the result.'
+          : 'Pricing observation requested. Refresh to check the result.',
       );
       await cache.invalidateQueries({ queryKey: ['hosted-ai-settings'] });
     } catch (error) {
@@ -616,153 +634,174 @@ function PricingReview({
       <h2 id="managed-pricing" className="text-lg font-semibold">
         Published pricing and approval
       </h2>
-      <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-11">
-        The server observes the official price table. Review both models and the
-        published UTC schedule before approval. An unapproved change or expired
-        source blocks managed calls.
+      <p className="mt-2 text-sm text-gray-11">
+        {pricing.status === 'ready'
+          ? `Approved until ${date(pricing.approval?.validUntil ?? null)}.`
+          : `Action required: ${pricing.status.replaceAll('_', ' ')}.`}{' '}
+        Managed calls require current approved pricing.
       </p>
-      <dl className="my-5 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
-        <dt className="font-medium">Refresh status</dt>
-        <dd>{pricing.status.replaceAll('_', ' ')}</dd>
-        <dt className="font-medium">Last observation</dt>
-        <dd>{date(pricing.observedAt)}</dd>
-        <dt className="font-medium">Source confirmation valid until</dt>
-        <dd>{date(pricing.sourceValidUntil)}</dd>
-        <dt className="font-medium">Current approval expires</dt>
-        <dd>{date(pricing.approval?.validUntil ?? null)}</dd>
-        <dt className="font-medium">Published source</dt>
-        <dd>
-          <a
-            href={pricing.sourceUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="break-all text-accent-11 underline underline-offset-4"
-          >
-            Official DeepSeek pricing
-          </a>
-        </dd>
-        <dt className="font-medium">Peak / off-peak schedule</dt>
-        <dd className="max-w-2xl leading-6">{pricing.calendar.schedule}</dd>
-        <dt className="font-medium">Calendar version</dt>
-        <dd>{pricing.calendar.version}</dd>
-        <dt className="font-medium">UTC calendar validity</dt>
-        <dd>
-          {date(pricing.calendar.from)} — {date(pricing.calendar.until)}
-        </dd>
-      </dl>
-      {pricing.terms ? (
-        <div
-          className="overflow-x-auto rounded-md border border-gray-6"
-          tabIndex={0}
-          role="region"
-          aria-label="Published model prices"
-        >
-          <table className="w-full min-w-[620px] text-left text-sm">
-            <caption className="p-3 text-left text-gray-11">
-              USD per million tokens · peak and off-peak windows use the
-              approved UTC calendar
-            </caption>
-            <thead>
-              <tr className="border-b border-gray-6">
-                <th className="p-3">Model / window</th>
-                <th className="p-3">Input cache hit</th>
-                <th className="p-3">Input cache miss</th>
-                <th className="p-3">Output</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(Object.keys(names) as ManagedModel[]).flatMap((model) =>
-                (['peak', 'offPeak'] as const).map((window) => (
-                  <tr
-                    key={`${model}-${window}`}
-                    className="border-b border-gray-6 last:border-0"
-                  >
-                    <th className="p-3 font-medium">
-                      {names[model]} · {window === 'peak' ? 'Peak' : 'Off-peak'}
-                    </th>
-                    <td className="p-3 tabular-nums">
-                      {money(pricing.terms!.models[model][window].cacheHit)}
-                    </td>
-                    <td className="p-3 tabular-nums">
-                      {money(pricing.terms!.models[model][window].cacheMiss)}
-                    </td>
-                    <td className="p-3 tabular-nums">
-                      {money(pricing.terms!.models[model][window].output)}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="text-sm">
-          No validated published price table is available yet. Request an
-          observation before approving.
-        </p>
-      )}
-      <div className="mt-5 flex flex-wrap gap-3">
-        <Button
-          variant="outline"
-          disabled={busy || pricing.status === 'checking'}
-          onClick={() => void action(false)}
-        >
-          {pricing.status === 'checking'
-            ? 'Checking official pricing…'
-            : 'Observe official pricing'}
-        </Button>
-        <Button variant="ghost" disabled={busy} onClick={refresh}>
-          Refresh pricing status
-        </Button>
-      </div>
-      <div className="mt-5 max-w-sm">
-        <label htmlFor="pricing-approval-until" className="text-sm font-medium">
-          Approval valid until (UTC)
-        </label>
-        <Input
-          id="pricing-approval-until"
-          type="datetime-local"
-          className="mt-2"
-          value={approvalUntil}
-          max={pricing.calendar.until.slice(0, 16)}
-          disabled={busy}
-          onChange={(event) => {
-            setConfirmed(false);
-            setApprovalUntil(event.target.value);
-          }}
-          aria-describedby="pricing-approval-help"
-        />
-        <p id="pricing-approval-help" className="mt-2 text-sm text-gray-11">
-          Approval can last until the verified calendar ends. The server keeps
-          checking published prices separately; stale or changed pricing pauses
-          managed calls until it is confirmed or approved again.
-        </p>
-      </div>
-      <label className="mt-5 flex max-w-3xl items-start gap-3 text-sm">
-        <input
-          type="checkbox"
-          className="mt-1"
-          checked={confirmed}
-          disabled={busy || !pricing.terms}
-          onChange={(event) => setConfirmed(event.target.checked)}
-        />
-        <span>
-          I reviewed this published price table and UTC calendar. Approve this
-          observation until {date(expires)}.
-        </span>
-      </label>
-      <Button
+      <details
         className="mt-4"
-        disabled={!canApprove}
-        onClick={() => void action(true)}
+        open={!state.effective.managedAvailable || pricing.status !== 'ready'}
       >
-        Approve observed pricing
-      </Button>
-      {status && (
-        <p role="status" className="mt-3 text-sm">
-          {status}
+        <summary className="cursor-pointer text-sm font-medium">
+          Review pricing and approval
+        </summary>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-gray-11">
+          Review both models and the UTC schedule before approving. Changed or
+          expired pricing pauses managed calls.
         </p>
-      )}
+        <details className="my-4 text-sm">
+          <summary className="cursor-pointer font-medium">
+            Observation and calendar details
+          </summary>
+          <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-[auto_1fr]">
+            <dt className="font-medium">Last observation</dt>
+            <dd>{date(pricing.observedAt)}</dd>
+            <dt className="font-medium">Source valid until</dt>
+            <dd>{date(pricing.sourceValidUntil)}</dd>
+            <dt className="font-medium">Approval expires</dt>
+            <dd>{date(pricing.approval?.validUntil ?? null)}</dd>
+            <dt className="font-medium">Published source</dt>
+            <dd>
+              <a
+                href={pricing.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent-11 underline underline-offset-4"
+              >
+                Official DeepSeek pricing
+              </a>
+            </dd>
+            <dt className="font-medium">Calendar version</dt>
+            <dd>{pricing.calendar.version}</dd>
+            <dt className="font-medium">UTC calendar validity</dt>
+            <dd>
+              {date(pricing.calendar.from)} — {date(pricing.calendar.until)}
+            </dd>
+          </dl>
+        </details>
+        <p className="mb-4 max-w-3xl text-sm leading-6">
+          <span className="font-medium">UTC pricing schedule: </span>
+          {pricing.calendar.schedule}
+        </p>
+        {pricing.terms ? (
+          <div
+            className="overflow-x-auto rounded-md border border-gray-6"
+            tabIndex={0}
+            role="region"
+            aria-label="Published model prices"
+          >
+            <table className="w-full min-w-[620px] text-left text-sm">
+              <caption className="p-3 text-left text-gray-11">
+                USD per million tokens · peak and off-peak windows use the
+                approved UTC calendar
+              </caption>
+              <thead>
+                <tr className="border-b border-gray-6">
+                  <th className="p-3">Model / window</th>
+                  <th className="p-3">Input cache hit</th>
+                  <th className="p-3">Input cache miss</th>
+                  <th className="p-3">Output</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(Object.keys(names) as ManagedModel[]).flatMap((model) =>
+                  (['peak', 'offPeak'] as const).map((window) => (
+                    <tr
+                      key={`${model}-${window}`}
+                      className="border-b border-gray-6 last:border-0"
+                    >
+                      <th className="p-3 font-medium">
+                        {names[model]} ·{' '}
+                        {window === 'peak' ? 'Peak' : 'Off-peak'}
+                      </th>
+                      <td className="p-3 tabular-nums">
+                        {money(pricing.terms!.models[model][window].cacheHit)}
+                      </td>
+                      <td className="p-3 tabular-nums">
+                        {money(pricing.terms!.models[model][window].cacheMiss)}
+                      </td>
+                      <td className="p-3 tabular-nums">
+                        {money(pricing.terms!.models[model][window].output)}
+                      </td>
+                    </tr>
+                  )),
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm">
+            No validated published price table is available yet. Request an
+            observation before approving.
+          </p>
+        )}
+        <div className="mt-5 flex flex-wrap gap-3">
+          <Button
+            variant="outline"
+            disabled={busy || pricing.status === 'checking'}
+            onClick={() => void action(false)}
+          >
+            {pricing.status === 'checking'
+              ? 'Checking official pricing…'
+              : 'Observe official pricing'}
+          </Button>
+          <Button variant="ghost" disabled={busy} onClick={refresh}>
+            Refresh pricing status
+          </Button>
+        </div>
+        <div className="mt-5 max-w-sm">
+          <label
+            htmlFor="pricing-approval-until"
+            className="text-sm font-medium"
+          >
+            Approval valid until (UTC)
+          </label>
+          <Input
+            id="pricing-approval-until"
+            type="datetime-local"
+            className="mt-2"
+            value={approvalUntil}
+            max={pricing.calendar.until.slice(0, 16)}
+            disabled={busy}
+            onChange={(event) => {
+              setConfirmed(false);
+              setApprovalUntil(event.target.value);
+            }}
+            aria-describedby="pricing-approval-help"
+          />
+          <p id="pricing-approval-help" className="mt-2 text-sm text-gray-11">
+            Cannot exceed the verified calendar. Changed or stale pricing pauses
+            managed calls even before this date.
+          </p>
+        </div>
+        <label className="mt-5 flex max-w-3xl items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={confirmed}
+            disabled={busy || !pricing.terms}
+            onChange={(event) => setConfirmed(event.target.checked)}
+          />
+          <span>
+            I reviewed this published price table and UTC calendar. Approve this
+            observation until {date(expires)}.
+          </span>
+        </label>
+        <Button
+          className="mt-4"
+          disabled={!canApprove}
+          onClick={() => void action(true)}
+        >
+          Approve observed pricing
+        </Button>
+        {status && (
+          <p role="status" className="mt-3 text-sm">
+            {status}
+          </p>
+        )}
+      </details>
     </section>
   );
 }

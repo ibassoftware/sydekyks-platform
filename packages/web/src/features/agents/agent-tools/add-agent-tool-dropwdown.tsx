@@ -9,6 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 
 import { useFlowToolDialogStore } from './stores/flows-tools';
 import { useMcpToolDialogStore } from './stores/mcp-tools';
@@ -26,6 +27,7 @@ export const AddToolDropdown = ({
   align,
 }: AddAgentToolDropdownProps) => {
   const [openDropdown, setOpenDropdown] = useState(false);
+  const hosted = useHostedBillingEnabled();
 
   const { setShowAddFlowDialog } = useFlowToolDialogStore();
   const { openAddPieceToolDialog } = usePieceToolsDialogStore();
@@ -54,10 +56,12 @@ export const AddToolDropdown = ({
           <span>{t('Flow tool')}</span>
         </DropdownMenuItem>
 
-        <DropdownMenuItem onSelect={() => setShowAddMcpDialog(true)}>
-          <McpSvg className="size-3.5 me-2" />
-          <span>{t('Mcp server')}</span>
-        </DropdownMenuItem>
+        {!hosted && (
+          <DropdownMenuItem onSelect={() => setShowAddMcpDialog(true)}>
+            <McpSvg className="size-3.5 me-2" />
+            <span>{t('Mcp server')}</span>
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

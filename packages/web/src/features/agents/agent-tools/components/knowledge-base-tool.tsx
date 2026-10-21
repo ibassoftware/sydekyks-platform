@@ -15,6 +15,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import { useIsPlatformAdmin } from '@/hooks/authorization-hooks';
 import { flagsHooks } from '@/hooks/flags-hooks';
 import { cn } from '@/lib/utils';
@@ -135,17 +136,19 @@ export const KnowledgeBaseSection = ({
   onToolsUpdate,
   layout = 'card',
 }: KnowledgeBaseSectionProps) => {
+  const hosted = useHostedBillingEnabled();
   const {
     data: embeddingSource,
     isError: embeddingSourceFailed,
     refetch: retryEmbeddingSource,
   } = useKnowledgeBaseEmbeddingSource();
   const supportsEmbeddings = !isNil(embeddingSource?.provider);
+  const supportsKnowledge = hosted || supportsEmbeddings;
   const { data: pgvectorAvailable } = flagsHooks.useFlag<boolean>(
     ApFlagId.PGVECTOR_AVAILABLE,
   );
 
-  if (pgvectorAvailable === false) {
+  if (!hosted && pgvectorAvailable === false) {
     return null;
   }
 
@@ -171,7 +174,7 @@ export const KnowledgeBaseSection = ({
               removeTool={removeTool}
             />
 
-            {supportsEmbeddings ? (
+            {supportsKnowledge ? (
               <div className="mt-4">
                 <AddKnowledgeBaseDropdown disabled={disabled} />
               </div>
@@ -184,7 +187,7 @@ export const KnowledgeBaseSection = ({
             )}
           </div>
         ) : asRows ? (
-          supportsEmbeddings ? (
+          supportsKnowledge ? (
             <AddKnowledgeBaseDropdown disabled={disabled}>
               <AddRow label={t('Add knowledge')} disabled={disabled} />
             </AddKnowledgeBaseDropdown>
@@ -200,7 +203,7 @@ export const KnowledgeBaseSection = ({
             <div className="flex items-center justify-center h-10 w-10 rounded-full border bg-gray-1">
               <BookOpen className="size-5" />
             </div>
-            {supportsEmbeddings ? (
+            {supportsKnowledge ? (
               <>
                 <p className="text-sm font-medium text-gray-11">
                   {t(
@@ -220,6 +223,13 @@ export const KnowledgeBaseSection = ({
         )}
       </div>
 
+      {hosted && !supportsEmbeddings && (
+        <p className="mt-2 text-xs leading-5 text-gray-11">
+          {t(
+            'Tables and existing indexed files are supported. New file uploads require configured file indexing.',
+          )}
+        </p>
+      )}
       <AgentKnowledgeBaseDialog
         tools={allTools}
         onToolsUpdate={onToolsUpdate}

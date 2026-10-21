@@ -30,6 +30,7 @@ vi.mock('./partner-purchase-api', () => ({
   partnerPurchaseApi: { status: mocks.status, checkout: mocks.checkout },
 }));
 let root: Root, container: HTMLDivElement, client: QueryClient;
+const pageText = () => container.textContent ?? '';
 const status = () => ({
   platformId: 'synthetic-platform',
   userId: 'synthetic-user',
@@ -38,12 +39,13 @@ const status = () => ({
   reason: null,
   purchase: null,
 });
-async function render() {
+async function render(disabled = false) {
+  // eslint-disable-next-line testing-library/no-unnecessary-act -- ReactDOM root.render requires act; this is not Testing Library render.
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <PartnerPurchaseSection selectedPackage="guided" />
-      </QueryClientProvider>
+        <PartnerPurchaseSection selectedPackage="guided" disabled={disabled} />
+      </QueryClientProvider>,
     );
   });
   await act(async () => {
@@ -75,11 +77,11 @@ describe('Partner purchase review', () => {
   it('preselects the reviewed package without starting a purchase and acts only on an explicit click', async () => {
     await render();
     expect(mocks.checkout).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('Selected on the website');
-    expect(container.textContent).toContain('10,000 Credits');
-    expect(container.textContent).toContain('independent assessment');
+    expect(pageText()).toContain('Selected on the website');
+    expect(pageText()).toContain('10,000 Credits');
+    expect(pageText()).toContain('independent assessment');
     const buy = [...container.querySelectorAll('button')].find((button) =>
-      button.textContent?.includes('Buy Guided')
+      button.textContent?.includes('Buy Guided'),
     )!;
     expect(buy.disabled).toBe(false);
     await act(async () => {
@@ -95,12 +97,11 @@ describe('Partner purchase review', () => {
       reason: 'manual',
     });
     await render();
-    expect(container.textContent).toContain('handled directly by Sydekyks');
-    expect(
-      [...container.querySelectorAll('button')]
-        .filter((button) => button.textContent?.includes('Buy'))
-        .every((button) => button.disabled)
-    ).toBe(true);
+    expect(pageText()).toContain('handled directly by Sydekyks');
+    expect(pageText()).toContain('Arrange with Sydekyks');
+    expect(pageText()).not.toContain('Buy Core');
+    expect(pageText()).not.toContain('Buy Guided');
+    expect(mocks.checkout).not.toHaveBeenCalled();
   });
   it('shows verified fulfilment and full-refund states without exposing provider identifiers', async () => {
     mocks.status.mockResolvedValue({
@@ -114,14 +115,40 @@ describe('Partner purchase review', () => {
       },
     });
     await render();
-    expect(container.textContent).toContain('Fully refunded');
-    expect(container.textContent).not.toContain('cus_');
+    expect(pageText()).toContain('Fully refunded');
+    expect(pageText()).not.toContain('cus_');
+    expect(mocks.checkout).not.toHaveBeenCalled();
+  });
+  it('removes purchase offers after verified enrollment', async () => {
+    mocks.status.mockResolvedValue({
+      ...status(),
+      available: false,
+      purchase: {
+        package: 'core',
+        state: 'fulfilled',
+        accessUntil: '2027-10-20T00:00:00.000Z',
+        refundedMinor: 0,
+      },
+    });
+    await render();
+    expect(pageText()).toContain('Purchase verified');
+    expect(pageText()).not.toContain('Buy Core');
+    expect(pageText()).not.toContain('Buy Guided');
+    expect(mocks.checkout).not.toHaveBeenCalled();
+  });
+  it('pauses Partner checkout when the parent billing overview is stale', async () => {
+    await render(true);
+    const buy = [...container.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Buy Guided'),
+    )!;
+    expect(buy.disabled).toBe(true);
+    await act(async () => buy.click());
     expect(mocks.checkout).not.toHaveBeenCalled();
   });
   it('does not fetch or show purchase data after the session disappears', async () => {
     mocks.session = null;
     await render();
-    expect(container.textContent).toBe('');
+    expect(pageText()).toBe('');
     expect(mocks.status).not.toHaveBeenCalled();
   });
 });

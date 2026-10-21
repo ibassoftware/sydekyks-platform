@@ -55,7 +55,9 @@ import {
 import { AgentMark } from '@/features/agents/agent-mark';
 import { DeleteAgentDialog } from '@/features/agents/delete-agent-dialog';
 import { agentsMutations } from '@/features/agents/hooks/agents-hooks';
+import { HostedAgentProviderField } from '@/features/agents/hosted-agent-provider-field';
 import { MoveAgentDialog } from '@/features/agents/move-agent-dialog';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import {
   ApProjectDisplay,
   getProjectName,
@@ -223,6 +225,7 @@ const ConfigureBehaviorTab = ({
   needsModel: boolean;
   projectId: string;
 }) => {
+  const hosted = useHostedBillingEnabled();
   const tools = form.watch('draft.tools') ?? [];
   const draft = form.watch('draft');
   const { data: embeddingSource } = useKnowledgeBaseEmbeddingSource();
@@ -254,45 +257,67 @@ const ConfigureBehaviorTab = ({
         )}
       />
       <FormItem className="flex flex-col gap-2">
-        <PanelSectionLabel label={t('Model')} />
+        <PanelSectionLabel label={hosted ? t('AI provider') : t('Model')} />
         {needsModel && (
           <p className="text-sm leading-4 text-danger-11">
             {t('Pick a model so this agent can answer.')}
           </p>
         )}
-        <ModelPicker
-          projectId={projectId}
-          surface="agent"
-          value={agentEditState.modelChoiceOf({ config: draft })}
-          onChange={(choice) => {
-            const picked = agentEditState.modelPickOf({ choice });
-            if (
-              !agentEditState.modelPickChanged({
-                picked,
-                current: form.getValues('draft'),
-              })
-            ) {
-              return;
-            }
-            form.setValue(
-              'draft.provider',
-              parseProvider(picked.provider ?? undefined),
-              { shouldDirty: true },
-            );
-            form.setValue('draft.modelName', picked.modelName ?? null, {
-              shouldDirty: true,
-            });
-            form.setValue(
-              'draft.providerConfigId',
-              picked.providerConfigId ?? null,
-              { shouldDirty: true },
-            );
-            form.setValue('draft.modelTierId', picked.modelTierId ?? null, {
-              shouldDirty: true,
-            });
-          }}
-        />
-        {knowledgeCount > 0 &&
+        {hosted ? (
+          <HostedAgentProviderField
+            projectId={projectId}
+            config={draft}
+            onChange={(picked) => {
+              form.setValue('draft.provider', picked.provider, {
+                shouldDirty: true,
+              });
+              form.setValue('draft.providerConfigId', picked.providerConfigId, {
+                shouldDirty: true,
+              });
+              form.setValue('draft.modelName', picked.modelName, {
+                shouldDirty: true,
+              });
+              form.setValue('draft.modelTierId', picked.modelTierId, {
+                shouldDirty: true,
+              });
+            }}
+          />
+        ) : (
+          <ModelPicker
+            projectId={projectId}
+            surface="agent"
+            value={agentEditState.modelChoiceOf({ config: draft })}
+            onChange={(choice) => {
+              const picked = agentEditState.modelPickOf({ choice });
+              if (
+                !agentEditState.modelPickChanged({
+                  picked,
+                  current: form.getValues('draft'),
+                })
+              ) {
+                return;
+              }
+              form.setValue(
+                'draft.provider',
+                parseProvider(picked.provider ?? undefined),
+                { shouldDirty: true },
+              );
+              form.setValue('draft.modelName', picked.modelName ?? null, {
+                shouldDirty: true,
+              });
+              form.setValue(
+                'draft.providerConfigId',
+                picked.providerConfigId ?? null,
+                { shouldDirty: true },
+              );
+              form.setValue('draft.modelTierId', picked.modelTierId ?? null, {
+                shouldDirty: true,
+              });
+            }}
+          />
+        )}
+        {!hosted &&
+          knowledgeCount > 0 &&
           !isNil(embeddingSource) &&
           (isNil(embeddingSource.modelId) ? (
             <NoEmbeddingSourceNote className="text-xs text-gray-11" />
@@ -523,10 +548,13 @@ const AgentConfigurePanel = forwardRef<
   });
   const updateAgent = agentsMutations.useUpdateAgent({ id: agent.id });
 
+  const hosted = useHostedBillingEnabled();
   const values = form.watch();
-  const formNeedsModel = !agentEditState.hasModel({
-    config: values.draft ?? {},
-  });
+  const formNeedsModel =
+    !hosted &&
+    !agentEditState.hasModel({
+      config: values.draft ?? {},
+    });
   const live = liveValuesOf(agent);
   const hasChanges =
     isNil(live) || !agentEditState.sameConfig({ left: values, right: live });

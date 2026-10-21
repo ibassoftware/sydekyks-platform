@@ -32,7 +32,7 @@ async function createConversation(
     hosted.assertCurrent();
     const conversation = await hostedChatRequest<AgentConversation>(
       hosted.scope,
-      `${SYD_ROOT}/conversations`,
+      `${root}/conversations`,
       { method: 'POST', data: { ...request, projectId: hosted.projectId } },
       true,
     );
@@ -44,7 +44,7 @@ async function createConversation(
     )
       throw new HostedChatError('denied');
     hosted.bindConversation(conversation.id);
-    conversationRoots.set(conversation.id, SYD_ROOT);
+    conversationRoots.set(conversation.id, root);
     return conversation;
   }
   const conversation = await api.post<AgentConversation>(
@@ -83,10 +83,16 @@ async function getConversation(
   id: string,
   scope?: HostedChatScope,
 ): Promise<AgentConversation> {
-  if (scope)
-    return hostedChatRequest(scope, `${SYD_ROOT}/conversations/${id}`, {
-      method: 'GET',
-    });
+  if (scope) {
+    const root = hostedConversationRoot(scope);
+    const conversation = await hostedChatRequest<AgentConversation>(
+      scope,
+      `${root}/conversations/${id}`,
+      { method: 'GET' },
+    );
+    conversationRoots.set(id, root);
+    return conversation;
+  }
   const known = conversationRoots.get(id);
   if (known) return api.get<AgentConversation>(`${known}/conversations/${id}`);
   try {
@@ -122,7 +128,9 @@ async function getMessages(
   if (scope)
     return hostedChatRequest(
       scope,
-      `${SYD_ROOT}/conversations/${conversationId}/messages`,
+      `${hostedConversationRoot(
+        scope,
+      )}/conversations/${conversationId}/messages`,
       { method: 'GET' },
     );
   return api.get<{ data: PersistedAgentMessage[] | AgentHistoryMessage[] }>(
@@ -176,7 +184,9 @@ async function sendMessage({
       runId: string;
     }>(
       hosted.scope,
-      `${SYD_ROOT}/conversations/${conversationId}/messages`,
+      `${hostedConversationRoot(
+        hosted.scope,
+      )}/conversations/${conversationId}/messages`,
       {
         method: 'POST',
         data: {
@@ -233,7 +243,7 @@ async function cancelConversation(
   if (scope)
     return hostedChatRequest(
       scope,
-      `${SYD_ROOT}/conversations/${conversationId}/cancel`,
+      `${hostedConversationRoot(scope)}/conversations/${conversationId}/cancel`,
       { method: 'POST' },
     );
   return api.post<void>(
@@ -288,7 +298,9 @@ async function getPendingGate(
   if (scope)
     return hostedChatRequest(
       scope,
-      `${SYD_ROOT}/conversations/${conversationId}/pending-gate`,
+      `${hostedConversationRoot(
+        scope,
+      )}/conversations/${conversationId}/pending-gate`,
       { method: 'GET' },
     );
   return api.get(
@@ -324,6 +336,10 @@ async function instructMemory(
     '/v1/syd/copilot/memory/instruct',
     request,
   );
+}
+
+function hostedConversationRoot(scope: HostedChatScope): string {
+  return scope.nativeAgent ? NATIVE_ROOT : SYD_ROOT;
 }
 
 async function rootForConversation(id: string): Promise<string> {

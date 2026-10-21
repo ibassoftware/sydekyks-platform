@@ -45,6 +45,7 @@ const Partners = z.object({
   userId: id,
   partners: z.array(PartnerCandidate),
   next: id.nullable(),
+  total: z.number().int().nonnegative().optional(),
 });
 export class PartnerAdminError extends Error {
   constructor(
@@ -112,6 +113,10 @@ export const partnersQuery = (
   session: Session,
   after: string | null,
   allowed: boolean,
+  filters: {
+    search?: string;
+    status?: 'all' | 'active' | 'pending' | 'inactive';
+  } = {},
 ) => ({
   queryKey: [
     'hosted-partners',
@@ -119,10 +124,16 @@ export const partnersQuery = (
     session.platformId,
     session.id,
     after,
+    filters.search ?? '',
+    filters.status ?? 'all',
   ],
   queryFn: ({ signal }: { signal: AbortSignal }) =>
     request(session, '', Partners, {
-      params: after ? { after } : undefined,
+      params: {
+        ...(after ? { after } : {}),
+        ...(filters.search ? { search: filters.search } : {}),
+        status: filters.status ?? 'all',
+      },
       signal,
     }),
   enabled: allowed,

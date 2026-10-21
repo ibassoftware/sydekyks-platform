@@ -9,6 +9,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const source = vi.hoisted(() => ({
+  hosted: false,
   loaded: true,
   provider: null as string | null,
 }));
@@ -37,6 +38,10 @@ vi.mock('react-router-dom', () => ({
   Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
     <a href={to}>{children}</a>
   ),
+}));
+
+vi.mock('@/features/hosted-billing/service-mode', () => ({
+  useHostedBillingEnabled: () => source.hosted,
 }));
 
 vi.mock('@/hooks/flags-hooks', () => ({
@@ -78,6 +83,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 import { KnowledgeBaseSection } from '@/features/agents/agent-tools/components/knowledge-base-tool';
 
 let container: HTMLDivElement;
+const pageText = () => container.textContent ?? '';
 let root: Root;
 
 function render() {
@@ -99,6 +105,7 @@ function canAddKnowledge(): boolean {
 }
 
 beforeEach(() => {
+  source.hosted = false;
   source.loaded = true;
   source.provider = null;
   viewer.isAdmin = false;
@@ -115,6 +122,16 @@ afterEach(() => {
 });
 
 describe('adding knowledge to an agent', () => {
+  it('keeps hosted tables and indexed files available without an embedding provider', () => {
+    source.hosted = true;
+    render();
+    expect(canAddKnowledge()).toBe(true);
+    expect(pageText()).toContain(
+      'New file uploads require configured file indexing.',
+    );
+    expect(pageText()).not.toContain('Ask your admin');
+  });
+
   it("is offered when the server reports a provider that embeds this project's files", () => {
     source.provider = AIProviderName.OPENAI;
 
@@ -127,7 +144,7 @@ describe('adding knowledge to an agent', () => {
     render();
 
     expect(canAddKnowledge()).toBe(false);
-    expect(container.textContent).toContain('Ask your admin');
+    expect(pageText()).toContain('Ask your admin');
     expect(container.querySelector('a')).toBeNull();
   });
 

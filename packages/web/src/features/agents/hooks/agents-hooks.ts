@@ -19,7 +19,10 @@ import {
 } from '@tanstack/react-query';
 
 import { internalErrorToast } from '@/components/ui/sonner';
-import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
+import {
+  useHostedBillingEnabled,
+  useHostedRuntimeReady,
+} from '@/features/hosted-billing/service-mode';
 import { useAuthorization } from '@/hooks/authorization-hooks';
 import { platformHooks } from '@/hooks/platform-hooks';
 
@@ -29,14 +32,15 @@ const AGENTS_KEY = 'agents';
 
 export const useAgentsAvailable = (): boolean => {
   const { platform } = platformHooks.useCurrentPlatform();
-  return platform.plan.agentsEnabled;
+  const hosted = useHostedBillingEnabled();
+  const runtimeReady = useHostedRuntimeReady();
+  return platform.plan.agentsEnabled && (!hosted || runtimeReady);
 };
 
 export const useAgentsNavVisible = (): boolean => {
-  const hosted = useHostedBillingEnabled();
   const available = useAgentsAvailable();
   const { checkAccess } = useAuthorization();
-  return !hosted && available && checkAccess(Permission.READ_AGENT);
+  return available && checkAccess(Permission.READ_AGENT);
 };
 
 const AGENTS_PAGE_SIZE = 100;

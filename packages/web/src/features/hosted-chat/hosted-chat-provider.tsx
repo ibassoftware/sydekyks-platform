@@ -38,9 +38,13 @@ function subscribeProject(listener: () => void) {
 }
 export function HostedChatBoundary({
   conversationId,
+  agentId,
+  builder,
   children,
 }: {
   conversationId?: string | null;
+  agentId?: string;
+  builder?: boolean;
   children: React.ReactNode;
 }) {
   const session = useHostedAuthSession();
@@ -62,6 +66,8 @@ export function HostedChatBoundary({
       session={session}
       projectPointer={pointer}
       conversationId={conversationId ?? null}
+      agentId={agentId}
+      builder={builder}
     >
       {children}
     </HostedChatProvider>
@@ -71,18 +77,30 @@ function HostedChatProvider({
   session,
   projectPointer,
   conversationId,
+  agentId,
+  builder,
   children,
 }: {
   session: ReturnType<typeof useHostedAuthSession>;
   projectPointer: string;
   conversationId: string | null;
+  agentId?: string;
+  builder?: boolean;
   children: React.ReactNode;
 }) {
   const scope = useMemo(
-    () => ({ session, projectPointer, conversationId }),
-    [session, projectPointer, conversationId],
+    () => ({
+      session,
+      projectPointer,
+      conversationId,
+      agentId,
+      builder,
+      nativeAgent: agentId !== undefined || builder === true,
+    }),
+    [session, projectPointer, conversationId, agentId, builder],
   );
   const [payer, setPayer] = useState<HostedChatPayer | null>(null);
+  const initialPayerResolved = useRef(false);
   const [deniedFor, setDeniedFor] = useState<string | null | undefined>(
     undefined,
   );
@@ -120,6 +138,8 @@ function HostedChatProvider({
       session.id,
       projectPointer,
       conversationId,
+      agentId,
+      builder,
     ],
     queryFn: ({ signal }) => hostedChatApi.options(scope, signal),
     retry: false,
@@ -135,9 +155,23 @@ function HostedChatProvider({
     )
       setDeniedFor(conversationId);
   }, [query.error, conversationId]);
+  useEffect(() => {
+    if (scope.nativeAgent || initialPayerResolved.current) return;
+    if (query.error) {
+      initialPayerResolved.current = true;
+      return;
+    }
+    if (query.isFetching || !query.data) return;
+    initialPayerResolved.current = true;
+    if (!payer && !query.data.payerLock && query.data.managedAvailable)
+      setPayer({ type: 'managed' });
+  }, [scope.nativeAgent, query.error, query.isFetching, query.data, payer]);
+  const effectivePayer = query.data?.payerLock ?? payer;
   let selectionError: HostedChatError | null = null;
   try {
-    assertHostedPayerAvailable(payer, query.data);
+    if (scope.nativeAgent && !query.data?.payerLock)
+      throw new HostedChatError('unavailable');
+    assertHostedPayerAvailable(effectivePayer, query.data);
   } catch (error) {
     selectionError = error as HostedChatError;
   }
@@ -150,8 +184,12 @@ function HostedChatProvider({
   const ready = !denied && !query.isFetching && !query.error && !selectionError;
   const context = {
     scope,
-    payer,
-    setPayer,
+    payer: effectivePayer,
+    payerLocked: query.data?.payerLock !== undefined,
+    setPayer: (next: HostedChatPayer) => {
+      initialPayerResolved.current = true;
+      setPayer(next);
+    },
     options: query.error || denied ? undefined : query.data,
     ready,
     loading: query.isFetching,
@@ -164,7 +202,7 @@ function HostedChatProvider({
       if (!denied) void query.refetch();
     },
     async prepare(): Promise<HostedChatSubmission> {
-      const captured = payer ? { ...payer } : null;
+      const captured = effectivePayer ? { ...effectivePayer } : null;
       const capturedGeneration = generation.current.value;
       let createdId: string | null = null;
       const assertCurrent = () => {
@@ -188,6 +226,12 @@ function HostedChatProvider({
       const result = await query.refetch({ throwOnError: true });
       assertCurrent();
       assertHostedPayerAvailable(captured, result.data);
+      if (
+        (scope.nativeAgent && !result.data?.payerLock) ||
+        JSON.stringify(result.data?.payerLock ?? captured) !==
+          JSON.stringify(captured)
+      )
+        throw new HostedChatError('selection');
       return {
         payer: captured,
         projectId: result.data!.projectId,
@@ -210,6 +254,7 @@ function HostedChatProvider({
 type HostedChatContextValue = {
   scope: import('./hosted-chat-api').HostedChatScope;
   payer: HostedChatPayer | null;
+  payerLocked: boolean;
   setPayer: (payer: HostedChatPayer) => void;
   options?: import('./hosted-chat-api').HostedChatOptions;
   ready: boolean;

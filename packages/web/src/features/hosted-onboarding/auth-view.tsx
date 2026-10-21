@@ -94,12 +94,18 @@ export function HostedAuthView(props: HostedAuthViewProps) {
   const unavailable = !offer?.emailCodesAvailable;
   return (
     <main className="min-h-dvh bg-gray-2 px-4 py-6 sm:px-6 sm:py-12">
-      <div className="mx-auto max-w-[60rem]">
+      <div className={ready ? 'mx-auto max-w-2xl' : 'mx-auto max-w-[60rem]'}>
         <header className="mb-8 flex items-center justify-between gap-4">
           {brand}
           <span className="text-sm text-gray-11">{t('Hosted workspace')}</span>
         </header>
-        <div className="grid items-start gap-8 md:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] md:gap-12">
+        <div
+          className={
+            ready
+              ? 'grid items-start gap-8'
+              : 'grid items-start gap-8 md:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] md:gap-12'
+          }
+        >
           <section
             aria-labelledby="hosted-auth-title"
             className="rounded-2xl border bg-gray-1 p-5 sm:p-8"
@@ -474,53 +480,58 @@ export function HostedAuthView(props: HostedAuthViewProps) {
               </Button>
             )}
           </section>
-          <aside
-            aria-labelledby="hosted-trial-heading"
-            className="space-y-6 py-1 text-sm"
-          >
-            <div>
-              <h2 id="hosted-trial-heading" className="text-base font-semibold">
-                {t('Hosted pilot access')}
-              </h2>
-              <p className="mt-2 leading-relaxed text-gray-11">
-                {t(
-                  'Contact Sydekyks to arrange pilot access and build your first workflows. Trial access is time limited; continued access and payments are arranged directly with the team.',
-                )}
-              </p>
-            </div>
-            {offer && (
-              <dl className="space-y-3">
-                <Term
-                  label={t('Trial duration')}
-                  value={t('{days} days', { days: offer.trialDays })}
-                />
-                <Term
-                  label={t('Credits')}
-                  value={offer.trial.executions.toLocaleString()}
-                />
-                <Term
-                  label={t('Workspace capacity')}
-                  value={t('{users} member · {projects} project', {
-                    users: offer.trial.users,
-                    projects: offer.trial.projects,
-                  })}
-                />
-              </dl>
-            )}
-            <div className="border-t pt-5">
-              <h3 className="font-medium">{t('Bring your own key')}</h3>
-              <p className="mt-2 leading-relaxed text-gray-11">
-                {t(
-                  'BYOK is included in every plan and uses Credits. Your provider bills AI usage separately. Managed AI is provided by Sydekyks and is subject to service limits. BYOK currently supports DeepSeek.',
-                )}
-              </p>
-            </div>
-            <p className="rounded-lg bg-gray-3 p-4 leading-relaxed text-gray-11">
-              {t(
-                'Your administrator can provide an initial password or a private setup link. Payments and renewals are handled directly by Sydekyks during the pilot.',
+          {!ready && (
+            <aside
+              aria-labelledby="hosted-trial-heading"
+              className="space-y-6 py-1 text-sm"
+            >
+              <div>
+                <h2
+                  id="hosted-trial-heading"
+                  className="text-base font-semibold"
+                >
+                  {t('Hosted pilot access')}
+                </h2>
+                <p className="mt-2 leading-relaxed text-gray-11">
+                  {t(
+                    'Contact Sydekyks to arrange pilot access and build your first workflows. Trial access is time limited; continued access and payments are arranged directly with the team.',
+                  )}
+                </p>
+              </div>
+              {offer && (
+                <dl className="space-y-3">
+                  <Term
+                    label={t('Trial duration')}
+                    value={t('{days} days', { days: offer.trialDays })}
+                  />
+                  <Term
+                    label={t('Credits')}
+                    value={offer.trial.executions.toLocaleString()}
+                  />
+                  <Term
+                    label={t('Workspace capacity')}
+                    value={t('{users} member · {projects} project', {
+                      users: offer.trial.users,
+                      projects: offer.trial.projects,
+                    })}
+                  />
+                </dl>
               )}
-            </p>
-          </aside>
+              <div className="border-t pt-5">
+                <h3 className="font-medium">{t('Bring your own key')}</h3>
+                <p className="mt-2 leading-relaxed text-gray-11">
+                  {t(
+                    'BYOK is included in every plan and uses Credits. Your provider bills AI usage separately. Managed AI is provided by Sydekyks and is subject to service limits. BYOK currently supports DeepSeek.',
+                  )}
+                </p>
+              </div>
+              <p className="rounded-lg bg-gray-3 p-4 leading-relaxed text-gray-11">
+                {t(
+                  'Your administrator can provide an initial password or a private setup link. Payments and renewals are handled directly by Sydekyks during the pilot.',
+                )}
+              </p>
+            </aside>
+          )}
         </div>
       </div>
     </main>
