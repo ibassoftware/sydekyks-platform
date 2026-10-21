@@ -99,5 +99,5 @@ describe('assertBackgroundMigrationComplete', () => {
 function mockQueryRunner(...responses: unknown[]): QueryRunner {
     const query = vi.fn()
     responses.forEach(response => query.mockResolvedValueOnce(response))
-    return { query } as unknown as QueryRunner
+    return { query, hasTable: vi.fn().mockResolvedValue(true) } as unknown as QueryRunner
 }

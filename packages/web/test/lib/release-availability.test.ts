@@ -40,7 +40,7 @@ describe('public release navigation', () => {
     expect(STATIC_PAGES.some((page) => page.href === '/platform/ai')).toBe(true);
   });
 
-  it('does not offer unsupported team project creation', () => {
-    expect(releaseAvailability.teamProjects).toBe(false);
+  it('retains supported team project creation', () => {
+    expect(releaseAvailability.teamProjects).toBe(true);
   });
 });

@@ -161,7 +161,7 @@ const ALL_STATIC_PAGES: StaticPage[] = [
   },
   {
     id: 'page-platform-sso',
-    label: 'Platform Admin — Single Sign On',
+    label: 'Platform Admin — Authentication',
     href: '/platform/sso',
     icon: LogInIcon,
     requiresPlatformAdmin: true,

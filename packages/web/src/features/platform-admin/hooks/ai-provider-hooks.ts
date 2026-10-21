@@ -97,10 +97,17 @@ export const aiProviderMutations = {
       onSuccess,
     });
   },
-  useDeleteAiProvider: ({ onSuccess }: { onSuccess: () => void }) => {
+  useDeleteAiProvider: ({
+    onSuccess,
+    onError,
+  }: {
+    onSuccess: () => void;
+    onError?: UpsertAiProviderOptions['onError'];
+  }) => {
     return useMutation({
       mutationFn: (providerId: string) => aiProviderApi.delete(providerId),
       onSuccess,
+      onError,
     });
   },
   useUpdateAiProvider: ({

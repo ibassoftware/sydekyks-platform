@@ -3,7 +3,7 @@ import { McpToolDefinition, McpToolResult, PopulatedMcpServer } from '@activepie
 import { FastifyBaseLogger } from 'fastify'
 import { rejectedPromiseHandler } from '../helper/promise-handler'
 import { trackBillingAndSendTelemetry } from '../platform/billing-and-telemetry'
-import { assertCreditsAndAppSumoNotExceeded, CreditUsageSource, McpCallCreditConsumptionProperties } from '../platform/billing-provider'
+import { assertCreditsNotExceeded, CreditUsageSource, McpCallCreditConsumptionProperties } from '../platform/billing-provider'
 import { projectService } from '../project/project-service'
 import { platformPlanService } from '../sydekyks-community/platform-capabilities'
 import { INTERNAL_CHAT_CLIENT_ID } from './oauth/token/mcp-oauth-token.service'
@@ -63,7 +63,7 @@ async function resolvePlatformId({ mcp, log }: { mcp: PopulatedMcpServer, log: F
 // A credits lookup that fails for its own reasons must not take the tool down with it, so anything
 // that is not a definite "out of credits" lets the call through, as the chat personalization path does.
 async function refusalWhenOutOfCredits({ platformId, toolName, log }: RefusalParams): Promise<McpToolResult | null> {
-    const { error } = await tryCatch(() => assertCreditsAndAppSumoNotExceeded({ platformId, log }))
+    const { error } = await tryCatch(() => assertCreditsNotExceeded({ platformId, log }))
     if (isNil(error)) {
         return null
     }

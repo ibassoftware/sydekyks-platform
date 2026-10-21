@@ -31,8 +31,7 @@ const HomeButton = () => {
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size={'icon'}
-                className={showBackButton ? 'size-8' : 'size-10'}
+                size={showBackButton ? 'icon-sm' : 'icon-lg'}
               >
                 {!showBackButton && (
                   <img

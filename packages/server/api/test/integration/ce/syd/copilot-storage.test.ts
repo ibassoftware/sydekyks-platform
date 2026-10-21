@@ -3,6 +3,7 @@ import { AgentConversation, AgentConversationStatus, AgentRunSource, PersistedAg
 import Fastify from 'fastify'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { initializeDatabase } from '../../../../src/app/database'
+import { backgroundMigrationRunner } from '../../../../src/app/database/background-migration-runner'
 import { databaseConnection } from '../../../../src/app/database/database-connection'
 import { getMigrations } from '../../../../src/app/database/postgres-connection'
 import { sydApprovalGate } from '../../../../src/app/syd/copilot/approval-gate'
@@ -27,10 +28,11 @@ describe('Syd CHAT persistence', () => {
     it('registers owned CHAT storage and the release migrations without schema drift', async () => {
         const ds = databaseConnection()
         const runner = ds.createQueryRunner()
-        expect(getMigrations().map((Migration) => new Migration().name)).toEqual(['SydekyksInitialSchema1880000000000', 'SydekyksUpstream1031881000000000'])
+        expect(getMigrations().map((Migration) => new Migration().name)).toEqual(['SydekyksInitialSchema1880000000000', 'SydekyksUpstream1031881000000000', 'SydekyksUpstreamOctober211882000000000'])
         for (const table of ['syd_conversation', 'syd_user_memory', 'syd_personalization']) expect(await runner.hasTable(table)).toBe(true)
         expect(await runner.hasColumn('platform_model_tier', 'isFast')).toBe(true)
         expect(await runner.hasColumn('platform_configuration', 'aiSpecificModelsVisible')).toBe(true)
+        await backgroundMigrationRunner.run({ dataSource: ds, log })
         expect((await ds.driver.createSchemaBuilder().log()).upQueries).toEqual([])
         await runner.release()
     })

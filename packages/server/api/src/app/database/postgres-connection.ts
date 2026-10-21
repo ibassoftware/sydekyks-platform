@@ -7,14 +7,17 @@ import { commonProperties } from './database-connection'
 import { Migration } from './migration'
 import { SydekyksInitialSchema1880000000000 } from './migration/postgres/1880000000000-SydekyksInitialSchema'
 import { SydekyksUpstream1031881000000000 } from './migration/postgres/1881000000000-SydekyksUpstream103'
+import { SydekyksUpstreamOctober211882000000000 } from './migration/postgres/1882000000000-SydekyksUpstreamOctober21'
+import { ReshapeFlowRunListIndexesForBarrierChildren1871000000000 } from './migration/postgres/background/1871000000000-ReshapeFlowRunListIndexesForBarrierChildren'
+import { BackfillPieceTranslation1874000000000 } from './migration/postgres/background/1874000000000-BackfillPieceTranslation'
 
-export const getMigrations = () => [SydekyksInitialSchema1880000000000, SydekyksUpstream1031881000000000]
+export const getMigrations = () => [SydekyksInitialSchema1880000000000, SydekyksUpstream1031881000000000, SydekyksUpstreamOctober211882000000000]
 
 function getSslConfig() {
     return system.getBoolean(AppSystemProp.POSTGRES_USE_SSL) ? { rejectUnauthorized: true } : false
 }
 
-export const getBackgroundMigrations = (): (new () => BackgroundMigration)[] => []
+export const getBackgroundMigrations = (): (new () => BackgroundMigration)[] => [ReshapeFlowRunListIndexesForBarrierChildren1871000000000, BackfillPieceTranslation1874000000000]
 
 export const createPostgresDataSource = (): DataSource => {
     const migrationConfig: MigrationConfig = {
@@ -59,6 +62,21 @@ export const createPostgresDataSource = (): DataSource => {
         extra: {
             idleTimeoutMillis,
         },
+    })
+}
+
+
+export const createPostgresMigrationDataSource = (): DataSource | null => {
+    const url = system.get(AppSystemProp.POSTGRES_MIGRATION_URL)
+    if (isNil(url)) return null
+    return new DataSource({
+        type: 'postgres',
+        url,
+        ssl: getSslConfig(),
+        poolSize: 2,
+        migrationsRun: false,
+        synchronize: false,
+        ...commonProperties,
     })
 }
 

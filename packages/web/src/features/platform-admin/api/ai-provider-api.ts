@@ -1,4 +1,6 @@
 import {
+  ModelOptions,
+  ModelOptionsSurface,
   AiProviderKeyStatus,
   AIProviderModel,
   AIProviderWithoutSensitiveData,
@@ -35,6 +37,31 @@ export const aiProviderApi = {
   },
   listModelTiers() {
     return api.get<ModelTiersResponse>('/v1/ai-providers/tiers');
+  },
+  listSuggestedModelsForConfig(configId: string) {
+    return api.get<string[]>(
+      `/v1/ai-providers/configs/${configId}/suggested-models`,
+    );
+  },
+  listPlatformModelOptions({ surface }: { surface: ModelOptionsSurface }) {
+    return api.get<ModelOptions>('/v1/ai-providers/model-options/platform', {
+      surface,
+    });
+  },
+  listModelOptions({
+    projectId,
+    surface,
+    tierId,
+  }: {
+    projectId: string;
+    surface: ModelOptionsSurface;
+    tierId?: string;
+  }) {
+    return api.get<ModelOptions>('/v1/ai-providers/model-options', {
+      projectId,
+      surface,
+      ...(tierId === undefined ? {} : { tierId }),
+    });
   },
   upsert(request: CreateAIProviderRequest) {
     return api.post<AIProviderWithoutSensitiveData>(

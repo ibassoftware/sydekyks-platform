@@ -75,7 +75,7 @@ export const templateService = (log: FastifyBaseLogger) => ({
         if (!isNil(params.flows) && params.flows.length > 0) {
             const preparedTemplate = await templateValidator.validateAndPrepare({
                 flows: params.flows,
-                platformId: undefined,
+                platformId: template.platformId ?? undefined,
                 log,
             })
             sanatizedFlows = preparedTemplate.flows
