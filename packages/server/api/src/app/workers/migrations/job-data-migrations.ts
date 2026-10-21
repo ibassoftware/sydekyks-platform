@@ -111,7 +111,14 @@ function createMigrations(log: FastifyBaseLogger): JobMigration[] {
         },
     }
 
-    return [enrichFlowId, migratePayloadToUnion, renameProgressAndHandlerFields, dropLogsUploadUrl, backfillRequiredExecuteFlowFields, bridgeV8ToV9, addResumeReason]
+    // New hosted maintenance bindings are issued only by authenticated API
+    // callers. Migrating an old job must never invent a connection or tenant.
+    const addScopedMaintenance: JobMigration = {
+        runAtSchemaVersion: 10,
+        migrate: async (job: JobData) => ({ ...job, schemaVersion: 11 }),
+    }
+
+    return [enrichFlowId, migratePayloadToUnion, renameProgressAndHandlerFields, dropLogsUploadUrl, backfillRequiredExecuteFlowFields, bridgeV8ToV9, addResumeReason, addScopedMaintenance]
 }
 
 function migrateProgressUpdateType(progressUpdateType: string | undefined): StreamStepProgress {

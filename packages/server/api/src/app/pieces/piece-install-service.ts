@@ -1,9 +1,13 @@
 import { ActivepiecesError, ErrorCode, isNil, PlatformId, ProjectId } from '@activepieces/core-utils'
 import { PieceMetadata, PieceMetadataModel } from '@activepieces/pieces-framework'
-import { AddPieceRequestBody, EngineResponse, EngineResponseStatus, ExecuteExtractPieceMetadata, FileCompression, FileId, FileType, PackageType, PiecePackage, PieceType, WorkerJobType } from '@activepieces/shared'
+import { AddPieceRequestBody, EngineResponse, EngineResponseStatus, ExecuteExtractPieceMetadata, FileCompression, FileId, FileType, PackageType, PiecePackage, PieceType, Principal, PrincipalType, WorkerJobType } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { fileService } from '../file/file.service'
 import { rejectedPromiseHandler } from '../helper/promise-handler'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { HostingJobOrigin } from '../hosting/hosting-execution'
+import { hostingFail } from '../hosting/hosting-transactions'
+import { projectRepo } from '../project/project-service'
 import { isToolSearchEnabled } from '../tool-search/tool-search-flag'
 import { toolSearchReindexJob } from '../tool-search/tool-search-reindex.job'
 import { userInteractionWatcher } from '../workers/user-interaction-watcher'
@@ -13,13 +17,21 @@ export const pieceInstallService = (log: FastifyBaseLogger) => ({
     async installPiece(
         platformId: string,
         params: AddPieceRequestBody,
+        principal?: Principal,
     ): Promise<PieceMetadataModel> {
         try {
+            let scope: { projectId: string, origin: HostingJobOrigin } | undefined
+            if (hostingConfiguration.getServiceMode() === 'hosted') {
+                if (principal?.type !== PrincipalType.USER || principal.platform.id !== platformId) hostingFail('HOSTING_USER_PRINCIPAL_REQUIRED')
+                const project = await projectRepo().findOne({ where: { platformId }, order: { created: 'ASC' } })
+                if (!project) hostingFail('HOSTING_PROJECT_ACCESS_DENIED')
+                scope = { projectId: project.id, origin: { type: 'operator-maintenance', userId: principal.id, tokenVersion: principal.tokenVersion ?? null } }
+            }
             const piecePackage = await savePiecePackage(platformId, params, log)
             const pieceInformation = await extractPieceInformation({
                 ...piecePackage,
                 platformId,
-            }, log)
+            }, log, scope)
             const archiveId = piecePackage.packageType === PackageType.ARCHIVE ? piecePackage.archiveId : undefined
             const savedPiece = await pieceMetadataService(log).create({
                 pieceMetadata: {
@@ -90,13 +102,13 @@ async function savePiecePackage(platformId: string | undefined, params: AddPiece
     }
 }
 
-const extractPieceInformation = async (request: ExecuteExtractPieceMetadata, log: FastifyBaseLogger): Promise<PieceMetadata> => {
+const extractPieceInformation = async (request: ExecuteExtractPieceMetadata, log: FastifyBaseLogger, scope?: { projectId: string, origin: HostingJobOrigin }): Promise<PieceMetadata> => {
     const engineResponse = await userInteractionWatcher.submitAndWaitForResponse<EngineResponse<PieceMetadata>>({
         jobType: WorkerJobType.EXECUTE_EXTRACT_PIECE_INFORMATION,
         platformId: request.platformId,
         piece: request,
-        projectId: undefined,
-    }, log)
+        projectId: scope?.projectId,
+    }, log, undefined, scope?.origin)
 
     if (engineResponse.status !== EngineResponseStatus.OK) {
         throw new Error(engineResponse.error)

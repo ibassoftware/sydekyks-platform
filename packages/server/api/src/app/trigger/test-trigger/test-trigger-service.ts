@@ -3,6 +3,7 @@ import { TriggerTestStrategy } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { distributedLock } from '../../database/redis-connections'
 import { flowService } from '../../flows/flow/flow.service'
+import type { HostingJobOrigin } from '../../hosting/hosting-execution'
 import { triggerEventService } from '../trigger-events/trigger-event.service'
 import { triggerSourceService } from '../trigger-source/trigger-source-service'
 
@@ -53,6 +54,7 @@ export const testTriggerService = (log: FastifyBaseLogger) => {
                             return triggerEventService(log).test({
                                 flow: populatedFlow,
                                 projectId: executeParams.projectId,
+                                hostedOrigin: executeParams.hostedOrigin,
                             })
                         }
                     }
@@ -91,6 +93,7 @@ type TestParams = {
     flowVersionId: FlowVersionId
     projectId: ProjectId
     testStrategy: TriggerTestStrategy
+    hostedOrigin?: HostingJobOrigin
 }
 
 type CancelParams = {

@@ -1,14 +1,19 @@
 import { ActivepiecesError, ErrorCode, PlatformUsageMetric } from '@activepieces/core-utils'
 import { McpServerType, McpToolResult, PopulatedMcpServer } from '@activepieces/shared'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { INTERNAL_CHAT_CLIENT_ID } from '../../../../src/app/mcp/oauth/token/mcp-oauth-token.service'
 import { MCP_CALL_CREDITS, McpCallBilling, mcpUsageTracker, withCallBilling } from '../../../../src/app/mcp/mcp-usage-tracker'
+import { INTERNAL_CHAT_CLIENT_ID } from '../../../../src/app/mcp/oauth/token/mcp-oauth-token.service'
 
-const { mockTrackBillingAndSendTelemetry, mockGetOrCreateForPlatform, mockGetProject, mockAssertCredits } = vi.hoisted(() => ({
+const { mockTrackBillingAndSendTelemetry, mockGetOrCreateForPlatform, mockGetProject, mockAssertCredits, mockServiceMode } = vi.hoisted(() => ({
     mockTrackBillingAndSendTelemetry: vi.fn().mockResolvedValue(undefined),
     mockGetOrCreateForPlatform: vi.fn(),
     mockGetProject: vi.fn(),
     mockAssertCredits: vi.fn().mockResolvedValue(undefined),
+    mockServiceMode: vi.fn().mockReturnValue('self_hosted'),
+}))
+
+vi.mock('../../../../src/app/hosting/hosting-configuration', () => ({
+    hostingConfiguration: { getServiceMode: mockServiceMode },
 }))
 
 vi.mock('../../../../src/app/platform/billing-provider', () => ({
@@ -60,6 +65,7 @@ function flushPendingCharges(): Promise<void> {
 describe('mcpUsageTracker.resolveCallBilling — charging', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        mockServiceMode.mockReturnValue('self_hosted')
         mockGetOrCreateForPlatform.mockResolvedValue({ plan: 'plus', licenseKey: null })
         mockGetProject.mockResolvedValue({ platformId: 'platform-1' })
         mockAssertCredits.mockResolvedValue(undefined)
@@ -71,6 +77,18 @@ describe('mcpUsageTracker.resolveCallBilling — charging', () => {
         const { credits } = mockTrackBillingAndSendTelemetry.mock.calls[0][0]
         expect(credits.value).toBe(MCP_CALL_CREDITS)
         expect(credits.source).toBe('mcp')
+    })
+
+    it('leaves hosted gating and charges entirely to the durable shared Credits ledger', async () => {
+        mockServiceMode.mockReturnValue('hosted')
+        const billing = await mcpUsageTracker(log as never).resolveCallBilling({ mcp: mcpServer({ projectId: 'project-1' }), clientId: EXTERNAL_CLIENT_ID })
+        expect(await billing.refusalWhenOutOfCredits({ toolName: 'ap_run_action' })).toBeNull()
+        billing.charge({ toolName: 'ap_run_action', projectId: 'project-1' })
+        await flushPendingCharges()
+        expect(mockAssertCredits).not.toHaveBeenCalled()
+        expect(mockTrackBillingAndSendTelemetry).not.toHaveBeenCalled()
+        expect(mockGetProject).not.toHaveBeenCalled()
+        expect(mockGetOrCreateForPlatform).not.toHaveBeenCalled()
     })
 
     it('charges nothing for the internal chat client, the id the agent MCP token is issued with, which already pays per tool call', async () => {

@@ -12,6 +12,9 @@ import { buildPaginator } from '../../helper/pagination/build-paginator'
 import { paginationHelper } from '../../helper/pagination/pagination-utils'
 import { system } from '../../helper/system/system'
 import { AppSystemProp } from '../../helper/system/system-props'
+import { hostingConfiguration } from '../../hosting/hosting-configuration'
+import { HostingJobOrigin } from '../../hosting/hosting-execution'
+import { hostingFail } from '../../hosting/hosting-transactions'
 import {
     getPiecePackageWithoutArchive,
     pieceMetadataService,
@@ -32,6 +35,7 @@ export const appConnectionsRepo = repoFactory(AppConnectionEntity)
 
 export const appConnectionService = (log: FastifyBaseLogger) => ({
     async upsert(params: UpsertParams): Promise<AppConnectionWithoutSensitiveData> {
+        if (hostingConfiguration.getServiceMode() === 'hosted' && params.hostedOrigin?.type !== 'user') hostingFail('HOSTING_USER_PRINCIPAL_REQUIRED')
         const { projectIds, externalId, value, displayName, pieceName, ownerId, platformId, scope, type, status, metadata, preSelectForNewProjects } = params
         const pieceVersion = params.pieceVersion ?? ( await pieceMetadataService(log).getOrThrow({
             name: pieceName,
@@ -59,6 +63,7 @@ export const appConnectionService = (log: FastifyBaseLogger) => ({
             pieceVersion,
             projectId: projectIds[0],
             platformId,
+            hostedOrigin: params.hostedOrigin,
         }, log)
 
         const encryptedConnectionValue = await encryptUtils.encryptObject({
@@ -76,10 +81,12 @@ export const appConnectionService = (log: FastifyBaseLogger) => ({
         const accountIdentifier = await resolveConnectionAccountIdentifier({
             connectionType: type,
             auth: validatedConnectionValue,
+            pieceVersion,
             pieceName,
             projectId: projectIds[0],
             platformId,
             log,
+            hostedOrigin: params.hostedOrigin,
         })
         const connectionMetadata = mergeConnectionMetadata({
             requestMetadata: metadata,
@@ -153,6 +160,7 @@ export const appConnectionService = (log: FastifyBaseLogger) => ({
         projectId,
         platformId,
         externalId,
+        parentAdmissionId,
     }: GetOneByName): Promise<AppConnection | null> {
         const encryptedAppConnection = await appConnectionsRepo().findOne({
             where: {
@@ -165,7 +173,7 @@ export const appConnectionService = (log: FastifyBaseLogger) => ({
         if (isNil(encryptedAppConnection)) {
             return null
         }
-        const connection = await this.decryptAndRefreshConnection(encryptedAppConnection, projectId, log)
+        const connection = await this.decryptAndRefreshConnection(encryptedAppConnection, projectId, log, parentAdmissionId)
 
         if (isNil(connection)) {
             return null
@@ -216,14 +224,16 @@ export const appConnectionService = (log: FastifyBaseLogger) => ({
         }
     },
 
-    async revalidate({ id, projectId, platformId }: RevalidateParams): Promise<AppConnectionWithoutSensitiveData> {
+    async revalidate({ id, projectId, platformId, hostedOrigin }: RevalidateParams): Promise<AppConnectionWithoutSensitiveData> {
+        if (hostingConfiguration.getServiceMode() === 'hosted' && hostedOrigin?.type !== 'user') hostingFail('HOSTING_USER_PRINCIPAL_REQUIRED')
         const metadata = await this.getOneOrThrowWithoutValue({ id, projectId, platformId })
         const connection = await appConnectionHandler(log).revalidateConnection({
             id,
             platformId,
             projectId,
             externalId: metadata.externalId,
-            validate: ({ pieceName, value }) => engineValidateAuth({ pieceName, projectId, platformId, auth: value }, log),
+            hostedOrigin,
+            validate: ({ pieceName, value }) => engineValidateAuth({ pieceName, pieceVersion: metadata.pieceVersion, projectId, platformId, auth: value, hostedOrigin }, log),
             log,
         })
         if (isNil(connection)) {
@@ -496,13 +506,14 @@ export const appConnectionService = (log: FastifyBaseLogger) => ({
         encryptedAppConnection: AppConnectionSchema,
         projectId: ProjectId,
         log: FastifyBaseLogger,
+        parentAdmissionId?: string,
     ): Promise<AppConnection | null> {
         const appConnection = await appConnectionHandler(log).decryptConnection(encryptedAppConnection)
         if (!await appConnectionHandler(log).needRefresh(appConnection, log)) {
             return oauth2Util(log).removeRefreshTokenAndClientSecret(appConnection)
         }
 
-        const refreshedConnection = await appConnectionHandler(log).lockAndRefreshConnection({ platformId: appConnection.platformId, projectId, externalId: appConnection.externalId, log })
+        const refreshedConnection = await appConnectionHandler(log).lockAndRefreshConnection({ platformId: appConnection.platformId, projectId, externalId: appConnection.externalId, log, parentAdmissionId })
         if (isNil(refreshedConnection)) {
             return null
         }
@@ -610,10 +621,14 @@ const resolveConnectionAccountIdentifier = async ({
     connectionType,
     auth,
     pieceName,
+    pieceVersion,
     projectId,
     platformId,
     log,
+    hostedOrigin,
 }: {
+    hostedOrigin?: HostingJobOrigin
+    pieceVersion?: string
     connectionType: AppConnectionType
     auth: AppConnectionValue
     pieceName: string
@@ -630,7 +645,7 @@ const resolveConnectionAccountIdentifier = async ({
             return emailFromToken
         }
     }
-    return engineResolveConnectionIdentifier({ pieceName, projectId, platformId, auth, connectionType }, log)
+    return engineResolveConnectionIdentifier({ pieceName, projectId, platformId, auth, connectionType, hostedOrigin, pieceVersion }, log)
 }
 
 const OAUTH_CONNECTION_TYPES = [
@@ -672,7 +687,7 @@ const validateConnectionValue = async (
     params: ValidateConnectionValueParams,
     log: FastifyBaseLogger,
 ): Promise<AppConnectionValue> => {
-    const { value, pieceName, pieceVersion, projectId, platformId } = params
+    const { value, pieceName, pieceVersion, projectId, platformId, hostedOrigin } = params
 
     switch (value.type) {
         case AppConnectionType.PLATFORM_OAUTH2: {
@@ -753,6 +768,8 @@ const validateConnectionValue = async (
                 projectId,
                 platformId,
                 auth,
+                hostedOrigin,
+                pieceVersion,
             }, log)
             return auth
         }
@@ -767,6 +784,8 @@ const validateConnectionValue = async (
                 pieceName,
                 projectId,
                 auth: value,
+                hostedOrigin,
+                pieceVersion,
             }, log)
     }
 
@@ -785,7 +804,7 @@ const engineValidateAuth = async (
 
     const pieceMetadata = await pieceMetadataService(log).getOrThrow({
         name: pieceName,
-        version: undefined,
+        version: params.pieceVersion,
         platformId,
     })
 
@@ -798,7 +817,7 @@ const engineValidateAuth = async (
         platformId,
         connectionValue: auth,
         jobType: WorkerJobType.EXECUTE_VALIDATION,
-    }, log)
+    }, log, undefined, params.hostedOrigin)
 
     if (engineResponse.status !== EngineResponseStatus.OK) {
         log.error(
@@ -854,7 +873,7 @@ const engineResolveConnectionIdentifier = async (
     const { data: identifier } = await tryCatch(async () => {
         const pieceMetadata = await pieceMetadataService(log).getOrThrow({
             name: pieceName,
-            version: undefined,
+            version: params.pieceVersion,
             platformId,
         })
         if (!declaresConnectionIdentifier(pieceMetadata.auth)) {
@@ -871,7 +890,7 @@ const engineResolveConnectionIdentifier = async (
             connectionValue: auth,
             connectionType,
             jobType: WorkerJobType.EXECUTE_RESOLVE_CONNECTION_IDENTIFIER,
-        }, log)
+        }, log, undefined, params.hostedOrigin)
         const timeoutPromise = new Promise<undefined>((resolve) => {
             setTimeout(() => resolve(undefined), RESOLVE_IDENTIFIER_TIMEOUT_MS).unref()
         })
@@ -933,6 +952,7 @@ function validatePieceVersion(pieceVersion: string): void {
     }
 }
 type UpsertParams = {
+    hostedOrigin?: HostingJobOrigin
     projectIds: ProjectId[]
     ownerId: string | null
     platformId: string
@@ -950,6 +970,7 @@ type UpsertParams = {
 
 
 type GetOneByName = {
+    parentAdmissionId?: string
     projectId: ProjectId
     platformId: string
     externalId: string
@@ -966,6 +987,7 @@ type GetManyParams = {
 }
 
 type RevalidateParams = {
+    hostedOrigin?: HostingJobOrigin
     id: AppConnectionId
     projectId: ProjectId
     platformId: PlatformId
@@ -979,6 +1001,7 @@ type DeleteParams = {
 }
 
 type ValidateConnectionValueParams = {
+    hostedOrigin?: HostingJobOrigin
     value: Extract<UpsertAppConnectionRequestBody, { value: unknown }>['value']
     pieceName: string
     pieceVersion: string
@@ -1026,6 +1049,8 @@ type UpdateParams = {
 }
 
 type EngineValidateAuthParams = {
+    pieceVersion?: string
+    hostedOrigin?: HostingJobOrigin
     pieceName: string
     projectId: ProjectId | undefined
     platformId: string

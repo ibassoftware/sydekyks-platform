@@ -10,6 +10,9 @@ import { flowService } from '../../flows/flow/flow.service'
 import { flowVersionRepo, flowVersionService } from '../../flows/flow-version/flow-version.service'
 import { encryptUtils } from '../../helper/encryption'
 import { exceptionHandler } from '../../helper/exception-handler'
+import { hostingConfiguration } from '../../hosting/hosting-configuration'
+import { hostedConnectionRevision, HostingJobOrigin } from '../../hosting/hosting-execution'
+import { HostingError, hostingFail } from '../../hosting/hosting-transactions'
 import { getPiecePackageWithoutArchive, pieceMetadataService } from '../../pieces/metadata/piece-metadata-service'
 import { projectService } from '../../project/project-service'
 import { userInteractionWatcher } from '../../workers/user-interaction-watcher'
@@ -75,7 +78,7 @@ export const appConnectionHandler = (log: FastifyBaseLogger) => ({
         return query.getCount()
     },
 
-    async refresh(connection: AppConnection, projectId: ProjectId, log: FastifyBaseLogger): Promise<AppConnection> {
+    async refresh(connection: AppConnection, projectId: ProjectId, log: FastifyBaseLogger, context: { parentAdmissionId?: string, hostedOrigin?: HostingJobOrigin } = {}): Promise<AppConnection> {
         switch (connection.value.type) {
             case AppConnectionType.PLATFORM_OAUTH2:
                 connection.value = await oauth2Handler[connection.value.type](log).refresh({
@@ -106,14 +109,22 @@ export const appConnectionHandler = (log: FastifyBaseLogger) => ({
                     pieceName: connection.pieceName,
                     pieceVersion: connection.pieceVersion,
                 })
+                let origin: HostingJobOrigin | undefined
+                if (hostingConfiguration.getServiceMode() === 'hosted') {
+                    if (!context.parentAdmissionId && context.hostedOrigin?.type !== 'user') hostingFail('HOSTING_CONNECTION_PROVENANCE_REQUIRED')
+                    const persisted = await appConnectionsRepo().findOneByOrFail({ id: connection.id, platformId: connection.platformId, projectIds: ArrayContains([projectId]) })
+                    origin = { type: 'connection-refresh', connectionId: persisted.id, credentialRevision: hostedConnectionRevision(persisted), parentAdmissionId: context.parentAdmissionId, ...(context.hostedOrigin?.type === 'user' ? { userId: context.hostedOrigin.userId, tokenVersion: context.hostedOrigin.tokenVersion } : {}) }
+                }
                 log.info({ pieceName: connection.pieceName, externalId: connection.externalId }, '[custom-auth-refresh] submitting token refresh job')
                 const engineResponse = await userInteractionWatcher.submitAndWaitForResponse<EngineResponse<ExecuteRefreshTokenAuthResponse>>({
                     piece,
                     platformId: connection.platformId,
+                    projectId,
                     connectionValue: connection.value,
                     jobType: WorkerJobType.EXECUTE_TOKEN_REFRESH,
-                }, log)
+                }, log, undefined, origin)
                 if (engineResponse.status === EngineResponseStatus.TIMEOUT) {
+                    if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_CONNECTION_REFRESH_OUTCOME_UNCERTAIN')
                     log.warn({ pieceName: connection.pieceName }, '[custom-auth-refresh] token refresh timed out — using existing credentials')
                     return connection
                 }
@@ -157,11 +168,13 @@ export const appConnectionHandler = (log: FastifyBaseLogger) => ({
         projectId,
         externalId,
         log,
+        parentAdmissionId,
     }: {
         platformId: PlatformId
         projectId: ProjectId
         externalId: string
         log: FastifyBaseLogger
+        parentAdmissionId?: string
     }) {
 
         return distributedLock(log).runExclusive({
@@ -172,6 +185,7 @@ export const appConnectionHandler = (log: FastifyBaseLogger) => ({
 
                 try {
                     const encryptedAppConnection = await appConnectionsRepo().findOneBy({
+                        platformId,
                         projectIds: ArrayContains([projectId]),
                         externalId,
                     })
@@ -182,15 +196,13 @@ export const appConnectionHandler = (log: FastifyBaseLogger) => ({
                     if (!await this.needRefresh(appConnection, log)) {
                         return appConnection
                     }
-                    const refreshedAppConnection = await this.refresh(appConnection, projectId, log)
+                    const refreshedAppConnection = await this.refresh(appConnection, projectId, log, { parentAdmissionId })
         
-                    await appConnectionsRepo().update(refreshedAppConnection.id, {
-                        status: AppConnectionStatus.ACTIVE,
-                        value: await encryptUtils.encryptObject(refreshedAppConnection.value),
-                    })
+                    await persistRefreshedConnection(encryptedAppConnection, refreshedAppConnection, projectId)
                     return refreshedAppConnection
                 }
                 catch (e) {
+                    if (hostingConfiguration.getServiceMode() === 'hosted' || e instanceof HostingError) throw e
                     exceptionHandler.handle(e, log)
                     const isOAuth2Error = oauth2Util(log).isUserError(e)
                     const isCustomAuthError = e instanceof CustomAuthRefreshError
@@ -206,11 +218,12 @@ export const appConnectionHandler = (log: FastifyBaseLogger) => ({
             },
         })
     },
-    async revalidateConnection({ id, platformId, projectId, externalId, validate, log }: {
+    async revalidateConnection({ id, platformId, projectId, externalId, validate, log, hostedOrigin }: {
         id: string
         platformId: PlatformId
         projectId: ProjectId
         externalId: string
+        hostedOrigin?: HostingJobOrigin
         validate: (params: { pieceName: string, value: AppConnectionValue }) => Promise<void>
         log: FastifyBaseLogger
     }): Promise<AppConnection | null> {
@@ -234,14 +247,12 @@ export const appConnectionHandler = (log: FastifyBaseLogger) => ({
                 const skipRefresh = appConnection.value.type === AppConnectionType.PLATFORM_OAUTH2
                 try {
                     if (!skipRefresh && (forceRefresh || await this.needRefresh(appConnection, log))) {
-                        appConnection = await this.refresh(appConnection, projectId, log)
-                        await appConnectionsRepo().update(appConnection.id, {
-                            status: AppConnectionStatus.ACTIVE,
-                            value: await encryptUtils.encryptObject(appConnection.value),
-                        })
+                        appConnection = await this.refresh(appConnection, projectId, log, { hostedOrigin })
+                        await persistRefreshedConnection(encryptedAppConnection, appConnection, projectId)
                     }
                 }
                 catch (e) {
+                    if (hostingConfiguration.getServiceMode() === 'hosted' || e instanceof HostingError) throw e
                     exceptionHandler.handle(e, log)
                     const isOAuth2Error = oauth2Util(log).isUserError(e)
                     const isCustomAuthError = e instanceof CustomAuthRefreshError
@@ -484,4 +495,18 @@ type CountPublishedFlowsParams = {
     projectId: ProjectId
     externalId: string
     applyToPublishedVersions: boolean
+}
+
+async function persistRefreshedConnection(original: AppConnectionSchema, refreshed: AppConnection, projectId: string): Promise<void> {
+    const value = await encryptUtils.encryptObject(refreshed.value)
+    if (hostingConfiguration.getServiceMode() !== 'hosted') {
+        await appConnectionsRepo().update(refreshed.id, { status: AppConnectionStatus.ACTIVE, value })
+        return
+    }
+    // A refresh must not overwrite a credential replacement or restore a removed
+    // project grant while the external provider request was in flight.
+    const result = await appConnectionsRepo().createQueryBuilder().update().set({ status: AppConnectionStatus.ACTIVE, value })
+        .where({ id: original.id, platformId: original.platformId, updated: original.updated, projectIds: ArrayContains([projectId]) })
+        .andWhere('value = CAST(:originalValue AS jsonb)', { originalValue: JSON.stringify(original.value) }).returning(['id']).execute()
+    if (!Array.isArray(result.raw) || result.raw.length !== 1) hostingFail('HOSTING_CONNECTION_REVISION_MISMATCH')
 }

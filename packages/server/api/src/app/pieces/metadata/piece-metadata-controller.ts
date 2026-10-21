@@ -154,7 +154,7 @@ const basePiecesController: FastifyPluginAsyncZod = async (app) => {
                 sampleData,
                 searchValue: req.body.searchValue,
                 piece: await getPiecePackageWithoutArchive(req.log, platform.id, req.body),
-            }, req.log)
+            }, req.log, undefined, req.principal.type === PrincipalType.USER ? { type: 'user', userId: req.principal.id, tokenVersion: req.principal.tokenVersion ?? null } : undefined)
             if (engineResponse.status !== EngineResponseStatus.OK) {
                 throw new ActivepiecesError({
                     code: ErrorCode.ENGINE_OPERATION_FAILURE,

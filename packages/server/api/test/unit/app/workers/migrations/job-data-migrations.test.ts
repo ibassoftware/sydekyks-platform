@@ -1,4 +1,4 @@
-import { ExecuteFlowJobData, ExecutionType, FlowTriggerType, PollingJobData, ResumeReason, RunEnvironment, StreamStepProgress, WorkerJobType } from '@activepieces/shared'
+import { ExecuteFlowJobData, ExecutionType, FlowTriggerType, LATEST_JOB_DATA_SCHEMA_VERSION, PollingJobData, ResumeReason, RunEnvironment, StreamStepProgress, WorkerJobType } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -23,7 +23,38 @@ const mockLog: FastifyBaseLogger = {
     level: 'info',
 } as unknown as FastifyBaseLogger
 
-const LATEST = 10
+const LATEST = LATEST_JOB_DATA_SCHEMA_VERSION
+
+describe('jobMigrations v10 → v11 (scoped Gadget maintenance)', () => {
+    it('preserves legacy extraction scope without manufacturing tenant authority', async () => {
+        const migrated = await jobMigrations(mockLog).apply({
+            schemaVersion: 10,
+            jobType: WorkerJobType.EXECUTE_EXTRACT_PIECE_INFORMATION,
+            platformId: 'platform-1',
+            piece: { pieceName: '@activepieces/piece-http', pieceVersion: '1.0.0', packageType: 'REGISTRY', pieceType: 'OFFICIAL' },
+            requestId: 'request-1',
+            webserverId: 'server-1',
+        })
+        expect(migrated.schemaVersion).toBe(LATEST)
+        expect(migrated.projectId).toBeUndefined()
+    })
+
+    it('does not invent a connection binding for an old refresh job', async () => {
+        const migrated = await jobMigrations(mockLog).apply({
+            schemaVersion: 10,
+            jobType: WorkerJobType.EXECUTE_TOKEN_REFRESH,
+            platformId: 'platform-1',
+            projectId: 'project-1',
+            piece: {},
+            connectionValue: { secret_text: 'fictional' },
+            requestId: 'request-1',
+            webserverId: 'server-1',
+        })
+        expect(migrated.schemaVersion).toBe(LATEST)
+        expect(migrated).not.toHaveProperty('hostingConnectionId')
+        expect(migrated).not.toHaveProperty('hostingConnectionRevision')
+    })
+})
 
 function baseFlowJob(overrides: Partial<ExecuteFlowJobData> = {}): ExecuteFlowJobData {
     return {

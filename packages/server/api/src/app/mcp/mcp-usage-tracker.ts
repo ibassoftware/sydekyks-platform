@@ -2,6 +2,7 @@ import { ActivepiecesError, apId, ErrorCode, isNil, tryCatch } from '@activepiec
 import { McpToolDefinition, McpToolResult, PopulatedMcpServer } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { rejectedPromiseHandler } from '../helper/promise-handler'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
 import { trackBillingAndSendTelemetry } from '../platform/billing-and-telemetry'
 import { assertCreditsNotExceeded, CreditUsageSource, McpCallCreditConsumptionProperties } from '../platform/billing-provider'
 import { projectService } from '../project/project-service'
@@ -10,7 +11,9 @@ import { INTERNAL_CHAT_CLIENT_ID } from './oauth/token/mcp-oauth-token.service'
 
 export const mcpUsageTracker = (log: FastifyBaseLogger) => ({
     async resolveCallBilling({ mcp, clientId }: ResolveCallBillingParams): Promise<McpCallBilling> {
-        if (clientId === INTERNAL_CHAT_CLIENT_ID) {
+        // Hosted dispatch owns the single Credits balance, including refuses,
+        // reservations and uncertain outcomes. Never also charge the legacy meter.
+        if (hostingConfiguration.getServiceMode() === 'hosted' || clientId === INTERNAL_CHAT_CLIENT_ID) {
             return EXEMPT_FROM_BILLING
         }
         const platformId = await resolvePlatformId({ mcp, log })

@@ -1,12 +1,14 @@
 import { createHash } from 'node:crypto'
 import { AIProviderName, apId } from '@activepieces/core-utils'
-import { AgentConversationStatus, AgentRunSource, EngineResponseStatus, ExecutionType, FileType, FlowRun, FlowRunStatus, FlowStatus, isFlowRunStateTerminal, JobData, LATEST_JOB_DATA_SCHEMA_VERSION, ResumeReason, RunEnvironment, StreamStepProgress, TriggerHookType, WorkerJobType } from '@activepieces/shared'
-import { DataSource, EntityManager, In } from 'typeorm'
+import { AgentConversationStatus, AgentRunSource, EngineResponseStatus, ExecutionType, FileType, FlowRun, FlowRunStatus, FlowStatus, FlowVersion, isFlowRunStateTerminal, JobData, LATEST_JOB_DATA_SCHEMA_VERSION, ResumeReason, RunEnvironment, StreamStepProgress, TriggerHookType, WorkerJobType } from '@activepieces/shared'
+import { ArrayContains, DataSource, EntityManager, In } from 'typeorm'
+import { AppConnectionEntity } from '../app-connection/app-connection.entity'
 import { FileEntity } from '../file/file.entity'
 import { FlowEntity } from '../flows/flow/flow.entity'
 import { FlowRunEntity } from '../flows/flow-run/flow-run-entity'
 import { FlowVersionEntity } from '../flows/flow-version/flow-version-entity'
 import { domainHelper } from '../helper/domain-helper'
+import { encryptUtils } from '../helper/encryption'
 import { ProjectEntity } from '../project/project-entity'
 import { SydAgentConversationEntity } from '../syd/copilot/models/agent-conversation.entity'
 import { SydConversationEntity } from '../syd/copilot/models/conversation.entity'
@@ -19,6 +21,7 @@ import { HOSTED_DEEPSEEK_MODEL } from './hosting-ai-policy'
 import { HostingDispatch, HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingReservationEntity } from './hosting-entities'
 import { currentHostedActionPayer, currentHostedFlowPayer, hostedFlowPayer } from './hosting-flow-payer'
+import { hasDefinitiveHostedCompletion, HOSTED_COORDINATOR_JOB_TYPES, isHostedMaintenanceJob, isHostedTestTrigger } from './hosting-job-policy'
 import { createHostedLedger } from './hosting-ledger'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { HostingActor, HostingError, hostingFail, hostingTransactions as tx } from './hosting-transactions'
@@ -109,6 +112,30 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
                 await assertBound({ manager, root: await rootOf({ manager, dispatch: parent }) })
                 rootKey = `agent-step:${origin.waitpointId}`
             }
+            else if ((data.jobType === WorkerJobType.EXECUTE_ACTION || isHostedMaintenanceJob(data) || isHostedTestTrigger(data)) && (origin?.type === 'user' || origin?.type === 'operator-maintenance' || origin?.type === 'connection-refresh')) {
+                if (origin.type === 'connection-refresh') {
+                    if (data.jobType !== WorkerJobType.EXECUTE_TOKEN_REFRESH || (!origin.userId && !origin.parentAdmissionId)) hostingFail('HOSTING_JOB_PROVENANCE_REQUIRED')
+                    data = { ...data, hostingConnectionId: origin.connectionId, hostingConnectionRevision: origin.credentialRevision }
+                    if (origin.parentAdmissionId) {
+                        const parent = await manager.getRepository(HostingDispatchEntity).findOneBy({ admissionId: origin.parentAdmissionId, platformId, projectId, state: 'running' })
+                        if (!parent?.payload || parent.payload.jobType === WorkerJobType.EXECUTE_TOKEN_REFRESH || !parent.leaseUntil || parent.leaseUntil <= await tx.now(manager) || parent.terminalReceipt) hostingFail('HOSTING_PARENT_NOT_RUNNING')
+                        await assertLiveContext({ manager, data: parent.payload })
+                        previous = parent
+                    }
+                    const user = await manager.getRepository(UserEntity).findOneBy({ id: origin.userId ?? project.ownerId, platformId })
+                    if (!user || (origin.userId && origin.tokenVersion === undefined)) hostingFail('HOSTING_ACCESS_DENIED')
+                    actor = previous ? actorOf(previous) : { platformId, identityId: user.identityId, ...(origin.userId ? { tokenVersion: origin.tokenVersion } : {}) }
+                }
+                else {
+                    if (origin.tokenVersion === undefined || (data.jobType === WorkerJobType.EXECUTE_TOKEN_REFRESH) || (data.jobType === WorkerJobType.EXECUTE_EXTRACT_PIECE_INFORMATION) !== (origin.type === 'operator-maintenance')) hostingFail('HOSTING_JOB_PROVENANCE_REQUIRED')
+                    const user = await manager.getRepository(UserEntity).findOneBy({ id: origin.userId, platformId })
+                    if (!user) hostingFail('HOSTING_ACCESS_DENIED')
+                    actor = { platformId, identityId: user.identityId, tokenVersion: origin.tokenVersion }
+                    if (origin.type === 'operator-maintenance') await tx.member({ manager, actor, projectId, write: true, admin: true })
+                }
+                if (data.jobType === WorkerJobType.EXECUTE_ACTION) await currentHostedActionPayer({ manager, platformId, projectId, step: data.step })
+                rootKey = `request:${queueKey}`
+            }
             else if (data.jobType === WorkerJobType.EXECUTE_ACTION || data.jobType === WorkerJobType.EXECUTE_PROPERTY) {
                 if (origin?.type !== 'agent-tool') hostingFail('HOSTING_JOB_PROVENANCE_REQUIRED')
                 tx.assertKey(origin.key)
@@ -121,7 +148,7 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
                 if (data.jobType === WorkerJobType.EXECUTE_ACTION) await currentHostedActionPayer({ manager, platformId, projectId, step: data.step })
             }
             else if (isHostedTriggerJob(data)) {
-                if (origin?.type !== 'scheduled' && origin?.type !== 'trigger-lifecycle') hostingFail('HOSTING_JOB_PROVENANCE_REQUIRED')
+                if (isHostedTestTrigger(data) || (origin?.type !== 'scheduled' && origin?.type !== 'trigger-lifecycle')) hostingFail('HOSTING_JOB_PROVENANCE_REQUIRED')
                 if (origin.type === 'trigger-lifecycle') {
                     const parent = await manager.getRepository(HostingDispatchEntity).findOneBy({ admissionId: origin.admissionId, platformId, projectId, state: 'running' })
                     if (data.jobType !== WorkerJobType.EXECUTE_TRIGGER_HOOK || !parent?.payload || !isHostedTriggerJob(parent.payload) || parent.payload.flowId !== data.flowId || hostedTriggerVersionId(parent.payload) !== data.flowVersionId || !parent.leaseUntil || parent.leaseUntil <= await tx.now(manager)) hostingFail('HOSTING_PARENT_NOT_RUNNING')
@@ -140,6 +167,10 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
                 rootKey = `trigger:${queueKey}`
             }
             else hostingFail('HOSTING_JOB_PATH_NOT_READY')
+            if (!existing && (isHostedMaintenanceJob(data) || isHostedTestTrigger(data))) {
+                const recent = await manager.getRepository(HostingDispatchEntity).createQueryBuilder('dispatch').where('dispatch."platformId" = :platformId AND dispatch."projectId" = :projectId AND dispatch."identityId" = :identityId AND dispatch.created > clock_timestamp() - interval \'1 minute\'', { platformId, projectId, identityId: actor.identityId }).getCount()
+                if (recent >= 60) hostingFail('HOSTING_MAINTENANCE_RATE_LIMIT')
+            }
             await assertLiveContext({ manager, data })
             await tx.member({ manager, actor, projectId, write: true })
             if (freshRun && await manager.getRepository(HostingDispatchEntity).existsBy({ platformId, flowRunId: freshRun.id })) freshRun = undefined
@@ -284,8 +315,9 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
             }
             try {
                 assertData({ dispatch, data })
+                await assertRefreshParent({ manager, dispatch })
                 await assertLiveContext({ manager, data })
-                await tx.member({ manager, actor: actorOf(dispatch), projectId: dispatch.projectId, write: true })
+                await tx.member({ manager, actor: actorOf(dispatch), projectId: dispatch.projectId, write: true, admin: data.jobType === WorkerJobType.EXECUTE_EXTRACT_PIECE_INFORMATION })
                 tx.assertActive({ account, now: await tx.now(manager) })
                 if (data.jobType === WorkerJobType.EXECUTE_AGENT_RUN && data.source === AgentRunSource.FLOW_STEP) {
                     const point = await manager.getRepository(WaitpointEntity).findOneBy({ id: data.waitpointId, projectId: dispatch.projectId, flowRunId: data.flowRunId })
@@ -304,7 +336,7 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
                 if (siblings.some(item => item.id !== dispatch.id && !ancestors.has(item.id) && ACTIVE.includes(item.state))) hostingFail('HOSTING_CONCURRENCY_LIMIT')
                 if (dispatch.parentDispatchId) {
                     const parent = await manager.getRepository(HostingDispatchEntity).findOneByOrFail({ id: dispatch.parentDispatchId, platformId: dispatch.platformId })
-                    if (!['completed', 'paused'].includes(parent.state) && !(parent.state === 'running' && ((parent.payload?.jobType === WorkerJobType.EXECUTE_AGENT_RUN && data.jobType !== WorkerJobType.EXECUTE_AGENT_RUN) || (parent.payload && isHostedTriggerJob(parent.payload) && data.jobType === WorkerJobType.EXECUTE_TRIGGER_HOOK)))) hostingFail('HOSTING_CONCURRENCY_LIMIT')
+                    if (!['completed', 'paused'].includes(parent.state) && !(parent.state === 'running' && ((data.jobType === WorkerJobType.EXECUTE_TOKEN_REFRESH && parent.payload?.jobType !== WorkerJobType.EXECUTE_TOKEN_REFRESH) || (parent.payload?.jobType === WorkerJobType.EXECUTE_AGENT_RUN && data.jobType !== WorkerJobType.EXECUTE_AGENT_RUN) || (parent.payload && isHostedTriggerJob(parent.payload) && data.jobType === WorkerJobType.EXECUTE_TRIGGER_HOOK)))) hostingFail('HOSTING_CONCURRENCY_LIMIT')
                 }
                 const ledger = createHostedLedger({ dataSource, manager })
                 const reservation = root.reservationId
@@ -334,7 +366,9 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
             if (dispatch.state !== 'admitted' || dispatch.admissionId !== admissionId || dispatch.queueTokenHash !== digest(queueToken) || !dispatch.leaseUntil || dispatch.leaseUntil <= await tx.now(manager)) return false
             try {
                 assertData({ dispatch, data })
+                await assertRefreshParent({ manager, dispatch })
                 await assertLiveContext({ manager, data })
+                await tx.member({ manager, actor: actorOf(dispatch), projectId: dispatch.projectId, write: true, admin: data.jobType === WorkerJobType.EXECUTE_EXTRACT_PIECE_INFORMATION })
                 const ledger = createHostedLedger({ dataSource, manager })
                 // Key removal between reservation and worker start is still a
                 // definitive unsent refusal, not a charged/uncertain workflow.
@@ -367,7 +401,7 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
             if (!['running', 'uncertain', 'completed', 'paused'].includes(dispatch.state)) hostingFail('HOSTING_INVALID_TRANSITION')
             dispatch.completionStatus = status
             await manager.getRepository(HostingDispatchEntity).update({ id: dispatch.id }, { completionStatus: status })
-            if (status === EngineResponseStatus.INTERNAL_ERROR) await uncertain({ manager, dispatch })
+            if (!hasDefinitiveHostedCompletion(dispatch.payload, status)) await uncertain({ manager, dispatch })
             else await finalize({ manager, dispatch })
         } })
     }
@@ -494,7 +528,7 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
     }
 
     async function finalize({ manager, dispatch }: { manager: EntityManager, dispatch: HostingDispatch }): Promise<void> {
-        if (['completed', 'paused'].includes(dispatch.state) || !dispatch.completionStatus || dispatch.completionStatus === EngineResponseStatus.INTERNAL_ERROR) return
+        if (['completed', 'paused'].includes(dispatch.state) || !hasDefinitiveHostedCompletion(dispatch.payload, dispatch.completionStatus)) return
         if (dispatch.flowRunId && !dispatch.terminalReceipt) return
         if (dispatch.terminalReceipt === FlowRunStatus.INTERNAL_ERROR) return
         const paused = dispatch.terminalReceipt === FlowRunStatus.PAUSED
@@ -564,7 +598,8 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
         if (!Number.isInteger(limit) || limit < 1 || limit > 100) hostingFail('HOSTING_INVALID_RECOVERY_LIMIT')
         const candidates = await dataSource.getRepository(HostingDispatchEntity).createQueryBuilder('d')
             .leftJoin('hosting_reservation', 'r', 'r.id = d."reservationId" AND r."platformId" = d."platformId"')
-            .where('(d.state = \'prepared\' AND d."availableAt" <= clock_timestamp()) OR (d.state IN (\'admitted\', \'running\') AND d."leaseUntil" <= clock_timestamp()) OR (d.state = \'uncertain\' AND d."completionStatus" IS NOT NULL AND d."completionStatus" <> :internal) OR (d.state IN (\'completed\', \'paused\') AND d."rootDispatchId" IS NULL AND r.state IN (\'running\', \'paused\', \'uncertain\'))', { internal: EngineResponseStatus.INTERNAL_ERROR })
+            .where('((d.state = \'prepared\' AND d."availableAt" <= clock_timestamp()) OR (d.state IN (\'admitted\', \'running\') AND d."leaseUntil" <= clock_timestamp()) OR (d.state = \'uncertain\' AND d."completionStatus" IS NOT NULL AND d."completionStatus" <> :internal) OR (d.state IN (\'completed\', \'paused\') AND d."rootDispatchId" IS NULL AND r.state IN (\'running\', \'paused\', \'uncertain\')))', { internal: EngineResponseStatus.INTERNAL_ERROR })
+            .andWhere('(d.state <> :uncertain OR d.payload->>\'jobType\' NOT IN (:...coordinatorTypes) OR d."completionStatus" IN (:...definitive))', { uncertain: 'uncertain', coordinatorTypes: HOSTED_COORDINATOR_JOB_TYPES, definitive: [EngineResponseStatus.OK, EngineResponseStatus.USER_FAILURE] })
             .orderBy('d.updated', 'ASC').addOrderBy('d.id', 'ASC').take(limit).getMany()
         for (const candidate of candidates) {
             const ready = await tx.run({ dataSource, fn: async manager => {
@@ -647,7 +682,7 @@ async function resetUnsent({ manager, dispatch }: { manager: EntityManager, disp
     await manager.getRepository(HostingDispatchEntity).update({ id: dispatch.id }, { state: 'prepared', admissionId: null, queueTokenHash: null, connectionId: null, leaseUntil: null })
 }
 async function currentHostedJobPayer({ manager, platformId, projectId, data }: { manager: EntityManager, platformId: string, projectId: string, data: JobData | null }): Promise<'managed' | 'byok'> {
-    if (data?.jobType === WorkerJobType.EXECUTE_PROPERTY) return 'managed'
+    if (data && isHostedMaintenanceJob(data)) return 'managed'
     if (data?.jobType === WorkerJobType.EXECUTE_ACTION) return currentHostedActionPayer({ manager, platformId, projectId, step: data.step })
     if (data && isHostedTriggerJob(data)) return 'managed'
     if (data?.jobType === WorkerJobType.EXECUTE_FLOW) return currentHostedFlowPayer({ manager, platformId, flowId: data.flowId, flowVersionId: data.flowVersionId, projectId, stepNameToTest: data.stepNameToTest })
@@ -669,6 +704,17 @@ async function currentHostedJobPayer({ manager, platformId, projectId, data }: {
 
 async function assertLiveContext({ manager, data }: { manager: EntityManager, data: JobData }): Promise<void> {
     if (isHostedTriggerJob(data)) await assertHostedTriggerContext({ manager, data })
+    if ('piece' in data && data.piece && 'platformId' in data.piece && data.piece.platformId && data.piece.platformId !== data.platformId) hostingFail('HOSTING_PIECE_SCOPE_MISMATCH')
+    if (data.jobType === WorkerJobType.EXECUTE_EXTRACT_PIECE_INFORMATION && 'archiveId' in data.piece) {
+        const archive = await manager.getRepository(FileEntity).findOneBy({ id: data.piece.archiveId, platformId: data.platformId, type: FileType.PACKAGE_ARCHIVE })
+        if (!archive) hostingFail('HOSTING_PIECE_SCOPE_MISMATCH')
+    }
+    if (data.jobType === WorkerJobType.EXECUTE_TOKEN_REFRESH) await assertHostedRefreshContext({ manager, data })
+    if (data.jobType === WorkerJobType.EXECUTE_PROPERTY && data.flowVersion) {
+        const flow = await manager.getRepository(FlowEntity).findOneBy({ id: data.flowVersion.flowId, projectId: data.projectId })
+        const version = await manager.getRepository(FlowVersionEntity).findOneBy({ id: data.flowVersion.id, flowId: data.flowVersion.flowId })
+        if (!flow || !version || hashData(FlowVersion.parse(version)) !== hashData(data.flowVersion)) hostingFail('HOSTING_FLOW_SCOPE_MISMATCH')
+    }
     if (data.jobType === WorkerJobType.EXECUTE_AGENT_RUN) {
         const conversation = await manager.getRepository(data.source === AgentRunSource.CHAT ? SydConversationEntity : SydAgentConversationEntity).findOneBy({ id: data.conversationId, platformId: data.platformId, userId: data.userId, source: data.source, activeRunId: data.runId })
         if (!conversation || (conversation.projectId && conversation.projectId !== data.projectId)) hostingFail('HOSTING_JOB_PROVENANCE_REQUIRED')
@@ -712,7 +758,7 @@ type Delivery = { queueName: string, jobId: string, data: JobData }
 type Completion = { queueName: string, jobId: string, queueToken: string, connectionId: string, admissionId: string, status: EngineResponseStatus }
 type Receipt = { admissionId?: string, connectionId?: string, projectId: string, runId: string, status?: FlowRunStatus, checkpoint?: Record<string, unknown>, logsFileId?: string, waitpointId?: string }
 type NestedParams = { admissionId: string, projectId: string, platformId: string, flowId: string, key: string, payload: unknown, failParentOnFailure: boolean, queueName: string }
-export type HostingJobOrigin = { type: 'user', userId: string, tokenVersion?: string | null } | { type: 'scheduled' } | { type: 'resume', waitpointId: string } | { type: 'agent-step', admissionId: string, waitpointId: string } | { type: 'agent-tool', admissionId: string, key: string } | { type: 'trigger-lifecycle', admissionId: string }
+export type HostingJobOrigin = { type: 'user', userId: string, tokenVersion?: string | null } | { type: 'operator-maintenance', userId: string, tokenVersion: string | null } | { type: 'connection-refresh', connectionId: string, credentialRevision: string, parentAdmissionId?: string, userId?: string, tokenVersion?: string | null } | { type: 'scheduled' } | { type: 'resume', waitpointId: string } | { type: 'agent-step', admissionId: string, waitpointId: string } | { type: 'agent-tool', admissionId: string, key: string } | { type: 'trigger-lifecycle', admissionId: string }
 
 type HostedTriggerJob = Extract<JobData, { jobType: WorkerJobType.EXECUTE_TRIGGER_HOOK | WorkerJobType.EXECUTE_POLLING | WorkerJobType.RENEW_WEBHOOK | WorkerJobType.EXECUTE_WEBHOOK }>
 function isHostedTriggerJob(data: JobData): data is HostedTriggerJob {
@@ -726,8 +772,29 @@ async function assertHostedTriggerContext({ manager, data, registration = false 
     if (data.jobType === WorkerJobType.EXECUTE_WEBHOOK && (data.parentRunId || data.failParentOnFailure || !((data.execute && !data.saveSampleData && data.runEnvironment === RunEnvironment.PRODUCTION) || (!data.execute && data.saveSampleData && data.runEnvironment === RunEnvironment.TESTING)))) hostingFail('HOSTING_TRIGGER_SCOPE_MISMATCH')
     const flow = await manager.getRepository(FlowEntity).findOneBy({ id: data.flowId, projectId: data.projectId })
     const version = await manager.getRepository(FlowVersionEntity).findOneBy({ id: versionId, flowId: data.flowId })
+    if (data.jobType === WorkerJobType.EXECUTE_TRIGGER_HOOK && data.hookType === TriggerHookType.TEST) {
+        if (!flow || !version) hostingFail('HOSTING_TRIGGER_SCOPE_MISMATCH')
+        return
+    }
     const source = await manager.getRepository(TriggerSourceEntity).findOneBy({ flowId: data.flowId, flowVersionId: versionId, projectId: data.projectId, simulate: data.jobType === WorkerJobType.EXECUTE_TRIGGER_HOOK ? data.test : data.jobType === WorkerJobType.EXECUTE_WEBHOOK && data.saveSampleData })
     const project = await manager.getRepository(ProjectEntity).findOneBy({ id: data.projectId, platformId: data.platformId })
     if (!project || !flow || !version || !source || !('triggerName' in version.trigger.settings) || source.triggerName !== version.trigger.settings.triggerName || !('pieceName' in version.trigger.settings) || source.pieceName !== version.trigger.settings.pieceName || source.pieceVersion !== version.trigger.settings.pieceVersion) hostingFail('HOSTING_TRIGGER_SCOPE_MISMATCH')
     if (!registration && data.jobType !== WorkerJobType.EXECUTE_TRIGGER_HOOK && !(data.jobType === WorkerJobType.EXECUTE_WEBHOOK && data.saveSampleData) && (flow.status !== FlowStatus.ENABLED || flow.publishedVersionId !== versionId)) hostingFail('HOSTING_TRIGGER_SCOPE_MISMATCH')
+}
+
+export function hostedConnectionRevision(connection: { id: string, updated: string | Date, value: unknown }): string {
+    return hashData({ id: connection.id, updated: connection.updated, value: connection.value })
+}
+
+async function assertHostedRefreshContext({ manager, data }: { manager: EntityManager, data: Extract<JobData, { jobType: WorkerJobType.EXECUTE_TOKEN_REFRESH }> }): Promise<void> {
+    if (!data.hostingConnectionId || !data.hostingConnectionRevision || !data.projectId) hostingFail('HOSTING_CONNECTION_PROVENANCE_REQUIRED')
+    const connection = await manager.getRepository(AppConnectionEntity).findOneBy({ id: data.hostingConnectionId, platformId: data.platformId, projectIds: ArrayContains([data.projectId]) })
+    if (!connection || hostedConnectionRevision(connection) !== data.hostingConnectionRevision || connection.pieceName !== data.piece.pieceName || connection.pieceVersion !== data.piece.pieceVersion || hashData(await encryptUtils.decryptObject(connection.value)) !== hashData(data.connectionValue)) hostingFail('HOSTING_CONNECTION_REVISION_MISMATCH')
+}
+
+async function assertRefreshParent({ manager, dispatch }: { manager: EntityManager, dispatch: HostingDispatch }): Promise<void> {
+    if (dispatch.payload?.jobType !== WorkerJobType.EXECUTE_TOKEN_REFRESH || !dispatch.parentDispatchId) return
+    const parent = await manager.getRepository(HostingDispatchEntity).findOneBy({ id: dispatch.parentDispatchId, platformId: dispatch.platformId, projectId: dispatch.projectId, state: 'running' })
+    if (!parent?.payload || parent.payload.jobType === WorkerJobType.EXECUTE_TOKEN_REFRESH || parent.terminalReceipt || !parent.leaseUntil || parent.leaseUntil <= await tx.now(manager)) hostingFail('HOSTING_PARENT_NOT_RUNNING')
+    await assertLiveContext({ manager, data: parent.payload })
 }

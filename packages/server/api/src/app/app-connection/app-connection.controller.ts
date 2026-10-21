@@ -17,6 +17,7 @@ export const appConnectionController: FastifyPluginCallbackZod = (app, _opts, do
     app.post('/', UpsertAppConnectionRequest, async (request, reply) => {
         const ownerId = await securityHelper.getUserIdFromRequest(request)
         const baseUpsert = {
+            hostedOrigin: request.principal.type === PrincipalType.USER ? { type: 'user' as const, userId: request.principal.id, tokenVersion: request.principal.tokenVersion ?? null } : undefined,
             platformId: request.principal.platform.id,
             projectIds: [request.projectId],
             externalId: request.body.externalId,
@@ -106,6 +107,7 @@ export const appConnectionController: FastifyPluginCallbackZod = (app, _opts, do
 
     app.post('/:id/revalidate', RevalidateAppConnectionRequest, async (request): Promise<AppConnectionWithoutSensitiveData> => {
         return appConnectionService(request.log).revalidate({
+            hostedOrigin: request.principal.type === PrincipalType.USER ? { type: 'user', userId: request.principal.id, tokenVersion: request.principal.tokenVersion ?? null } : undefined,
             id: request.params.id,
             platformId: request.principal.platform.id,
             projectId: request.projectId,

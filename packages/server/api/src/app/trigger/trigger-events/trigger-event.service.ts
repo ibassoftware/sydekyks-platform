@@ -7,6 +7,7 @@ import { flowService } from '../../flows/flow/flow.service'
 import { buildPaginator } from '../../helper/pagination/build-paginator'
 import { paginationHelper } from '../../helper/pagination/pagination-utils'
 import { Order } from '../../helper/pagination/paginator'
+import type { HostingJobOrigin } from '../../hosting/hosting-execution'
 import { projectService } from '../../project/project-service'
 import { userInteractionWatcher } from '../../workers/user-interaction-watcher'
 import { TriggerEventEntity } from './trigger-event.entity'
@@ -51,6 +52,7 @@ export const triggerEventService = (log: FastifyBaseLogger) => ({
     async test({
         projectId,
         flow,
+        hostedOrigin,
     }: TestParams): Promise<SeekPage<TriggerEventWithPayload>> {
         const trigger = flow.version.trigger
         const platformId = await projectService(log).getPlatformId(projectId)
@@ -66,7 +68,7 @@ export const triggerEventService = (log: FastifyBaseLogger) => ({
                     projectId,
                     jobType: WorkerJobType.EXECUTE_TRIGGER_HOOK,
                     platformId,
-                }, log)
+                }, log, undefined, hostedOrigin)
                 if (engineResponse.status !== EngineResponseStatus.OK || isNil(engineResponse.response)) {
                     throw new ActivepiecesError({
                         code: ErrorCode.TEST_TRIGGER_FAILED,
@@ -158,6 +160,7 @@ function getSourceName(trigger: FlowTrigger): string {
 type TestParams = {
     projectId: ProjectId
     flow: PopulatedFlow
+    hostedOrigin?: HostingJobOrigin
 }
 
 type SaveEventParams = {

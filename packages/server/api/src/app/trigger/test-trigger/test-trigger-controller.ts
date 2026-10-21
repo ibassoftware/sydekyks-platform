@@ -19,6 +19,7 @@ export const testTriggerController: FastifyPluginAsyncZod = async (app) => {
             flowVersionId,
             projectId: req.projectId,
             testStrategy,
+            hostedOrigin: req.principal.type === PrincipalType.USER ? { type: 'user', userId: req.principal.id, tokenVersion: req.principal.tokenVersion ?? null } : undefined,
         })
     })
     app.delete('/', CancelTestTriggerRequest, async (req) => {

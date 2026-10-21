@@ -11,7 +11,7 @@ import { AppConnectionType, AppConnectionValue, PiecePackage } from '@activepiec
 import { AgentTool } from '../agents/tools'
 import { AgentOutputField } from '../agents'
 
-export const LATEST_JOB_DATA_SCHEMA_VERSION = 10
+export const LATEST_JOB_DATA_SCHEMA_VERSION = 11
 
 export const InlineJobPayload = z.object({
     type: z.literal('inline'),
@@ -203,6 +203,8 @@ export const ExecuteTokenRefreshJobData = z.object({
     connectionValue: z.custom<AppConnectionValue>(),
     requestId: z.string(),
     webserverId: z.string(),
+    hostingConnectionId: z.string().optional(),
+    hostingConnectionRevision: z.string().optional(),
 })
 export type ExecuteTokenRefreshJobData = z.infer<typeof ExecuteTokenRefreshJobData>
 
@@ -242,7 +244,7 @@ export type ExecutePropertyJobData = z.infer<typeof ExecutePropertyJobData>
 export const ExecuteExtractPieceMetadataJobData = z.object({
     schemaVersion: z.number(),
     jobType: z.literal(WorkerJobType.EXECUTE_EXTRACT_PIECE_INFORMATION),
-    projectId: z.undefined(),
+    projectId: z.string().optional(),
     platformId: z.string(),
     piece: PiecePackage,
     requestId: z.string(),

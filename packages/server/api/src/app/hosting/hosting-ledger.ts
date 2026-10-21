@@ -1,9 +1,10 @@
 import { apId } from '@activepieces/core-utils'
-import { EngineResponseStatus, hostingCatalog, WorkerJobType } from '@activepieces/shared'
+import { hostingCatalog } from '@activepieces/shared'
 import { DataSource, EntityManager, In, IsNull } from 'typeorm'
 import { HOSTED_CREDIT_ACCOUNTING_VERSION, HOSTED_LEGACY_MICRO_USD_PER_CREDIT, HOSTED_MAX_ROOT_CREDITS, hostedAiCredits, hostedCreditLiability, hostedCreditRate, hostedUsesCreditAccounting } from './hosting-credit-policy'
 import { HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrant, HostingGrantEntity, HostingReservation, HostingReservationEntity } from './hosting-entities'
+import { hasDefinitiveHostedCompletion, isHostedCoordinatorJob } from './hosting-job-policy'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
 import { assertHostedStorageAdmission } from './hosting-storage'
@@ -349,10 +350,9 @@ export { lockBudget as lockHostedBudget }
 // Credits. This classification is persisted server authority, never request data.
 async function isConfirmedCoordinator({ manager, reservation }: { manager: EntityManager, reservation: HostingReservation }): Promise<boolean> {
     const root = await manager.getRepository(HostingDispatchEntity).findOneBy({ platformId: reservation.platformId, reservationId: reservation.id, rootDispatchId: IsNull() })
-    const coordinatorTypes: WorkerJobType[] = [WorkerJobType.EXECUTE_TRIGGER_HOOK, WorkerJobType.EXECUTE_POLLING, WorkerJobType.RENEW_WEBHOOK, WorkerJobType.EXECUTE_WEBHOOK]
-    if (!root?.payload || !coordinatorTypes.includes(root.payload.jobType)) return false
+    if (!root?.payload || !isHostedCoordinatorJob(root.payload)) return false
     const segments = await manager.getRepository(HostingDispatchEntity).find({ where: [{ id: root.id, platformId: root.platformId }, { rootDispatchId: root.id, platformId: root.platformId }] })
-    if (segments.some(segment => !segment.payload || !coordinatorTypes.includes(segment.payload.jobType) || !['completed', 'cancelled'].includes(segment.state) || (segment.state === 'completed' && (!segment.completionStatus || segment.completionStatus === EngineResponseStatus.INTERNAL_ERROR)))) hostingFail('HOSTING_COORDINATOR_RECEIPT_REQUIRED')
+    if (segments.some(segment => !segment.payload || !isHostedCoordinatorJob(segment.payload) || !['completed', 'cancelled'].includes(segment.state) || (segment.state === 'completed' && !hasDefinitiveHostedCompletion(segment.payload, segment.completionStatus)))) hostingFail('HOSTING_COORDINATOR_RECEIPT_REQUIRED')
     if (await manager.getRepository(HostingModelCallEntity).existsBy({ platformId: reservation.platformId, rootReservationId: reservation.id })) hostingFail('HOSTING_COORDINATOR_MODEL_DENIED')
     return true
 }

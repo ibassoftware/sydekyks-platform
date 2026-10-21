@@ -11,6 +11,7 @@ export const appConnectionWorkerController: FastifyPluginAsyncZod = async (app) 
         const enginePrincipal = (request.principal as EnginePrincipal)
         assertNotNullOrUndefined(enginePrincipal.projectId, 'projectId')
         const appConnection = await appConnectionService(request.log).getOne({
+            parentAdmissionId: enginePrincipal.id,
             projectId: enginePrincipal.projectId,
             platformId: enginePrincipal.platform.id,
             externalId: request.params.externalId,
