@@ -2,6 +2,7 @@ import { DataSource, EntityManager, IsNull } from 'typeorm'
 import { UserIdentityEntity } from '../authentication/user-identity/user-identity-entity'
 import { LmsCertificateEntity, LmsEnrollmentEntity } from '../lms/lms-entities'
 import { assertHostingOperator } from './hosting-access-policy'
+import { HostingPartnerPurchaseEntity } from './hosting-partner-billing-entities'
 import { assertPartnerTrainingEnrollment, createHostedTraining } from './hosting-training'
 import { HostingTrainingEntity } from './hosting-training-entity'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
@@ -101,4 +102,18 @@ export function createLearningFulfillment({ dataSource, manager: existingManager
 export async function assertLearningWorkspaceOwner(manager: EntityManager, identityId: string, platformId: string): Promise<void> {
     const account = await tx.account({ manager, platformId })
     if (account.ownerIdentityId !== identityId || !await manager.getRepository(UserIdentityEntity).existsBy({ id: identityId, verified: true })) hostingFail('HOSTING_TRAINING_RECIPIENT_MISMATCH')
+}
+
+// Internal verified-provider counterpart to the manual operator receipt flow.
+// It derives the enrollment from the durable purchase and preserves its history.
+export async function revokeVerifiedLearningReceipt({ dataSource, manager, purchaseId }: { dataSource: DataSource, manager: EntityManager, purchaseId: string }): Promise<void> {
+    const purchase = await manager.getRepository(HostingPartnerPurchaseEntity).findOneByOrFail({ id: purchaseId })
+    if (!purchase.enrollmentId || !purchase.trainingId || !purchase.chargeId || purchase.refundedMinor !== purchase.amountMinor || !['ready', 'fulfilled'].includes(purchase.state)) hostingFail('HOSTING_PARTNER_REFUND_UNVERIFIED')
+    const enrollment = await manager.getRepository(LmsEnrollmentEntity).findOne({ where: { id: purchase.enrollmentId }, lock: { mode: 'pessimistic_write' } })
+    if (!enrollment || enrollment.paymentReference !== `stripe-partner:${purchase.id}` || enrollment.workspacePlatformId !== purchase.platformId || enrollment.identityId !== purchase.identityId) hostingFail('HOSTING_PARTNER_RECEIPT_BINDING_MISMATCH')
+    await createHostedTraining({ dataSource, manager }).revokeVerifiedPurchase(purchase.id)
+    const now = await tx.now(manager)
+    await manager.getRepository(LmsEnrollmentEntity).update({ id: enrollment.id }, { status: 'revoked' })
+    await manager.getRepository(LmsCertificateEntity).update({ enrollmentId: enrollment.id, revokedAt: IsNull() }, { revokedAt: now })
+    await tx.event({ manager, platformId: purchase.platformId, event: 'learning.enrollment.refunded', payload: { purchaseId: purchase.id, enrollmentId: enrollment.id } })
 }

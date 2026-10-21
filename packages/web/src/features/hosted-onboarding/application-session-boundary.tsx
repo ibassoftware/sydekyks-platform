@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { LoadingScreen } from '@/components/custom/loading-screen';
 import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import { authenticationSession } from '@/lib/authentication-session';
+import { checkoutIntent } from '@/lib/checkout-intent';
 
 import { currentAuthSession, subscribeHostedSession } from './auth-session';
 import {
@@ -65,6 +66,7 @@ function HostedDocumentLifetime({ children }: { children: React.ReactNode }) {
           initial.current.session,
           readDocumentSession(),
           window.location,
+          checkoutIntent.read() !== null,
         ),
       );
     };

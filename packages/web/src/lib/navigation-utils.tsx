@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEmbedding } from '@/components/providers/embed-provider';
 
 import { ApStorage } from './ap-browser-storage';
+import { checkoutIntent } from './checkout-intent';
 
 export const useNewWindow = () => {
   const { embedState } = useEmbedding();
@@ -55,7 +56,7 @@ export const useRedirectAfterLogin = () => {
   const [searchParams] = useSearchParams();
   const defaultRedirectPath = useDefaultRedirectPath();
   const from = searchParams.get(FROM_QUERY_PARAM) ?? defaultRedirectPath;
-  return () => navigate(from);
+  return () => navigate(checkoutIntent.billingPath() ?? from);
 };
 
 const PENDING_REDIRECT_KEY = 'redirectAfterEmailVerification';

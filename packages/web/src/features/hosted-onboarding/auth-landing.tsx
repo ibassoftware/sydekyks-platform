@@ -10,6 +10,8 @@ import { flagsHooks } from '@/hooks/flags-hooks';
 import { authenticationSession } from '@/lib/authentication-session';
 import { publicLinkUtils } from '@/lib/public-link-utils';
 
+import { checkoutIntent } from '../hosted-billing/checkout-intent';
+
 import { hostedAuthApi } from './auth-api';
 import {
   acceptHostedResponse,
@@ -323,7 +325,7 @@ function SessionAuth({
         authenticationSession.clearSession();
         navigate('/sign-in', { replace: true });
       }}
-      onContinue={() => navigate('/')}
+      onContinue={() => navigate(checkoutIntent.billingPath() ?? '/')}
       onBilling={() => navigate('/platform/billing')}
     />
   );

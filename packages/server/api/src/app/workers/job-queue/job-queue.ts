@@ -40,7 +40,7 @@ export const jobQueue = (log: FastifyBaseLogger) => ({
         if (hostingConfiguration.getServiceMode() === 'hosted' && hostingConfiguration.getBillingMode() === 'stripe_test' && !billingTimer) {
             billingTimer = setInterval(() => {
                 if (billingRun) return
-                billingRun = hostingServices.billing().then(service => service.recover()).catch(() => log.warn('[hostingBilling] Recovery remains blocked')).finally(() => {
+                billingRun = Promise.all([hostingServices.billing().then(service => service.recover()), hostingServices.partnerBilling().then(service => service.recover())]).then(() => undefined).catch(() => log.warn('[hostingBilling] Recovery remains blocked')).finally(() => {
                     billingRun = undefined
                 })
             }, 30_000)

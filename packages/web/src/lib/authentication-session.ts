@@ -11,6 +11,7 @@ import { authenticationApi } from '@/api/authentication-api';
 import { queryClient } from '@/app/query-client';
 
 import { ApStorage } from './ap-browser-storage';
+import { checkoutIntent } from './checkout-intent';
 import { telemetryUtils } from './telemetry-utils';
 
 const tokenKey = 'token';
@@ -109,7 +110,7 @@ export const authenticationSession = {
     if (!isNil(result.projectId)) {
       ApStorage.getInstance().setItem(projectIdKey, result.projectId);
     }
-    window.location.href = '/';
+    window.location.href = checkoutIntent.billingPath() ?? '/';
   },
   switchToProject(projectId: string) {
     if (authenticationSession.getProjectId() === projectId) {
@@ -125,14 +126,15 @@ export const authenticationSession = {
     }
     return !this.isJwtExpired(token);
   },
-  clearSession() {
+  clearSession({ preserveCheckoutIntent = false } = {}) {
+    if (!preserveCheckoutIntent) checkoutIntent.clear();
     ApStorage.getInstance().removeItem(projectIdKey);
     ApStorage.getInstance().removeItem(tokenKey);
     window.dispatchEvent(new Event('storage'));
   },
-  logOut() {
+  logOut({ preserveCheckoutIntent = false } = {}) {
     const hadSession = !isNil(this.getToken());
-    this.clearSession();
+    this.clearSession({ preserveCheckoutIntent });
     if (hadSession) {
       telemetryUtils.resetIdentity();
     }

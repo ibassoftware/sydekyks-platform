@@ -19,6 +19,37 @@ const route = (pathname: string, search = '', hash = '') => ({
 });
 
 describe('hosted document reload navigation', () => {
+  it('resumes only the fixed billing review after login or a workspace change', () => {
+    for (const current of [
+      initial,
+      {
+        ...initial,
+        id: 'other-user',
+        platformId: 'other-workspace',
+        token: 'new-workspace-token',
+      },
+    ]) {
+      expect(
+        hostedDocumentReloadPath(initial, current, route('/sign-in'), true),
+      ).toBe('/platform/billing');
+    }
+    expect(
+      hostedDocumentReloadPath(
+        initial,
+        { ...initial, kind: 'anonymous', token: null },
+        route('/platform/billing'),
+        true,
+      ),
+    ).toBe('/sign-in');
+    expect(
+      hostedDocumentReloadPath(
+        initial,
+        { ...initial, kind: 'onboarding', platformId: null },
+        route('/platform/billing'),
+        true,
+      ),
+    ).toBe('/');
+  });
   it.each(['project_A', 'project-B'])(
     'keeps only the currently selected project list (%s) across a full reload',
     (projectId) => {

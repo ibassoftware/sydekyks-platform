@@ -222,10 +222,12 @@ describe('one-time Core assessment allowance', () => {
         const ledger = createHostedLedger({ dataSource: ds }), root = await ledger.reserveExecution({ actor: actor(client), projectId: client.projectId!, key: 'assessment-source', payer: 'managed' })
         expect(root.grantId).toBe(issued.find(grant => grant.meter === 'execution')?.id)
         const rootClaim = await ledger.claimExecution({ actor: actor(client), reservationId: root.id })
-        const call = await ledger.reserveManagedCall({ actor: actor(client), rootReservationId: root.id, key: 'last-assessment-credits', maxCostMicroUsd: 49500n })
+        // Current rate is250microUSD/Credit: $0.02475 reserves99Credits,
+        // leaving the one execution Credit to exhaust the100Credit allowance.
+        const call = await ledger.reserveManagedCall({ actor: actor(client), rootReservationId: root.id, key: 'last-assessment-credits', maxCostMicroUsd: 24750n })
         await expect(ledger.reserveManagedCall({ actor: actor(client), rootReservationId: root.id, key: 'over-shared-credit-balance', maxCostMicroUsd: 1n })).rejects.toThrow('CREDITS_EXHAUSTED')
         const claim = await ledger.claimManagedCall({ actor: actor(client), reservationId: call.id })
-        await ledger.settleManagedCall({ platformId: client.platformId, reservationId: call.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 49500n })
+        await ledger.settleManagedCall({ platformId: client.platformId, reservationId: call.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 24750n })
         await ledger.finishExecution({ platformId: client.platformId, reservationId: root.id, dispatchId: rootClaim.dispatchId! })
         expect((await activate(enrollment.id)).id).toBe(record.id)
         expect(await ds.getRepository(HostingAssessmentEntity).count()).toBe(1)
@@ -248,11 +250,13 @@ describe('one-time Core assessment allowance', () => {
         const ledger = createHostedLedger({ dataSource: ds }), root = await ledger.reserveExecution({ actor: actor(client), projectId: client.projectId!, key: 'held-assessment', payer: 'managed' }), rootClaim = await ledger.claimExecution({ actor: actor(client), reservationId: root.id })
         const call = await ledger.reserveManagedCall({ actor: actor(client), rootReservationId: root.id, key: 'held-before-revoke', maxCostMicroUsd: 5000n }), claim = await ledger.claimManagedCall({ actor: actor(client), reservationId: call.id })
         await assessment().revoke({ actor: actor(operator), enrollmentId: enrollment.id })
-        expect((await grants()).find(grant => grant.id === call.grantId)?.reserved).toBe(10n)
+        // A $0.005 supplier hold reserves20Credits at250microUSD/Credit.
+        expect((await grants()).find(grant => grant.id === call.grantId)?.reserved).toBe(20n)
         await expect(ledger.reserveExecution({ actor: actor(client), projectId: client.projectId!, key: 'old-session-after-revoke', payer: 'byok' })).rejects.toThrow('ENTITLEMENT_EXPIRED')
         await ledger.settleManagedCall({ platformId: client.platformId, reservationId: call.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 2000n })
         await ledger.finishExecution({ platformId: client.platformId, reservationId: root.id, dispatchId: rootClaim.dispatchId! })
-        expect((await grants()).find(grant => grant.id === call.grantId)?.consumed).toBe(5n)
+        // $0.002 settles8Credits; the completed execution adds oneCredit.
+        expect((await grants()).find(grant => grant.id === call.grantId)?.consumed).toBe(9n)
         await expect(activate(enrollment.id)).rejects.toThrow('ASSESSMENT_CLOSED')
         await expect(ds.getRepository(HostingAssessmentEntity).update({ id: record.id }, { endsAt: new Date(start + 91 * days) })).rejects.toThrow('HISTORY_IMMUTABLE')
         await expect(ds.getRepository(HostingAssessmentEntity).delete({ id: record.id })).rejects.toThrow('HISTORY_IMMUTABLE')

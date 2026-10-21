@@ -12,6 +12,12 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 
+import {
+  CheckoutIntentReview,
+  useCheckoutIntent,
+} from './checkout-intent-review';
+import { PartnerPurchaseSection } from './partner-purchase-section';
+
 type Props = {
   overview: HostedCustomerBillingOverview;
   stale: boolean;
@@ -34,6 +40,19 @@ export function HostedBillingView({
   onCheckout,
   onPortal,
 }: Props) {
+  const { intent } = useCheckoutIntent();
+  const selectedPlan =
+    intent?.offer === 'starter'
+      ? 'starter'
+      : intent?.offer === 'growth'
+      ? 'team'
+      : null;
+  const selectedPackage =
+    intent?.offer === 'partner-core'
+      ? 'core'
+      : intent?.offer === 'partner-guided'
+      ? 'guided'
+      : null;
   const manual = info.billingMode === 'manual';
   const blocked = stale || refreshing || pending !== null;
   return (
@@ -55,6 +74,7 @@ export function HostedBillingView({
       }
     >
       <div className="space-y-6">
+        <CheckoutIntentReview />
         <Alert role="status">
           <AlertDescription>
             {manual
@@ -135,7 +155,7 @@ export function HostedBillingView({
                   { date: date(info.validUntil) },
                 )
               : t(
-                  'Paid through {date}. Allowances shown below belong to the displayed period.',
+                  'Workspace access ends {date}, including any applicable renewal grace period. Renewing adds Credits only after verified payment.',
                   { date: date(info.validUntil) },
                 )}
           </p>
@@ -240,6 +260,11 @@ export function HostedBillingView({
                 aria-labelledby={`hosted-plan-${plan.id}`}
                 className="flex flex-col rounded-lg border p-5"
               >
+                {selectedPlan === plan.id && (
+                  <p className="mb-2 text-sm font-medium">
+                    {t('Selected for review')}
+                  </p>
+                )}
                 <h3 id={`hosted-plan-${plan.id}`} className="font-semibold">
                   {planName(plan.id)}
                 </h3>
@@ -342,9 +367,10 @@ export function HostedBillingView({
           </p>
           <p className="text-sm text-gray-11">
             {t(
-              'Partner purchases are arranged with the Sydekyks team. Access starts only after verified payment and enrollment. Continuing hosting after the included year is optional and requires a separate agreement. Prices are USD, before applicable taxes.',
+              'Access starts only after verified payment and enrollment. Continuing hosting after the included year is optional and requires a separate agreement. Prices are USD, before applicable taxes.',
             )}
           </p>
+          <PartnerPurchaseSection selectedPackage={selectedPackage} />
         </section>
         <Separator />
         <section aria-labelledby="hosted-payments" className="space-y-3">

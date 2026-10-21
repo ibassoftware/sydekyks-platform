@@ -1,3 +1,4 @@
+import './features/hosted-billing/checkout-intent-bootstrap';
 import './lib/partner-setup-secret';
 import './polyfills';
 import { StrictMode } from 'react';

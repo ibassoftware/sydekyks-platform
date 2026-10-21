@@ -5,6 +5,7 @@ import { createHostedBillingView } from './hosting-billing-view'
 import { createHostedExecution } from './hosting-execution'
 import { createHostedLedger } from './hosting-ledger'
 import { createHostedOnboarding } from './hosting-onboarding'
+import { createHostedPartnerBilling } from './hosting-partner-billing'
 import { createHostedStripe } from './hosting-stripe'
 import { hostingFail } from './hosting-transactions'
 
@@ -26,7 +27,10 @@ function gateway() {
 async function billing() {
     return createHostedStripe({ dataSource: databaseConnection() })
 }
+async function partnerBilling() {
+    return createHostedPartnerBilling({ dataSource: databaseConnection() })
+}
 function billingView() {
     return createHostedBillingView({ dataSource: databaseConnection() })
 }
-export const hostingServices = { onboarding, ledger, execution, gateway, billing, billingView }
+export const hostingServices = { onboarding, ledger, execution, gateway, billing, billingView, partnerBilling }

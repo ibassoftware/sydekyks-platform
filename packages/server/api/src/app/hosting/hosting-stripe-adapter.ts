@@ -1,6 +1,7 @@
 import type Stripe from 'stripe'
 import { z } from 'zod'
 import { StripeCommand } from './hosting-stripe-entities'
+import { assertStripeEventEnvelope } from './hosting-stripe-event'
 import { HostedStripeCatalog, STRIPE_API_VERSION, stripeDigest, stripeId } from './hosting-stripe-policy'
 import { HostingError, hostingFail } from './hosting-transactions'
 
@@ -21,7 +22,7 @@ export async function createStripeAdapter(policy: Policy) {
         catch {
             hostingFail('HOSTING_STRIPE_SIGNATURE_INVALID')
         }
-        if (event.livemode !== false || event.api_version !== STRIPE_API_VERSION || event.account || ('context' in event && event.context)) hostingFail('HOSTING_STRIPE_EVENT_CONTEXT_DENIED')
+        assertStripeEventEnvelope(event)
         return event
     }
     async function create(command: StripeCommand): Promise<{ objectId: string, url: string | null, expiresAt: Date | null }> {
@@ -187,7 +188,7 @@ export async function createStripeAdapter(policy: Policy) {
     async function eventCustomer(eventId: string): Promise<string | null> {
         await account()
         const event = await client.events.retrieve(eventId)
-        if (event.livemode !== false || event.account || event.api_version !== STRIPE_API_VERSION) hostingFail('HOSTING_STRIPE_EVENT_CONTEXT_DENIED')
+        assertStripeEventEnvelope(event)
         const object = event.data.object
         if ('customer' in object) return stripeId(object.customer)
         if ('charge' in object) {

@@ -115,11 +115,15 @@ describe('PostgreSQL manual subscription fencing', () => {
         expect(root.grantId).toBe(policy.boundPeriod!.executionGrantId)
         const claim = await ledger.claimExecution({ actor: client.actor, reservationId: root.id })
         const call = await ledger.reserveManagedCall({ actor: client.actor, rootReservationId: root.id, key: 'pg-core-managed-grace', maxCostMicroUsd: 10n })
-        expect(call.grantId).toBe(policy.boundPeriod!.managedAiGrantId)
+        // Unified Credits charge the final funded execution grant, while the
+        // historical managed-AI grant remains provenance rather than spendable balance.
+        expect(call.grantId).toBe(policy.boundPeriod!.executionGrantId)
         const sent = await ledger.claimManagedCall({ actor: client.actor, reservationId: call.id })
         await ledger.settleManagedCall({ platformId: client.platformId, reservationId: call.id, dispatchId: sent.dispatchId!, actualCostMicroUsd: 5n })
         await ledger.finishExecution({ platformId: client.platformId, reservationId: root.id, dispatchId: claim.dispatchId! })
-        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: root.grantId })).consumed).toBe(1n)
+        // Five supplier microUSD round up to one Credit at250microUSD/Credit,
+        // plus the one Credit charged for the completed execution.
+        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: root.grantId })).consumed).toBe(2n)
     })
     it('binds an existing funded Starter period and rejects silent migration to a new paid period', async () => {
         // Explicit synthetic funding rows test serialization only, not payment processing.

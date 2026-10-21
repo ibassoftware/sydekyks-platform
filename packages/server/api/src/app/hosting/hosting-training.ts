@@ -8,9 +8,10 @@ import { revokeAssessmentAccess } from './hosting-assessment'
 import { effectiveHostedCredits } from './hosting-credit-allowance'
 import { HostingAccountEntity, HostingGrantEntity, HostingLedgerEntity, HostingReservationEntity } from './hosting-entities'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
+import { HostingPartnerPurchaseEntity } from './hosting-partner-billing-entities'
 import { HostingStripeBindingEntity } from './hosting-stripe-entities'
-import { newPartnerTrainingPeriods } from './hosting-training-periods'
 import { HostingTraining, HostingTrainingEntity } from './hosting-training-entity'
+import { newPartnerTrainingPeriods } from './hosting-training-periods'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 const bindingSchema = z.strictObject({
@@ -29,10 +30,11 @@ export async function assertPartnerTrainingEnrollment(manager: EntityManager, en
 // Internal operator fulfillment API. The caller must load a verified persisted LMS
 // enrollment/payment record; course completion or browser payment assertions are not authority.
 export function createHostedTraining({ dataSource, manager: existingManager }: { dataSource: DataSource, manager?: EntityManager }) {
-    async function activate({ actor, ...binding }: Binding & { actor: HostingActor }): Promise<HostingTraining> {
+    async function activateBinding({ actor, ...binding }: Binding & { actor: HostingActor }, purchaseId?: string): Promise<HostingTraining> {
         const input = bindingSchema.parse(binding)
         return tx.run({ dataSource, manager: existingManager, fn: async manager => {
-            await assertHostingOperator({ manager, actor })
+            if (purchaseId) await assertVerifiedReceipt(manager, purchaseId, binding)
+            else await assertHostingOperator({ manager, actor })
             const enrollment = await manager.getRepository(LmsEnrollmentEntity).findOne({ where: { id: input.enrollmentId }, lock: { mode: 'pessimistic_write' } })
             if (!enrollment) hostingFail('HOSTING_PARTNER_TRAINING_REQUIRED')
             await assertPartnerTrainingEnrollment(manager, enrollment)
@@ -76,9 +78,10 @@ export function createHostedTraining({ dataSource, manager: existingManager }: {
         } })
     }
 
-    async function revoke({ actor, enrollmentId }: { actor: HostingActor, enrollmentId: string }): Promise<void> {
+    async function revokeBinding({ actor, enrollmentId }: { actor: HostingActor, enrollmentId: string }, purchaseId?: string): Promise<void> {
         await tx.run({ dataSource, manager: existingManager, fn: async manager => {
-            await assertHostingOperator({ manager, actor })
+            if (purchaseId) await assertVerifiedReceipt(manager, purchaseId, { enrollmentId })
+            else await assertHostingOperator({ manager, actor })
             const enrollment = await manager.getRepository(LmsEnrollmentEntity).findOne({ where: { id: enrollmentId }, lock: { mode: 'pessimistic_write' } })
             if (!enrollment) hostingFail('HOSTING_TRAINING_NOT_FOUND')
             const peek = await manager.getRepository(HostingTrainingEntity).findOneBy({ enrollmentId })
@@ -95,9 +98,38 @@ export function createHostedTraining({ dataSource, manager: existingManager }: {
                 const available = grant.amount - grant.reserved - grant.consumed
                 await manager.getRepository(HostingLedgerEntity).insert({ id: apId(), platformId: account.id, grantId: grant.id, reservationId: null, operation: 'revoke', key: `revoke:${grant.id}`, amount: available > 0n ? available : 0n })
             }
-            if (account.planId === 'training') await manager.getRepository(HostingAccountEntity).update({ id: account.id }, { validUntil: now })
+            if (account.planId === 'training' && account.validUntil.getTime() === record.endsAt.getTime()) await manager.getRepository(HostingAccountEntity).update({ id: account.id }, { validUntil: now })
             await tx.event({ manager, platformId: account.id, event: 'training.revoked', payload: { trainingId: record.id, enrollmentId, operatorIdentityId: actor.identityId } })
         } })
     }
-    return { activate, revoke }
+    async function activate(input: Binding & { actor: HostingActor }) {
+        return activateBinding(input)
+    }
+    async function revoke(input: { actor: HostingActor, enrollmentId: string }) {
+        return revokeBinding(input)
+    }
+    // Internal receipt methods derive all recipient/package/receipt values from
+    // persisted verified Stripe evidence; no customer request can call these.
+    async function activateVerifiedPurchase(purchaseId: string) {
+        const purchase = await (existingManager ?? dataSource.manager).getRepository(HostingPartnerPurchaseEntity).findOneByOrFail({ id: purchaseId })
+        if (!purchase.enrollmentId) hostingFail('HOSTING_PARTNER_RECEIPT_UNVERIFIED')
+        return activateBinding({ actor: { identityId: purchase.identityId, platformId: purchase.platformId }, platformId: purchase.platformId, identityId: purchase.identityId, enrollmentId: purchase.enrollmentId, receiptId: `stripe-partner:${purchase.id}`, tier: purchase.package === 'guided' ? 'launch' : 'core' }, purchase.id)
+    }
+    async function revokeVerifiedPurchase(purchaseId: string) {
+        const purchase = await (existingManager ?? dataSource.manager).getRepository(HostingPartnerPurchaseEntity).findOneByOrFail({ id: purchaseId })
+        if (!purchase.enrollmentId) hostingFail('HOSTING_PARTNER_RECEIPT_UNVERIFIED')
+        return revokeBinding({ actor: { identityId: purchase.identityId, platformId: purchase.platformId }, enrollmentId: purchase.enrollmentId }, purchase.id)
+    }
+    return { activate, revoke, activateVerifiedPurchase, revokeVerifiedPurchase }
+}
+
+async function assertVerifiedReceipt(manager: EntityManager, purchaseId: string, binding: Partial<Binding>): Promise<void> {
+    const purchase = await manager.getRepository(HostingPartnerPurchaseEntity).findOneBy({ id: purchaseId })
+    if (!purchase || !purchase.sessionId || !purchase.customerId || !purchase.chargeId || !purchase.paymentIntentId || !purchase.enrollmentId || !['ready', 'fulfilled'].includes(purchase.state) || purchase.amountMinor !== (purchase.package === 'core' ? 100000 : 120000)) hostingFail('HOSTING_PARTNER_RECEIPT_UNVERIFIED')
+    const enrollment = await manager.getRepository(LmsEnrollmentEntity).findOneBy({ id: purchase.enrollmentId })
+    if (!enrollment || enrollment.courseId !== purchase.courseId || enrollment.paymentReference !== `stripe-partner:${purchase.id}` || enrollment.workspacePlatformId !== purchase.platformId || enrollment.identityId !== purchase.identityId) hostingFail('HOSTING_PARTNER_RECEIPT_BINDING_MISMATCH')
+    const expected = { platformId: purchase.platformId, identityId: purchase.identityId, enrollmentId: purchase.enrollmentId, receiptId: `stripe-partner:${purchase.id}`, tier: purchase.package === 'guided' ? 'launch' : 'core' }
+    if (Object.entries(binding).some(([key, value]) => expected[key as keyof typeof expected] !== value)) hostingFail('HOSTING_PARTNER_RECEIPT_UNVERIFIED')
+    if (binding.receiptId && purchase.refundedMinor >= purchase.amountMinor) hostingFail('HOSTING_PARTNER_RECEIPT_REFUNDED')
+    if (!binding.receiptId && purchase.refundedMinor !== purchase.amountMinor) hostingFail('HOSTING_PARTNER_REFUND_UNVERIFIED')
 }

@@ -63,7 +63,9 @@ function globalErrorHandler(error: AxiosError) {
       errorCode === ErrorCode.SESSION_EXPIRED ||
       errorCode === ErrorCode.INVALID_BEARER_TOKEN
     ) {
-      authenticationSession.logOut();
+      // Expired credentials do not cancel a public offer selected before login.
+      // Explicit sign-out still clears it through logOut's default behavior.
+      authenticationSession.logOut({ preserveCheckoutIntent: true });
       console.log(errorCode);
       window.location.href = '/sign-in';
     }

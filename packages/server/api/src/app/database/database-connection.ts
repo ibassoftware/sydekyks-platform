@@ -29,6 +29,7 @@ import { HostingDispatchEntity } from '../hosting/hosting-dispatch-entity'
 import { HOSTING_ENTITIES } from '../hosting/hosting-entities'
 import { HostingModelCallEntity } from '../hosting/hosting-model-call-entity'
 import { HOSTING_PARTNER_ADMIN_ENTITIES } from '../hosting/hosting-partner-admin-entities'
+import { HOSTING_PARTNER_BILLING_ENTITIES } from '../hosting/hosting-partner-billing-entities'
 import { HOSTING_PARTNER_SETUP_ENTITIES } from '../hosting/hosting-partner-setup-entities'
 import { HOSTING_PRICING_ENTITIES } from '../hosting/hosting-pricing-entities'
 import { HOSTING_RECOVERY_ENTITIES } from '../hosting/hosting-recovery-entities'
@@ -92,6 +93,7 @@ function getEntities(): EntitySchema<unknown>[] {
         ...HOSTING_CREDIT_ALLOWANCE_ENTITIES,
         ...HOSTING_CHARGE_RESOLUTION_ENTITIES,
         ...HOSTING_PARTNER_ADMIN_ENTITIES,
+        ...HOSTING_PARTNER_BILLING_ENTITIES,
         ...HOSTING_PARTNER_SETUP_ENTITIES,
         ...HOSTING_TENANT_MEMBERS_ENTITIES,
         ...HOSTING_STRIPE_ENTITIES,

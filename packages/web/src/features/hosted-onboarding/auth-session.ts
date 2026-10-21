@@ -141,7 +141,7 @@ export function acceptHostedResponse(
     throw new HostedAuthError('unavailable');
   // Clear stale project pointers before a verified onboarding/null-project response.
   resetCache();
-  authenticationSession.clearSession();
+  authenticationSession.clearSession({ preserveCheckoutIntent: true });
   authenticationSession.saveResponse(response, false);
 }
 export class HostedAuthError extends Error {

@@ -18,6 +18,7 @@ import { hostingLearningController } from './hosting-learning-controller'
 import { hostingOnboardingController } from './hosting-onboarding-controller'
 import { hostingOperatorController } from './hosting-operator-controller'
 import { hostingPartnerAdminController } from './hosting-partner-admin-controller'
+import { hostingPartnerBillingController } from './hosting-partner-billing-controller'
 import { hostingPartnerSetupController, hostingPartnerSetupPublicController } from './hosting-partner-setup-controller'
 import { hostingPricingController } from './hosting-pricing-controller'
 import { hostingRecoveryController, hostingRecoveryPublicController } from './hosting-recovery-controller'
@@ -54,6 +55,7 @@ export const hostingController: FastifyPluginAsyncZod = async app => {
     await app.register(hostingPricingController, { prefix: '/operator/ai-pricing' })
     await app.register(hostingOnboardingController, { prefix: '/onboarding' })
     await app.register(hostingStripeController, { prefix: '/billing' })
+    await app.register(hostingPartnerBillingController, { prefix: '/partner-billing' })
     app.setErrorHandler((error, _request, reply) => {
         if (error instanceof HostingError) return reply.code(403).send({ code: error.message })
         throw error

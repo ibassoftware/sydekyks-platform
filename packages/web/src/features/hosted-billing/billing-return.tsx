@@ -1,5 +1,6 @@
 import { Navigate, useSearchParams } from 'react-router-dom';
 
+import { checkoutIntent } from './checkout-intent';
 import { useHostedBillingEnabled } from './service-mode';
 
 // This alias only navigates. It never accepts a session id or confirms payment.
@@ -12,7 +13,11 @@ export function HostedBillingReturn() {
   return (
     <Navigate
       replace
-      to={hosted ? `/platform/billing${search}` : '/platform/projects'}
+      to={
+        hosted
+          ? `${checkoutIntent.billingPath() ?? '/platform/billing'}${search}`
+          : '/platform/projects'
+      }
     />
   );
 }

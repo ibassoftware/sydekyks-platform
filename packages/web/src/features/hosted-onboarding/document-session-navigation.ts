@@ -12,8 +12,10 @@ export function hostedDocumentReloadPath(
   initial: HostedDocumentSession,
   current: HostedDocumentSession,
   location: Pick<Location, 'pathname' | 'search' | 'hash'>,
+  checkoutPending = false,
 ): string {
   if (current.kind === 'anonymous') return '/sign-in';
+  if (current.kind === 'user' && checkoutPending) return '/platform/billing';
   const sameAccount =
     initial.kind === 'user' &&
     current.kind === 'user' &&

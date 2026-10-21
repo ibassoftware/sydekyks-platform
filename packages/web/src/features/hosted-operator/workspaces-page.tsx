@@ -8,6 +8,7 @@ import {
   acceptHostedResponse,
   assertAuthSession,
 } from '@/features/hosted-onboarding/auth-session';
+import { checkoutIntent } from '@/lib/checkout-intent';
 
 import {
   enterOperationalWorkspace,
@@ -48,7 +49,7 @@ function SessionWorkspaces({
       if (attempt.signal.aborted) return;
       // Verify the origin session before replacing storage and stale tenant caches.
       acceptHostedResponse(response, access.session, () => cache.clear());
-      navigate('/', { replace: true });
+      navigate(checkoutIntent.billingPath() ?? '/', { replace: true });
     } catch {
       if (attempt.signal.aborted) return;
       try {
