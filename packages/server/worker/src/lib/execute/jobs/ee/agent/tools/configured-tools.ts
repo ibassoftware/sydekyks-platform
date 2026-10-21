@@ -111,7 +111,7 @@ export async function executeBatchAction({ executeWithTimeout, eventEmitter, too
 
 export function createConfiguredPieceTools({ tools, runPieceTool, taintState, eventEmitter, log }: {
     tools: AgentPieceTool[]
-    runPieceTool: (input: { toolName: string, instruction: string, piece: AgentPieceToolMetadata }) => Promise<ExecutePieceToolResponse>
+    runPieceTool: (input: { requestKey?: string, toolName: string, instruction: string, piece: AgentPieceToolMetadata }) => Promise<ExecutePieceToolResponse>
     taintState: TaintState
     eventEmitter: AgentEventEmitter
     log: FastifyBaseLogger
@@ -131,7 +131,7 @@ export function createConfiguredPieceTools({ tools, runPieceTool, taintState, ev
                     return { content: [{ type: 'text', text: `This run has already performed ${MAX_CONFIGURED_TOOL_CALLS} actions, which is the limit. Do not try again; say what is left undone.` }] }
                 }
                 taintState.tainted = true
-                const { data, error } = await tryCatch(() => runPieceTool({ toolName: configured.toolName, instruction, piece: configured.pieceMetadata }))
+                const { data, error } = await tryCatch(() => runPieceTool({ requestKey: options.toolCallId, toolName: configured.toolName, instruction, piece: configured.pieceMetadata }))
                 if (error) {
                     const reachedTheServer = String(error).includes('handler threw')
                     log.warn({ error, tool: { name: configured.toolName }, reachedTheServer }, '[configuredPieceTool] Action did not return a result')
@@ -163,7 +163,7 @@ export function createConfiguredPieceTools({ tools, runPieceTool, taintState, ev
 
 export function createConfiguredKnowledgeBaseTools({ tools, runKnowledgeBaseTool, taintState, log }: {
     tools: AgentKnowledgeBaseTool[]
-    runKnowledgeBaseTool: (input: { toolName: string, knowledgeBaseFileId: string, query: string }) => Promise<{ result: unknown }>
+    runKnowledgeBaseTool: (input: { requestKey?: string, toolName: string, knowledgeBaseFileId: string, query: string }) => Promise<{ result: unknown }>
     taintState: TaintState
     log: FastifyBaseLogger
 }): ToolSet {
@@ -176,14 +176,14 @@ export function createConfiguredKnowledgeBaseTools({ tools, runKnowledgeBaseTool
                 inputSchema: z.object({
                     query: z.string().describe('The search query to find relevant information'),
                 }),
-                execute: async ({ query }) => {
+                execute: async ({ query }, options) => {
                     callsMade += 1
                     if (callsMade > MAX_CONFIGURED_TOOL_CALLS) {
                         log.warn({ tool: { name: configured.toolName }, callsMade }, '[configuredKnowledgeBaseTool] Refused, this run has already searched enough')
                         return { content: [{ type: 'text', text: `This run has already searched knowledge bases ${MAX_CONFIGURED_TOOL_CALLS} times, which is the limit. Do not try again; say what is left undone.` }] }
                     }
                     taintState.tainted = true
-                    const { data, error } = await tryCatch(() => runKnowledgeBaseTool({ toolName: configured.toolName, knowledgeBaseFileId: configured.sourceId, query }))
+                    const { data, error } = await tryCatch(() => runKnowledgeBaseTool({ requestKey: options.toolCallId, toolName: configured.toolName, knowledgeBaseFileId: configured.sourceId, query }))
                     if (error) {
                         log.warn({ error, tool: { name: configured.toolName } }, '[configuredKnowledgeBaseTool] Search did not return a result')
                         return { content: [{ type: 'text', text: `That search failed: ${String(error)}` }] }
@@ -198,7 +198,7 @@ const jsonSchema7Shape = z.custom<JSONSchema7>()
 
 export function createConfiguredFlowTools({ tools, runFlowTool, taintState, log }: {
     tools: ResolvedAgentFlowTool[]
-    runFlowTool: (input: { toolName: string, flowId: string, flowVersionId?: string, returnsResponse: boolean, toolInput: Record<string, unknown> }) => Promise<{ result: unknown }>
+    runFlowTool: (input: { requestKey?: string, toolName: string, flowId: string, flowVersionId?: string, returnsResponse: boolean, toolInput: Record<string, unknown> }) => Promise<{ result: unknown }>
     taintState: TaintState
     log: FastifyBaseLogger
 }): ToolSet {
@@ -208,14 +208,14 @@ export function createConfiguredFlowTools({ tools, runFlowTool, taintState, log 
         tool({
             description: configured.description,
             inputSchema: jsonSchema(jsonSchema7Shape.parse(configured.inputSchema)),
-            execute: async (toolInput) => {
+            execute: async (toolInput, options) => {
                 callsMade += 1
                 if (callsMade > MAX_CONFIGURED_TOOL_CALLS) {
                     log.warn({ tool: { name: configured.toolName }, callsMade }, '[configuredFlowTool] Refused, this run has already run enough actions')
                     return { content: [{ type: 'text', text: `This run has already performed ${MAX_CONFIGURED_TOOL_CALLS} actions, which is the limit. Do not try again; say what is left undone.` }] }
                 }
                 taintState.tainted = true
-                const { data, error } = await tryCatch(() => runFlowTool({ toolName: configured.toolName, flowId: configured.flowId, ...spreadIfDefined('flowVersionId', configured.flowVersionId), returnsResponse: configured.returnsResponse, toolInput }))
+                const { data, error } = await tryCatch(() => runFlowTool({ requestKey: options.toolCallId, toolName: configured.toolName, flowId: configured.flowId, ...spreadIfDefined('flowVersionId', configured.flowVersionId), returnsResponse: configured.returnsResponse, toolInput }))
                 if (error) {
                     const reachedTheServer = String(error).includes('handler threw')
                     log.warn({ error, tool: { name: configured.toolName }, flow: { id: configured.flowId }, reachedTheServer }, '[configuredFlowTool] Flow did not return a result')

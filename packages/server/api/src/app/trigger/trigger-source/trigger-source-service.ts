@@ -4,6 +4,7 @@ import { FastifyBaseLogger } from 'fastify'
 import { In } from 'typeorm'
 import { repoFactory } from '../../core/db/repo-factory'
 import { flowVersionService } from '../../flows/flow-version/flow-version.service'
+import { HostingJobOrigin } from '../../hosting/hosting-execution'
 import { projectLifecycle } from '../../project/project-lifecycle'
 import { templateTelemetryService } from '../../template/template-telemetry/template-telemetry.service'
 import { jobQueue } from '../../workers/job-queue/job-queue'
@@ -198,6 +199,7 @@ export const triggerSourceService = (log: FastifyBaseLogger) => {
                     pieceTrigger,
                     simulate,
                     ignoreError: params.ignoreError,
+                    hostedOrigin: params.hostedOrigin,
                 })
                 log.info('[triggerSourceService#disable] Disabled flow trigger side effect')
             }
@@ -248,6 +250,7 @@ type GetTriggerParams = {
 }
 
 type DisableTriggerParams = {
+    hostedOrigin?: HostingJobOrigin
     projectId: string
     flowId: string
     simulate: boolean

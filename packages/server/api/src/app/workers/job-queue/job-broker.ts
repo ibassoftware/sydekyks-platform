@@ -1,5 +1,5 @@
 import { apId, isNil, tryCatch } from '@activepieces/core-utils'
-import { ConsumeJobRequest, ConsumeJobResponse, EngineResponseStatus, JobData } from '@activepieces/shared'
+import { ConsumeJobRequest, ConsumeJobResponse, EngineResponseStatus, JobData, WorkerJobType } from '@activepieces/shared'
 import { Worker as BullMQWorker, Job, UnrecoverableError } from 'bullmq'
 import { FastifyBaseLogger } from 'fastify'
 import { accessTokenManager } from '../../authentication/lib/access-token-manager'
@@ -155,9 +155,15 @@ async function tryDequeue(worker: BullMQWorker, queueName: string, log: FastifyB
         return tryDequeue(worker, queueName, log)  // retry getNextJob instead of returning null
     }
 
-    const admission = await tryCatch(async () => hostingConfiguration.getServiceMode() === 'hosted'
-        ? hostingServices.execution().admit({ queueName, jobId, data: parseResult.data, queueToken: token })
-        : apId())
+    const admission = await tryCatch(async () => {
+        if (hostingConfiguration.getServiceMode() !== 'hosted') return apId()
+        // Every scheduler occurrence has its own durable dispatch. The reusable
+        // template never carries a reservation or worker admission.
+        if (parseResult.data.jobType === WorkerJobType.EXECUTE_POLLING || parseResult.data.jobType === WorkerJobType.RENEW_WEBHOOK) {
+            await hostingServices.execution().prepare({ queueName, jobId, data: parseResult.data, origin: { type: 'scheduled' } })
+        }
+        return hostingServices.execution().admit({ queueName, jobId, data: parseResult.data, queueToken: token })
+    })
     if (admission.error) {
         if (!(admission.error instanceof HostingError) || admission.error.message === 'HOSTING_CONCURRENCY_LIMIT') await job.moveToDelayed(Date.now() + 1000, token)
         else await job.moveToFailed(new UnrecoverableError('HOSTING_ADMISSION_DENIED'), token, false)

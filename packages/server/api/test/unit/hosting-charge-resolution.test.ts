@@ -13,23 +13,23 @@ import { authorizationMiddleware } from '../../src/app/core/security/v2/authz/au
 import { commonProperties } from '../../src/app/database/database-connection'
 import { getMigrations } from '../../src/app/database/postgres-connection'
 import { FlagEntity } from '../../src/app/flags/flag.entity'
+import { createHostedAiGateway } from '../../src/app/hosting/hosting-ai-gateway'
 import { ChargeResolutionDraftInput, createHostedChargeResolution } from '../../src/app/hosting/hosting-charge-resolution'
 import { hostingChargeResolutionController } from '../../src/app/hosting/hosting-charge-resolution-controller'
 import { HostingChargeResolutionEntity } from '../../src/app/hosting/hosting-charge-resolution-entities'
 import { HostingDispatchEntity } from '../../src/app/hosting/hosting-dispatch-entity'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrantEntity, HostingReservationEntity } from '../../src/app/hosting/hosting-entities'
-import { createHostedAiGateway } from '../../src/app/hosting/hosting-ai-gateway'
-import { saveManagedSettings } from '../../src/app/hosting/hosting-managed-settings'
-import { createHostedPricing, hostedPricingView } from '../../src/app/hosting/hosting-pricing'
-import { PRICING_CALENDAR } from '../../src/app/hosting/hosting-pricing-source'
 import { createHostedExecution } from '../../src/app/hosting/hosting-execution'
 import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
 import { createHostedLedger } from '../../src/app/hosting/hosting-ledger'
+import { saveManagedSettings } from '../../src/app/hosting/hosting-managed-settings'
 import { HostingModelCallEntity } from '../../src/app/hosting/hosting-model-call-entity'
 import { createHostedOnboarding } from '../../src/app/hosting/hosting-onboarding'
+import { createHostedPricing, hostedPricingView } from '../../src/app/hosting/hosting-pricing'
+import { PRICING_CALENDAR } from '../../src/app/hosting/hosting-pricing-source'
 import { HostingActor, hostingTransactions as tx } from '../../src/app/hosting/hosting-transactions'
 import { UserEntity } from '../../src/app/user/user-entity'
-import { bootstrapHostedOperator, migratedHostedPGlite } from '../helpers/hosting-fixtures'
+import { bootstrapHostedOperator, migratedHostedPGlite, scopedAiActionPayload } from '../helpers/hosting-fixtures'
 
 let ds: DataSource, app: FastifyInstance, previousConnection: unknown, actor: HostingActor, projectId: string
 const pgMode = process.env['HOSTING_BILLING_TEST_POSTGRES'] === '1', schema = `hosting_charge_${randomBytes(6).toString('hex')}`
@@ -40,8 +40,12 @@ beforeAll(async () => {
         ds = new DataSource({ type: 'postgres', host: '127.0.0.1', port: Number(process.env['HOSTING_TEST_POSTGRES_PORT']), username: process.env['HOSTING_TEST_POSTGRES_USER'], password: process.env['HOSTING_TEST_POSTGRES_PASSWORD'], database: process.env['HOSTING_TEST_POSTGRES_DATABASE'], schema, extra: { options: `-c search_path=${schema},public` }, migrations: getMigrations(), ...commonProperties })
         await ds.initialize(); await ds.query('CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public')
         const runner = ds.createQueryRunner()
-        try { await runner.createSchema(schema, true) }
-        finally { await runner.release() }
+        try {
+            await runner.createSchema(schema, true)
+        }
+        finally {
+            await runner.release()
+        }
         await ds.runMigrations({ transaction: 'each' })
     }
     else ds = await migratedHostedPGlite()
@@ -51,7 +55,9 @@ beforeAll(async () => {
     await app.register(hostingChargeResolutionController, { prefix: '/charges' }); await app.ready()
 })
 afterAll(async () => {
-    if (app) await app.close(); Reflect.set(globalThis, '__AP_DB_CONNECTION__', previousConnection); if (ds?.isInitialized) { if (pgMode) await ds.query(`DROP SCHEMA "${schema}" CASCADE`); await ds.destroy() } 
+    if (app) await app.close(); Reflect.set(globalThis, '__AP_DB_CONNECTION__', previousConnection); if (ds?.isInitialized) {
+        if (pgMode) await ds.query(`DROP SCHEMA "${schema}" CASCADE`); await ds.destroy()
+    }
 })
 afterEach(() => vi.unstubAllEnvs())
 beforeEach(async () => {
@@ -207,15 +213,21 @@ it.runIf(pgMode)('fences a real late gateway settlement racing an operator no-se
     const price = await tx.run({ dataSource: ds, fn: async manager => hostedPricingView(manager, await tx.now(manager)) })
     await pricing.approve({ actor, input: { expectedRevision: price.revision, observationId: price.observationId!, termsHash: price.termsHash!, requestKey: apId(), validUntil: PRICING_CALENDAR.until, calendarVersion: PRICING_CALENDAR.version } })
     const root = await ledger().reserveExecution({ actor, projectId, key: apId(), payer: 'managed' }), rootClaim = await ledger().claimExecution({ actor, reservationId: root.id }), admissionId = apId(), segmentId = apId()
-    await ds.getRepository(HostingDispatchEntity).insert({ id: segmentId, platformId: actor.platformId, projectId, identityId: actor.identityId, tokenVersion: actor.tokenVersion, originType: 'user', queueKey: apId(), payloadHash: 'a'.repeat(64), state: 'running', rootKey: apId(), reservationId: root.id, admissionId, dispatchId: rootClaim.dispatchId, leaseUntil: new Date(Date.now() + 60000) })
+    await ds.getRepository(HostingDispatchEntity).insert({ id: segmentId, platformId: actor.platformId, projectId, identityId: actor.identityId, tokenVersion: actor.tokenVersion, originType: 'user', queueKey: apId(), payloadHash: 'a'.repeat(64), state: 'running', rootKey: apId(), reservationId: root.id, admissionId, dispatchId: rootClaim.dispatchId, leaseUntil: new Date(Date.now() + 60000), payload: scopedAiActionPayload({ platformId: actor.platformId, projectId }) })
     let release!: () => void, entered!: () => void
-    const enteredPromise = new Promise<void>(resolve => { entered = resolve }), providerPromise = new Promise<void>(resolve => { release = resolve })
+    const enteredPromise = new Promise<void>(resolve => {
+            entered = resolve
+        }), providerPromise = new Promise<void>(resolve => {
+            release = resolve
+        })
     const gateway = createHostedAiGateway({ dataSource: ds, provider: { id: 'synthetic', endpoint: 'diagnostic://no-network', complete: async () => {
         entered(); await providerPromise
         return { status: 200, data: { id: 'synthetic-supplier-receipt', model: 'deepseek-flash', created: Math.floor(Date.now() / 1000), object: 'chat.completion', choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'Synthetic result' } }], usage: { prompt_tokens: 1000, completion_tokens: 1000, total_tokens: 2000, prompt_cache_hit_tokens: 0, prompt_cache_miss_tokens: 1000 } } }
     } } })
     const sending = gateway.execute({ scope: { admissionId, platformId: actor.platformId, projectId }, request: { callKey: 'actual:race', attempt: 0, payer: { type: 'managed' }, model: 'sydekyks', messages: [{ role: 'user', content: 'Synthetic request' }], max_tokens: 1000 } }).then(value => ({ value }), error => ({ error }))
-    await Promise.race([enteredPromise, sending.then(outcome => { if ('error' in outcome) throw outcome.error })])
+    await Promise.race([enteredPromise, sending.then(outcome => {
+        if ('error' in outcome) throw outcome.error
+    })])
     const call = await ds.getRepository(HostingModelCallEntity).findOneByOrFail({ segmentId })
     await ds.getRepository(HostingModelCallEntity).update({ id: call.id }, { state: 'uncertain', leaseUntil: new Date(Date.now() - 1000) })
     await ledger().markUncertain({ platformId: actor.platformId, reservationId: call.reservationId!, dispatchId: call.dispatchId! })

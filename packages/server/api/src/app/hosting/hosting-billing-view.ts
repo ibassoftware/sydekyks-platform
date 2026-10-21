@@ -1,15 +1,18 @@
 import { HostedBillingActionReason, HostedBillingOverview, hostingCatalog } from '@activepieces/shared'
 import { DataSource, Not } from 'typeorm'
+import { assertHostingOperator } from './hosting-access-policy'
 import { hostingResourceUsage } from './hosting-billing-resources'
 import { hostingConfiguration } from './hosting-configuration'
 import { hostedCreditLiability } from './hosting-credit-policy'
 import { HostingGrant, HostingGrantEntity } from './hosting-entities'
 import { HostingManualAccountEntity } from './hosting-manual-accounts-entities'
+import { currentManualTerm } from './hosting-manual-terms'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
 import { HostingStripeBindingEntity, HostingStripeCommandEntity, StripeCommand } from './hosting-stripe-entities'
 import { readStripePolicy, stripeDigest } from './hosting-stripe-policy'
 import { subscriptionAccountActive, subscriptionAccountUntil, subscriptionGrantActive, subscriptionGrantUntil } from './hosting-subscription-policy'
-import { HostingActor, hostingTransactions as tx } from './hosting-transactions'
+import { HostingTrainingEntity } from './hosting-training-entity'
+import { HostingActor, HostingError, hostingTransactions as tx } from './hosting-transactions'
 
 export function createHostedBillingView({ dataSource }: { dataSource: DataSource }) {
     return { async read(actor: HostingActor): Promise<HostedBillingOverview> {
@@ -17,7 +20,18 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
             const account = await tx.account({ manager, platformId: actor.platformId })
             const user = await tx.member({ manager, actor, admin: true })
             const now = await tx.now(manager)
-            const manualFunding = await manager.getRepository(HostingManualAccountEntity).existsBy({ id: account.id })
+            const manualAccount = await manager.getRepository(HostingManualAccountEntity).findOneBy({ id: account.id })
+            const manualFunding = !!manualAccount
+            let platformAdmin = false
+            try {
+                await assertHostingOperator({ manager, actor }); platformAdmin = true
+            }
+            catch (error) {
+                if (!(error instanceof HostingError) || error.message !== 'HOSTING_OPERATOR_REQUIRED') throw error
+            }
+            const partnerHome = account.planId === 'training' || account.planId === 'assessment'
+            const training = partnerHome ? await manager.getRepository(HostingTrainingEntity).findOneBy({ platformId: account.id, identityId: account.ownerIdentityId }) : null
+            const manualTerm = manualAccount ? await currentManualTerm(manager, account) : null
             const bound = await manager.getRepository(HostingStripeBindingEntity).findOneBy({ platformId: account.id })
             const commands = await manager.getRepository(HostingStripeCommandEntity).findBy({ platformId: account.id, state: Not('closed') })
             const open = commands.filter(value => value.state !== 'closed')
@@ -68,9 +82,17 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
             const legacyLiability = current ? await hostedCreditLiability(manager, current.id) : { reserved: 0n, consumed: 0n }
             const unified = current ? { ...current, reserved: current.reserved + legacyLiability.reserved, consumed: current.consumed + legacyLiability.consumed } : undefined
             const previousHeld = grants.filter(value => value.meter === 'managed_ai' && value.id !== managed?.id).reduce((sum, value) => sum + value.reserved, 0n)
+            const nextAllowance = !paused && subscriptionAccountActive(account, now) ? grants
+                .filter(grant => grant.meter === 'execution' && grant.validFrom > now && subscriptionGrantActive(account, grant, grant.validFrom))
+                .sort((left, right) => left.validFrom.getTime() - right.validFrom.getTime())[0] : undefined
             return HostedBillingOverview.parse({
                 schemaVersion: 1, platformId: account.id, userId: user.id, catalogVersion: account.catalogVersion, serverTime: now.toISOString(), billingMode, environment: billingMode === 'manual' ? 'manual' : 'test',
                 planId: account.planId, status: account.status, entitlementState: paused ? 'paused' : subscriptionAccountUntil(account) <= now ? 'expired' : account.planId === 'trial' ? 'trial' : account.planId === 'training' ? 'training' : account.planId === 'assessment' ? 'assessment' : 'paid', validUntil: subscriptionAccountUntil(account).toISOString(), trialEndsAt: account.trialEndsAt.toISOString(), billingHold: account.billingHold ?? false, subscriptionStatus: bound?.subscriptionStatus ?? null, planChangesEnabled: false,
+                accountKind: platformAdmin ? 'platform_admin' : partnerHome ? 'partner' : account.planId === 'trial' ? 'trial' : 'client',
+                trainingPackage: partnerHome ? manualAccount?.package ?? training?.tier ?? null : null,
+                hostingEndsAt: (manualTerm?.expiresAt ?? training?.endsAt ?? account.validUntil).toISOString(),
+                renewalDueAt: account.subscription?.bindingValid ? account.subscription.policy?.renewalDueAt?.toISOString() ?? null : null,
+                nextCreditAllowanceAt: nextAllowance?.validFrom.toISOString() ?? null,
                 notice: account.status === 'suspended' ? 'account_paused' : account.billingHold && !ended ? 'billing_review' : bound?.lastError ? 'billing_delayed' : null,
                 meters: { execution: meter(unified, now, !paused && subscriptionAccountActive(account, now), account), managedAi: meter(managed, now, !paused && subscriptionAccountActive(account, now), account), previousPeriodHeldMicroUsd: previousHeld.toString() }, usage: { ...usage, activeExecutions: account.activeExecutions }, limits: { ...hostingCatalog.getPlan({ planId: account.planId }), aiCredits: 0, byokEnabled: true }, plans, portal: { enabled: portalReason === null, reason: portalReason, continuing: false },
             })

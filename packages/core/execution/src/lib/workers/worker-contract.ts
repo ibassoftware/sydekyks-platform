@@ -11,6 +11,7 @@ import { AgentPromptOverride, AgentRunSource, PersonalizationScope } from './job
 import { ConsumeJobRequest, ConsumeJobResponse, WorkerMachineHealthcheckRequest } from './index'
 
 export type SubmitPayloadsRequest = {
+    admissionId?: string
     flowVersionId: string
     projectId: string
     payloads: unknown[]
@@ -22,6 +23,7 @@ export type SubmitPayloadsRequest = {
 }
 
 export type SavePayloadRequest = {
+    admissionId?: string
     flowId: string
     flowVersionId: string
     projectId: string
@@ -64,6 +66,9 @@ export type UploadFlowBundleRequest = {
 }
 
 export type RecordTriggerRunRequest = {
+    admissionId?: string
+    projectId?: string
+    flowVersionId?: string
     platformId: string
     pieceName: string
     status: TriggerRunStatus
@@ -267,6 +272,8 @@ export type ExecuteAgentToolRequest = {
 }
 
 export type ExecutePieceToolRequest = {
+    admissionId?: string
+    requestKey?: string
     conversationId: string
     runId?: string
     flowRunId?: string
@@ -286,6 +293,8 @@ export type ExecutePieceToolResponse = {
 }
 
 export type ExecuteKnowledgeBaseToolRequest = {
+    admissionId?: string
+    requestKey?: string
     conversationId: string
     runId?: string
     toolName: string
@@ -300,6 +309,8 @@ export type ExecuteKnowledgeBaseToolResponse = {
 }
 
 export type ExecuteFlowToolRequest = {
+    admissionId?: string
+    requestKey?: string
     conversationId: string
     runId?: string
     flowRunId?: string

@@ -1,6 +1,7 @@
 import { ActivepiecesError, apId, ErrorCode, isNil } from '@activepieces/core-utils'
 import { LATEST_JOB_DATA_SCHEMA_VERSION, UserInteractionJobDataWithoutWatchingInformation, WorkerJobType } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
+import { HostingJobOrigin } from '../hosting/hosting-execution'
 import { engineResponseWatcher } from './engine-response-watcher'
 import { jobQueue, JobType } from './job-queue/job-queue'
 
@@ -8,11 +9,12 @@ const WATCHER_SAFETY_TIMEOUT_MS = 5 * 60 * 1000
 const WATCHER_GRACE_MS = 10 * 1000
 
 export const userInteractionWatcher = {
-    submitAndWaitForResponse: async <T>(request: UserInteractionJobDataWithoutWatchingInformation, log: FastifyBaseLogger, requestId?: string): Promise<T> => {
+    submitAndWaitForResponse: async <T>(request: UserInteractionJobDataWithoutWatchingInformation, log: FastifyBaseLogger, requestId?: string, hostedOrigin?: HostingJobOrigin): Promise<T> => {
         const id = requestId ?? apId()
         await jobQueue(log).add({
             id,
             type: JobType.ONE_TIME,
+            hostedOrigin,
             data: {
                 ...request,
                 requestId: id,

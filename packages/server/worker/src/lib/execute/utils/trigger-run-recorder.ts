@@ -2,7 +2,7 @@ import { tryCatch, tryParseFriendlyPieceError } from '@activepieces/core-utils'
 import { ApLogger } from '@activepieces/server-utils'
 import { EngineResponseStatus, FlowTriggerType, FlowVersion, TriggerRunStatus, WorkerToApiContract } from '@activepieces/shared'
 
-export async function recordTriggerRun({ apiClient, log, flowVersion, platformId, status, error: triggerError }: RecordTriggerRunParams): Promise<void> {
+export async function recordTriggerRun({ apiClient, log, flowVersion, platformId, admissionId, projectId, status, error: triggerError }: RecordTriggerRunParams): Promise<void> {
     if (flowVersion.trigger.type !== FlowTriggerType.PIECE) {
         return
     }
@@ -12,7 +12,7 @@ export async function recordTriggerRun({ apiClient, log, flowVersion, platformId
         log.warn({ error: tryParseFriendlyPieceError(triggerError)?.message, status, piece: { name: pieceName }, flow: { id: flowVersion.flowId }, flowVersion: { id: flowVersion.id } }, 'Trigger run did not complete successfully')
     }
     const triggerRunStatus = succeeded ? TriggerRunStatus.COMPLETED : TriggerRunStatus.FAILED
-    const { error } = await tryCatch(() => apiClient.recordTriggerRun({ platformId, pieceName, status: triggerRunStatus }))
+    const { error } = await tryCatch(() => apiClient.recordTriggerRun({ platformId, pieceName, status: triggerRunStatus, ...(admissionId ? { admissionId, projectId, flowVersionId: flowVersion.id } : {}) }))
     if (error) {
         log.warn({ error: String(error), piece: { name: pieceName }, flowVersion: { id: flowVersion.id } }, 'Failed to record trigger run stats')
     }
@@ -23,6 +23,8 @@ type RecordTriggerRunParams = {
     log: ApLogger
     flowVersion: FlowVersion
     platformId: string
+    admissionId?: string
+    projectId?: string
     status: EngineResponseStatus
     error?: string
 }

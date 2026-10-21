@@ -4,19 +4,22 @@ import { AgentConversationStatus, AgentEvent, AgentEventType, AgentRunSource, En
 import { APICallError } from 'ai'
 import { DataSource } from 'typeorm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { executeAgentRunJob } from '../../../worker/src/lib/execute/jobs/ee/agent/execute-agent-run'
+import * as agentTurnRuntime from '../../../worker/src/lib/execute/jobs/ee/agent/run-agent-turn'
+import type { JobContext } from '../../../worker/src/lib/execute/types'
 import { AIProviderEntity } from '../../src/app/ai/ai-provider-entity'
 import { UserIdentityEntity } from '../../src/app/authentication/user-identity/user-identity-entity'
-import { SydekyksCreditRateV21905000000000 } from '../../src/app/database/migration/postgres/1905000000000-SydekyksCreditRateV2'
 import { SydekyksUnifiedCredits1903000000000 } from '../../src/app/database/migration/postgres/1903000000000-SydekyksUnifiedCredits'
+import { SydekyksCreditRateV21905000000000 } from '../../src/app/database/migration/postgres/1905000000000-SydekyksCreditRateV2'
 import { FlagEntity } from '../../src/app/flags/flag.entity'
 import { encryptUtils } from '../../src/app/helper/encryption'
 import { createHostedAiGateway } from '../../src/app/hosting/hosting-ai-gateway'
 import { hostedAiInputBound } from '../../src/app/hosting/hosting-ai-policy'
-import { hostedAiCredits, hostedCreditLiability, HOSTED_MAX_ROOT_CREDITS } from '../../src/app/hosting/hosting-credit-policy'
+import { HOSTED_MAX_ROOT_CREDITS, hostedAiCredits, hostedCreditLiability } from '../../src/app/hosting/hosting-credit-policy'
 import { HostingDispatchEntity } from '../../src/app/hosting/hosting-dispatch-entity'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrantEntity, HostingReservationEntity } from '../../src/app/hosting/hosting-entities'
-import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
 import { createHostedExecution } from '../../src/app/hosting/hosting-execution'
+import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
 import { createHostedLedger } from '../../src/app/hosting/hosting-ledger'
 import { saveManagedSettings } from '../../src/app/hosting/hosting-managed-settings'
 import { HostingModelCallEntity } from '../../src/app/hosting/hosting-model-call-entity'
@@ -27,10 +30,7 @@ import { HostingActor, hostingTransactions as tx } from '../../src/app/hosting/h
 import { sydApprovalGate } from '../../src/app/syd/copilot/approval-gate'
 import { SydConversationEntity } from '../../src/app/syd/copilot/models/conversation.entity'
 import { UserEntity } from '../../src/app/user/user-entity'
-import { executeAgentRunJob } from '../../../worker/src/lib/execute/jobs/ee/agent/execute-agent-run'
-import * as agentTurnRuntime from '../../../worker/src/lib/execute/jobs/ee/agent/run-agent-turn'
-import type { JobContext } from '../../../worker/src/lib/execute/types'
-import { bootstrapHostedOperator, migratedHostedPGlite } from '../helpers/hosting-fixtures'
+import { bootstrapHostedOperator, migratedHostedPGlite, scopedAiActionPayload } from '../helpers/hosting-fixtures'
 
 let ds: DataSource, actor: HostingActor, projectId: string
 const ledger = () => createHostedLedger({ dataSource: ds })
@@ -39,9 +39,15 @@ const balance = async () => (await ledger().balance({ actor })).find(grant => gr
 const day = () => new Date().toISOString().slice(0, 10)
 const request = { callKey: 'test:0', attempt: 0, payer: { type: 'managed' as const }, model: 'sydekyks' as const, messages: [{ role: 'user' as const, content: 'Synthetic input' }], max_tokens: 1000 }
 
-beforeAll(async () => { ds = await migratedHostedPGlite() })
-afterAll(async () => { if (ds?.isInitialized) await ds.destroy() })
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs() })
+beforeAll(async () => {
+    ds = await migratedHostedPGlite()
+})
+afterAll(async () => {
+    if (ds?.isInitialized) await ds.destroy()
+})
+afterEach(() => {
+    vi.restoreAllMocks(); vi.unstubAllEnvs()
+})
 beforeEach(async () => {
     // Cancellation transport is outside this ledger/unit scope; runtime tests use real Redis.
     vi.spyOn(sydApprovalGate, 'isCancelled').mockResolvedValue(false)
@@ -54,11 +60,11 @@ beforeEach(async () => {
     actor = { identityId, platformId: home.platformId, tokenVersion: home.tokenVersion }
     projectId = home.projectId!
 })
-async function root(payer: 'managed' | 'byok' = 'managed') {
+async function root(payer: 'managed' | 'byok' = 'managed', configId?: string) {
     const reservation = await ledger().reserveExecution({ actor, projectId, key: apId(), payer })
     const claim = await ledger().claimExecution({ actor, reservationId: reservation.id })
     const admissionId = apId()
-    await ds.getRepository(HostingDispatchEntity).insert({ id: apId(), platformId: actor.platformId, projectId, identityId: actor.identityId, tokenVersion: actor.tokenVersion, originType: 'user', queueKey: apId(), payloadHash: 'x'.repeat(64), state: 'running', rootKey: apId(), reservationId: reservation.id, admissionId, dispatchId: claim.dispatchId, leaseUntil: new Date(Date.now() + 60000) })
+    await ds.getRepository(HostingDispatchEntity).insert({ id: apId(), platformId: actor.platformId, projectId, identityId: actor.identityId, tokenVersion: actor.tokenVersion, originType: 'user', queueKey: apId(), payloadHash: 'x'.repeat(64), state: 'running', rootKey: apId(), reservationId: reservation.id, admissionId, dispatchId: claim.dispatchId, leaseUntil: new Date(Date.now() + 60000), payload: scopedAiActionPayload({ platformId: actor.platformId, projectId, payer, configId }) })
     return { reservation, dispatchId: claim.dispatchId!, scope: { admissionId, platformId: actor.platformId, projectId } }
 }
 async function reserve(rootReservationId: string, cost: bigint, key = apId()) {
@@ -106,7 +112,9 @@ describe('single Credits accounting', () => {
         try {
             await runner.startTransaction(); await migration.down(runner); await migration.up(runner); await runner.commitTransaction()
         }
-        finally { if (runner.isTransactionActive) await runner.rollbackTransaction(); await runner.release() }
+        finally {
+            if (runner.isTransactionActive) await runner.rollbackTransaction(); await runner.release()
+        }
         expect(await ds.getRepository(HostingReservationEntity).findBy({ platformId: actor.platformId })).toEqual(before)
         const retry = await reserve(admitted.reservation.id, 5000n, old.key)
         expect(retry).toMatchObject({ id: old.id, amount: 10n, microUsdPerCredit: 500n })
@@ -117,8 +125,12 @@ describe('single Credits accounting', () => {
         expect(fresh.call).toMatchObject({ accountingVersion: 'single-credits-250-microusd-v2', microUsdPerCredit: 250n, amount: 5n })
         expect(await balance()).toMatchObject({ consumed: 9n, reserved: 0n })
         const rollback = ds.createQueryRunner()
-        try { await expect(migration.down(rollback)).rejects.toThrow('CREDIT_RATE_ROLLBACK_REQUIRES_BACKUP_RESTORE') }
-        finally { await rollback.release() }
+        try {
+            await expect(migration.down(rollback)).rejects.toThrow('CREDIT_RATE_ROLLBACK_REQUIRES_BACKUP_RESTORE')
+        }
+        finally {
+            await rollback.release()
+        }
     })
     it('counts old Credit-denominated exposure unchanged alongside new-rate calls at the root limit', async () => {
         const admitted = await root(), grant = await currentGrant()
@@ -219,8 +231,12 @@ describe('single Credits accounting', () => {
         expect((await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: completedId })).legacyCreditGrantId).toBeNull()
         expect(await balance()).toMatchObject({ consumed: 1n, reserved: 3n })
         const rollback = ds.createQueryRunner()
-        try { await expect(migration.down(rollback)).rejects.toThrow('ROLLBACK_REQUIRES_BACKUP_RESTORE') }
-        finally { await rollback.release() }
+        try {
+            await expect(migration.down(rollback)).rejects.toThrow('ROLLBACK_REQUIRES_BACKUP_RESTORE')
+        }
+        finally {
+            await rollback.release()
+        }
     })
     it('settles with the conversion snapshot on the held call rather than current catalog pricing', async () => {
         const admitted = await root(), call = await reserve(admitted.reservation.id, 1000n)
@@ -272,7 +288,7 @@ describe('full gateway Credit journey', () => {
         expect(complete).toHaveBeenCalledTimes(1)
     })
     it('uses BYOK without any managed-AI charge or supplier pricing/credential requirement', async () => {
-        const admitted = await root('byok'), configId = apId()
+        const configId = apId(), admitted = await root('byok', configId)
         await ds.getRepository(AIProviderEntity).insert({ id: configId, platformId: actor.platformId, provider: 'deepseek', displayName: 'Exact client key', auth: await encryptUtils.encryptObject({ apiKey: 'synthetic-byok-unified-not-real-key' }), config: {}, status: 'active', enabledForChat: false, projectScope: 'all', projectIds: [], modelScope: 'all', modelIds: [], statusVersion: 0 })
         const complete = vi.fn(async ({ request: sent }: { request: { model: string } }) => completion(sent.model))
         const gateway = createHostedAiGateway({ dataSource: ds, provider: { id: 'synthetic', endpoint: 'diagnostic://no-network', complete } })
@@ -333,7 +349,9 @@ describe('full gateway Credit journey', () => {
         const fence = { ...value.delivery, admissionId, connectionId: 'synthetic-chat-worker' }
         await value.execution.start(fence)
         await ds.getRepository(SydConversationEntity).update({ id: value.conversationId }, { status: AgentConversationStatus.STREAMING })
-        const complete = vi.fn(async () => { throw new Error('unknown supplier outcome') })
+        const complete = vi.fn(async () => {
+            throw new Error('unknown supplier outcome')
+        })
         const gateway = createHostedAiGateway({ dataSource: ds, provider: { id: 'synthetic', endpoint: 'diagnostic://no-network', complete } })
         await expect(gateway.execute({ scope: { admissionId, platformId: actor.platformId, projectId }, request: { ...request, callKey: 'copilot:0', model: 'deepseek-flash', payer: { type: 'byok', configId: value.configId } } })).rejects.toThrow('OUTCOME_UNCERTAIN')
         const runId = apId(), next = { ...value.delivery, jobId: runId, data: { ...value.delivery.data, runId } }
@@ -365,8 +383,12 @@ describe('full gateway Credit journey', () => {
         const logger = { child: () => logger, info: () => {}, warn: () => {}, error: () => {}, debug: () => {}, trace: () => {}, fatal: () => {} }
         const ctx = { admissionId, internalApiUrl, engineToken: 'synthetic-worker-engine-token', log: logger, apiClient: {
             getAgentConfig: async () => ({ hosted: { protocol: 1, payer: { type: 'managed' }, model: 'sydekyks' }, credentials: { provider: AIProviderName.ACTIVEPIECES }, modelId: 'sydekyks', source: AgentRunSource.CHAT, aiTools: {}, tier: { id: 'synthetic' }, previousUiMessages: [], messages: [], projects: [], systemPrompt: 'Synthetic no-supplier test' }),
-            saveAgentMessages: async () => { await ds.getRepository(SydConversationEntity).update({ id: value.conversationId, activeRunId: value.delivery.data.runId }, { status: AgentConversationStatus.ERROR }) },
-            sendAgentEvent: async ({ event }: { event: AgentEvent }) => { events.push(event) },
+            saveAgentMessages: async () => {
+                await ds.getRepository(SydConversationEntity).update({ id: value.conversationId, activeRunId: value.delivery.data.runId }, { status: AgentConversationStatus.ERROR })
+            },
+            sendAgentEvent: async ({ event }: { event: AgentEvent }) => {
+                events.push(event)
+            },
             executeAgentTool: async () => ({ result: false }), heartbeatAgentConversation: async () => {},
         } } as unknown as JobContext
         if (definitive) {
@@ -393,7 +415,9 @@ describe('full gateway Credit journey', () => {
 
     it('retains an uncertain supplier hold and refuses both explicit retry and another call key', async () => {
         await configureManaged()
-        const admitted = await root(), complete = vi.fn(async () => { throw new Error('unknown network outcome') })
+        const admitted = await root(), complete = vi.fn(async () => {
+            throw new Error('unknown network outcome')
+        })
         const gateway = createHostedAiGateway({ dataSource: ds, provider: { id: 'synthetic', endpoint: 'diagnostic://no-network', complete } })
         await expect(gateway.execute({ scope: admitted.scope, request })).rejects.toThrow('OUTCOME_UNCERTAIN')
         const held = (await balance()).reserved

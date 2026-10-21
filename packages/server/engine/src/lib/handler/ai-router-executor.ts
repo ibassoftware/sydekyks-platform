@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto'
 import { isNil, spreadIfDefined } from '@activepieces/core-utils'
 import { LATEST_CONTEXT_VERSION } from '@activepieces/pieces-framework'
-import { AI_ROUTER_MAX_STATE_LENGTH, AiRouterAction, AiRouterActionSettings, AiRouterEvaluationError, AiRouterMatchMode, AiRouterStepOutput, BranchExecutionType, ChooseAiRouteResponse, FlowActionType, FlowRunStatus, ResumePayload, StepOutputStatus } from '@activepieces/shared'
+import { AI_ROUTER_MAX_STATE_LENGTH, AiRouterAction, AiRouterActionSettings, AiRouterEvaluationError, AiRouterMatchMode, AiRouterStepOutput, AiStepAction, BranchExecutionType, ChooseAiRouteResponse, EngineGenericError, FlowActionType, FlowRunStatus, ResumePayload, StepOutputStatus } from '@activepieces/shared'
 import { z } from 'zod'
 import { aiRouterApi } from '../api/ai-router-api'
 import { waitpointClient } from '../piece-context/waitpoint-client'
@@ -86,7 +87,7 @@ export const aiRouterExecuter: BaseExecutor<AiRouterAction> = {
             if (resuming) {
                 return Promise.resolve(answerFromResume(constants.resumePayload))
             }
-            return aiRouterApi.choose(request)
+            return constants.hostedAccounting ? chooseHostedRoute({ request, constants, action, executionState }) : aiRouterApi.choose(request)
         })
         if (answerError) {
             return failStep({
@@ -156,7 +157,7 @@ function answerFromResume(payload: ResumePayload | undefined): ChooseAiRouteResp
 }
 
 function canPause(constants: EngineConstants): boolean {
-    return !constants.actionRunMode && isNil(constants.stepNameToTest)
+    return !constants.hostedAccounting && !constants.actionRunMode && isNil(constants.stepNameToTest)
 }
 
 function askableBranches({ branches, bestMatch }: { branches: AiRouterActionSettings['branches'], bestMatch: boolean }): AiRouterActionSettings['branches'] {
@@ -255,4 +256,13 @@ type PauseForAnswerParams = {
     constants: EngineConstants
     censoredInput: unknown
     request: Parameters<typeof aiRouterApi.choose>[0]
+}
+
+async function chooseHostedRoute({ request, constants, action, executionState }: { request: Parameters<typeof aiRouterApi.choose>[0], constants: EngineConstants, action: AiRouterAction, executionState: FlowExecutorContext }): Promise<ChooseAiRouteResponse> {
+    const callKey = createHash('sha256').update(executionState.currentPath.waitpointKeyFor({ stepName: action.name })).digest('hex')
+    const response = await fetch(`${constants.internalApiUrl}v1/engine/hosting-ai/step`, { method: 'POST', headers: { Authorization: `Bearer ${constants.engineToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ callKey, action: AiStepAction.ROUTE, provider: 'activepieces', modelId: 'sydekyks', state: request.state, question: request.question, options: request.options, matchMode: request.matchMode, maxOutputTokens: 2048 }) }).catch(() => {
+        throw new EngineGenericError('HostedAiUncertain', 'The hosted routing model did not return a confirmed outcome')
+    })
+    if (!response.ok) throw new EngineGenericError('HostedAiDenied', `The hosted routing model request failed (${response.status})`)
+    return z.object({ output: ChooseAiRouteResponse }).parse(await response.json()).output
 }

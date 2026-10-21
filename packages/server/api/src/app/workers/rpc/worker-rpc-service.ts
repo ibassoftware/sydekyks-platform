@@ -1,6 +1,6 @@
 import { assertNotNullOrUndefined, isNil, spreadIfDefined } from '@activepieces/core-utils'
 import { apVersionUtil, onCallService, UNKNOWN_VERSION } from '@activepieces/server-utils'
-import { AgentRunSource, ExecutionType, FileCompression, FileLocation, FileType, FlowOperationType, FlowStatus, WebsocketClientEvent, WorkerGroupScope, WorkerProps, WorkerToApiContract } from '@activepieces/shared'
+import { AgentRunSource, ExecutionType, FileCompression, FileLocation, FileType, FlowOperationType, FlowStatus, RunEnvironment, WebsocketClientEvent, WorkerGroupScope, WorkerProps, WorkerToApiContract } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { aiRpcHandlers } from '../../ai/ai-rpc-handlers'
 import { websocketService } from '../../core/websockets.service'
@@ -21,6 +21,7 @@ import { AppSystemProp } from '../../helper/system/system-props'
 import { hostingConfiguration } from '../../hosting/hosting-configuration'
 import { protectHostedCopilotRpc } from '../../hosting/hosting-copilot'
 import { hostedRunCallback } from '../../hosting/hosting-run-callback'
+import { hostingServices } from '../../hosting/hosting-services'
 import { hostingFail } from '../../hosting/hosting-transactions'
 import { hostingWorkerGate } from '../../hosting/hosting-worker-gate'
 import { pieceMetadataService } from '../../pieces/metadata/piece-metadata-service'
@@ -129,7 +130,11 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
         },
 
         async submitPayloads(input) {
-            if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_TRIGGER_COORDINATOR_REQUIRED')
+            if (hostingConfiguration.getServiceMode() === 'hosted') {
+                if (input.payloads.length > 100 || Buffer.byteLength(JSON.stringify(input.payloads), 'utf8') > 1024 * 1024) hostingFail('HOSTING_PAYLOAD_LIMIT')
+                if (!connectionIsCompatible() || !input.admissionId || input.parentRunId || input.failParentOnFailure || input.environment !== RunEnvironment.PRODUCTION) hostingFail('HOSTING_TRIGGER_SCOPE_MISMATCH')
+                await hostingServices.execution().assertTriggerCallback({ admissionId: input.admissionId, connectionId, projectId: input.projectId, flowVersionId: input.flowVersionId })
+            }
             const { flowVersionId, projectId, payloads, httpRequestId, streamStepProgress, environment, parentRunId, failParentOnFailure } = input
 
             const flowVersion = await flowVersionService(log).getOne(flowVersionId)
@@ -138,6 +143,10 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
             }
 
             const platformId = await projectService(log).getPlatformId(projectId)
+            if (hostingConfiguration.getServiceMode() === 'hosted') {
+                const flow = await flowService(log).getOne({ id: flowVersion.flowId, projectId })
+                if (!flow || flow.status !== FlowStatus.ENABLED || flow.publishedVersionId !== flowVersionId) hostingFail('HOSTING_TRIGGER_SCOPE_MISMATCH')
+            }
             const filterPayloads = await dedupeService.filterUniquePayloads(flowVersionId, payloads)
 
             const creditsExhausted = await shouldBlockRunOnCredits({
@@ -180,21 +189,22 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
         },
 
         async savePayloads(input) {
+            if (hostingConfiguration.getServiceMode() === 'hosted') {
+                if (!connectionIsCompatible() || input.payloads.length > 100 || Buffer.byteLength(JSON.stringify(input.payloads), 'utf8') > 1024 * 1024) hostingFail('HOSTING_TRIGGER_SCOPE_MISMATCH')
+                const data = await hostingServices.execution().assertTriggerCallback({ admissionId: input.admissionId, connectionId, projectId: input.projectId, flowVersionId: input.flowVersionId, purpose: 'sample' })
+                if (data.flowId !== input.flowId) hostingFail('HOSTING_TRIGGER_SCOPE_MISMATCH')
+            }
             const { flowId, projectId, payloads } = input
-            const savePayloads = payloads.map((payload) =>
-                rejectedPromiseHandler(triggerEventService(log).saveEvent({
-                    flowId,
-                    payload,
-                    projectId,
-                }), log),
-            )
-            rejectedPromiseHandler(Promise.all(savePayloads), log)
+            const savePayloads = payloads.map((payload) => triggerEventService(log).saveEvent({ flowId, payload, projectId }))
+            if (hostingConfiguration.getServiceMode() === 'hosted') await Promise.all(savePayloads)
+            else rejectedPromiseHandler(Promise.all(savePayloads.map(promise => rejectedPromiseHandler(promise, log))), log)
             if (payloads.length > 0) {
                 await triggerSourceService(log).disable({
                     flowId,
                     projectId,
                     simulate: true,
                     ignoreError: true,
+                    ...(hostingConfiguration.getServiceMode() === 'hosted' ? { hostedOrigin: { type: 'trigger-lifecycle' as const, admissionId: input.admissionId! } } : {}),
                 })
             }
         },
@@ -221,6 +231,13 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
         },
 
         async recordTriggerRun(input) {
+            if (hostingConfiguration.getServiceMode() === 'hosted') {
+                if (!connectionIsCompatible() || !input.projectId || !input.flowVersionId || !input.admissionId) hostingFail('HOSTING_TRIGGER_SCOPE_MISMATCH')
+                await hostingServices.execution().assertTriggerCallback({ admissionId: input.admissionId, connectionId, projectId: input.projectId, flowVersionId: input.flowVersionId, purpose: 'stats' })
+                const version = await flowVersionService(log).getOne(input.flowVersionId)
+                const platformId = await projectService(log).getPlatformId(input.projectId)
+                if (!version || !('pieceName' in version.trigger.settings) || version.trigger.settings.pieceName !== input.pieceName || platformId !== input.platformId) hostingFail('HOSTING_TRIGGER_SCOPE_MISMATCH')
+            }
             const redisConnection = await redisConnections.useExisting()
             await triggerRunStats(log, redisConnection).save(input)
         },

@@ -1,7 +1,8 @@
 import { apId } from '@activepieces/core-utils'
-import { hostingCatalog } from '@activepieces/shared'
-import { DataSource, EntityManager, In } from 'typeorm'
+import { EngineResponseStatus, hostingCatalog, WorkerJobType } from '@activepieces/shared'
+import { DataSource, EntityManager, In, IsNull } from 'typeorm'
 import { HOSTED_CREDIT_ACCOUNTING_VERSION, HOSTED_LEGACY_MICRO_USD_PER_CREDIT, HOSTED_MAX_ROOT_CREDITS, hostedAiCredits, hostedCreditLiability, hostedCreditRate, hostedUsesCreditAccounting } from './hosting-credit-policy'
+import { HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrant, HostingGrantEntity, HostingReservation, HostingReservationEntity } from './hosting-entities'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
@@ -69,9 +70,17 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             if (!['running', 'uncertain', 'paused'].includes(reservation.state)) hostingFail('HOSTING_INVALID_TRANSITION')
             if (await manager.getRepository(HostingReservationEntity).existsBy({ platformId, rootReservationId: reservation.id, state: In(['reserved', 'running', 'uncertain']) })) hostingFail('HOSTING_UNSETTLED_CHILDREN')
             if (await manager.getRepository(HostingModelCallEntity).existsBy({ platformId, rootReservationId: reservation.id, state: In(['prepared', 'running', 'uncertain']) })) hostingFail('HOSTING_UNSETTLED_CHILDREN')
-            await manager.getRepository(HostingReservationEntity).update({ id: reservation.id }, { state: 'settled', actualAmount: 1n })
+            const coordinator = await isConfirmedCoordinator({ manager, reservation })
+            const actualAmount = coordinator ? 0n : 1n
+            if (coordinator) {
+                const grant = await manager.getRepository(HostingGrantEntity).findOneByOrFail({ id: reservation.grantId, platformId })
+                if (grant.consumed < reservation.amount) hostingFail('HOSTING_INVALID_TRANSITION')
+                await manager.getRepository(HostingGrantEntity).update({ id: grant.id }, { consumed: grant.consumed - reservation.amount })
+                await tx.event({ manager, platformId, event: 'execution.coordinator_settled', payload: { reservationId: reservation.id, heldCredits: reservation.amount.toString(), actualCredits: '0' } })
+            }
+            await manager.getRepository(HostingReservationEntity).update({ id: reservation.id }, { state: 'settled', actualAmount })
             if (reservation.state !== 'paused') await manager.getRepository(HostingAccountEntity).update({ id: platformId }, { activeExecutions: account.activeExecutions - 1 })
-            await tx.entry({ manager, reservation, operation: 'settle', amount: 1n })
+            await tx.entry({ manager, reservation, operation: 'settle', amount: actualAmount })
         } })
     }
 
@@ -334,3 +343,16 @@ function reservationCreditExposure(reservation: HostingReservation): bigint {
 }
 
 export { lockBudget as lockHostedBudget }
+
+// Coordinators reserve capacity and a provisional Credit before dispatch. Their
+// confirmed completion costs zero; only delivered flow roots consume execution
+// Credits. This classification is persisted server authority, never request data.
+async function isConfirmedCoordinator({ manager, reservation }: { manager: EntityManager, reservation: HostingReservation }): Promise<boolean> {
+    const root = await manager.getRepository(HostingDispatchEntity).findOneBy({ platformId: reservation.platformId, reservationId: reservation.id, rootDispatchId: IsNull() })
+    const coordinatorTypes: WorkerJobType[] = [WorkerJobType.EXECUTE_TRIGGER_HOOK, WorkerJobType.EXECUTE_POLLING, WorkerJobType.RENEW_WEBHOOK, WorkerJobType.EXECUTE_WEBHOOK]
+    if (!root?.payload || !coordinatorTypes.includes(root.payload.jobType)) return false
+    const segments = await manager.getRepository(HostingDispatchEntity).find({ where: [{ id: root.id, platformId: root.platformId }, { rootDispatchId: root.id, platformId: root.platformId }] })
+    if (segments.some(segment => !segment.payload || !coordinatorTypes.includes(segment.payload.jobType) || !['completed', 'cancelled'].includes(segment.state) || (segment.state === 'completed' && (!segment.completionStatus || segment.completionStatus === EngineResponseStatus.INTERNAL_ERROR)))) hostingFail('HOSTING_COORDINATOR_RECEIPT_REQUIRED')
+    if (await manager.getRepository(HostingModelCallEntity).existsBy({ platformId: reservation.platformId, rootReservationId: reservation.id })) hostingFail('HOSTING_COORDINATOR_MODEL_DENIED')
+    return true
+}

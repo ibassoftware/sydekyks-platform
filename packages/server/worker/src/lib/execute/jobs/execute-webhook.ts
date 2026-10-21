@@ -84,6 +84,7 @@ export const executeWebhookJob: JobHandler<WebhookJobData, FireAndForgetJobResul
                     const sampleTriggerResult = sampleResult.response as ExecuteTriggerResponse<TriggerHookType.RUN>
                     if (sampleTriggerResult.output.length > 0) {
                         await ctx.apiClient.savePayloads({
+                            admissionId: ctx.admissionId,
                             flowId: data.flowId,
                             flowVersionId: flowVersion.id,
                             projectId: data.projectId,
@@ -126,7 +127,7 @@ export const executeWebhookJob: JobHandler<WebhookJobData, FireAndForgetJobResul
 
         if (error) {
             if (realExecutionStarted) {
-                await recordTriggerRun({ apiClient: ctx.apiClient, log: ctx.log, flowVersion, platformId: data.platformId, status: EngineResponseStatus.INTERNAL_ERROR })
+                await recordTriggerRun({ apiClient: ctx.apiClient, log: ctx.log, flowVersion, platformId: data.platformId, projectId: data.projectId, admissionId: ctx.admissionId, status: EngineResponseStatus.INTERNAL_ERROR })
             }
             if (isSandboxTimeout(error)) {
                 if (data.execute) {
@@ -148,6 +149,7 @@ export const executeWebhookJob: JobHandler<WebhookJobData, FireAndForgetJobResul
             const triggerResult = execResult.response as ExecuteTriggerResponse<TriggerHookType.RUN>
             if (triggerResult.output.length > 0) {
                 await ctx.apiClient.submitPayloads({
+                    admissionId: ctx.admissionId,
                     flowVersionId: flowVersion.id,
                     projectId: data.projectId,
                     payloads: triggerResult.output,
@@ -172,7 +174,7 @@ export const executeWebhookJob: JobHandler<WebhookJobData, FireAndForgetJobResul
             }
         }
 
-        await recordTriggerRun({ apiClient: ctx.apiClient, log: ctx.log, flowVersion, platformId: data.platformId, status: execResult.status, error: execResult.error })
+        await recordTriggerRun({ apiClient: ctx.apiClient, log: ctx.log, flowVersion, platformId: data.platformId, projectId: data.projectId, admissionId: ctx.admissionId, status: execResult.status, error: execResult.error })
 
         return { kind: JobResultKind.FIRE_AND_FORGET, status: EngineResponseStatus.OK, logs: execResult.logs }
     },

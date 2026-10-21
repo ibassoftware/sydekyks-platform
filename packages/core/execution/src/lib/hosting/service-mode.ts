@@ -23,10 +23,10 @@ function assertWorkerSettings({ localMode, serverMode, accountingProtocol, runti
 export const ServiceMode = z.enum(['self_hosted', 'hosted'])
 export type ServiceMode = z.infer<typeof ServiceMode>
 export const HOSTED_ACCOUNTING_PROTOCOL = 1
-// Exact profile: user-started flows (including AI steps), root chat, durable
-// admission/settlement and fenced callbacks. Triggers, MCP and agent tools deny.
-export const HOSTED_RUNTIME_PROFILE = 'partner-pilot-v1'
-export const HOSTED_RUNTIME_CAPABILITIES = ['flow-admission-v1', 'root-chat-v1', 'ai-hard-cap-v1', 'durable-settlement-v1', 'connection-fencing-v1', 'code-isolation-v1'] as const
+// Exact profile: durable scoped flows, triggers and saved Agents; admitted
+// tool planners and child jobs share settlement and connection fences.
+export const HOSTED_RUNTIME_PROFILE = 'partner-pilot-v2'
+export const HOSTED_RUNTIME_CAPABILITIES = ['flow-admission-v1', 'root-chat-v1', 'ai-hard-cap-v1', 'durable-settlement-v1', 'connection-fencing-v1', 'code-isolation-v1', 'saved-agents-v1', 'agent-tools-v1', 'trigger-lifecycle-v1', 'ai-router-v1'] as const
 export const serviceModePolicy = { resolve, workerIsCompatible, assertWorkerSettings }
 
 type WorkerCompatibilityParams = {

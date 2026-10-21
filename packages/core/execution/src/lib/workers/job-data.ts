@@ -328,6 +328,8 @@ export const ExecuteAgentRunJobData = z.object({
     agentId: z.string().optional(),
     flowRunId: z.string().optional(),
     waitpointId: z.string().optional(),
+    // Durable hosted snapshot; resolved server-side before enqueueing.
+    agentInstructions: z.string().optional(),
     tools: z.array(AgentTool).optional(),
     flowTools: z.array(ResolvedAgentFlowTool).optional(),
     structuredOutput: z.array(AgentOutputField).optional(),

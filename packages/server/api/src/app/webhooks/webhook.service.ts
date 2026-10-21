@@ -112,6 +112,7 @@ export const webhookService = {
             const response = await webhookHandshake.handleHandshakeRequest({
                 payload: (payload ?? await resolveData()) as TriggerPayload,
                 handshakeConfiguration: flowExecutionResult.handshakeConfiguration,
+                simulate: saveSampleData,
                 flowId: flow.id,
                 flowVersionId: flowVersionIdToRun,
                 projectId: flow.projectId,
@@ -218,6 +219,7 @@ async function handleAsync(params: AsyncWebhookParams): Promise<EngineHttpRespon
         fn: () => jobQueue(logger).add({
             id: webhookRequestId,
             type: JobType.ONE_TIME,
+            hostedOrigin: { type: 'scheduled' },
             data: {
                 platformId,
                 projectId: flow.projectId,

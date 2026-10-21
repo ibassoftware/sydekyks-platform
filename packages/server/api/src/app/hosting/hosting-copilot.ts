@@ -4,6 +4,7 @@ import { aiKeyScope } from '../ai/ai-key-scope'
 import { AIProviderEntity } from '../ai/ai-provider-entity'
 import { databaseConnection } from '../database/database-connection'
 import { sydApprovalGate } from '../syd/copilot/approval-gate'
+import { SydAgentConversationEntity } from '../syd/copilot/models/agent-conversation.entity'
 import { SydConversationEntity } from '../syd/copilot/models/conversation.entity'
 import { HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL, HostedAiInput } from './hosting-ai-policy'
 import { hostingConfiguration } from './hosting-configuration'
@@ -34,21 +35,21 @@ export async function hostedCopilotScope({ admissionId, connectionId, input, spe
         const segment = await manager.getRepository(HostingDispatchEntity).findOneByOrFail({ id: peek.id })
         const data = segment.payload
         const now = await tx.now(manager)
-        if (segment.state !== 'running' || segment.terminalReceipt || !segment.leaseUntil || segment.leaseUntil <= now || (connectionId && segment.connectionId !== connectionId) || data?.jobType !== WorkerJobType.EXECUTE_AGENT_RUN || data.source !== AgentRunSource.CHAT || !data.runId || !data.projectId) hostingFail('HOSTING_AI_SEGMENT_DENIED')
-        const row = await manager.getRepository(SydConversationEntity).findOneBy({ id: data.conversationId, platformId: segment.platformId, userId: data.userId, source: AgentRunSource.CHAT, activeRunId: data.runId })
+        if (segment.state !== 'running' || segment.terminalReceipt || !segment.leaseUntil || segment.leaseUntil <= now || (connectionId && segment.connectionId !== connectionId) || data?.jobType !== WorkerJobType.EXECUTE_AGENT_RUN || !data.runId || !data.projectId) hostingFail('HOSTING_AI_SEGMENT_DENIED')
+        const row = await manager.getRepository(data.source === AgentRunSource.CHAT ? SydConversationEntity : SydAgentConversationEntity).findOneBy({ id: data.conversationId, platformId: segment.platformId, userId: data.userId, source: data.source, activeRunId: data.runId })
         if (!row || (row.projectId && row.projectId !== segment.projectId)) hostingFail('HOSTING_AI_SEGMENT_DENIED')
         await tx.member({ manager, actor: { identityId: segment.identityId, platformId: segment.platformId, tokenVersion: segment.tokenVersion }, projectId: segment.projectId, write: true })
         if (spending) {
             tx.assertActive({ account, now }); if (row.status !== AgentConversationStatus.STREAMING || await sydApprovalGate.isCancelled({ conversationId: row.id, runId: data.runId })) hostingFail('HOSTING_AI_SEGMENT_DENIED')
         }
-        for (const [key, expected] of Object.entries({ conversationId: data.conversationId, runId: data.runId, platformId: segment.platformId, projectId: segment.projectId, userId: data.userId, source: AgentRunSource.CHAT, provider: data.provider, providerConfigId: data.providerConfigId, userMessage: data.userMessage })) {
+        for (const [key, expected] of Object.entries({ conversationId: data.conversationId, runId: data.runId, platformId: segment.platformId, projectId: segment.projectId, userId: data.userId, source: data.source, provider: data.provider ?? AIProviderName.ACTIVEPIECES, providerConfigId: data.providerConfigId ?? '', userMessage: data.userMessage, flowRunId: data.flowRunId, waitpointId: data.waitpointId })) {
             if (input && key in input && input[key] !== undefined && input[key] !== expected) hostingFail('HOSTING_AI_SEGMENT_DENIED')
         }
         return { segment, data, conversation: row }
     } })
 }
 
-const allowed = new Set(['getAgentConfig', 'sendAgentEvent', 'saveAgentMessages', 'updateAgentProgress', 'heartbeatAgentConversation', 'executeAgentTool'])
+const allowed = new Set(['getAgentConfig', 'sendAgentEvent', 'saveAgentMessages', 'updateAgentProgress', 'heartbeatAgentConversation', 'executeAgentTool', 'readAgentFile', 'saveAgentFile', 'sendAgentEmail', 'executePieceTool', 'executeKnowledgeBaseTool', 'executeFlowTool', 'updateFlowStepProgress', 'resumeFlowStep'])
 const agentMethods = new Set([...allowed, 'readAgentFile', 'saveAgentFile', 'agentCreditsLeft', 'updateProjectContext', 'sendAgentEmail', 'executePieceTool', 'executeKnowledgeBaseTool', 'executeFlowTool', 'updateFlowStepProgress', 'resumeFlowStep', 'getPersonalizationConfig', 'getPersonalizationPrefillConfig', 'savePersonalizationResult', 'savePersonalizationPrefill', 'sendPersonalizationProgress'])
 export function protectHostedCopilotRpc(handlers: WorkerToApiContract, connectionId?: string): WorkerToApiContract {
     if (hostingConfiguration.getServiceMode() !== 'hosted') return handlers
@@ -62,9 +63,21 @@ export function protectHostedCopilotRpc(handlers: WorkerToApiContract, connectio
                 if (await sydApprovalGate.isCancelled({ conversationId: scope.conversation.id, runId: scope.data.runId })) hostingFail('HOSTING_AI_SEGMENT_DENIED')
                 return value({ ...scope.data, admissionId: input.admissionId })
             }
-            if (key === 'executeAgentTool' && (input.toolName !== '__cancel_check' || !input.toolInput || typeof input.toolInput !== 'object' || (input.toolInput as Record<string, unknown>).conversationId !== scope.data.conversationId || (input.toolInput as Record<string, unknown>).runId !== scope.data.runId)) hostingFail('HOSTING_TOOL_NOT_METERED')
+            if (key === 'executeAgentTool') {
+                const tools = new Set(['__cancel_check', '__approval_wait', '__store_pending_gate', '__get_selected_connection', '__get_available_connections', '__store_selected_connection', 'ap_list_agents', 'ap_create_agent', 'ap_update_agent', 'ap_add_agent_tool', 'ap_remove_agent_tool'])
+                if (typeof input.toolName !== 'string' || !tools.has(input.toolName) || !input.toolInput || typeof input.toolInput !== 'object') hostingFail('HOSTING_TOOL_NOT_METERED')
+                const toolInput = input.toolInput as Record<string, unknown>
+                for (const [field, expected] of Object.entries({ conversationId: scope.data.conversationId, runId: scope.data.runId, projectId: scope.segment.projectId, platformId: scope.segment.platformId, userId: scope.data.userId })) {
+                    if (field in toolInput && toolInput[field] !== undefined && toolInput[field] !== expected) hostingFail('HOSTING_AI_SEGMENT_DENIED')
+                }
+                input = { ...input, toolInput: { ...toolInput, conversationId: scope.data.conversationId, runId: scope.data.runId, projectId: scope.segment.projectId } }
+            }
+            if (['executePieceTool', 'executeKnowledgeBaseTool', 'executeFlowTool', 'sendAgentEmail'].includes(key)) {
+                await hostedCopilotScope({ admissionId: input.admissionId as string, connectionId, spending: true })
+            }
+            if (['resumeFlowStep', 'updateFlowStepProgress'].includes(key) && scope.data.source !== AgentRunSource.FLOW_STEP) hostingFail('HOSTING_AI_SEGMENT_DENIED')
             // Transcript/progress payloads are callbacks, not authority to start any cost path.
-            return value({ ...input, conversationId: scope.data.conversationId, runId: scope.data.runId, platformId: scope.segment.platformId, projectId: scope.segment.projectId, userId: scope.data.userId, source: AgentRunSource.CHAT })
+            return value({ ...input, conversationId: scope.data.conversationId, runId: scope.data.runId, platformId: scope.segment.platformId, projectId: scope.segment.projectId, userId: scope.data.userId, source: scope.data.source })
         }
     } })
 }

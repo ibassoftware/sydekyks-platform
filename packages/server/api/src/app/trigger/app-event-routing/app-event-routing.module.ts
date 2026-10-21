@@ -133,6 +133,7 @@ export const appEventRoutingController: FastifyPluginAsyncZod = async (
                 return jobQueue(request.log).add({
                     id: requestId,
                     type: JobType.ONE_TIME,
+                    hostedOrigin: { type: 'scheduled' },
                     data: {
                         platformId,
                         projectId: listener.projectId,

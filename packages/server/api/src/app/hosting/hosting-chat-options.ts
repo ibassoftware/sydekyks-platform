@@ -1,20 +1,50 @@
-import { HOSTED_MAX_ROOT_CREDITS } from './hosting-credit-policy'
 import { AIProviderName } from '@activepieces/core-utils'
+import { AgentRunSource, Permission } from '@activepieces/shared'
+import { FastifyBaseLogger } from 'fastify'
 import { EntityManager } from 'typeorm'
 import { aiKeyScope } from '../ai/ai-key-scope'
 import { AIProviderEntity } from '../ai/ai-provider-entity'
+import { resolvePermissionChecker } from '../mcp/mcp-permissions'
+import { SydAgentConversationEntity } from '../syd/copilot/models/agent-conversation.entity'
 import { SydConversationEntity } from '../syd/copilot/models/conversation.entity'
+import { sydChatAgentAdministration } from '../syd/copilot/tools/chat-agent-administration'
 import { HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL } from './hosting-ai-policy'
+import { HOSTED_MAX_ROOT_CREDITS } from './hosting-credit-policy'
 import { readManagedConfiguration } from './hosting-managed-settings'
 import { readApprovedPricing } from './hosting-pricing'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 import { readHostedCredits } from './hosting-usage'
 
-export async function hostedChatOptions({ manager, actor, userId, projectId: requestedProjectId, conversationId }: { manager: EntityManager, actor: HostingActor, userId: string, projectId: string, conversationId?: string }) {
-    const conversation = conversationId ? await manager.getRepository(SydConversationEntity).findOneBy({ id: conversationId, platformId: actor.platformId, userId }) : null
+export async function hostedChatOptions({ manager, actor, userId, projectId: requestedProjectId, conversationId, agentId, builder = false, log }: { manager: EntityManager, actor: HostingActor, userId: string, projectId: string, conversationId?: string, agentId?: string, builder?: boolean, log?: FastifyBaseLogger }) {
+    const rootConversation = conversationId ? await manager.getRepository(SydConversationEntity).findOneBy({ id: conversationId, platformId: actor.platformId, userId }) : null
+    const agentConversation = conversationId && !rootConversation ? await manager.getRepository(SydAgentConversationEntity).findOneBy({ id: conversationId, platformId: actor.platformId, userId }) : null
+    const conversation = rootConversation ?? agentConversation
     if (conversationId && !conversation) hostingFail('HOSTING_ACCESS_DENIED')
+    if (agentConversation && ![AgentRunSource.AGENT, AgentRunSource.AGENT_BUILDER].includes(agentConversation.source)) hostingFail('HOSTING_ACCESS_DENIED')
+    if (rootConversation && (agentId || builder)) hostingFail('HOSTING_ACCESS_DENIED')
+    if (agentConversation && agentId && agentConversation.agentId !== agentId) hostingFail('HOSTING_ACCESS_DENIED')
     const projectId = conversation?.projectId ?? requestedProjectId
     await tx.member({ manager, actor, projectId, write: true })
+    const selectedAgentId = agentConversation?.agentId ?? agentId
+    const isBuilder = agentConversation ? agentConversation.source === AgentRunSource.AGENT_BUILDER : builder
+    const native = !!agentConversation || !!agentId || builder
+    let payerLock: { type: 'managed' } | { type: 'byok', configId: string } | undefined
+    if (native) {
+        if (!log) hostingFail('HOSTING_ACCESS_DENIED')
+        const permission = await resolvePermissionChecker({ userId, projectId, log })
+        if (permission.check(isBuilder ? Permission.WRITE_AGENT : Permission.READ_AGENT, 'agent-chat-options')) hostingFail('HOSTING_ACCESS_DENIED')
+        const agent = selectedAgentId ? await sydChatAgentAdministration(log).getOneOrThrow({ id: selectedAgentId, projectId, userId }) : null
+        if (!agent && !isBuilder) hostingFail('HOSTING_ACCESS_DENIED')
+        const config = !isBuilder ? agent?.draft : undefined
+        if (!config?.provider || config.provider === AIProviderName.ACTIVEPIECES) {
+            if (config?.providerConfigId) hostingFail('HOSTING_AI_PAYER_CONFLICT')
+            payerLock = { type: 'managed' }
+        }
+        else {
+            if (config.provider !== AIProviderName.DEEPSEEK || !config.providerConfigId) hostingFail('HOSTING_EXACT_BYOK_KEY_REQUIRED')
+            payerLock = { type: 'byok', configId: config.providerConfigId }
+        }
+    }
     const rows = await manager.getRepository(AIProviderEntity).find({ where: { platformId: actor.platformId, provider: AIProviderName.DEEPSEEK, status: 'active' }, order: { displayName: 'ASC', id: 'ASC' } })
     let managedAvailable = false
     try {
@@ -30,6 +60,6 @@ export async function hostedChatOptions({ manager, actor, userId, projectId: req
     const account = await tx.account({ manager, platformId: actor.platformId })
     const credits = await readHostedCredits(manager, account, await tx.now(manager))
     managedAvailable = managedAvailable && BigInt(credits.execution.available) > 0n
-    return { creditPolicy: { executionCredits: 1, maxRunCredits: HOSTED_MAX_ROOT_CREDITS.toString() }, credits: { execution: credits.execution }, platformId: actor.platformId, userId, requestedProjectId, projectId, conversationId: conversationId ?? null, model: { id: HOSTED_MANAGED_MODEL, label: 'Sydekyks' }, managedAvailable,
+    return { ...(payerLock ? { payerLock } : {}), creditPolicy: { executionCredits: 1, maxRunCredits: HOSTED_MAX_ROOT_CREDITS.toString() }, credits: { execution: credits.execution }, platformId: actor.platformId, userId, requestedProjectId, projectId, conversationId: conversationId ?? null, model: { id: HOSTED_MANAGED_MODEL, label: 'Sydekyks' }, managedAvailable,
         keys: rows.filter(row => !Object.keys(row.config).length && aiKeyScope.rowAllowsScope({ row, scope: { type: 'project', projectId } }) && aiKeyScope.keyOffersModel({ key: row, modelId: HOSTED_DEEPSEEK_MODEL })).map(row => ({ id: row.id, name: row.displayName })) }
 }

@@ -11,6 +11,7 @@ import { HostingJobOrigin } from '../../hosting/hosting-execution'
 import { hostingRecovery } from '../../hosting/hosting-recovery'
 import { hostingServices } from '../../hosting/hosting-services'
 import { hostingFail } from '../../hosting/hosting-transactions'
+import { hostedTriggerSchedule } from '../../hosting/hosting-trigger-schedule'
 import { projectWorkerGroupService } from '../../project/project-worker-group.service'
 import { workerGroupService } from '../../sydekyks-community/shared-worker-routing'
 import { getPlatformGroupQueueName, getProjectGroupQueueName, QueueName } from '../job'
@@ -56,14 +57,18 @@ export const jobQueue = (log: FastifyBaseLogger) => ({
         const projectId = 'projectId' in data ? data.projectId : null
         const queueName = await getQueueName({ platformId, projectId, jobType: data.jobType }, log)
         if (hostingConfiguration.getServiceMode() === 'hosted') {
-            if (type !== JobType.ONE_TIME) hostingFail('HOSTING_JOB_PATH_NOT_READY')
-            data = await hostingServices.execution().prepare({ queueName, jobId: params.id, data, origin: params.hostedOrigin, delay: params.delay })
+            if (type === JobType.REPEATING) {
+                if (params.hostedOrigin?.type !== 'scheduled' || (data.jobType !== WorkerJobType.EXECUTE_POLLING && data.jobType !== WorkerJobType.RENEW_WEBHOOK)) hostingFail('HOSTING_JOB_PROVENANCE_REQUIRED')
+                await hostingServices.execution().validateScheduledTrigger({ data })
+            }
+            else data = await hostingServices.execution().prepare({ queueName, jobId: params.id, data, origin: params.hostedOrigin, delay: params.delay })
         }
         const queue = await ensureQueueExists({ log, queueName })
 
         switch (type) {
             case JobType.REPEATING: {
-                const { scheduleOptions, data } = params
+                const { data } = params
+                const scheduleOptions = hostingConfiguration.getServiceMode() === 'hosted' ? hostedTriggerSchedule(params.scheduleOptions) : params.scheduleOptions
                 await queue.upsertJobScheduler(data.flowVersionId, scheduleOptions.type === TriggerSourceScheduleType.INTERVAL ? {
                     every: scheduleOptions.intervalMs,
                     startDate: Date.now() + scheduleOptions.intervalMs,
@@ -75,6 +80,7 @@ export const jobQueue = (log: FastifyBaseLogger) => ({
                     data,
                     opts: {
                         priority: JOB_PRIORITY[getDefaultJobPriority(data)],
+                        ...(hostingConfiguration.getServiceMode() === 'hosted' ? { attempts: 1 } : {}),
                     },
                 })
                 return null

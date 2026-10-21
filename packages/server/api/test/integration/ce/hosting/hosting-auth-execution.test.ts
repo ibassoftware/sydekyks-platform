@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { AIProviderName, apId } from '@activepieces/core-utils'
-import { AgentRunSource, EngineResponseStatus, ExecuteAgentRunJobData, ExecuteFlowJobData, ExecutionType, FileType, FlowRun, FlowRunStatus, FlowTriggerType, FlowVersionState, LATEST_FLOW_SCHEMA_VERSION, LATEST_JOB_DATA_SCHEMA_VERSION, OtpType, PlatformRole, PrincipalType, RunEnvironment, StreamStepProgress, TestFlowRunRequestBody, UserIdentityProvider, WebsocketClientEvent, WebsocketServerEvent, WorkerJobType } from '@activepieces/shared'
+import { AgentConfig, AgentConversationStatus, AgentRunSource, AgentVisibility, EngineResponseStatus, ExecuteActionJobData, ExecuteAgentRunJobData, ExecuteFlowJobData, ExecutionType, FileType, FlowActionType, FlowRun, FlowRunStatus, FlowStatus, FlowTriggerType, FlowVersionState, JobData, LATEST_FLOW_SCHEMA_VERSION, LATEST_JOB_DATA_SCHEMA_VERSION, OtpType, PauseType, PlatformRole, PrincipalType, ResumeReason, RunEnvironment, StreamStepProgress, TestFlowRunRequestBody, TriggerHookType, TriggerStrategy, UserIdentityProvider, WebsocketClientEvent, WebsocketServerEvent, WorkerJobType } from '@activepieces/shared'
 import { Job, Queue } from 'bullmq'
 import fastify, { FastifyInstance } from 'fastify'
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
@@ -31,19 +31,28 @@ import { errorHandler } from '../../../../src/app/helper/error-handler'
 import { jwtUtils } from '../../../../src/app/helper/jwt-utils'
 import { createHostedAiGateway } from '../../../../src/app/hosting/hosting-ai-gateway'
 import { hostingController } from '../../../../src/app/hosting/hosting-controller'
+import { hostedCopilotScope } from '../../../../src/app/hosting/hosting-copilot'
 import { HostingDispatchEntity } from '../../../../src/app/hosting/hosting-dispatch-entity'
 import { HostingAccountEntity, HostingGrantEntity, HostingReservationEntity } from '../../../../src/app/hosting/hosting-entities'
 import { createHostedExecution } from '../../../../src/app/hosting/hosting-execution'
 import { INSTALLATION_MODE_FLAG_ID } from '../../../../src/app/hosting/hosting-installation'
 import { createHostedLedger } from '../../../../src/app/hosting/hosting-ledger'
+import { saveManagedSettings } from '../../../../src/app/hosting/hosting-managed-settings'
 import { HostingModelCallEntity } from '../../../../src/app/hosting/hosting-model-call-entity'
 import { createHostedOnboarding } from '../../../../src/app/hosting/hosting-onboarding'
+import { createHostedPricing, hostedPricingView } from '../../../../src/app/hosting/hosting-pricing'
+import { PRICING_CALENDAR } from '../../../../src/app/hosting/hosting-pricing-source'
 import { hostingServices } from '../../../../src/app/hosting/hosting-services'
 import { hostingTransactions } from '../../../../src/app/hosting/hosting-transactions'
 import { mcpOAuthTokenService } from '../../../../src/app/mcp/oauth/token/mcp-oauth-token.service'
 import { platformController } from '../../../../src/app/platform/platform.controller'
 import { platformUtils } from '../../../../src/app/platform/platform.utils'
+import { SydAgentConversationEntity } from '../../../../src/app/syd/copilot/models/agent-conversation.entity'
+import { SydChatManagedAgentEntity } from '../../../../src/app/syd/copilot/models/chat-managed-agent.entity'
 import { SydConversationEntity } from '../../../../src/app/syd/copilot/models/conversation.entity'
+import { TriggerSourceEntity } from '../../../../src/app/trigger/trigger-source/trigger-source-entity'
+import { WaitpointEntity } from '../../../../src/app/waitpoints/waitpoint-entity'
+import { WaitpointStatus } from '../../../../src/app/waitpoints/waitpoint-types'
 import { jobBroker } from '../../../../src/app/workers/job-queue/job-broker'
 import { jobQueue, JobType } from '../../../../src/app/workers/job-queue/job-queue'
 import { bootstrapHostedOperator } from '../../../helpers/hosting-fixtures'
@@ -693,11 +702,11 @@ describe('persisted workflow AI payer admission', () => {
         expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ platformId: value.platformId, meter: 'execution' })).consumed).toBe(1n)
         expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(0)
     })
-    it('rejects mixed paths before dispatch creation or charging', async () => {
+    it('admits mixed potential paths with one managed root and still rejects an unavailable exact BYOK key', async () => {
         const value = await flow(), trigger = textFlow('managed'); trigger.nextAction.nextAction.nextAction = textFlow('byok').nextAction.nextAction
         await ds.getRepository(FlowVersionEntity).update({ id: value.data.flowVersionId }, { trigger, state: FlowVersionState.DRAFT })
-        await expect(execution.prepare({ ...value.delivery, origin: value.origin })).rejects.toThrow('MIXED_AI_PAYERS_UNSUPPORTED')
-        expect(await ds.getRepository(HostingDispatchEntity).countBy({ platformId: value.platformId })).toBe(0)
+        await execution.prepare({ ...value.delivery, origin: value.origin })
+        await expect(execution.admit({ ...value.delivery, queueToken: 'mixed' })).rejects.toThrow('BYOK_SCOPE_DENIED')
         expect(await ds.getRepository(HostingReservationEntity).countBy({ platformId: value.platformId })).toBe(0)
     })
     it('blocks a later DRAFT payer flip before supplier send, preserving the original payer', async () => {
@@ -709,5 +718,195 @@ describe('persisted workflow AI payer admission', () => {
         await expect(gateway.execute({ scope: { admissionId, platformId: value.platformId, projectId: value.projectId }, request: { callKey: 'flipped-step', attempt: 0, payer: { type: 'byok', configId }, model: 'deepseek-flash', messages: [{ role: 'user', content: 'Must not send' }], max_tokens: 1 } })).rejects.toThrow('PAYER_CONFLICT')
         expect(complete).not.toHaveBeenCalled(); expect(await ds.getRepository(HostingModelCallEntity).countBy({ admissionId })).toBe(0)
         expect((await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: dispatch.reservationId! })).payer).toBe('managed')
+    })
+})
+
+
+describe('saved Agents share durable admission and scoped tool settlement', () => {
+    async function savedAgent(source: AgentRunSource.AGENT | AgentRunSource.AGENT_BUILDER) {
+        const value = await tenant(), runId = apId(), conversationId = apId(), agentId = apId()
+        const config = AgentConfig.parse({ instructions: 'Use only configured tools' })
+        await ds.getRepository(SydChatManagedAgentEntity).insert({ id: agentId, projectId: value.projectId, ownerId: value.userId, externalId: apId(), displayName: 'Synthetic Agent', icon: 'bot', color: '#000000', visibility: AgentVisibility.PROJECT, draft: config })
+        await ds.getRepository(SydAgentConversationEntity).insert({ id: conversationId, platformId: value.platformId, projectId: value.projectId, userId: value.userId, agentId, source, activeRunId: runId, status: AgentConversationStatus.STREAMING })
+        const data: ExecuteAgentRunJobData = { schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, jobType: WorkerJobType.EXECUTE_AGENT_RUN, platformId: value.platformId, projectId: value.projectId, conversationId, runId, userId: value.userId, userMessage: 'Test', source, modelName: null, agentId, agentInstructions: config.instructions, tools: [] }
+        return { ...value, data, delivery: { queueName: `hosting-${schema}-${runId}`, jobId: runId, data }, origin: { type: 'user' as const, userId: value.userId, tokenVersion: value.tokenVersion } }
+    }
+    it.each([AgentRunSource.AGENT, AgentRunSource.AGENT_BUILDER] as const)('admits and settles %s through its own persisted conversation table', async source => {
+        const value = await savedAgent(source)
+        await expect(execution.prepare(value.delivery)).rejects.toThrow('PROVENANCE_REQUIRED')
+        await execution.prepare({ ...value.delivery, origin: value.origin })
+        const admissionId = await execution.admit({ ...value.delivery, queueToken: 'saved' })
+        const fence = { ...value.delivery, admissionId, queueToken: 'saved', connectionId: 'saved-socket' }
+        expect(await execution.start(fence)).toBe(true)
+        await hostedCopilotScope({ admissionId, connectionId: 'saved-socket', input: { provider: 'activepieces', providerConfigId: '' }, spending: true })
+        await expect(hostedCopilotScope({ admissionId, connectionId: 'foreign' })).rejects.toThrow('SEGMENT_DENIED')
+        await execution.complete({ ...fence, status: EngineResponseStatus.OK })
+        expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(0)
+        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ platformId: value.platformId, meter: 'execution' })).consumed).toBe(1n)
+    })
+    it('waits for the parent checkpoint, shares its root hold, and resumes after a flow-step Agent completes', async () => {
+        const value = await started(), waitpointId = apId(), conversationId = apId(), agentRunId = apId()
+        const parent = await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ admissionId: value.admissionId })
+        await ds.getRepository(WaitpointEntity).insert({ id: waitpointId, hostingDispatchId: parent.id, projectId: value.projectId, flowRunId: value.data.runId, type: PauseType.WEBHOOK, status: WaitpointStatus.PENDING, stepName: 'agent_step' })
+        await ds.getRepository(SydAgentConversationEntity).insert({ id: conversationId, platformId: value.platformId, projectId: value.projectId, userId: value.userId, source: AgentRunSource.FLOW_STEP, flowRunId: value.data.runId, activeRunId: agentRunId, status: AgentConversationStatus.STREAMING })
+        const data: ExecuteAgentRunJobData = { schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, jobType: WorkerJobType.EXECUTE_AGENT_RUN, platformId: value.platformId, projectId: value.projectId, conversationId, runId: agentRunId, userId: value.userId, userMessage: 'Test', source: AgentRunSource.FLOW_STEP, modelName: null, agentInstructions: 'Complete this step', tools: [], flowRunId: value.data.runId, waitpointId }
+        const delivery = { queueName: value.delivery.queueName, jobId: agentRunId, data }
+        await execution.prepare({ ...delivery, origin: { type: 'agent-step', admissionId: value.admissionId, waitpointId } })
+        await expect(execution.admit({ ...delivery, queueToken: 'agent-child' })).rejects.toThrow('CONCURRENCY_LIMIT')
+        await execution.flowReceipt({ admissionId: value.admissionId, connectionId: value.fence.connectionId, projectId: value.projectId, runId: value.data.runId, status: FlowRunStatus.PAUSED, checkpoint: { executionState: {} }, logsFileId: value.data.logsFileId, waitpointId })
+        await execution.complete({ ...value.fence, status: EngineResponseStatus.OK })
+        expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(0)
+        const admissionId = await execution.admit({ ...delivery, queueToken: 'agent-child' })
+        const fence = { ...delivery, admissionId, queueToken: 'agent-child', connectionId: 'step-agent-socket' }
+        expect(await execution.start(fence)).toBe(true)
+        expect(await ds.getRepository(HostingReservationEntity).countBy({ platformId: value.platformId, kind: 'execution' })).toBe(1)
+        await execution.complete({ ...fence, status: EngineResponseStatus.OK })
+        await ds.getRepository(WaitpointEntity).update({ id: waitpointId }, { status: WaitpointStatus.COMPLETED, resumePayload: { body: { answer: 'Complete' } } })
+        const resumedData = await execution.prepare({ queueName: value.delivery.queueName, jobId: apId(), data: { ...value.data, executionType: ExecutionType.RESUME, resumeReason: ResumeReason.WAITPOINT }, origin: { type: 'resume', waitpointId } })
+        const resumed = await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ platformId: value.platformId, flowRunId: value.data.runId, generation: 1 })
+        const resumedDelivery = { queueName: value.delivery.queueName, jobId: resumed.jobId!, data: resumedData }
+        const resumeAdmission = await execution.admit({ ...resumedDelivery, queueToken: 'resume-parent' })
+        const resumeFence = { ...resumedDelivery, admissionId: resumeAdmission, queueToken: 'resume-parent', connectionId: 'resume-parent-socket' }
+        expect(await execution.start(resumeFence)).toBe(true)
+        if (resumedData.jobType !== WorkerJobType.EXECUTE_FLOW) throw new Error('Expected the resumed flow payload')
+        // Normal workers persist the resumed log file before the terminal receipt.
+        await ds.getRepository(FileEntity).insert({ id: resumedData.logsFileId, platformId: value.platformId, projectId: value.projectId, type: FileType.FLOW_RUN_LOG, location: 'DB', data: Buffer.from('{}') })
+        await execution.flowReceipt({ admissionId: resumeAdmission, connectionId: resumeFence.connectionId, projectId: value.projectId, runId: value.data.runId, status: FlowRunStatus.SUCCEEDED })
+        await execution.complete({ ...resumeFence, status: EngineResponseStatus.OK })
+        expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(0)
+        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ platformId: value.platformId, meter: 'execution' })).consumed).toBe(1n)
+    })
+    it('admits a synchronous configured action under the running Agent root without a second execution hold', async () => {
+        const value = await savedAgent(AgentRunSource.AGENT)
+        await execution.prepare({ ...value.delivery, origin: value.origin })
+        const admissionId = await execution.admit({ ...value.delivery, queueToken: 'parent' })
+        const parentFence = { ...value.delivery, admissionId, queueToken: 'parent', connectionId: 'parent-socket' }
+        expect(await execution.start(parentFence)).toBe(true)
+        const requestId = apId()
+        const data = ExecuteActionJobData.parse({ schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, jobType: WorkerJobType.EXECUTE_ACTION, platformId: value.platformId, projectId: value.projectId, requestId, webserverId: 'synthetic-server', expiresAt: Date.now() + 60_000, step: { type: FlowActionType.CODE, name: 'step_1', displayName: 'Synthetic action', lastUpdatedDate: new Date().toISOString(), valid: true, settings: { sourceCode: { code: 'export const code = async () => ({ done: true })', packageJson: '{}' }, input: {} } } })
+        const delivery = { queueName: value.delivery.queueName, jobId: requestId, data }
+        await execution.prepare({ ...delivery, origin: { type: 'agent-tool', admissionId, key: 'tool-call-1' } })
+        const childAdmission = await execution.admit({ ...delivery, queueToken: 'child' })
+        const childFence = { ...delivery, admissionId: childAdmission, queueToken: 'child', connectionId: 'child-socket' }
+        expect(await execution.start(childFence)).toBe(true)
+        expect(await ds.getRepository(HostingReservationEntity).countBy({ platformId: value.platformId, kind: 'execution' })).toBe(1)
+        await execution.complete({ ...childFence, status: EngineResponseStatus.OK })
+        expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(1)
+        await execution.complete({ ...parentFence, status: EngineResponseStatus.OK })
+        expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(0)
+    })
+})
+
+describe('trigger coordination does not spend customer execution Credits', () => {
+    async function coordinator(kind: WorkerJobType.EXECUTE_POLLING | WorkerJobType.EXECUTE_WEBHOOK | WorkerJobType.EXECUTE_TRIGGER_HOOK | WorkerJobType.RENEW_WEBHOOK, hookType = TriggerHookType.ON_ENABLE) {
+        const value = await flow(), jobId = apId(), queueToken = apId()
+        const polling = kind === WorkerJobType.EXECUTE_POLLING
+        const settings = { pieceName: polling ? '@activepieces/piece-schedule' : '@activepieces/piece-webhook', pieceVersion: polling ? '0.1.22' : '0.1.28', triggerName: polling ? 'every_hour' : 'catch_webhook', input: {}, propertySettings: {} }
+        const version = await ds.getRepository(FlowVersionEntity).findOneByOrFail({ id: value.data.flowVersionId })
+        await ds.getRepository(FlowVersionEntity).update({ id: version.id }, { trigger: { ...version.trigger, type: FlowTriggerType.PIECE, settings } })
+        await ds.getRepository(FlowEntity).update({ id: value.data.flowId }, { status: FlowStatus.ENABLED, publishedVersionId: version.id })
+        await ds.getRepository(TriggerSourceEntity).insert({ id: apId(), projectId: value.projectId, flowId: value.data.flowId, flowVersionId: version.id, type: polling ? TriggerStrategy.POLLING : TriggerStrategy.WEBHOOK, ...settings, simulate: false })
+        const base = { schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, platformId: value.platformId, projectId: value.projectId, flowId: value.data.flowId, flowVersionId: version.id, jobType: kind }
+        const data = JobData.parse({ ...base,
+            ...(kind === WorkerJobType.EXECUTE_POLLING ? { triggerType: FlowTriggerType.PIECE } : {}),
+            ...(kind === WorkerJobType.EXECUTE_TRIGGER_HOOK ? { hookType, test: false, requestId: jobId, webserverId: 'synthetic-trigger-accounting' } : {}),
+            ...(kind === WorkerJobType.EXECUTE_WEBHOOK ? { flowVersionIdToRun: version.id, requestId: jobId, payload: { type: 'inline', value: { body: {}, headers: {}, queryParams: {} } }, runEnvironment: RunEnvironment.PRODUCTION, execute: true, saveSampleData: false } : {}),
+        })
+        const delivery = { queueName: `hosting-${schema}`, jobId, data, queueToken }
+        await execution.prepare({ ...delivery, origin: { type: 'scheduled' } })
+        const admissionId = await execution.admit(delivery), fence = { ...delivery, admissionId, connectionId: 'trigger-accounting-socket' }
+        expect(await execution.start(fence)).toBe(true)
+        return { ...value, coordinatorData: data, coordinatorFence: fence }
+    }
+    async function grant(platformId: string) {
+        return ds.getRepository(HostingGrantEntity).findOneByOrFail({ platformId, meter: 'execution' })
+    }
+    it('settles an empty poll at zero while holding one Credit and capacity until completion', async () => {
+        const value = await coordinator(WorkerJobType.EXECUTE_POLLING)
+        const dispatch = await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ admissionId: value.coordinatorFence.admissionId })
+        expect(await grant(value.platformId)).toMatchObject({ consumed: 1n })
+        expect(await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: dispatch.reservationId! })).toMatchObject({ amount: 1n, actualAmount: null, state: 'running' })
+        expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(1)
+        await execution.complete({ ...value.coordinatorFence, status: EngineResponseStatus.OK })
+        await execution.complete({ ...value.coordinatorFence, status: EngineResponseStatus.OK })
+        expect(await grant(value.platformId)).toMatchObject({ consumed: 0n, reserved: 0n })
+        expect(await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: dispatch.reservationId! })).toMatchObject({ state: 'settled', actualAmount: 0n })
+        expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(0)
+    })
+    it.each([
+        [WorkerJobType.EXECUTE_TRIGGER_HOOK, TriggerHookType.ON_ENABLE],
+        [WorkerJobType.EXECUTE_TRIGGER_HOOK, TriggerHookType.ON_DISABLE],
+        [WorkerJobType.RENEW_WEBHOOK, TriggerHookType.RENEW],
+    ] as const)('settles confirmed %s %s coordination at zero', async (kind, hook) => {
+        const value = await coordinator(kind, hook)
+        await execution.complete({ ...value.coordinatorFence, status: EngineResponseStatus.OK })
+        expect(await grant(value.platformId)).toMatchObject({ consumed: 0n, reserved: 0n })
+        expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(0)
+    })
+    it('charges N delivered webhook flows exactly N Credits while webhook coordination settles at zero', async () => {
+        const value = await coordinator(WorkerJobType.EXECUTE_WEBHOOK)
+        await execution.assertTriggerCallback({ admissionId: value.coordinatorFence.admissionId, connectionId: value.coordinatorFence.connectionId, projectId: value.projectId, flowVersionId: value.data.flowVersionId })
+        const deliveries = []
+        for (let index = 0; index < 3; index++) {
+            const runId = apId(), logsFileId = apId()
+            const data: ExecuteFlowJobData = { ...value.data, runId, logsFileId, environment: RunEnvironment.PRODUCTION, payload: { type: 'inline', value: { id: index } }, executeTrigger: false }
+            await ds.getRepository(FileEntity).insert({ id: logsFileId, platformId: value.platformId, projectId: value.projectId, type: FileType.FLOW_RUN_LOG, location: 'DB', data: Buffer.from('{}') })
+            await ds.getRepository(FlowRunEntity).insert({ id: runId, flowId: data.flowId, flowVersionId: data.flowVersionId, projectId: value.projectId, environment: RunEnvironment.PRODUCTION, status: FlowRunStatus.QUEUED, tags: [], steps: {} })
+            const delivery = { queueName: value.delivery.queueName, jobId: runId, data, queueToken: `payload-${index}` }
+            await execution.prepare({ ...delivery, origin: { type: 'scheduled' } })
+            deliveries.push(delivery)
+        }
+        await execution.complete({ ...value.coordinatorFence, status: EngineResponseStatus.OK })
+        expect((await grant(value.platformId)).consumed).toBe(0n)
+        for (const delivery of deliveries) {
+            const admissionId = await execution.admit(delivery), fence = { ...delivery, admissionId, connectionId: 'delivered-flow-socket' }
+            expect(await execution.start(fence)).toBe(true)
+            await execution.complete({ ...fence, status: EngineResponseStatus.OK })
+            await execution.flowReceipt({ admissionId, connectionId: fence.connectionId, projectId: value.projectId, runId: delivery.data.runId, status: FlowRunStatus.SUCCEEDED })
+        }
+        expect(await grant(value.platformId)).toMatchObject({ consumed: 3n, reserved: 0n })
+        const reservations = await ds.getRepository(HostingReservationEntity).findBy({ platformId: value.platformId, kind: 'execution' })
+        expect(reservations.filter(reservation => reservation.actualAmount === 0n)).toHaveLength(1)
+        expect(reservations.filter(reservation => reservation.actualAmount === 1n)).toHaveLength(3)
+    })
+    it('retains the provisional Credit and concurrency for an uncertain poll outcome', async () => {
+        const value = await coordinator(WorkerJobType.EXECUTE_POLLING)
+        await execution.complete({ ...value.coordinatorFence, status: EngineResponseStatus.INTERNAL_ERROR })
+        const dispatch = await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ admissionId: value.coordinatorFence.admissionId })
+        await execution.reconcile({ platformId: value.platformId, dispatchId: dispatch.id })
+        expect(dispatch.state).toBe('uncertain')
+        expect(await grant(value.platformId)).toMatchObject({ consumed: 1n })
+        expect(await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: dispatch.reservationId! })).toMatchObject({ state: 'uncertain', amount: 1n, actualAmount: null })
+        expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(1)
+    })
+    it('keeps a real managed AI flow charged for its execution plus its model usage', async () => {
+        const value = await flow(), version = await ds.getRepository(FlowVersionEntity).findOneByOrFail({ id: value.data.flowVersionId })
+        await ds.getRepository(FlowVersionEntity).update({ id: version.id }, { trigger: { ...version.trigger, nextAction: { name: 'managed_ai', type: FlowActionType.PIECE, displayName: 'Managed AI', valid: true, settings: { pieceName: '@activepieces/piece-ai', pieceVersion: '0.11.0', actionName: 'askAi', input: { provider: { provider: 'activepieces' }, model: 'sydekyks', prompt: 'Synthetic prompt' }, propertySettings: {} } } } })
+        const previousAllowlist = process.env['AP_HOSTED_OPERATOR_IDENTITY_IDS'] ?? ''
+        vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', value.identityId)
+        try {
+            await saveManagedSettings({ dataSource: ds, actor: value.actor, input: { expectedRevision: 0, expectedGlobalRevision: 0, requestKey: apId(), mode: 'set', model: 'deepseek-flash', credentialAction: 'replace', apiKey: 'synthetic-trigger-accounting-not-a-real-key' } })
+            const html = readFileSync('packages/server/api/test/fixtures/hosting-official-pricing.html', 'utf8')
+            const pricing = createHostedPricing({ dataSource: ds, fetchSource: async () => ({ html, date: new Date().toUTCString(), age: '0' }) })
+            await pricing.observe()
+            const current = await hostingTransactions.run({ dataSource: ds, fn: async manager => hostedPricingView(manager, await hostingTransactions.now(manager)) })
+            await pricing.approve({ actor: value.actor, input: { expectedRevision: current.revision, observationId: current.observationId!, termsHash: current.termsHash!, requestKey: apId(), validUntil: PRICING_CALENDAR.until, calendarVersion: PRICING_CALENDAR.version } })
+        }
+        finally {
+            vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', previousAllowlist)
+        }
+        await execution.prepare({ ...value.delivery, origin: value.origin })
+        const admissionId = await execution.admit({ ...value.delivery, queueToken: 'paid-ai' }), fence = { ...value.delivery, admissionId, queueToken: 'paid-ai', connectionId: 'paid-ai-socket' }
+        expect(await execution.start(fence)).toBe(true)
+        const complete = vi.fn(async () => ({ status: 200, data: { id: 'synthetic-paid-ai', model: 'deepseek-flash', created: Math.floor(Date.now() / 1000), object: 'chat.completion', choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'Synthetic response' } }], usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3, prompt_cache_hit_tokens: 0, prompt_cache_miss_tokens: 2 } } }))
+        await createHostedAiGateway({ dataSource: ds, provider: { id: 'synthetic-trigger-regression', endpoint: 'diagnostic://no-network', complete } }).execute({ scope: { admissionId, platformId: value.platformId, projectId: value.projectId }, request: { callKey: 'managed-ai-regression', attempt: 0, payer: { type: 'managed' }, model: 'sydekyks', messages: [{ role: 'user', content: 'Synthetic prompt' }], max_tokens: 4 } })
+        await execution.complete({ ...fence, status: EngineResponseStatus.OK })
+        await execution.flowReceipt({ admissionId, connectionId: fence.connectionId, projectId: value.projectId, runId: value.data.runId, status: FlowRunStatus.SUCCEEDED })
+        expect(complete).toHaveBeenCalledTimes(1)
+        const root = await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ admissionId })
+        expect(await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: root.reservationId! })).toMatchObject({ state: 'settled', actualAmount: 1n })
+        const model = await ds.getRepository(HostingModelCallEntity).findOneByOrFail({ admissionId })
+        expect(model.state).toBe('settled')
+        expect((await grant(value.platformId)).consumed).toBeGreaterThan(1n)
     })
 })

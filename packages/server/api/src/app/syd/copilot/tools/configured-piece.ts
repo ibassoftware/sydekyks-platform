@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { FieldControlMode, PredefinedInputsStructure } from '@activepieces/core-piece-types'
 import { ActivepiecesError, connectionTemplate, ErrorCode, tryCatch } from '@activepieces/core-utils'
 import { PiecePropertyMap, PropertyType } from '@activepieces/pieces-framework'
@@ -5,11 +6,12 @@ import { generateText, LanguageModel, Output } from 'ai'
 import { FastifyBaseLogger } from 'fastify'
 import { z } from 'zod'
 import { appConnectionService } from '../../../app-connection/app-connection-service/app-connection-service'
+import { HostingJobOrigin } from '../../../hosting/hosting-execution'
 import { executePieceActionRun } from '../../../mcp/tools/flow-run-utils'
 import { mcpUtils, PropertyResolutionResult } from '../../../mcp/tools/mcp-utils'
 import { pieceMetadataService } from '../../../pieces/metadata/piece-metadata-service'
 
-async function execute({ piece, instruction, model, platformId, projectId, log }: ExecuteParams) {
+async function execute({ piece, instruction, model, platformId, projectId, log, hostedOrigin, requestId }: ExecuteParams) {
     const metadata = await pieceMetadataService(log).getOrThrow({ platformId, projectId, name: piece.pieceName, version: piece.pieceVersion })
     const action = metadata.actions[piece.actionName]
     if (!action) throw invalid('The configured action no longer exists')
@@ -18,7 +20,7 @@ async function execute({ piece, instruction, model, platformId, projectId, log }
     if (externalId && (!connection || mcpUtils.normalizePieceName(connection.pieceName) !== mcpUtils.normalizePieceName(piece.pieceName))) throw invalid('The configured connection is unavailable for this action')
     if (action.requireAuth && metadata.auth && !externalId) throw invalid('Configure a connection before running this action')
     const pinned = pinnedInputs(piece.predefinedInput)
-    const resolve = (propertyName: string, input: Record<string, unknown>) => mcpUtils.executePropertyResolution({ pieceName: metadata.name, pieceVersion: metadata.version, actionOrTriggerName: piece.actionName, propertyName, input, ...(externalId ? { auth: externalId } : {}), projectId, platformId, log })
+    const resolve = (propertyName: string, input: Record<string, unknown>) => mcpUtils.executePropertyResolution({ pieceName: metadata.name, pieceVersion: metadata.version, actionOrTriggerName: piece.actionName, propertyName, input, ...(externalId ? { auth: externalId } : {}), projectId, platformId, log, ...(hostedOrigin?.type === 'agent-tool' ? { hostedOrigin: { ...hostedOrigin, key: createHash('sha256').update(JSON.stringify([hostedOrigin.key, propertyName, input])).digest('hex') }, requestId: createHash('sha256').update(JSON.stringify([requestId, propertyName, input])).digest('hex').slice(0, 21) } : {}) })
     const fields = Object.keys(action.props).filter((name) => !(name in pinned) && ![PropertyType.MARKDOWN, PropertyType.CUSTOM].includes(action.props[name].type))
     let values: Record<string, unknown> = { ...pinned }
     let pending = fields
@@ -39,7 +41,7 @@ async function execute({ piece, instruction, model, platformId, projectId, log }
         if (url && /^https?:\/\//i.test(url)) throw invalid('Custom API calls must use a path on the configured connection host')
     }
     const resolvedInput = { ...values, ...(externalId ? { auth: externalId } : {}) }
-    const result = await executePieceActionRun({ projectId, pieceName: metadata.name, actionName: piece.actionName, input: resolvedInput, ...(externalId ? { connectionExternalId: externalId } : {}), log })
+    const result = await executePieceActionRun({ projectId, pieceName: metadata.name, actionName: piece.actionName, input: resolvedInput, ...(externalId ? { connectionExternalId: externalId } : {}), log, hostedOrigin, requestId })
     return { result, resolvedInput: { ...visibleInputs({ input: literalInputs(values), properties: action.props }), ...(externalId ? { auth: 'Redacted' } : {}) }, actionDisplayName: action.displayName, ...(connection ? { connectionLabel: connection.displayName } : {}) }
 }
 
@@ -89,12 +91,12 @@ function literalInputs(input: Record<string, unknown>): Record<string, unknown> 
     return z.record(z.string(), z.unknown()).parse(JSON.parse(serialized))
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value) 
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 function invalid(message: string) {
-    return new ActivepiecesError({ code: ErrorCode.ENGINE_OPERATION_FAILURE, params: { message } }) 
+    return new ActivepiecesError({ code: ErrorCode.ENGINE_OPERATION_FAILURE, params: { message } })
 }
 
 export const sydConfiguredPiece = { execute, pinnedInputs, literalInputs, visibleInputs }
-type ExecuteParams = { piece: { pieceName: string, pieceVersion?: string, actionName: string, predefinedInput?: PredefinedInputsStructure }, instruction: string, model: LanguageModel, platformId: string, projectId: string, log: FastifyBaseLogger }
+type ExecuteParams = { hostedOrigin?: HostingJobOrigin, requestId?: string, piece: { pieceName: string, pieceVersion?: string, actionName: string, predefinedInput?: PredefinedInputsStructure }, instruction: string, model: LanguageModel, platformId: string, projectId: string, log: FastifyBaseLogger }
 type SchemaParams = { properties: PiecePropertyMap, input: Record<string, unknown>, resolve: (name: string, input: Record<string, unknown>) => Promise<PropertyResolutionResult>, depth: number }

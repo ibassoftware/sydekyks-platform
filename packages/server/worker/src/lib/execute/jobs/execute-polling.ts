@@ -59,6 +59,7 @@ export const executePollingJob: JobHandler<PollingJobData, FireAndForgetJobResul
                 const triggerResult = result.response as ExecuteTriggerResponse<TriggerHookType.RUN>
                 if (triggerResult.output.length > 0) {
                     await ctx.apiClient.submitPayloads({
+                        admissionId: ctx.admissionId,
                         flowVersionId: data.flowVersionId,
                         projectId: data.projectId,
                         payloads: triggerResult.output,
@@ -77,13 +78,13 @@ export const executePollingJob: JobHandler<PollingJobData, FireAndForgetJobResul
                 }
             }
 
-            await recordTriggerRun({ apiClient: ctx.apiClient, log: ctx.log, flowVersion, platformId: data.platformId, status: result.status, error: result.error })
+            await recordTriggerRun({ apiClient: ctx.apiClient, log: ctx.log, flowVersion, platformId: data.platformId, projectId: data.projectId, admissionId: ctx.admissionId, status: result.status, error: result.error })
 
             return { kind: JobResultKind.FIRE_AND_FORGET, status: EngineResponseStatus.OK, logs: result.logs }
         }
         catch (e) {
             ctx.log.error({ ...pollingLogFields, error: toError(e) }, 'Polling trigger failed, will retry on next scheduled cycle')
-            await recordTriggerRun({ apiClient: ctx.apiClient, log: ctx.log, flowVersion, platformId: data.platformId, status: EngineResponseStatus.INTERNAL_ERROR })
+            await recordTriggerRun({ apiClient: ctx.apiClient, log: ctx.log, flowVersion, platformId: data.platformId, projectId: data.projectId, admissionId: ctx.admissionId, status: EngineResponseStatus.INTERNAL_ERROR })
             return { kind: JobResultKind.FIRE_AND_FORGET, status: EngineResponseStatus.OK }
         }
     },

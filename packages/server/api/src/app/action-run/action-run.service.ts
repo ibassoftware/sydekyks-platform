@@ -3,13 +3,14 @@ import { ActionRunStep, CodeAction, FlowActionType, FlowRunStatus, PieceAction, 
 import { FastifyBaseLogger } from 'fastify'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
+import { HostingJobOrigin } from '../hosting/hosting-execution'
 import { getPiecePackageWithoutArchive } from '../pieces/metadata/piece-metadata-service'
 import { jobQueue } from '../workers/job-queue/job-queue'
 import { userInteractionWatcher } from '../workers/user-interaction-watcher'
 import { ActionRunOutcome, deriveActionRunOutcome, EngineActionResponse } from './action-run-outcome'
 
 export const actionRunService = (log: FastifyBaseLogger) => ({
-    async run({ projectId, platformId, step }: RunParams): Promise<ActionRunResult> {
+    async run({ projectId, platformId, step, hostedOrigin, requestId }: RunParams): Promise<ActionRunResult> {
         const validatedStep = parseStep(step)
         const piece = validatedStep.type === FlowActionType.PIECE
             ? await getPiecePackageWithoutArchive(log, platformId, {
@@ -18,7 +19,7 @@ export const actionRunService = (log: FastifyBaseLogger) => ({
             })
             : undefined
 
-        const id = apId()
+        const id = requestId ?? apId()
         const result = await tryCatch(() => userInteractionWatcher.submitAndWaitForResponse<EngineActionResponse>({
             jobType: WorkerJobType.EXECUTE_ACTION,
             projectId,
@@ -26,7 +27,7 @@ export const actionRunService = (log: FastifyBaseLogger) => ({
             step: validatedStep,
             piece,
             expiresAt: Date.now() + system.getNumberOrThrow(AppSystemProp.FLOW_TIMEOUT_SECONDS) * 1000,
-        }, log, id))
+        }, log, id, hostedOrigin))
 
         const outcome = deriveActionRunOutcome({ result })
         const neverStarted = outcome.neverStarted || await abandonedWithoutStarting({ outcome, result, id, projectId, platformId, log })
@@ -64,6 +65,8 @@ async function abandonedWithoutStarting({ outcome, result, id, projectId, platfo
 }
 
 type RunParams = {
+    hostedOrigin?: HostingJobOrigin
+    requestId?: string
     projectId: string
     platformId: string
     step: PieceAction | CodeAction

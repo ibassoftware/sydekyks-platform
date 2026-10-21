@@ -21,9 +21,9 @@ describe('server persisted workflow payer selection', () => {
         expect(() => hostedFlowPayer(version(ai('dynamic', { provider: '{{step.provider}}' })))).toThrow('PROVIDER_UNSUPPORTED')
         expect(() => hostedFlowPayer(version(ai('dynamic-key', { provider: 'deepseek', configId: '{{step.key}}' }, 'deepseek-flash')))).toThrow('EXACT_BYOK_KEY_REQUIRED')
     })
-    it('rejects mixed potential payer paths including nested branches', () => {
+    it('reserves managed credits for mixed potential payer paths including nested branches', () => {
         const first = ai('managed'); first.nextAction = { name: 'router', type: FlowActionType.ROUTER, settings: {}, children: [ai('byok', { provider: 'deepseek', configId: apId() }, 'deepseek-flash')] }
-        expect(() => hostedFlowPayer(version(first))).toThrow('MIXED_AI_PAYERS_UNSUPPORTED')
+        expect(hostedFlowPayer(version(first))).toBe('managed')
     })
     it('matches single-step engine scope without inspecting unexecuted successors', () => {
         const code = { name: 'code', type: FlowActionType.CODE, nextAction: ai('unfinished', undefined, '') }
@@ -32,9 +32,18 @@ describe('server persisted workflow payer selection', () => {
         expect(hostedFlowPayer(version(first), 'byok')).toBe('byok')
         expect(() => hostedFlowPayer(version(first), 'missing')).toThrow('SCOPE_MISMATCH')
     })
-    it('rejects hosted-unsupported AI actions rather than claiming managed support', () => {
+    it('allows text extraction but refuses attachments before flow execution', () => {
         const extract = ai('extract'); (extract.settings as Record<string, unknown>).actionName = 'extractStructuredData'
+        expect(hostedFlowPayer(version(extract))).toBe('managed')
+        const input = (extract.settings as { input: Record<string, unknown> }).input
+        input.files = [{ file: '{{trigger.file}}' }]
+        expect(() => hostedFlowPayer(version(extract))).toThrow('HOSTING_AI_EXTRACTION_TEXT_ONLY')
+    })
+    it('keeps unsupported image generation fenced while managed router and Agent execution are supported', () => {
+        const extract = ai('extract'); (extract.settings as Record<string, unknown>).actionName = 'generateImage'
         expect(() => hostedFlowPayer(version(extract))).toThrow('PATH_UNSUPPORTED')
-        expect(() => hostedFlowPayer(version({ name: 'router', type: FlowActionType.AI_ROUTER, settings: {} }))).toThrow('PATH_UNSUPPORTED')
+        expect(hostedFlowPayer(version({ name: 'router', type: FlowActionType.AI_ROUTER, settings: {} }))).toBe('managed')
+        const agent = ai('agent'); (agent.settings as Record<string, unknown>).actionName = 'run_agent'
+        expect(hostedFlowPayer(version(agent))).toBe('managed')
     })
 })

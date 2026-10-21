@@ -12,6 +12,9 @@ import { publishedFlowsUsingAgent, publishedFlowVersionsUsingAgent } from '../..
 import { buildPaginator } from '../../../helper/pagination/build-paginator'
 import { paginationHelper } from '../../../helper/pagination/pagination-utils'
 import { Order, OrderByConfig } from '../../../helper/pagination/paginator'
+import { HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL } from '../../../hosting/hosting-ai-policy'
+import { hostingConfiguration } from '../../../hosting/hosting-configuration'
+import { hostedCopilotPayer } from '../../../hosting/hosting-copilot'
 import { resolvePermissionChecker } from '../../../mcp/mcp-permissions'
 import { projectService } from '../../../project/project-service'
 import { userService } from '../../../user/user-service'
@@ -135,6 +138,10 @@ async function isProjectAdministrator({ projectId, userId, log }: { projectId: s
 }
 
 async function withDefaultModel({ draft, platformId, projectId, log }: { draft: AgentConfig, platformId: string, projectId: string, log: FastifyBaseLogger }): Promise<AgentConfig> {
+    if (hostingConfiguration.getServiceMode() === 'hosted') {
+        const payer = await hostedCopilotPayer({ platformId, projectId, provider: draft.provider ?? undefined, configId: draft.providerConfigId ?? undefined })
+        return { ...draft, provider: payer.type === 'byok' ? AIProviderName.DEEPSEEK : AIProviderName.ACTIVEPIECES, providerConfigId: payer.type === 'byok' ? payer.configId : null, modelName: payer.type === 'byok' ? HOSTED_DEEPSEEK_MODEL : HOSTED_MANAGED_MODEL }
+    }
     if (draft.modelName != null) return draft
     const scope = sydCopilotContext.runScopeOrThrow({ projectId })
     const resolved = await tryCatch(() => draft.provider ? sydCopilotContext.resolveRunProvider({ platformId, provider: draft.provider, providerConfigId: draft.providerConfigId ?? undefined, scope, log }) : sydCopilotContext.resolveChatProvider({ platformId, scope, log }))

@@ -9,6 +9,7 @@ import { flowRunService, isOutsideRetentionWindow } from '../../flows/flow-run/f
 import { sampleDataService } from '../../flows/step-run/sample-data.service'
 import { system } from '../../helper/system/system'
 import { AppSystemProp } from '../../helper/system/system-props'
+import { HostingJobOrigin } from '../../hosting/hosting-execution'
 import { projectService } from '../../project/project-service'
 import { mcpUtils } from './mcp-utils'
 
@@ -126,6 +127,8 @@ export async function executePieceActionRun({
     connectionExternalId,
     offload,
     log,
+    hostedOrigin,
+    requestId,
 }: {
     projectId: string
     pieceName: string
@@ -134,6 +137,8 @@ export async function executePieceActionRun({
     input?: Record<string, unknown>
     connectionExternalId?: string
     offload?: ActionRunOffload
+    hostedOrigin?: HostingJobOrigin
+    requestId?: string
     log: FastifyBaseLogger
 }): Promise<McpToolResult> {
     const inputWithoutAuth = omit(input ?? {}, ['auth'])
@@ -227,6 +232,8 @@ export async function executePieceActionRun({
         projectId,
         platformId: project.platformId,
         step,
+        hostedOrigin,
+        requestId,
     }))
     if (runError) {
         log.error({ error: runError, project: { id: projectId } }, 'executePieceActionRun failed')

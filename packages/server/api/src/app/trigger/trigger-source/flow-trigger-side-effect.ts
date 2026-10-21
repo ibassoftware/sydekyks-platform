@@ -6,11 +6,9 @@ import {
 } from '@activepieces/pieces-framework'
 import { ApEnvironment, EngineResponse, EngineResponseStatus, ExecuteTriggerResponse, FlowTriggerType, LATEST_JOB_DATA_SCHEMA_VERSION, ScheduleOptions, TriggerHookType, TriggerSourceScheduleType, WorkerJobType } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
-import { flowVersionService } from '../../flows/flow-version/flow-version.service'
 import { system } from '../../helper/system/system'
 import { AppSystemProp } from '../../helper/system/system-props'
-import { hostingConfiguration } from '../../hosting/hosting-configuration'
-import { hostingFail } from '../../hosting/hosting-transactions'
+import { HostingJobOrigin } from '../../hosting/hosting-execution'
 import { projectService } from '../../project/project-service'
 import { jobQueue, JobType } from '../../workers/job-queue/job-queue'
 import { userInteractionWatcher } from '../../workers/user-interaction-watcher'
@@ -21,10 +19,6 @@ const environment = system.getOrThrow<ApEnvironment>(AppSystemProp.ENVIRONMENT)
 export const flowTriggerSideEffect = (log: FastifyBaseLogger) => {
     return {
         async enable(params: EnableFlowTriggerParams): Promise<ActiveTriggerReturn> {
-            if (hostingConfiguration.getServiceMode() === 'hosted') {
-                await assertHostedManualLifecycle(params, log)
-                return { scheduleOptions: undefined }
-            }
             if (environment === ApEnvironment.TESTING) {
                 return {
                     scheduleOptions: undefined,
@@ -42,7 +36,7 @@ export const flowTriggerSideEffect = (log: FastifyBaseLogger) => {
                 projectId,
                 test: simulate,
                 isRepublish,
-            }, log)
+            }, log, undefined, { type: 'scheduled' })
 
             assertEngineResponseIsOk(engineHelperResponse, flowId, flowVersionId)
             if (isNil(engineHelperResponse.response)) {
@@ -79,10 +73,6 @@ export const flowTriggerSideEffect = (log: FastifyBaseLogger) => {
             }
         },
         async disable(params: DisableFlowTriggerParams): Promise<void> {
-            if (hostingConfiguration.getServiceMode() === 'hosted') {
-                await assertHostedManualLifecycle(params, log)
-                return
-            }
             if (environment === ApEnvironment.TESTING) {
                 return
             }
@@ -97,7 +87,7 @@ export const flowTriggerSideEffect = (log: FastifyBaseLogger) => {
                     test: simulate,
                     projectId,
                     platformId,
-                }, log),
+                }, log, undefined, params.hostedOrigin ?? { type: 'scheduled' }),
             )
             if (!isNil(error)) {
                 if (!params.ignoreError) {
@@ -167,6 +157,7 @@ async function handleWebhookTrigger({ flowId, flowVersionId, projectId, pieceTri
             await jobQueue(log).add({
                 id: flowVersionId,
                 type: JobType.REPEATING,
+                hostedOrigin: { type: 'scheduled' },
                 data: {
                     schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION,
                     projectId,
@@ -202,6 +193,7 @@ async function handlePollingTrigger({ engineHelperResponse, flowId, flowVersionI
     await jobQueue(log).add({
         id: flowVersionId,
         type: JobType.REPEATING,
+        hostedOrigin: { type: 'scheduled' },
         data: {
             schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION,
             projectId,
@@ -216,14 +208,6 @@ async function handlePollingTrigger({ engineHelperResponse, flowId, flowVersionI
     return {
         scheduleOptions,
     }
-}
-
-// The reviewed built-in manual trigger has empty enable/disable hooks.
-// Model its registration directly instead of admitting an unmetered hook job.
-// Every other trigger still needs the future metered trigger coordinator.
-async function assertHostedManualLifecycle(params: EnableFlowTriggerParams, log: FastifyBaseLogger): Promise<void> {
-    const version = await flowVersionService(log).getOneOrThrow(params.flowVersionId)
-    if (version.flowId !== params.flowId || version.trigger.type !== FlowTriggerType.PIECE || params.simulate || params.pieceName !== '@activepieces/piece-manual-trigger' || params.pieceTrigger.type !== TriggerStrategy.MANUAL || params.pieceTrigger.name !== 'manual_trigger' || version.trigger.settings.pieceName !== params.pieceName || version.trigger.settings.pieceVersion !== '0.0.8' || version.trigger.settings.triggerName !== params.pieceTrigger.name) hostingFail('HOSTING_TRIGGER_COORDINATOR_REQUIRED')
 }
 
 const IGNORED_DISABLE_ERROR = '[flowTriggerSideEffect#disable] Ignored error during trigger disable'
@@ -258,6 +242,7 @@ type EnableFlowTriggerParams = {
 }
 
 type DisableFlowTriggerParams = EnableFlowTriggerParams & {
+    hostedOrigin?: HostingJobOrigin
     ignoreError: boolean
 }
 

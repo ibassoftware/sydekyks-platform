@@ -27,7 +27,7 @@ import { HostingActor, hostingTransactions as tx } from '../../src/app/hosting/h
 import { readHostedCredits } from '../../src/app/hosting/hosting-usage'
 import { LmsEnrollmentEntity } from '../../src/app/lms/lms-entities'
 import { UserEntity } from '../../src/app/user/user-entity'
-import { migratedHostedPGlite } from '../helpers/hosting-fixtures'
+import { migratedHostedPGlite, scopedAiActionPayload } from '../helpers/hosting-fixtures'
 import { fundedCore, positionCoreAfterEnd, subscriptionIdentity, subscriptionOperator } from '../helpers/hosting-subscription-fixtures'
 
 let ds: DataSource, actor: HostingActor, client: Awaited<ReturnType<typeof fundedCore>>
@@ -39,10 +39,10 @@ const future = () => new Date(Date.now() + 86_400_000).toISOString()
 const past = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString()
 const snapshot = async () => JSON.stringify({ grants: await ds.getRepository(HostingGrantEntity).find({ where: { platformId: client.platformId }, order: { id: 'ASC' } }), ledger: await ds.getRepository(HostingLedgerEntity).find({ where: { platformId: client.platformId }, order: { id: 'ASC' } }), enrollment: await ds.getRepository(LmsEnrollmentEntity).findOneByOrFail({ id: client.enrollmentId }) }, (_key, value) => typeof value === 'bigint' ? value.toString() : value)
 beforeAll(async () => {
-    ds = await migratedHostedPGlite() 
+    ds = await migratedHostedPGlite()
 })
 afterAll(async () => {
-    if (ds?.isInitialized) await ds.destroy() 
+    if (ds?.isInitialized) await ds.destroy()
 })
 afterEach(() => vi.unstubAllEnvs())
 beforeEach(async () => {
@@ -174,7 +174,7 @@ describe('explicit manual subscription dates', () => {
         const configId = apId()
         await ds.getRepository(AIProviderEntity).insert({ id: configId, platformId: client.platformId, provider: 'deepseek', displayName: 'Synthetic BYOK', auth: await encryptUtils.encryptObject({ apiKey: 'synthetic-never-sent-subscription-byok' }), config: {}, status: 'active', enabledForChat: true, projectScope: 'all', projectIds: [], modelScope: 'all', modelIds: [], statusVersion: 0 })
         const complete = vi.fn(async () => {
-            throw new Error('Provider must never be called') 
+            throw new Error('Provider must never be called')
         })
         const gateway = createHostedAiGateway({ dataSource: ds, provider: { id: 'synthetic-subscription-provider', endpoint: 'diagnostic://no-network', complete } })
         let revision = 0
@@ -182,7 +182,7 @@ describe('explicit manual subscription dates', () => {
             await override(future(), revision++)
             const root = await ledger().reserveExecution({ actor: client.actor, projectId: client.projectId!, key: `old-root-${payer}`, payer })
             const claim = await ledger().claimExecution({ actor: client.actor, reservationId: root.id }), admissionId = apId()
-            await ds.getRepository(HostingDispatchEntity).insert({ id: apId(), platformId: client.platformId, projectId: client.projectId!, identityId: client.identityId, tokenVersion: client.actor.tokenVersion, originType: 'user', queueKey: apId(), payloadHash: 's'.repeat(64), state: 'running', rootKey: apId(), reservationId: root.id, admissionId, dispatchId: claim.dispatchId, leaseUntil: new Date(Date.now() + 60000) })
+            await ds.getRepository(HostingDispatchEntity).insert({ id: apId(), platformId: client.platformId, projectId: client.projectId!, identityId: client.identityId, tokenVersion: client.actor.tokenVersion, originType: 'user', queueKey: apId(), payloadHash: 's'.repeat(64), state: 'running', rootKey: apId(), reservationId: root.id, admissionId, dispatchId: claim.dispatchId, leaseUntil: new Date(Date.now() + 60000), payload: scopedAiActionPayload({ platformId: client.platformId, projectId: client.projectId!, payer, configId }) })
             await override(past(16), revision++)
             await expect(gateway.execute({ scope: { admissionId, platformId: client.platformId, projectId: client.projectId! }, request: { callKey: `cutoff:${payer}`, attempt: 0, payer: payer === 'managed' ? { type: 'managed' } : { type: 'byok', configId }, model: payer === 'managed' ? 'sydekyks' : 'deepseek-flash', messages: [{ role: 'user', content: 'Synthetic test data' }], max_tokens: 1 } })).rejects.toThrow('ENTITLEMENT_EXPIRED')
             await ledger().finishExecution({ platformId: client.platformId, reservationId: root.id, dispatchId: claim.dispatchId! })

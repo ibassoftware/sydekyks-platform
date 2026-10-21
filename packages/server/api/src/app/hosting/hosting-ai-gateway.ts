@@ -2,10 +2,12 @@ import { createHash } from 'node:crypto'
 import { Readable } from 'node:stream'
 import { StringDecoder } from 'node:string_decoder'
 import { AIProviderName, apId } from '@activepieces/core-utils'
-import { AgentConversationStatus, AgentRunSource, WorkerJobType } from '@activepieces/shared'
+import { AgentConversationStatus, AgentRunSource, FlowActionType, flowStructureUtil, WorkerJobType } from '@activepieces/shared'
 import { DataSource, EntityManager, In, LessThanOrEqual } from 'typeorm'
 import { z } from 'zod'
+import { FlowVersionEntity } from '../flows/flow-version/flow-version-entity'
 import { sydApprovalGate } from '../syd/copilot/approval-gate'
+import { SydAgentConversationEntity } from '../syd/copilot/models/agent-conversation.entity'
 import { SydConversationEntity } from '../syd/copilot/models/conversation.entity'
 import { hostedAiCredential } from './hosting-ai-credentials'
 import { HOSTED_AI_CONTEXT_TOKENS, HOSTED_AI_MAX_CALLS, HOSTED_AI_TIMEOUT_MS, HOSTED_DEEPSEEK_MODEL, HOSTED_DEEPSEEK_PRO_MODEL, HOSTED_MANAGED_MODEL, hostedAiCost, HostedAiInput, hostedAiInputBound, HostedAiQuote, HostedAiRequest } from './hosting-ai-policy'
@@ -14,6 +16,7 @@ import { hostedPublicChunk, hostedPublicResponse } from './hosting-ai-public'
 import { createHostedStreamParser, settledCompletionStream } from './hosting-ai-stream'
 import { HostingDispatch, HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingAccountEntity, HostingGrantEntity, HostingReservationEntity } from './hosting-entities'
+import { currentHostedActionPayer, currentHostedFlowPayer, hostedFlowPayer } from './hosting-flow-payer'
 import { createHostedLedger, lockHostedBudget } from './hosting-ledger'
 import { HostingModelCall, HostingModelCallEntity } from './hosting-model-call-entity'
 import { assertPreparedPricing, readApprovedPricing } from './hosting-pricing'
@@ -36,11 +39,30 @@ export function createHostedAiGateway({ dataSource, provider = deepseekHostedPro
             if (input.payer.type === 'managed') await lockHostedBudget({ manager, day, create: true })
             const account = await tx.account({ manager, platformId: scope.platformId })
             const { segment, root } = await current({ manager, scope })
-            if (root.payer !== input.payer.type) hostingFail('HOSTING_AI_PAYER_CONFLICT')
+            if (!segment.payload || ![WorkerJobType.EXECUTE_FLOW, WorkerJobType.EXECUTE_ACTION, WorkerJobType.EXECUTE_AGENT_RUN].includes(segment.payload.jobType)) hostingFail('HOSTING_AI_PATH_NOT_SUPPORTED')
+            if (input.payer.type === 'managed' && root.payer !== 'managed') hostingFail('HOSTING_AI_PAYER_CONFLICT')
+            if (segment.payload?.jobType === WorkerJobType.EXECUTE_FLOW) {
+                const job = segment.payload
+                const version = await manager.getRepository(FlowVersionEntity).findOneByOrFail({ id: job.flowVersionId, flowId: job.flowId })
+                const expected = hostedFlowPayer(version, job.stepNameToTest)
+                if (!segment.rootDispatchId && expected !== root.payer) hostingFail('HOSTING_AI_PAYER_CONFLICT')
+                await currentHostedFlowPayer({ manager, platformId: scope.platformId, projectId: scope.projectId, flowId: job.flowId, flowVersionId: job.flowVersionId, stepNameToTest: job.stepNameToTest })
+                if (input.payer.type === 'byok') {
+                    const configId = input.payer.configId
+                    const selected = flowStructureUtil.getAllSteps(version.trigger).filter(step => !job.stepNameToTest || step.name === job.stepNameToTest).some(step => step.type === FlowActionType.PIECE && step.settings.pieceName === '@activepieces/piece-ai' && selectedHostedKey(step.settings.input.provider, configId))
+                    if (!selected) hostingFail('HOSTING_AI_PAYER_CONFLICT')
+                }
+            }
+            if (segment.payload?.jobType === WorkerJobType.EXECUTE_ACTION) {
+                const expected = await currentHostedActionPayer({ manager, platformId: scope.platformId, projectId: scope.projectId, step: segment.payload.step })
+                if (expected !== input.payer.type) hostingFail('HOSTING_AI_PAYER_CONFLICT')
+                const step = segment.payload.step
+                if (input.payer.type === 'byok' && (step.type !== FlowActionType.PIECE || !selectedHostedKey(step.settings.input.provider, input.payer.configId))) hostingFail('HOSTING_AI_PAYER_CONFLICT')
+            }
             if (segment.payload?.jobType === WorkerJobType.EXECUTE_AGENT_RUN) {
                 const job = segment.payload
                 const byok = job.provider === AIProviderName.DEEPSEEK
-                if (input.attempt !== 0 || !/^copilot:[0-9]+$/.test(input.callKey) || (byok ? input.payer.type !== 'byok' || input.payer.configId !== job.providerConfigId : input.payer.type !== 'managed')) hostingFail('HOSTING_AI_PAYER_CONFLICT')
+                if (input.attempt !== 0 || !(/^(copilot:[0-9]+|tool:[a-f0-9]{64})$/.test(input.callKey)) || (byok ? input.payer.type !== 'byok' || input.payer.configId !== job.providerConfigId : input.payer.type !== 'managed')) hostingFail('HOSTING_AI_PAYER_CONFLICT')
                 if (await manager.getRepository(HostingModelCallEntity).existsBy({ rootReservationId: root.id, state: 'uncertain' })) hostingFail('HOSTING_AI_OUTCOME_UNCERTAIN')
             }
             const credential = await hostedAiCredential({ manager, ...scope, payer: input.payer, model: input.model })
@@ -214,7 +236,7 @@ async function current({ manager, scope }: { manager: EntityManager, scope: Scop
     if (!segment || segment.terminalReceipt || !segment.leaseUntil || segment.leaseUntil <= now) hostingFail('HOSTING_AI_SEGMENT_DENIED')
     if (segment.payload?.jobType === WorkerJobType.EXECUTE_AGENT_RUN) {
         const data = segment.payload
-        const conversation = await manager.getRepository(SydConversationEntity).findOneBy({ id: data.conversationId, platformId: scope.platformId, userId: data.userId, source: AgentRunSource.CHAT, activeRunId: data.runId })
+        const conversation = await manager.getRepository(data.source === AgentRunSource.CHAT ? SydConversationEntity : SydAgentConversationEntity).findOneBy({ id: data.conversationId, platformId: scope.platformId, userId: data.userId, source: data.source, activeRunId: data.runId })
         if (!conversation || conversation.status !== AgentConversationStatus.STREAMING || await sydApprovalGate.isCancelled({ conversationId: data.conversationId, runId: data.runId }) || (conversation.projectId && conversation.projectId !== scope.projectId)) hostingFail('HOSTING_AI_SEGMENT_DENIED')
     }
     if (segment.flowRunId) {
@@ -251,4 +273,8 @@ function canonical(value: unknown): string {
 
 function validateUsage(usage: z.infer<typeof usageSchema>): void {
     if (usage.prompt_tokens !== usage.prompt_cache_hit_tokens + usage.prompt_cache_miss_tokens || usage.total_tokens !== usage.prompt_tokens + usage.completion_tokens) hostingFail('HOSTING_AI_USAGE_UNVERIFIED')
+}
+
+function selectedHostedKey(value: unknown, configId: string): boolean {
+    return !!value && typeof value === 'object' && 'provider' in value && value.provider === AIProviderName.DEEPSEEK && 'configId' in value && value.configId === configId
 }

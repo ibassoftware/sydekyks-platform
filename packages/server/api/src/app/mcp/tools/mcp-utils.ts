@@ -5,6 +5,7 @@ import type { BranchedAction, Step } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { z } from 'zod'
 import { expressionRewriter } from '../../flows/flow-version/migrations/expression-rewriter'
+import { HostingJobOrigin } from '../../hosting/hosting-execution'
 import { projectService } from '../../project/project-service'
 
 const NON_INPUT_PROP_TYPES = new Set<PropertyType>([
@@ -687,7 +688,7 @@ const ContainerCheckedProp = z.object({ type: z.enum(PropertyType), properties: 
 
 const FOLDER_NAME_SCHEMA = z.string().trim().min(1).max(255).optional().describe('Name of an existing folder to place it in. For a solution of several flows and tables, create the folder with ap_create_folder in an earlier step than the calls that use it (never in the same step, they run at once), then pass the same folderName to each of them.')
 
-async function executePropertyResolution({ pieceName, pieceVersion, actionOrTriggerName, propertyName, auth, input, searchValue, projectId, platformId, log }: {
+async function executePropertyResolution({ pieceName, pieceVersion, actionOrTriggerName, propertyName, auth, input, searchValue, projectId, platformId, log, hostedOrigin, requestId }: {
     pieceName: string
     pieceVersion: string
     actionOrTriggerName: string
@@ -698,6 +699,8 @@ async function executePropertyResolution({ pieceName, pieceVersion, actionOrTrig
     projectId: string
     platformId: string
     log: FastifyBaseLogger
+    hostedOrigin?: HostingJobOrigin
+    requestId?: string
 }): Promise<PropertyResolutionResult> {
     // Queue recovery reaches MCP registration; load it only when executing a
     // request so tool schemas can finish initializing before that graph loads.
@@ -724,7 +727,7 @@ async function executePropertyResolution({ pieceName, pieceVersion, actionOrTrig
             sampleData: {},
             searchValue,
             piece: piecePackage,
-        }, log),
+        }, log, requestId, hostedOrigin),
         ms: RESOLVE_TIMEOUT_MS,
     }))
 

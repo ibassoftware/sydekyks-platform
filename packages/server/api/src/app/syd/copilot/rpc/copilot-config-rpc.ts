@@ -50,14 +50,14 @@ export const sydCopilotConfigRpc = (log: FastifyBaseLogger) => ({
             hosted ? Promise.resolve({ mcpServerUrl: null, mcpToken: null }) : sydCopilotMcp.getCredentials({ platformId, userId, log }), sydCopilotContext.getUserMemory({ platformId, userId }),
             userService(log).getMetaInformation({ id: userId }), tryCatch(() => platformService(log).getOneOrThrow(platformId)),
             tryCatch(() => sydPersonalizationService(log).getIdentityEnrichment({ platformId, userId })),
-            hosted ? Promise.resolve(false) : sydCopilotContext.agentsSurfaceAvailable({ platformId, log }),
+            sydCopilotContext.agentsSurfaceAvailable({ platformId, log }),
         ])
         const chosen = hosted || input.dryRun ? { search: null, image: null } : await sydCapabilityProviders.resolveForRun({ platformId, choices, scope, surface: 'chat', log })
         const active = !input.dryRun && !input.discoveryOnly
         const aiTools: GetEnabledAiToolsResponse = input.dryRun ? {} : enabled
         const searchAvailable = !hosted && !input.dryRun && (Boolean(aiTools.webSearch) || aiUtils.supportsWebSearch((chosen.search?.credentials ?? credentials).provider))
         const imageModelId = !hosted && active && !aiTools.imageGeneration ? chosen.image?.modelId ?? await sydCopilotContext.resolveImageModelId({ platformId, providerConfig: credentials, scope, log }) : undefined
-        const emailEnabled = !hosted && active && sydEmailRpc(log).isSmtpConfigured()
+        const emailEnabled = active && sydEmailRpc(log).isSmtpConfigured()
         const agentsAvailable = active && agentsEnabled
         const selectedModel = input.modelName ?? conversation.modelName ?? null
         const tier = hosted ? { id: 'sydekyks', modelId: hostedModel, thinkingBudget: 0 } : sydChatModelSelection.resolveTier({ tierId: selectedModel, surface: 'chat' })

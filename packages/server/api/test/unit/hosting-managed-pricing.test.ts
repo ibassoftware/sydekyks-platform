@@ -21,7 +21,7 @@ import { createHostedTraining } from '../../src/app/hosting/hosting-training'
 import { HostingActor, hostingTransactions as tx } from '../../src/app/hosting/hosting-transactions'
 import { foundingCourseDraft } from '../../src/app/lms/lms-content'
 import { LmsCourseEntity, LmsEnrollmentEntity } from '../../src/app/lms/lms-entities'
-import { bootstrapHostedOperator, migratedHostedPGlite } from '../helpers/hosting-fixtures'
+import { bootstrapHostedOperator, migratedHostedPGlite, scopedAiActionPayload } from '../helpers/hosting-fixtures'
 
 const html = readFileSync(new URL('../fixtures/hosting-official-pricing.html', import.meta.url), 'utf8')
 const input = { expectedRevision: 0, expectedGlobalRevision: 0, requestKey: 'global:first', mode: 'set' as const, model: 'deepseek-flash' as const, credentialAction: 'replace' as const, apiKey: 'synthetic-global-not-a-real-provider-key' }
@@ -129,10 +129,10 @@ describe('managed pricing and operator settings', () => {
         await ds.getRepository(LmsEnrollmentEntity).insert({ id: enrollmentId, courseId, identityId: actor.identityId, grantPlatformId: null, accessType: 'partner_training', package: 'core', paymentReference: 'synthetic-paid-receipt', workspacePlatformId: actor.platformId, startsAt: now, accessUntil: new Date(now.getTime() + 365 * 86400000), assessmentUntil: new Date(now.getTime() + 90 * 86400000), status: 'active', completedLessons: [], assignment: null, practicalReviews: [], enrolledBy: actor.identityId })
         await createHostedTraining({ dataSource: ds }).activate({ actor, platformId: actor.platformId, identityId: actor.identityId, enrollmentId, receiptId: 'synthetic-paid-receipt', tier: 'core' })
         const ledger = createHostedLedger({ dataSource: ds })
-        async function admitted(payer: 'managed' | 'byok') {
+        async function admitted(payer: 'managed' | 'byok', configId?: string) {
             const reservation = await ledger.reserveExecution({ actor, projectId, key: apId(), payer })
             const claim = await ledger.claimExecution({ actor, reservationId: reservation.id }), admissionId = apId()
-            await ds.getRepository(HostingDispatchEntity).insert({ id: apId(), platformId: actor.platformId, projectId, identityId: actor.identityId, tokenVersion: actor.tokenVersion, originType: 'user', queueKey: apId(), payloadHash: 'x'.repeat(64), state: 'running', rootKey: apId(), reservationId: reservation.id, admissionId, dispatchId: claim.dispatchId, leaseUntil: new Date(Date.now() + 60000) })
+            await ds.getRepository(HostingDispatchEntity).insert({ id: apId(), platformId: actor.platformId, projectId, identityId: actor.identityId, tokenVersion: actor.tokenVersion, originType: 'user', queueKey: apId(), payloadHash: 'x'.repeat(64), state: 'running', rootKey: apId(), reservationId: reservation.id, admissionId, dispatchId: claim.dispatchId, leaseUntil: new Date(Date.now() + 60000), payload: scopedAiActionPayload({ platformId: actor.platformId, projectId, payer, configId }) })
             return { scope: { admissionId, platformId: actor.platformId, projectId }, reservation, dispatchId: claim.dispatchId! }
         }
         const request = { callKey: 'settings:rotation', attempt: 0, payer: { type: 'managed' as const }, model: 'sydekyks', messages: [{ role: 'user' as const, content: 'Synthetic input' }], max_tokens: 1 }
@@ -183,7 +183,7 @@ describe('managed pricing and operator settings', () => {
         await ds.getRepository(AIProviderEntity).insert({ id: configId, platformId: actor.platformId, provider: 'deepseek', displayName: 'Exact client key', auth: await encryptUtils.encryptObject({ apiKey: 'synthetic-client-byok-secret-key' }), config: {}, status: 'active', enabledForChat: false, projectScope: 'all', projectIds: [], modelScope: 'all', modelIds: [], statusVersion: 0 })
         const grants = () => ds.getRepository(HostingGrantEntity).findBy({ platformId: actor.platformId, meter: 'managed_ai' })
         const balances = (values: Awaited<ReturnType<typeof grants>>) => values.map(value => [value.id, value.reserved, value.consumed])
-        const before = balances(await grants()), byok = await admitted('byok')
+        const before = balances(await grants()), byok = await admitted('byok', configId)
         await gateway.execute({ scope: byok.scope, request: { ...request, callKey: 'byok', model: 'deepseek-flash', payer: { type: 'byok', configId } } })
         expect(complete.mock.calls.at(-1)?.[0].apiKey).toBe('synthetic-client-byok-secret-key')
         expect(balances(await grants())).toEqual(before)

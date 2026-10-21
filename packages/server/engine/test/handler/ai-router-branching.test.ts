@@ -378,7 +378,7 @@ describe('ai router pauses the run while the worker decides', () => {
 
         const result = await executeInFlow(billingFlow())
 
-        expect(result.verdict).toEqual({ status: FlowRunStatus.PAUSED })
+        expect(result.verdict).toEqual({ status: FlowRunStatus.PAUSED, waitpointId: 'mock-waitpoint-id' })
         expect(result.steps.ai_router.status).toBe(StepOutputStatus.PAUSED)
         expect(calls[0]).toMatchObject({ waitpointId: 'mock-waitpoint-id', flowId: 'flowId', flowRunId: 'flowRunId' })
         expect(result.steps.billing).toBeUndefined()
@@ -440,7 +440,7 @@ describe('ai router pauses the run while the worker decides', () => {
 
         const pausedOnRouter = await executeInFlow(flow)
         const pausedOnApproval = await executeInFlow(flow, resumedFrom(pausedOnRouter), answerFor('Billing'))
-        expect(pausedOnApproval.verdict).toEqual({ status: FlowRunStatus.PAUSED })
+        expect(pausedOnApproval.verdict).toEqual({ status: FlowRunStatus.PAUSED, waitpointId: 'mock-waitpoint-id' })
         expect(pausedOnApproval.steps.approval.status).toBe(StepOutputStatus.PAUSED)
 
         const finished = await flowExecutor.execute({
@@ -453,5 +453,22 @@ describe('ai router pauses the run while the worker decides', () => {
         expect(finished.steps.ai_router).toMatchObject({ status: StepOutputStatus.SUCCEEDED, output: { choice: 'Billing' } })
         expect(finished.steps.approval.status).toBe(StepOutputStatus.SUCCEEDED)
         expect(finished.steps.billing.output).toEqual({ key: 3 })
+    })
+})
+
+describe('hosted AI router gateway', () => {
+    afterEach(() => vi.restoreAllMocks())
+    it('uses the managed metered gateway synchronously with a stable per-step call key', async () => {
+        const fetch = vi.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({ output: { matched: ['Billing'] } }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+        const result = await flowExecutor.execute({
+            action: buildAiRouter({ routes: [{ branchName: 'Billing', description: 'Payments' }], children: [null] }),
+            executionState: FlowExecutorContext.empty(),
+            constants: generateMockEngineConstants({ engineToken: `synthetic.${Buffer.from(JSON.stringify({ hostingProtocol: 1 })).toString('base64url')}.signature` }),
+        })
+        expect(result.steps.ai_router.status).toBe(StepOutputStatus.SUCCEEDED)
+        expect(fetch).toHaveBeenCalledTimes(1)
+        const [url, init] = fetch.mock.calls[0]
+        expect(String(url)).toContain('v1/engine/hosting-ai/step')
+        expect(JSON.parse(String(init?.body))).toMatchObject({ action: 'ROUTE', provider: 'activepieces', modelId: 'sydekyks', options: { Billing: 'Payments' }, callKey: expect.stringMatching(/^[a-f0-9]{64}$/) })
     })
 })

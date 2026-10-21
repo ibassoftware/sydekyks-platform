@@ -25,7 +25,7 @@ export const HostedAiRequest = z.strictObject({
     model: z.enum([HOSTED_MANAGED_MODEL, HOSTED_DEEPSEEK_MODEL, HOSTED_DEEPSEEK_PRO_MODEL]), messages: z.array(message).min(1).max(64),
     max_tokens: z.number().int().min(1).max(HOSTED_AI_MAX_OUTPUT).default(1024), temperature: z.number().min(0).max(2).optional(),
     response_format: z.strictObject({ type: z.enum(['text', 'json_object']) }).optional(),
-    tools: z.array(z.strictObject({ type: z.literal('function'), function: z.strictObject({ name: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/), description: z.string().max(2048).optional(), parameters: z.record(z.string(), z.unknown()) }) })).max(16).optional(),
+    tools: z.array(z.strictObject({ type: z.literal('function'), function: z.strictObject({ name: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/), description: z.string().max(2048).optional(), parameters: z.record(z.string(), z.unknown()) }) })).max(128).optional(),
     tool_choice: z.union([z.enum(['auto', 'none', 'required']), z.strictObject({ type: z.literal('function'), function: z.strictObject({ name: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/) }) })]).optional(), stream: z.literal(false).optional(),
 })
 export type HostedAiInput = z.infer<typeof HostedAiRequest>

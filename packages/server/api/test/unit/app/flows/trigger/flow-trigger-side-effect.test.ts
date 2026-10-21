@@ -1,6 +1,7 @@
 import { ActivepiecesError, ErrorCode } from '@activepieces/core-utils'
-import { TriggerStrategy } from '@activepieces/pieces-framework'
-import { ApEnvironment, EngineResponseStatus, TriggerSourceScheduleType } from '@activepieces/shared'
+import { TriggerBase, TriggerStrategy } from '@activepieces/pieces-framework'
+import { ApEnvironment, EngineResponseStatus, TriggerHookType, TriggerSourceScheduleType, WorkerJobType } from '@activepieces/shared'
+import { FastifyBaseLogger } from 'fastify'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockSubmitAndWaitForResponse = vi.fn()
@@ -56,7 +57,7 @@ const mockLog = {
     trace: vi.fn(),
     silent: vi.fn(),
     level: 'info',
-} as any
+} as unknown as FastifyBaseLogger
 
 const BASE_PARAMS = {
     flowId: 'flow-1',
@@ -76,7 +77,7 @@ function makePollingTrigger() {
         type: TriggerStrategy.POLLING,
         sampleData: {},
         testStrategy: 'TEST_FUNCTION',
-    } as any
+    } as unknown as TriggerBase
 }
 
 function makeManualTrigger() {
@@ -109,6 +110,13 @@ describe('flowTriggerSideEffect', () => {
     })
 
     describe('enable', () => {
+        it('routes enable hooks and recurring polls through scheduled admission', async () => {
+            mockSubmitAndWaitForResponse.mockResolvedValue(okEngineResponse())
+            await flowTriggerSideEffect(mockLog).enable({ ...BASE_PARAMS, pieceTrigger: makePollingTrigger() })
+            expect(mockSubmitAndWaitForResponse).toHaveBeenCalledWith(expect.objectContaining({ jobType: WorkerJobType.EXECUTE_TRIGGER_HOOK, hookType: TriggerHookType.ON_ENABLE, flowVersionId: 'fv-1', projectId: 'proj-1' }), mockLog, undefined, { type: 'scheduled' })
+            expect(mockAddJob).toHaveBeenCalledWith(expect.objectContaining({ type: 'REPEATING', hostedOrigin: { type: 'scheduled' }, data: expect.objectContaining({ jobType: WorkerJobType.EXECUTE_POLLING, flowVersionId: 'fv-1', projectId: 'proj-1' }) }))
+        })
+
         it('should default polling schedule to a rolling interval', async () => {
             mockSubmitAndWaitForResponse.mockResolvedValue(okEngineResponse())
             const expectedSchedule = {

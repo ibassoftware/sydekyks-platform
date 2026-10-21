@@ -13,6 +13,7 @@ import { createHostedOnboarding } from '../../src/app/hosting/hosting-onboarding
 import { createHostedPartnerAdmin, PartnerAssignmentInput, PartnerDecisionInput } from '../../src/app/hosting/hosting-partner-admin'
 import { HostingPartnerAdminCommandEntity } from '../../src/app/hosting/hosting-partner-admin-entities'
 import { HostingActor, hostingTransactions } from '../../src/app/hosting/hosting-transactions'
+import { PlatformEntity } from '../../src/app/platform/platform.entity'
 import { UserEntity } from '../../src/app/user/user-entity'
 import { bootstrapHostedOperator, migratedHostedPGlite } from '../helpers/hosting-fixtures'
 
@@ -47,10 +48,10 @@ async function client() {
     return { identityId, ...home, actor: { identityId, platformId: home.platformId, tokenVersion: home.tokenVersion } }
 }
 beforeAll(async () => {
-    ds = await migratedHostedPGlite() 
+    ds = await migratedHostedPGlite()
 })
 afterAll(async () => {
-    if (ds?.isInitialized) await ds.destroy() 
+    if (ds?.isInitialized) await ds.destroy()
 })
 afterEach(() => vi.unstubAllEnvs())
 beforeEach(async () => {
@@ -65,6 +66,33 @@ beforeEach(async () => {
 })
 
 describe('operator partner administration', () => {
+    it('pages 105 Partners without duplicates, reports the filtered total and searches company/name/email before pagination', async () => {
+        const rows = Array.from({ length: 105 }, (_, index) => ({ id: apId(), email: `directory-${String(index).padStart(3, '0')}@test.invalid`, provider: 'EMAIL', password: 'unused-service-fixture', verified: true, firstName: 'Directory', lastName: `Person ${index}`, tokenVersion: 'initial' }))
+        await ds.getRepository(UserIdentityEntity).insert(rows)
+        await ds.getRepository(HostingAccessRoleEntity).insert(rows.map((row, index) => ({ id: row.id, role: 'partner' as const, active: index % 2 === 0 })))
+        const seen: string[] = []
+        let after: string | undefined
+        do {
+            const page = await admin().list({ actor: operator, after })
+            expect(page.total).toBe(105)
+            expect(page.partners.length).toBeLessThanOrEqual(25)
+            seen.push(...page.partners.map(value => value.identityId))
+            after = page.next ?? undefined
+        } while (after)
+        expect(new Set(seen).size).toBe(105)
+        expect(seen).toHaveLength(105)
+        const exact = await admin().list({ actor: operator, search: 'DIRECTORY-104@TEST.INVALID' })
+        expect(exact.total).toBe(1)
+        expect(exact.partners[0].identityId).toBe(rows[104].id)
+        expect((await admin().list({ actor: operator, search: 'Person 104', status: 'active' })).total).toBe(1)
+        expect((await admin().list({ actor: operator, status: 'active' })).total).toBe(53)
+        expect((await admin().list({ actor: operator, status: 'inactive' })).total).toBe(52)
+        expect((await admin().list({ actor: operator, search: '%' })).total).toBe(0)
+        await decision(true)
+        const account = await ds.getRepository(HostingAccountEntity).findOneByOrFail({ ownerIdentityId: target })
+        await ds.getRepository(PlatformEntity).update({ id: account.id }, { name: 'Literal % _ Company' })
+        expect((await admin().list({ actor: operator, search: 'literal % _' })).partners.map(value => value.identityId)).toEqual([target])
+    })
     it('looks up exact normalized email without approving unverified, operator or team identities', async () => {
         const account = await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: target })
         expect((await admin().lookup({ actor: operator, email: ` ${account.email.toUpperCase()} ` })).candidate?.identityId).toBe(target)

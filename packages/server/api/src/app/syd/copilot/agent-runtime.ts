@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { ActivepiecesError, apId, ErrorCode, Permission, sanitizeObjectForPostgresql, tryCatch } from '@activepieces/core-utils'
 import { AgentConfig, AgentConversation, AgentConversationStatus, AgentRunSource, AgentTool, AgentToolType, FlowVersionState, LATEST_JOB_DATA_SCHEMA_VERSION, ResolvedAgentFlowTool, TASK_COMPLETION_TOOL_NAME, WorkerJobType } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
@@ -6,6 +7,10 @@ import { transaction } from '../../core/db/transaction'
 import { databaseConnection } from '../../database/database-connection'
 import { distributedStore } from '../../database/redis-connections'
 import { flowService } from '../../flows/flow/flow.service'
+import { hostingConfiguration } from '../../hosting/hosting-configuration'
+import { assertHostedChatContext, hostedCopilotPayer } from '../../hosting/hosting-copilot'
+import { HostingDispatchEntity } from '../../hosting/hosting-dispatch-entity'
+import { HostingJobOrigin } from '../../hosting/hosting-execution'
 import { resolvePermissionChecker } from '../../mcp/mcp-permissions'
 import { extractMcpTriggerInput } from '../../mcp/mcp-server-builder'
 import { mcpToolInput } from '../../mcp/mcp-tool-input'
@@ -17,7 +22,7 @@ import { SydAgentConversationEntity } from './models/agent-conversation.entity'
 import { sydChatAgentAdministration } from './tools/chat-agent-administration'
 
 function repo() {
-    return databaseConnection().getRepository(SydAgentConversationEntity) 
+    return databaseConnection().getRepository(SydAgentConversationEntity)
 }
 
 async function get({ id, platformId, userId, log }: ActorScope & { id: string, log: FastifyBaseLogger }): Promise<AgentConversation> {
@@ -75,7 +80,7 @@ function validateTools(config: AgentConfig): void {
     if (new Set(names).size !== names.length || names.some((name) => name.startsWith('ap_') || name === TASK_COMPLETION_TOOL_NAME)) throw new ActivepiecesError({ code: ErrorCode.VALIDATION, params: { message: 'Agent tools need unique names that are not reserved for built-in tools' } })
 }
 
-async function start({ conversation, config, content, files, modelName, waitpointId, log }: { conversation: AgentConversation, config: AgentConfig, content: string, files?: Array<{ name: string, mimeType: string, data: string }>, modelName?: string | null, waitpointId?: string, log: FastifyBaseLogger }): Promise<{ conversationId: string, runId: string }> {
+async function start({ conversation, config, content, files, modelName, waitpointId, tokenVersion, hostedOrigin, log }: { conversation: AgentConversation, config: AgentConfig, content: string, files?: Array<{ name: string, mimeType: string, data: string }>, modelName?: string | null, waitpointId?: string, tokenVersion?: string | null, hostedOrigin?: HostingJobOrigin, log: FastifyBaseLogger }): Promise<{ conversationId: string, runId: string }> {
     if (!conversation.projectId) throw unavailable(conversation.id)
     const builder = conversation.source === AgentRunSource.AGENT_BUILDER
     const jobConfig = builder ? { ...config, provider: null, providerConfigId: null, tools: [], structuredOutput: [] } : config
@@ -84,14 +89,23 @@ async function start({ conversation, config, content, files, modelName, waitpoin
     const flowStep = conversation.source === AgentRunSource.FLOW_STEP
     const limit = await sydCopilotContext.incrementAndCheckLimit({ key: `syd:agent-rate:${platformId}:${flowStep ? projectId : userId}`, limit: flowStep ? 60 : 40, ttlSeconds: flowStep ? 60 : 600 })
     if (!limit.allowed) throw new ActivepiecesError({ code: ErrorCode.CHAT_MESSAGE_LIMIT_EXCEEDED, params: { limit: flowStep ? 60 : 40, windowSeconds: flowStep ? 60 : 600 } })
-    await sydCopilotContext.assertRunProviderConfigured({ platformId, provider: jobConfig.provider, providerConfigId: jobConfig.providerConfigId, scope: { type: 'project', projectId }, log })
-    await assertCreditsAndAppSumoNotExceeded({ platformId, log })
+    const hosted = hostingConfiguration.getServiceMode() === 'hosted'
+    if (hosted) {
+        assertHostedChatContext({ messages: conversation.messages, content })
+        if (files?.length || jobConfig.tools.some(tool => tool.type === AgentToolType.MCP)) throw new ActivepiecesError({ code: ErrorCode.VALIDATION, params: { message: 'This hosted run supports configured Gadgets, Missions and knowledge sources. Remote MCP and direct attachments need a supported hosted adapter.' } })
+        await hostedCopilotPayer({ platformId, projectId, provider: jobConfig.provider ?? undefined, configId: jobConfig.providerConfigId ?? undefined })
+    }
+    else {
+        await sydCopilotContext.assertRunProviderConfigured({ platformId, provider: jobConfig.provider, providerConfigId: jobConfig.providerConfigId, scope: { type: 'project', projectId }, log })
+        await assertCreditsAndAppSumoNotExceeded({ platformId, log })
+    }
     const flowTools = await resolveFlowTools({ tools: jobConfig.tools, projectId, log })
-    const runId = apId()
+    if (hosted && Buffer.byteLength(JSON.stringify({ messages: conversation.messages, content, instructions: jobConfig.instructions, tools: jobConfig.tools, flowTools })) > 40 * 1024) throw new ActivepiecesError({ code: ErrorCode.VALIDATION, params: { message: 'This Agent configuration and conversation exceed the hosted context limit. Reduce its instructions or tools, or start a shorter conversation.' } })
+    const runId = hosted && flowStep && waitpointId ? createHash('sha256').update(`agent-step:${platformId}:${projectId}:${waitpointId}`).digest('hex').slice(0, 21) : apId()
     await transaction(async (manager) => {
         const scoped = { id: conversation.id, platformId, userId, projectId }
         const row = await manager.getRepository(SydAgentConversationEntity).findOne({ where: scoped, lock: { mode: 'pessimistic_write' } })
-        if (!row || row.status === AgentConversationStatus.STREAMING) throw new ActivepiecesError({ code: ErrorCode.VALIDATION, params: { message: 'This agent is already running' } })
+        if (!row || (row.status === AgentConversationStatus.STREAMING && !(hosted && flowStep && row.activeRunId === runId))) throw new ActivepiecesError({ code: ErrorCode.VALIDATION, params: { message: 'This agent is already running' } })
         await manager.getRepository(SydAgentConversationEntity).update(scoped, { activeRunId: runId, status: AgentConversationStatus.STREAMING })
     })
     const snapshot = { conversationId: conversation.id, runId, platformId, userId, projectId, source: conversation.source, config, flowTools, waitpointId }
@@ -99,9 +113,15 @@ async function start({ conversation, config, content, files, modelName, waitpoin
         await distributedStore.put(snapshotKey({ conversationId: conversation.id, runId }), sanitizeObjectForPostgresql(snapshot), 86400)
         await distributedStore.put(activeSnapshotKey(conversation.id), { runId, platformId, projectId, userId }, 86400)
         await sydApprovalGate.clearCancel({ conversationId: conversation.id })
-        await jobQueue(log).add({ id: runId, type: JobType.ONE_TIME, data: { schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, jobType: WorkerJobType.EXECUTE_AGENT_RUN, conversationId: conversation.id, runId, platformId, userId, projectId, source: conversation.source, ...(conversation.agentId ? { agentId: conversation.agentId } : {}), ...(conversation.flowRunId ? { flowRunId: conversation.flowRunId } : {}), waitpointId, userMessage: content, files, tools: jobConfig.tools, flowTools, structuredOutput: jobConfig.structuredOutput, maxSteps: jobConfig.maxSteps, ...(jobConfig.provider ? { provider: jobConfig.provider } : {}), ...(jobConfig.providerConfigId ? { providerConfigId: jobConfig.providerConfigId } : {}), modelName: builder ? modelName ?? null : config.modelName ?? null } })
+        await jobQueue(log).add({ id: runId, type: JobType.ONE_TIME, hostedOrigin: hostedOrigin ?? { type: 'user', userId, tokenVersion }, data: { schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, jobType: WorkerJobType.EXECUTE_AGENT_RUN, conversationId: conversation.id, runId, platformId, userId, projectId, source: conversation.source, ...(hosted ? { agentInstructions: jobConfig.instructions } : {}), ...(conversation.agentId ? { agentId: conversation.agentId } : {}), ...(conversation.flowRunId ? { flowRunId: conversation.flowRunId } : {}), waitpointId, userMessage: content, files, tools: jobConfig.tools, flowTools, structuredOutput: jobConfig.structuredOutput, maxSteps: jobConfig.maxSteps, ...(jobConfig.provider ? { provider: jobConfig.provider } : {}), ...(jobConfig.providerConfigId ? { providerConfigId: jobConfig.providerConfigId } : {}), modelName: builder ? modelName ?? null : config.modelName ?? null } })
     })
     if (queued.error) {
+        // Durable outbox ownership survives an ambiguous queue acknowledgement.
+        // Return the accepted run and let recovery publish the same fenced job.
+        if (hosted) {
+            const dispatch = await databaseConnection().getRepository(HostingDispatchEntity).findOneBy({ platformId, projectId, rootKey: flowStep && waitpointId ? `agent-step:${waitpointId}` : `agent:${conversation.id}:${runId}` })
+            if (dispatch && ['prepared', 'admitted', 'running'].includes(dispatch.state)) return { conversationId: conversation.id, runId }
+        }
         await repo().update({ id: conversation.id, platformId, userId, activeRunId: runId }, { status: AgentConversationStatus.ERROR })
         throw queued.error
     }
@@ -109,6 +129,14 @@ async function start({ conversation, config, content, files, modelName, waitpoin
 }
 
 async function snapshot({ conversationId, runId }: { conversationId: string, runId?: string }): Promise<AgentRunSnapshot> {
+    if (hostingConfiguration.getServiceMode() === 'hosted') {
+        const dispatch = await databaseConnection().getRepository(HostingDispatchEntity).createQueryBuilder('dispatch').where('dispatch.payload->>\'conversationId\' = :conversationId', { conversationId }).andWhere('dispatch.payload->>\'jobType\' = :jobType', { jobType: WorkerJobType.EXECUTE_AGENT_RUN }).andWhere(runId ? 'dispatch.payload->>\'runId\' = :runId' : 'TRUE', { runId }).orderBy('dispatch.created', 'DESC').getOne()
+        const data = dispatch?.payload
+        if (!dispatch || data?.jobType !== WorkerJobType.EXECUTE_AGENT_RUN || !data.runId || !data.projectId || data.source === AgentRunSource.CHAT || !data.source || data.agentInstructions === undefined) throw unavailable(conversationId)
+        const row = await repo().findOneBy({ id: conversationId, platformId: dispatch.platformId, projectId: dispatch.projectId, userId: data.userId, activeRunId: data.runId, source: data.source })
+        if (!row) throw unavailable(conversationId)
+        return { conversationId, runId: data.runId, platformId: dispatch.platformId, projectId: dispatch.projectId, userId: data.userId, source: data.source, config: AgentConfig.parse({ instructions: data.agentInstructions, provider: data.provider, providerConfigId: data.providerConfigId, modelName: data.modelName, tools: data.tools, structuredOutput: data.structuredOutput, maxSteps: data.maxSteps }), flowTools: data.flowTools ?? [], waitpointId: data.waitpointId }
+    }
     const scope = await distributedStore.get<Pick<AgentRunSnapshot, 'runId' | 'platformId' | 'projectId' | 'userId'>>(activeSnapshotKey(conversationId))
     if (!scope || (runId && scope.runId !== runId)) throw unavailable(conversationId)
     const row = await repo().findOneBy({ id: conversationId, platformId: scope.platformId, projectId: scope.projectId, userId: scope.userId })
@@ -121,10 +149,10 @@ function activeSnapshotKey(conversationId: string) {
     return `syd:agent-active-snapshot:${conversationId}`
 }
 function snapshotKey({ conversationId, runId }: { conversationId: string, runId: string }) {
-    return `syd:agent-snapshot:${conversationId}:${runId}` 
+    return `syd:agent-snapshot:${conversationId}:${runId}`
 }
 function unavailable(id: string): ActivepiecesError {
-    return new ActivepiecesError({ code: ErrorCode.ENTITY_NOT_FOUND, params: { entityType: 'AgentConversation', entityId: id } }) 
+    return new ActivepiecesError({ code: ErrorCode.ENTITY_NOT_FOUND, params: { entityType: 'AgentConversation', entityId: id } })
 }
 
 export const sydAgentRuntime = { repo, get, create, start, snapshot, resolveFlowTools, validateTools }

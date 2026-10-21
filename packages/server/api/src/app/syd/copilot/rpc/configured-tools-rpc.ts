@@ -1,18 +1,25 @@
+import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { ActivepiecesError, connectionTemplate, ErrorCode } from '@activepieces/core-utils'
 import { aiUtils } from '@activepieces/server-utils'
-import { AGENT_SELF_EDIT_TOOLS, AGENT_SURFACE_TOOLS, AgentActionKind, AgentRunSource, AgentToolType, AI_PROVIDER_CAPABILITIES, ExecuteAgentToolRequest, ExecuteAgentToolResponse, ExecuteFlowToolRequest, ExecuteKnowledgeBaseToolRequest, ExecutePieceToolRequest, KnowledgeBaseSourceType, Permission, ResumeFlowStepRequest, UpdateFlowStepProgressRequest } from '@activepieces/shared'
+import { AGENT_SELF_EDIT_TOOLS, AGENT_SURFACE_TOOLS, AgentActionKind, AgentRunSource, AgentToolType, AI_PROVIDER_CAPABILITIES, ExecuteAgentToolRequest, ExecuteAgentToolResponse, ExecuteFlowToolRequest, ExecuteKnowledgeBaseToolRequest, ExecutePieceToolRequest, isFlowRunStateTerminal, KnowledgeBaseSourceType, Permission, ResumeFlowStepRequest, UpdateFlowStepProgressRequest, WorkerJobType } from '@activepieces/shared'
 import { embed } from 'ai'
 import { FastifyBaseLogger } from 'fastify'
 import { IsNull } from 'typeorm'
 import { flowService } from '../../../flows/flow/flow.service'
 import { engineRunCallbackService } from '../../../flows/flow-run/engine-run-callback-service'
 import { flowRunService } from '../../../flows/flow-run/flow-run-service'
+import { hostedAgentToolModel } from '../../../hosting/hosting-agent-model'
+import { hostingConfiguration } from '../../../hosting/hosting-configuration'
+import { hostingServices } from '../../../hosting/hosting-services'
+import { hostingFail } from '../../../hosting/hosting-transactions'
 import { knowledgeBaseService } from '../../../knowledge-base/knowledge-base.service'
 import { resolvePermissionChecker } from '../../../mcp/mcp-permissions'
 import { extractMcpTriggerInput, runFlowAsTool } from '../../../mcp/mcp-server-builder'
+import { mcpToolInput } from '../../../mcp/mcp-tool-input'
 import { resumeService } from '../../../waitpoints/resume-service'
 import { waitpointService } from '../../../waitpoints/waitpoint-service'
+import { getQueueName, jobQueue } from '../../../workers/job-queue/job-queue'
 import { sydAgentConnections } from '../agent-connections'
 import { sydAgentRuntime } from '../agent-runtime'
 import { sydApprovalGate } from '../approval-gate'
@@ -29,9 +36,9 @@ export const sydConfiguredToolsRpc = (log: FastifyBaseLogger) => ({
         const run = await sydAgentRuntime.snapshot(input)
         const configured = run.config.tools.find((tool) => tool.toolName === input.toolName)
         if (configured?.type !== AgentToolType.PIECE || !isDeepStrictEqual(configured.pieceMetadata, input.piece)) throw denied()
-        const model = await sydCopilotContext.resolveFastModel({ platformId: run.platformId, provider: run.config.provider ?? undefined, providerConfigId: run.config.providerConfigId ?? undefined, surface: 'flow', scope: { type: 'project', projectId: run.projectId }, fallbackModelId: input.modelId, log })
+        const model = hostingConfiguration.getServiceMode() === 'hosted' ? await hostedAgentToolModel(input) : await sydCopilotContext.resolveFastModel({ platformId: run.platformId, provider: run.config.provider ?? undefined, providerConfigId: run.config.providerConfigId ?? undefined, surface: 'flow', scope: { type: 'project', projectId: run.projectId }, fallbackModelId: input.modelId, log })
         await sydRunOperations.markTurnAsHavingRead(input)
-        const result = await sydConfiguredPiece.execute({ piece: configured.pieceMetadata, instruction: input.instruction, model, platformId: run.platformId, projectId: run.projectId, log })
+        const result = await sydConfiguredPiece.execute({ piece: configured.pieceMetadata, instruction: input.instruction, model, platformId: run.platformId, projectId: run.projectId, log, ...(hostingConfiguration.getServiceMode() === 'hosted' ? { hostedOrigin: { type: 'agent-tool' as const, admissionId: input.admissionId!, key: input.requestKey! }, requestId: createHash('sha256').update(JSON.stringify([input.conversationId, input.runId, input.requestKey])).digest('hex').slice(0, 21) } : {}) })
         sydRunOperations.recordAgentToolUse({ run: { platformId: run.platformId, projectId: run.projectId, userId: run.userId, source: run.source }, conversationId: input.conversationId, action: { kind: AgentActionKind.PIECE, pieceName: configured.pieceMetadata.pieceName, pieceDisplayName: configured.pieceMetadata.pieceName, actionName: configured.pieceMetadata.actionName, displayName: result.actionDisplayName }, outcome: sydRunOperations.outcomeOfToolResult(result.result), connection: { externalId: connectionTemplate.unwrapExternalId(configured.pieceMetadata.predefinedInput?.auth) ?? undefined, label: result.connectionLabel }, log })
         return result
     },
@@ -42,6 +49,24 @@ export const sydConfiguredToolsRpc = (log: FastifyBaseLogger) => ({
         const flow = await flowService(log).getOnePopulated({ id: tool.flowId, projectId: run.projectId, versionId: tool.flowVersionId })
         if (!flow) throw denied()
         await sydRunOperations.markTurnAsHavingRead(input)
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            if (!input.admissionId || !input.requestKey) hostingFail('HOSTING_TOOL_IDEMPOTENCY_REQUIRED')
+            const queueName = await getQueueName({ platformId: run.platformId, projectId: run.projectId, jobType: WorkerJobType.EXECUTE_FLOW }, log)
+            const child = await hostingServices.execution().agentFlowTool({ admissionId: input.admissionId, platformId: run.platformId, projectId: run.projectId, toolName: input.toolName, key: input.requestKey, payload: mcpToolInput.toFlowPayload({ properties: extractMcpTriggerInput(flow).mcpInputs, modelArgs: input.toolInput }), queueName })
+            const queue = await jobQueue(log).getOrCreateQueue({ queueName })
+            await queue.add(child.jobId, child.data, { jobId: child.jobId, attempts: 1 })
+            if (!tool.returnsResponse) return { result: { runId: child.runId, status: 'queued' } }
+            const deadline = Date.now() + 90_000
+            while (Date.now() < deadline) {
+                const current = await flowRunService(log).getOneOrThrow({ id: child.runId, projectId: run.projectId })
+                if (isFlowRunStateTerminal({ status: current.status, ignoreInternalError: false })) {
+                    const steps = await flowRunService(log).getStepsOrNull({ flowRun: current })
+                    return { result: { runId: child.runId, status: current.status, steps: Object.fromEntries(Object.entries(steps ?? {}).map(([name, step]) => [name, { status: step.status, output: step.output }])) } }
+                }
+                await new Promise(resolve => setTimeout(resolve, 1000))
+            }
+            return { result: { runId: child.runId, status: 'running', message: 'The Mission is still running. Check its run before starting another.' } }
+        }
         const result = await runFlowAsTool({ flow, properties: extractMcpTriggerInput(flow).mcpInputs, payload: input.toolInput, returnsResponse: tool.returnsResponse, log })
         sydRunOperations.recordAgentToolUse({ run: { platformId: run.platformId, projectId: run.projectId, userId: run.userId, source: run.source }, conversationId: input.conversationId, action: { kind: AgentActionKind.FLOW, flowId: flow.id, displayName: flow.version.displayName }, ...(tool.returnsResponse ? { outcome: sydRunOperations.outcomeOfToolResult(result) } : {}), connection: {}, log })
         return { result }
@@ -51,12 +76,21 @@ export const sydConfiguredToolsRpc = (log: FastifyBaseLogger) => ({
         const tool = run.config.tools.find((candidate) => candidate.toolName === input.toolName)
         if (tool?.type !== AgentToolType.KNOWLEDGE_BASE || tool.sourceId !== input.knowledgeBaseFileId) throw denied()
         if (tool.sourceType === KnowledgeBaseSourceType.TABLE) {
-            const model = await sydCopilotContext.resolveFastModel({ platformId: run.platformId, provider: run.config.provider ?? undefined, providerConfigId: run.config.providerConfigId ?? undefined, surface: 'flow', scope: { type: 'project', projectId: run.projectId }, fallbackModelId: run.config.modelName ?? undefined, log })
+            const model = hostingConfiguration.getServiceMode() === 'hosted' ? await hostedAgentToolModel(input) : await sydCopilotContext.resolveFastModel({ platformId: run.platformId, provider: run.config.provider ?? undefined, providerConfigId: run.config.providerConfigId ?? undefined, surface: 'flow', scope: { type: 'project', projectId: run.projectId }, fallbackModelId: run.config.modelName ?? undefined, log })
             await sydRunOperations.markTurnAsHavingRead(input)
             return { result: await sydConfiguredTable.search({ tableId: tool.sourceId, projectId: run.projectId, userId: run.userId, query: input.query, model, log }) }
         }
         const service = knowledgeBaseService(log)
         await service.getFileOrThrow({ projectId: run.projectId, id: tool.sourceId })
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            // Hosted knowledge retrieval reads only the configured file in this
+            // project. It needs no embedding supplier or separate key allowance.
+            await sydRunOperations.markTurnAsHavingRead(input)
+            const terms = input.query.toLocaleLowerCase().match(/[\p{L}\p{N}]{2,}/gu) ?? []
+            const chunks = await service.listChunks({ projectId: run.projectId, knowledgeBaseFileId: tool.sourceId })
+            const matches = chunks.map(chunk => ({ ...chunk, score: terms.reduce((score, term) => score + (chunk.content.toLocaleLowerCase().includes(term) ? 1 : 0), 0) })).sort((a, b) => b.score - a.score || a.chunkIndex - b.chunkIndex).slice(0, 5)
+            return { result: { retrieval: 'keyword', chunks: matches.map(({ content, chunkIndex }) => ({ content: content.slice(0, 6000), chunkIndex })) } }
+        }
         const credentials = await sydCopilotContext.resolveRunProvider({ platformId: run.platformId, provider: run.config.provider ?? undefined, providerConfigId: run.config.providerConfigId ?? undefined, scope: { type: 'project', projectId: run.projectId }, log })
         const modelId = AI_PROVIDER_CAPABILITIES[credentials.provider].defaultEmbeddingModel
         if (!modelId || (credentials.modelScope === 'selected' && !credentials.modelIds.includes(modelId))) throw new ActivepiecesError({ code: ErrorCode.ENTITY_NOT_FOUND, params: { entityType: 'AIProvider', entityId: credentials.provider } }, 'This key has no allowed embedding model for knowledge search')
@@ -136,8 +170,8 @@ async function flowConversation({ conversationId, flowRunId }: { conversationId:
     return { ...row, projectId: row.projectId }
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value) 
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 function denied() {
-    return new ActivepiecesError({ code: ErrorCode.AUTHORIZATION, params: { message: 'This operation is not part of the configured agent run' } }) 
+    return new ActivepiecesError({ code: ErrorCode.AUTHORIZATION, params: { message: 'This operation is not part of the configured agent run' } })
 }

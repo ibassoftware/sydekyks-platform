@@ -1,3 +1,5 @@
+import { apId } from '@activepieces/core-utils'
+import { ExecuteActionJobData, FlowActionType, LATEST_JOB_DATA_SCHEMA_VERSION, WorkerJobType } from '@activepieces/shared'
 import { DataSource } from 'typeorm'
 import { UserIdentityEntity } from '../../src/app/authentication/user-identity/user-identity-entity'
 import { createPGliteDataSource } from '../../src/app/database/pglite-connection'
@@ -35,4 +37,11 @@ export async function bootstrapHostedOperator(ds: DataSource, onboarding: Return
         // internal idempotency retry does not authenticate the expired session.
         return onboarding.provision({ identityId, name })
     }
+}
+
+// Gateway tests use a real supported job shape and persisted payer selection,
+// rather than a dispatch with no model authority. Supplier keys stay in the
+// normal encrypted AIProvider fixture, never in this immutable action snapshot.
+export function scopedAiActionPayload({ platformId, projectId, payer = 'managed', configId }: { platformId: string, projectId: string, payer?: 'managed' | 'byok', configId?: string }) {
+    return ExecuteActionJobData.parse({ schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, jobType: WorkerJobType.EXECUTE_ACTION, platformId, projectId, requestId: apId(), webserverId: 'synthetic-gateway-fixture', expiresAt: Date.now() + 60_000, step: { name: 'ai_step', type: FlowActionType.PIECE, displayName: 'Synthetic scoped AI', valid: true, lastUpdatedDate: new Date().toISOString(), settings: { pieceName: '@activepieces/piece-ai', pieceVersion: '0.0.1', actionName: 'askAi', propertySettings: {}, input: { provider: payer === 'byok' ? { provider: 'deepseek', configId } : { provider: 'activepieces' }, model: payer === 'byok' ? 'deepseek-flash' : 'sydekyks', prompt: 'Synthetic input' } } } })
 }

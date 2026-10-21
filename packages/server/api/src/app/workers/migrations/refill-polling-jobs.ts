@@ -26,6 +26,7 @@ export const refillPollingJobs = (log: FastifyBaseLogger) => ({
                 await jobQueue(log).add({
                     id: triggerSource.flowVersionId,
                     type: JobType.REPEATING,
+                    hostedOrigin: { type: 'scheduled' },
                     data: {
                         projectId: triggerSource.projectId,
                         platformId: await projectService(log).getPlatformId(triggerSource.projectId),

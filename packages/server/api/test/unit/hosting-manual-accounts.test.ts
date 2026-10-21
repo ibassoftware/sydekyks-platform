@@ -18,6 +18,7 @@ import { HostingManualAccountEntity, HostingManualCommandEntity, HostingManualTe
 import { HostingManualAccountCreate } from '../../src/app/hosting/hosting-manual-accounts-schema'
 import { manualEnrollmentDelivery, manualTermPeriods } from '../../src/app/hosting/hosting-manual-terms'
 import { createHostedOnboarding } from '../../src/app/hosting/hosting-onboarding'
+import { createHostedPartnerAdmin } from '../../src/app/hosting/hosting-partner-admin'
 import { createHostedPartnerBilling } from '../../src/app/hosting/hosting-partner-billing'
 import { PartnerStripePolicy } from '../../src/app/hosting/hosting-partner-billing-adapter'
 import { HostingPartnerPurchaseEntity } from '../../src/app/hosting/hosting-partner-billing-entities'
@@ -45,7 +46,7 @@ function input(overrides: Record<string, unknown> = {}): HostingManualAccountCre
     return { requestKey: apId(), companyName: 'Synthetic Manual Company', fullName: 'Synthetic Learner', email: `${apId()}@test.invalid`, password: initialPassword, kind: 'client', planId: 'starter', expiresAt: new Date(Date.now() + 70 * 86400_000).toISOString(), reason: 'Synthetic operator confirmed manual funding', ...overrides } as HostingManualAccountCreate
 }
 async function created(overrides: Record<string, unknown> = {}) {
-    return manual().create({ actor, input: input(overrides) }) 
+    return manual().create({ actor, input: input(overrides) })
 }
 async function scope(identityId: string, platformId: string): Promise<HostingActor> {
     const identity = await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: identityId })
@@ -57,13 +58,13 @@ async function partnerCourse() {
     return id
 }
 beforeAll(async () => {
-    ds = await migratedHostedPGlite() 
+    ds = await migratedHostedPGlite()
 })
 afterAll(async () => {
-    if (ds?.isInitialized) await ds.destroy() 
+    if (ds?.isInitialized) await ds.destroy()
 })
 afterEach(() => {
-    vi.restoreAllMocks(); vi.unstubAllEnvs() 
+    vi.restoreAllMocks(); vi.unstubAllEnvs()
 })
 beforeEach(async () => {
     vi.stubEnv('AP_SERVICE_MODE', 'hosted'); vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', '')
@@ -76,6 +77,27 @@ beforeEach(async () => {
     other = { identityId: otherId, platformId: otherHome.platformId, tokenVersion: otherHome.tokenVersion }
 })
 describe('operator manual accounts and bounded funding', () => {
+    it('distinguishes the configured operator from tenant admins and reports the actual Partner package, due date and funded refill', async () => {
+        vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', actor.identityId)
+        const billing = createHostedBillingView({ dataSource: ds })
+        expect((await billing.read(actor)).accountKind).toBe('platform_admin')
+        expect((await billing.read(other)).accountKind).toBe('trial')
+        const client = (await created()).account
+        expect(await billing.read(await scope(client.identityId, client.platformId))).toMatchObject({ accountKind: 'client', hostingEndsAt: client.expiresAt, renewalDueAt: client.expiresAt, trainingPackage: null })
+        const account = (await created({ kind: 'partner', planId: 'training', partner: { package: 'core', approve: false } })).account
+        const learner = await scope(account.identityId, account.platformId)
+        const grants = await ds.getRepository(HostingGrantEntity).find({ where: { platformId: account.platformId, meter: 'execution', sourceKey: Like('manual:%') }, order: { validFrom: 'ASC' } })
+        const overview = await billing.read(learner)
+        expect(overview).toMatchObject({ accountKind: 'partner', trainingPackage: 'core', hostingEndsAt: account.expiresAt, renewalDueAt: account.expiresAt, nextCreditAllowanceAt: grants[1].validFrom.toISOString() })
+        const due = new Date(Date.parse(account.startsAt) + 25 * 86400_000)
+        await createHostedSubscriptions({ dataSource: ds }).update({ actor, input: { platformId: account.platformId, expectedRevision: 0, requestKey: apId(), renewalDueAt: due.toISOString(), reason: 'Synthetic earlier Partner due date' } })
+        expect(await billing.read(learner)).toMatchObject({ accountKind: 'partner', hostingEndsAt: account.expiresAt, renewalDueAt: due.toISOString(), nextCreditAllowanceAt: null })
+        const partnerAdmin = createHostedPartnerAdmin({ dataSource: ds, onboarding: createHostedOnboarding({ dataSource: ds, subjectSecret: secret }) })
+        const pending = await partnerAdmin.list({ actor, status: 'pending', search: account.email })
+        expect(pending.total).toBe(1)
+        expect(pending.partners[0]).toMatchObject({ identityId: account.identityId, active: false })
+        expect((await partnerAdmin.list({ actor, status: 'active', search: account.email })).total).toBe(0)
+    })
     it.each([['starter', 10, 10000], ['team', 30, 100000], ['scale', 100, 500000]] as const)('creates a %s client with correct seats, password and clipped monthly single-Credit funding', async (planId, seats, credits) => {
         const result = await created({ planId })
         expect(result).toMatchObject({ platformId: actor.platformId, replayed: false, account: { kind: 'client', planId, seats, monthlyCredits: credits, emailOwnershipVerified: false } })

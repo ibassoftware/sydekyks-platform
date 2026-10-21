@@ -1,6 +1,8 @@
 import { FlowId, FlowVersionId, isNil, ProjectId } from '@activepieces/core-utils'
 import { EngineResponse, EngineResponseStatus, ExecuteTriggerResponse, TriggerHookType, TriggerPayload, TriggerSource, WebhookHandshakeConfiguration, WebhookHandshakeStrategy, WorkerJobType } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingServices } from '../hosting/hosting-services'
 import { projectService } from '../project/project-service'
 import { triggerUtils } from '../trigger/trigger-source/trigger-utils'
 import { userInteractionWatcher } from '../workers/user-interaction-watcher'
@@ -14,6 +16,9 @@ export const webhookHandshake = {
         }
 
         const platformId = await projectService(logger).getPlatformId(params.projectId)
+        const hosted = hostingConfiguration.getServiceMode() === 'hosted'
+        const test = hosted && !!params.simulate
+        const hostedOrigin = hosted ? await hostingServices.execution().resolveHostedHandshakeOrigin({ platformId, projectId: params.projectId, flowId: params.flowId, flowVersionId: params.flowVersionId, test }) : { type: 'scheduled' as const }
 
         const engineHelperResponse = await userInteractionWatcher.submitAndWaitForResponse<EngineResponse<ExecuteTriggerResponse<TriggerHookType.HANDSHAKE>>>({
             jobType: WorkerJobType.EXECUTE_TRIGGER_HOOK,
@@ -21,10 +26,10 @@ export const webhookHandshake = {
             flowId: params.flowId,
             flowVersionId: params.flowVersionId,
             projectId: params.projectId,
-            test: false,
+            test,
             platformId,
             triggerPayload: payload,
-        }, logger)
+        }, logger, undefined, hostedOrigin)
 
         if (engineHelperResponse.status !== EngineResponseStatus.OK) {
             return null
@@ -86,6 +91,7 @@ type WebhookHandshakeResponse = {
 }
 
 type HandleHandshakeRequestParams = {
+    simulate?: boolean
     payload: TriggerPayload
     flowId: FlowId
     flowVersionId: FlowVersionId

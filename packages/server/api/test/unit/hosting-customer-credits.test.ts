@@ -1,15 +1,17 @@
 import { readFileSync } from 'node:fs'
 import { apId } from '@activepieces/core-utils'
-import { HostedBillingOverview, HostedCustomerBillingOverview, HostedOnboardingOffer, hostingCatalog, PrincipalType } from '@activepieces/shared'
+import { AgentConfig, AgentRunSource, AgentVisibility, HostedBillingOverview, HostedCustomerBillingOverview, HostedOnboardingOffer, hostingCatalog, PrincipalType } from '@activepieces/shared'
 import fastify, { FastifyInstance } from 'fastify'
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
 import { DataSource } from 'typeorm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AIProviderEntity } from '../../src/app/ai/ai-provider-entity'
 import { accessTokenManager } from '../../src/app/authentication/lib/access-token-manager'
 import { UserIdentityEntity } from '../../src/app/authentication/user-identity/user-identity-entity'
 import { authenticationMiddleware } from '../../src/app/core/security/v2/authn/authentication-middleware'
 import { authorizationMiddleware } from '../../src/app/core/security/v2/authz/authorization-middleware'
 import { FlagEntity } from '../../src/app/flags/flag.entity'
+import { encryptUtils } from '../../src/app/helper/encryption'
 import { errorHandler } from '../../src/app/helper/error-handler'
 import { createHostedBillingView } from '../../src/app/hosting/hosting-billing-view'
 import { hostedChatOptions } from '../../src/app/hosting/hosting-chat-options'
@@ -24,6 +26,8 @@ import { createHostedStripe } from '../../src/app/hosting/hosting-stripe'
 import { HostingStripeCommandEntity } from '../../src/app/hosting/hosting-stripe-entities'
 import { HostingActor, hostingTransactions as tx } from '../../src/app/hosting/hosting-transactions'
 import { readHostedCredits } from '../../src/app/hosting/hosting-usage'
+import { SydAgentConversationEntity } from '../../src/app/syd/copilot/models/agent-conversation.entity'
+import { SydChatManagedAgentEntity } from '../../src/app/syd/copilot/models/chat-managed-agent.entity'
 import { bootstrapHostedOperator, migratedHostedPGlite } from '../helpers/hosting-fixtures'
 
 // This route fixture needs no scheduled source refresh. All authorization,
@@ -162,5 +166,43 @@ describe('customer execution-credit boundary', () => {
         } })
         expect(BigInt(meter === 'managed_ai' ? internal.ai.available : internal.execution.available)).toBe(0n)
         expect(internal).toHaveProperty('ai')
+    })
+})
+
+
+describe('native saved Agent chat payer scope', () => {
+    async function nativeAgent() {
+        const agentId = apId(), conversationId = apId(), configId = apId()
+        const draft = AgentConfig.parse({ instructions: 'Synthetic instructions', provider: 'deepseek', providerConfigId: configId, modelName: 'deepseek-flash' })
+        await ds.getRepository(AIProviderEntity).insert({ id: configId, platformId: client.platformId, provider: 'deepseek', displayName: 'Client chosen key', auth: await encryptUtils.encryptObject({ apiKey: 'synthetic-native-test-key-not-real' }), config: {}, status: 'active', enabledForChat: false, projectScope: 'selected', projectIds: [client.projectId!], modelScope: 'selected', modelIds: ['deepseek-flash'], statusVersion: 0 })
+        await ds.getRepository(SydChatManagedAgentEntity).insert({ id: agentId, projectId: client.projectId!, ownerId: client.userId, externalId: apId(), displayName: 'Native Agent', icon: 'bot', color: '#000000', visibility: AgentVisibility.PROJECT, draft })
+        await ds.getRepository(SydAgentConversationEntity).insert({ id: conversationId, platformId: client.platformId, projectId: client.projectId!, userId: client.userId, agentId, source: AgentRunSource.AGENT })
+        return { agentId, conversationId, configId, draft }
+    }
+    async function read(input: { conversationId?: string, agentId?: string, builder?: boolean }) {
+        return tx.run({ dataSource: ds, fn: manager => hostedChatOptions({ manager, actor: client.actor, userId: client.userId, projectId: client.projectId!, log: app.log, ...input }) })
+    }
+    it('locks an existing named Agent and its first native turn to the saved exact key', async () => {
+        const value = await nativeAgent()
+        for (const scope of [{ conversationId: value.conversationId }, { agentId: value.agentId }]) {
+            const result = await read(scope)
+            expect(result.payerLock).toEqual({ type: 'byok', configId: value.configId })
+            expect(result.keys).toEqual([{ id: value.configId, name: 'Client chosen key' }])
+            expect(JSON.stringify(result)).not.toMatch(/synthetic-native-test-key|deepseek-flash/)
+        }
+    })
+    it('uses the current draft after the Agent payer changes, while builder preparation stays managed', async () => {
+        const value = await nativeAgent()
+        await ds.getRepository(SydChatManagedAgentEntity).update({ id: value.agentId }, { draft: { ...value.draft, provider: 'activepieces', providerConfigId: null, modelName: 'sydekyks' } })
+        expect((await read({ conversationId: value.conversationId })).payerLock).toEqual({ type: 'managed' })
+        expect((await read({ agentId: value.agentId, builder: true })).payerLock).toEqual({ type: 'managed' })
+        expect((await read({ builder: true })).payerLock).toEqual({ type: 'managed' })
+    })
+    it('refuses foreign, conflicting and flow-step conversation pointers', async () => {
+        const value = await nativeAgent()
+        await expect(read({ conversationId: apId() })).rejects.toThrow('ACCESS_DENIED')
+        await expect(read({ conversationId: value.conversationId, agentId: apId() })).rejects.toThrow('ACCESS_DENIED')
+        await ds.getRepository(SydAgentConversationEntity).update({ id: value.conversationId }, { source: AgentRunSource.FLOW_STEP, flowRunId: apId() })
+        await expect(read({ conversationId: value.conversationId })).rejects.toThrow('ACCESS_DENIED')
     })
 })

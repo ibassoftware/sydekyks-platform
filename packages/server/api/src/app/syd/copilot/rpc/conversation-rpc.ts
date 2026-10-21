@@ -5,6 +5,7 @@ import { transaction } from '../../../core/db/transaction'
 import { fileService } from '../../../file/file.service'
 import { filesService } from '../../../file/files-service'
 import { rejectedPromiseHandler } from '../../../helper/promise-handler'
+import { hostingConfiguration } from '../../../hosting/hosting-configuration'
 import { creditsLeftAfter } from '../../../platform/billing-provider'
 import { sydAgentRuntime } from '../agent-runtime'
 import { sydConversationFiles } from '../conversation-files'
@@ -23,7 +24,7 @@ export const sydConversationRpc = (log: FastifyBaseLogger) => ({
     async readAgentFile(input: ReadAgentFileRequest): Promise<ReadFlowStepFileResponse> {
         const row = await sydRunOperations.conversationForRpc({ conversationId: input.conversationId, platformId: input.platformId })
         const projects = await sydCopilotContext.getUserProjects({ platformId: row.platformId, userId: row.userId, log })
-        const file = await sydConversationFiles.readConversationFile({ platformId: row.platformId, conversationId: row.id, accessibleProjectIds: projects.map((project) => project.id), fileId: input.fileId, log })
+        const file = await sydConversationFiles.readConversationFile({ platformId: row.platformId, conversationId: row.id, accessibleProjectIds: hostingConfiguration.getServiceMode() === 'hosted' ? row.projectId ? [row.projectId] : [] : projects.map((project) => project.id), fileId: input.fileId, log })
         return { data: file.data, ...(file.fileName ? { fileName: file.fileName } : {}), ...(typeof file.metadata?.mimetype === 'string' ? { mimeType: file.metadata.mimetype } : {}) }
     },
 
