@@ -6,7 +6,7 @@ import { AddPieceTranslationTable1873000000000 } from './1873000000000-AddPieceT
 export class SydekyksUpstreamOctober211882000000000 implements Migration {
     name = 'SydekyksUpstreamOctober211882000000000'
     breaking = false
-    release = '0.93.0-sydekyks.9'
+    release = '0.93.0-sydekyks.10'
     transaction = false
 
     async up(queryRunner: QueryRunner): Promise<void> {
