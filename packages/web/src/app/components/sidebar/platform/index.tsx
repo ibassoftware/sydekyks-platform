@@ -340,6 +340,11 @@ export function PlatformSidebar() {
                 label: t('Managed AI settings'),
                 icon: SparklesIcon,
               },
+              {
+                to: '/platform/billing-operations',
+                label: t('Billing operations'),
+                icon: ChartLineIcon,
+              },
             ]
           : []),
         {

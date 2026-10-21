@@ -209,6 +209,22 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
         } })
     }
 
+    // Only the audited operator-resolution service calls this after it has locked
+    // the exact call/root and recorded definitive external no-send evidence.
+    async function releaseConfirmedNotSent({ platformId, reservationId, dispatchId, resolutionId }: Fence & { resolutionId: string }): Promise<void> {
+        tx.assertKey(resolutionId)
+        await tx.run({ dataSource, manager: existingManager, fn: async manager => {
+            const peek = await findReservation({ manager, platformId, reservationId, kind: 'managed_ai' })
+            await lockBudget({ manager, day: requiredDay(peek), create: false })
+            await tx.account({ manager, platformId })
+            const reservation = await findReservation({ manager, platformId, reservationId, kind: 'managed_ai' })
+            assertFence({ reservation, dispatchId })
+            if (!['running', 'uncertain'].includes(reservation.state)) hostingFail('HOSTING_INVALID_TRANSITION')
+            await release({ manager, reservation })
+            await tx.event({ manager, platformId, event: 'managed_call.confirmed_not_sent', payload: { reservationId, resolutionId } })
+        } })
+    }
+
     async function balance({ actor }: { actor: HostingActor }) {
         return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             const account = await tx.account({ manager, platformId: actor.platformId })
@@ -257,7 +273,7 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
         } })
     }
 
-    return { reserveExecution, claimExecution, finishExecution, parkExecution, resumeExecution, reserveManagedCall, claimManagedCall, settleManagedCall, markUncertain, releaseUnsent, cancelUnsent, balance }
+    return { reserveExecution, claimExecution, finishExecution, parkExecution, resumeExecution, reserveManagedCall, claimManagedCall, settleManagedCall, markUncertain, releaseUnsent, cancelUnsent, releaseConfirmedNotSent, balance }
 }
 
 async function activeGrant({ manager, account, platformId, meter, now, planId }: { manager: EntityManager, account: import('./hosting-entities').HostingAccount, platformId: string, meter: 'execution' | 'managed_ai', now: Date, planId: import('@activepieces/shared').HostedPlanId }): Promise<HostingGrant> {

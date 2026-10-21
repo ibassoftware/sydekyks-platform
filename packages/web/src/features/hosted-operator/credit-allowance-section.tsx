@@ -1,3 +1,4 @@
+import { hostingCatalog } from '@activepieces/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
@@ -354,6 +355,23 @@ function AllowanceEditor({
               ? `${selected.toLocaleString()} Credits per funded monthly period.`
               : 'Enter a whole number from 0 to 1,000,000.'}
           </p>
+          {valid && (
+            <p className="mt-2 text-sm leading-6 text-gray-11">
+              At the current conversion, this allowance can fund up to{' '}
+              {(
+                (selected * hostingCatalog.aiMicroUsdPerCredit) /
+                1_000_000
+              ).toLocaleString(undefined, {
+                style: 'currency',
+                currency: 'USD',
+                maximumFractionDigits: 4,
+              })}{' '}
+              of managed AI per month, before hosting and support. Changing the
+              allowance does not increase the subscription price; price larger
+              allowances separately. Older held calls retain their original
+              conversion.
+            </p>
+          )}
           <p
             id="client-allowance-help"
             className="mt-2 text-sm leading-6 text-gray-11"

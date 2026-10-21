@@ -25,4 +25,12 @@ export const HostingStripePeriodEntity = new EntitySchema<StripePeriod>({
     name: 'hosting_stripe_period', columns: { ...BaseColumnSchemaPart, platformId: ApIdSchema, stripeAccountId: text, customerId: text, subscriptionId: text, itemId: text, priceId: text, planId: text, sourceKey: text, periodStart: { type: 'timestamp with time zone' }, periodEnd: { type: 'timestamp with time zone' }, invoiceIds: { type: 'jsonb' }, lineIds: { type: 'jsonb' }, chargeIds: { type: 'jsonb' }, revokedAt: time },
     uniques: [{ columns: ['platformId', 'sourceKey'] }], checks: [{ expression: '"periodEnd" > "periodStart"' }], foreignKeys: [accountKey],
 })
-export const HOSTING_STRIPE_ENTITIES = [HostingStripeBindingEntity, HostingStripeCommandEntity, HostingStripeInboxEntity, HostingStripePeriodEntity]
+export type StripeCatalogPreview = { id: string, created: Date, updated: Date, platformId: string, operatorIdentityId: string, tokenVersion: string | null, sourceHash: string, targetHash: string, evidenceHash: string, expiresAt: Date, snapshot: Record<string, unknown> }
+export const HostingStripeCatalogPreviewEntity = new EntitySchema<StripeCatalogPreview>({
+    name: 'hosting_stripe_catalog_preview', columns: { ...BaseColumnSchemaPart, platformId: ApIdSchema, operatorIdentityId: ApIdSchema, tokenVersion: optional, sourceHash: text, targetHash: text, evidenceHash: text, expiresAt: { type: 'timestamp with time zone' }, snapshot: { type: 'jsonb' } }, foreignKeys: [accountKey],
+})
+export type StripeCatalogChange = { id: string, created: Date, updated: Date, platformId: string, previewId: string, operatorIdentityId: string, requestKey: string, payloadHash: string, sourceHash: string, targetHash: string, evidenceHash: string, revision: number, reason: string }
+export const HostingStripeCatalogChangeEntity = new EntitySchema<StripeCatalogChange>({
+    name: 'hosting_stripe_catalog_change', columns: { ...BaseColumnSchemaPart, platformId: ApIdSchema, previewId: ApIdSchema, operatorIdentityId: ApIdSchema, requestKey: text, payloadHash: text, sourceHash: text, targetHash: text, evidenceHash: text, revision: { type: Number }, reason: text }, uniques: [{ columns: ['previewId'] }, { name: 'uq_hosting_stripe_catalog_actor_request', columns: ['operatorIdentityId', 'requestKey'] }], foreignKeys: [accountKey, { target: 'hosting_stripe_catalog_preview', columnNames: ['previewId'], referencedColumnNames: ['id'], onDelete: 'RESTRICT' }],
+})
+export const HOSTING_STRIPE_ENTITIES = [HostingStripeBindingEntity, HostingStripeCommandEntity, HostingStripeInboxEntity, HostingStripePeriodEntity, HostingStripeCatalogPreviewEntity, HostingStripeCatalogChangeEntity]

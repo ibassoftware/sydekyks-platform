@@ -269,6 +269,7 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
             await tx.account({ manager, platformId: peek.platformId })
             const dispatch = await binding({ manager, queueName, jobId })
             if (dispatch.admissionId !== admissionId || dispatch.queueTokenHash !== digest(queueToken) || dispatch.connectionId !== connectionId) hostingFail('HOSTING_DISPATCH_FENCE_MISMATCH')
+            if (dispatch.resolutionStatus) return
             if (dispatch.completionStatus && dispatch.completionStatus !== status) hostingFail('HOSTING_IDEMPOTENCY_CONFLICT')
             if (!['running', 'uncertain', 'completed', 'paused'].includes(dispatch.state)) hostingFail('HOSTING_INVALID_TRANSITION')
             dispatch.completionStatus = status

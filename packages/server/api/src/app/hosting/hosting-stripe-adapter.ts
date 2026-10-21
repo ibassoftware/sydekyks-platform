@@ -1,7 +1,7 @@
 import type Stripe from 'stripe'
 import { z } from 'zod'
 import { StripeCommand } from './hosting-stripe-entities'
-import { HostedStripeCatalog, STRIPE_API_VERSION, stripeId } from './hosting-stripe-policy'
+import { HostedStripeCatalog, STRIPE_API_VERSION, stripeDigest, stripeId } from './hosting-stripe-policy'
 import { HostingError, hostingFail } from './hosting-transactions'
 
 type Policy = { secret: string, signingSecret: string, catalog: HostedStripeCatalog, hash: string }
@@ -145,6 +145,45 @@ export async function createStripeAdapter(policy: Policy) {
         test(value)
         if (!value.active || value.type !== 'recurring' || value.recurring?.interval !== 'month' || value.recurring.interval_count !== 1 || value.recurring.usage_type !== 'licensed' || value.unit_amount !== expected.amountMinor || value.currency !== expected.currency || value.billing_scheme !== 'per_unit' || value.transform_quantity) hostingFail('HOSTING_STRIPE_PRICE_DENIED')
     }
+    // Read-only validation for an explicit catalog-only migration. It never
+    // creates a customer/session, updates a subscription or supplies a grant.
+    async function catalogEvidence(input: { customerId: string | null, subscriptionId: string | null, chargeIds: string[] }) {
+        await account()
+        for (const expected of Object.values(policy.catalog.plans)) await price(expected)
+        const config = await client.billingPortal.configurations.retrieve(policy.catalog.portalConfigurationId)
+        test(config)
+        if (!config.active || !config.features.payment_method_update.enabled || !config.features.invoice_history.enabled || config.features.subscription_update.enabled || !config.features.subscription_cancel.enabled || config.features.subscription_cancel.mode !== 'at_period_end' || config.features.subscription_cancel.proration_behavior !== 'none') hostingFail('HOSTING_STRIPE_PORTAL_POLICY_DENIED')
+        if (!input.customerId) {
+            if (input.subscriptionId || input.chargeIds.length) hostingFail('HOSTING_STRIPE_OBJECT_MISMATCH')
+            return { customerPlatformId: null, subscriptionPlatformId: null, subscriptionId: null, subscriptionStatus: null, commandId: null, period: null, charges: [], issues: [] }
+        }
+        return snapshot({ customerId: input.customerId, previousSubscriptionId: input.subscriptionId, chargeIds: input.chargeIds })
+    }
+    async function catalogCommandEvidence(commands: StripeCommand[], customerId: string | null, subscriptionId: string | null) {
+        await account()
+        const observations: { commandId: string, objectId: string | null, reason: string }[] = []
+        for (const row of commands.filter(value => value.kind === 'customer' && value.state === 'ready')) if (row.objectId !== customerId || row.payloadHash !== stripeDigest(row.payload)) hostingFail('HOSTING_STRIPE_CATALOG_COMMAND_INVALID')
+        for (const command of commands.filter(value => value.state !== 'closed' && !(value.kind === 'customer' && value.state === 'ready'))) {
+            if (command.payloadHash !== stripeDigest(command.payload)) hostingFail('HOSTING_STRIPE_CATALOG_COMMAND_INVALID')
+            if (command.state === 'prepared' && !command.firstSentAt && !command.objectId && !command.fence && !command.leaseUntil) {
+                observations.push({ commandId: command.id, objectId: null, reason: 'never_sent' })
+                continue
+            }
+            if (command.state !== 'ready' || !command.firstSentAt || !command.objectId || !customerId || command.payload.customerId !== customerId) hostingFail('HOSTING_STRIPE_CATALOG_OPEN_COMMANDS')
+            if (command.kind === 'portal') {
+                // This retires only our delivery of the old URL. Stripe has no
+                // portal-session retrieve/revoke API. Its existing customer
+                // access and cancellation rights remain in force.
+                observations.push({ commandId: command.id, objectId: command.objectId, reason: 'portal_delivery_retired' })
+                continue
+            }
+            if (command.kind !== 'checkout') hostingFail('HOSTING_STRIPE_CATALOG_OPEN_COMMANDS')
+            const session = await checkout(command.objectId, customerId)
+            if (session.status === 'expired' || (session.status === 'complete' && session.subscriptionId && session.subscriptionId === subscriptionId)) observations.push({ commandId: command.id, objectId: command.objectId, reason: session.status === 'expired' ? 'checkout_expired' : 'checkout_completed' })
+            else hostingFail('HOSTING_STRIPE_CATALOG_OPEN_COMMANDS')
+        }
+        return observations
+    }
     async function eventCustomer(eventId: string): Promise<string | null> {
         await account()
         const event = await client.events.retrieve(eventId)
@@ -156,7 +195,7 @@ export async function createStripeAdapter(policy: Policy) {
         }
         return null
     }
-    return { verify, create, checkout, snapshot, eventCustomer }
+    return { verify, create, checkout, snapshot, eventCustomer, catalogEvidence, catalogCommandEvidence }
 }
 function complete(value: { has_more: boolean }): void {
     if (value.has_more) hostingFail('HOSTING_STRIPE_PAGINATION_UNSUPPORTED')

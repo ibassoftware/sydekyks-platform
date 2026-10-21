@@ -11,8 +11,9 @@ import { userService } from '../user/user-service'
 import { hostingAccessController } from './hosting-access-controller'
 import { hostingAssessmentController } from './hosting-assessment-controller'
 import { resendHostedVerification } from './hosting-auth-policy'
-import { hostingCreditAllowanceController } from './hosting-credit-allowance-controller'
+import { hostingChargeResolutionController } from './hosting-charge-resolution-controller'
 import { hostingConfiguration } from './hosting-configuration'
+import { hostingCreditAllowanceController } from './hosting-credit-allowance-controller'
 import { hostingLearningController } from './hosting-learning-controller'
 import { hostingOnboardingController } from './hosting-onboarding-controller'
 import { hostingOperatorController } from './hosting-operator-controller'
@@ -22,6 +23,7 @@ import { hostingPricingController } from './hosting-pricing-controller'
 import { hostingRecoveryController, hostingRecoveryPublicController } from './hosting-recovery-controller'
 import { hostingServices } from './hosting-services'
 import { hostingStorageController } from './hosting-storage-controller'
+import { hostingStripeCatalogController } from './hosting-stripe-catalog-controller'
 import { hostingStripeController } from './hosting-stripe-controller'
 import { hostingSubscriptionController } from './hosting-subscription-controller'
 import { hostingTenantJoinController, hostingTenantMembersController } from './hosting-tenant-members-controller'
@@ -30,6 +32,8 @@ import { HostingActor, HostingError } from './hosting-transactions'
 
 export const hostingController: FastifyPluginAsyncZod = async app => {
     if (hostingConfiguration.getServiceMode() !== 'hosted') return
+    await app.register(hostingChargeResolutionController, { prefix: '/operator/charge-resolutions' })
+    await app.register(hostingStripeCatalogController, { prefix: '/operator/stripe-catalog' })
     await app.register(hostingCreditAllowanceController, { prefix: '/operator/credits-allowance' })
     await app.register(hostingSubscriptionController, { prefix: '/operator/subscriptions' })
     await app.register(hostingStorageController, { prefix: '/operator' })

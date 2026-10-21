@@ -21,9 +21,10 @@ import { FolderEntity } from '../flows/folder/folder.entity'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { HOSTING_ACCESS_ENTITIES } from '../hosting/hosting-access-entities'
-import { HOSTING_CREDIT_ALLOWANCE_ENTITIES } from '../hosting/hosting-credit-allowance-entities'
 import { HOSTING_AI_ALLOWANCE_ENTITIES } from '../hosting/hosting-ai-allowance-entities'
 import { HostingAssessmentEntity } from '../hosting/hosting-assessment-entity'
+import { HOSTING_CHARGE_RESOLUTION_ENTITIES } from '../hosting/hosting-charge-resolution-entities'
+import { HOSTING_CREDIT_ALLOWANCE_ENTITIES } from '../hosting/hosting-credit-allowance-entities'
 import { HostingDispatchEntity } from '../hosting/hosting-dispatch-entity'
 import { HOSTING_ENTITIES } from '../hosting/hosting-entities'
 import { HostingModelCallEntity } from '../hosting/hosting-model-call-entity'
@@ -89,6 +90,7 @@ function getEntities(): EntitySchema<unknown>[] {
         ...HOSTING_ACCESS_ENTITIES,
         ...HOSTING_AI_ALLOWANCE_ENTITIES,
         ...HOSTING_CREDIT_ALLOWANCE_ENTITIES,
+        ...HOSTING_CHARGE_RESOLUTION_ENTITIES,
         ...HOSTING_PARTNER_ADMIN_ENTITIES,
         ...HOSTING_PARTNER_SETUP_ENTITIES,
         ...HOSTING_TENANT_MEMBERS_ENTITIES,

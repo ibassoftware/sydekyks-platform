@@ -39,6 +39,11 @@ const TrainerWorkspacePage = React.lazy(() =>
     default: m.TrainerWorkspacePage,
   })),
 );
+const BillingOperationsPage = React.lazy(() =>
+  import('@/features/hosted-operator/billing-operations-page').then((m) => ({
+    default: m.BillingOperationsPage,
+  })),
+);
 const ManagedAiSettingsPage = React.lazy(() =>
   import('@/features/hosted-operator/ai-settings-page').then((m) => ({
     default: m.ManagedAiSettingsPage,
@@ -220,6 +225,18 @@ export const platformRoutes = [
         <PageTitle titleKey="Managed AI settings">
           <SuspenseWrapper>
             <ManagedAiSettingsPage />
+          </SuspenseWrapper>
+        </PageTitle>
+      </PlatformLayout>
+    ),
+  },
+  {
+    path: '/platform/billing-operations',
+    element: (
+      <PlatformLayout>
+        <PageTitle titleKey="Billing operations">
+          <SuspenseWrapper>
+            <BillingOperationsPage />
           </SuspenseWrapper>
         </PageTitle>
       </PlatformLayout>
