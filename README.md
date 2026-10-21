@@ -36,12 +36,12 @@ The installer generates private secrets and starts the Sydekyks app and worker t
 
 Your configuration is saved in `sydekyks/deployment`; your data is kept in Docker volumes. Rerun from the same parent folder to reuse your settings, secrets and data. Keep your `.env` file and volumes for backups and upgrades.
 
-The quick start and repository setup use `ibassoftware/sydekyks:1.0.9`, available for Linux AMD64 and ARM64. Existing installations keep their selected version until you explicitly upgrade.
+The quick start and repository setup use `ibassoftware/sydekyks:1.0.10`, available for Linux AMD64 and ARM64. Existing installations keep their selected version until you explicitly upgrade.
 
 See the [installation guide](https://docs.sydekyks.com/install/options/docker-compose/) for server access, HTTPS, email, maintenance and troubleshooting.
 
 <details>
-<summary>Install release 1.0.9 from a repository checkout</summary>
+<summary>Install release 1.0.10 from a repository checkout</summary>
 
 From the repository root, use a macOS/Linux terminal or Bash with OpenSSL installed:
 
@@ -51,7 +51,7 @@ docker compose config --quiet
 docker compose up -d --wait
 ```
 
-This generates a private `.env` from the repository's `.env.example` and starts `ibassoftware/sydekyks:1.0.9`. If a `.env` already exists, `tools/deploy.sh` preserves it and exits; review it, then run the two Docker Compose commands directly. Open [http://localhost:8080](http://localhost:8080).
+This generates a private `.env` from the repository's `.env.example` and starts `ibassoftware/sydekyks:1.0.10`. If a `.env` already exists, `tools/deploy.sh` preserves it and exits; review it, then run the two Docker Compose commands directly. Open [http://localhost:8080](http://localhost:8080).
 
 Review your private `.env` before deploying to a server. Keep the encryption key and database volumes when upgrading an existing installation.
 
@@ -59,12 +59,12 @@ Review your private `.env` before deploying to a server. Keep the encryption key
 
 ## Upgrade an existing installation
 
-Read the [release log](https://www.sydekyks.com/releases/#v1.0.9), pause incoming and scheduled work, and follow the [backup procedure](https://docs.sydekyks.com/install/configure-operate/rollback/) before upgrading. Keep the original installation folder, Compose project, volumes and encryption/JWT keys. Do not rerun `tools/deploy.sh` or replace your environment file.
+Read the [release log](https://www.sydekyks.com/releases/#v1.0.10), pause incoming and scheduled work, and follow the [backup procedure](https://docs.sydekyks.com/install/configure-operate/rollback/) before upgrading. Keep the original installation folder, Compose project, volumes and encryption/JWT keys. Do not rerun `tools/deploy.sh` or replace your environment file.
 
 Change only `SYDEKYKS_IMAGE` in your existing `deployment/.env` (downloadable quick start) or `.env` (repository checkout):
 
 ```text
-SYDEKYKS_IMAGE=ibassoftware/sydekyks:1.0.9
+SYDEKYKS_IMAGE=ibassoftware/sydekyks:1.0.10
 ```
 
 Both command blocks below work in Windows PowerShell and macOS/Linux terminals. Run each step only after the previous one succeeds.

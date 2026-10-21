@@ -14,7 +14,7 @@ import urllib.request
 
 POSTGRES = 'pgvector/pgvector:0.8.1-pg16-trixie@sha256:1e4956185a7fd9306a41ee759a7b4329c4faf9a2bb91a1d01437310c97002433'
 REDIS = 'redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499'
-PREVIOUS = 'ibassoftware/sydekyks:1.0.8@sha256:1d8ba2c1fc6b4f632e69374eca81892b188c01ca9369123019fca39ed13ad2cf'
+PREVIOUS = 'ibassoftware/sydekyks:1.0.9@sha256:eef2518a02acd5c87d8a6eec3d50ae49a71aee92db6815f4efb5546a2baa8aa1'
 
 
 def docker(*args, check=True):
@@ -50,6 +50,8 @@ def wait_for_app(base):
 def exercise(image, upgrade=False):
     prefix = 'release-smoke-' + secrets.token_hex(5)
     app, pg, redis = [prefix + '-' + name for name in ('app', 'postgres', 'redis')]
+    volume = prefix + '-files'
+    sentinel = secrets.token_hex(16)
     password = 'Release!' + secrets.token_hex(16)
     env = {
         'POSTGRES_DB': 'sydekyks', 'POSTGRES_USER': 'sydekyks', 'POSTGRES_PASSWORD': password,
@@ -62,7 +64,7 @@ def exercise(image, upgrade=False):
         'AP_ALLOW_OPEN_SIGN_UP': 'false', 'AP_EXECUTION_MODE': 'SANDBOX_CODE_ONLY',
         'AP_WORKER_CONCURRENCY': '1', 'AP_EXECUTION_DATA_RETENTION_DAYS': '7',
         'AP_PAUSED_FLOW_TIMEOUT_DAYS': '7', 'AP_TELEMETRY_ENABLED': 'false',
-        'AP_FILE_STORAGE_LOCATION': 'DB',
+        'AP_FILE_STORAGE_LOCATION': 'DB', 'AP_CONFIG_PATH': '/usr/src/app/.sydekyks',
     }
     with tempfile.TemporaryDirectory(prefix=prefix) as directory:
         env_path = Path(directory, 'runtime.env')
@@ -70,6 +72,7 @@ def exercise(image, upgrade=False):
         env_path.chmod(0o600)
         try:
             docker('network', 'create', prefix)
+            docker('volume', 'create', volume)
             docker('run', '-d', '--name', pg, '--network', prefix, '--env-file', str(env_path), POSTGRES)
             docker('run', '-d', '--name', redis, '--network', prefix, REDIS)
             deadline = time.monotonic() + 120
@@ -83,12 +86,12 @@ def exercise(image, upgrade=False):
 
             def start(selected):
                 docker('run', '-d', '--name', app, '--network', prefix, '--env-file', str(env_path),
-                       '-p', '127.0.0.1::80', selected)
+                       '-v', volume + ':/usr/src/app/.sydekyks', '-p', '127.0.0.1::80', selected)
                 port = docker('port', app, '80/tcp').rsplit(':', 1)[1]
                 base = 'http://127.0.0.1:' + port
                 return base, wait_for_app(base)
 
-            print('Testing ' + ('upgrade from 1.0.8' if upgrade else 'fresh installation'), flush=True)
+            print('Testing ' + ('upgrade from 1.0.9' if upgrade else 'fresh installation'), flush=True)
             base, flags = start(PREVIOUS if upgrade else image)
             email = 'release-smoke@example.com'
             status, owner = request(base, '/api/v1/authentication/sign-up', {
@@ -100,16 +103,44 @@ def exercise(image, upgrade=False):
             status, mission = request(base, '/api/v1/flows', {'displayName': 'Release upgrade fixture', 'projectId': owner['projectId']}, token)
             assert status == 201 and mission.get('id'), 'Mission creation failed'
             mission_id = mission['id']
+            status, agent = request(base, '/api/v1/agents', {
+                'projectId': owner['projectId'], 'displayName': 'Release upgrade agent',
+                'description': None, 'folderId': None, 'icon': 'bot', 'color': 'BLUE',
+                'draft': {'instructions': 'Retain this saved agent through the upgrade.',
+                          'provider': None, 'providerConfigId': None, 'modelName': None,
+                          'modelTierId': None, 'tools': [], 'structuredOutput': [], 'maxSteps': 20},
+            }, token)
+            assert status == 201 and agent.get('id'), 'Saved agent creation failed'
+            docker('exec', redis, 'redis-cli', 'SET', 'release:upgrade-fixture', sentinel)
+            docker('exec', app, 'node', '-e',
+                   "const fs=require('fs');fs.mkdirSync(process.env.AP_CONFIG_PATH,{recursive:true});"
+                   "fs.writeFileSync(process.env.AP_CONFIG_PATH+'/release-upgrade-fixture',process.argv[1])", sentinel)
+
+            def sql(query):
+                return docker('exec', pg, 'psql', '-U', 'sydekyks', '-d', 'sydekyks', '-Atq', '-c', query)
+
+            def saved_payloads():
+                return sql("SELECT jsonb_build_object('missions', (SELECT jsonb_agg(jsonb_build_object('id', id, 'trigger', trigger, 'schemaVersion', \"schemaVersion\") ORDER BY id) FROM flow_version), 'agents', (SELECT jsonb_agg(jsonb_build_object('id', id, 'draft', draft, 'published', published, 'ownerId', \"ownerId\", 'projectId', \"projectId\") ORDER BY id) FROM agent))")
+
+            before_payloads = saved_payloads()
             if upgrade:
                 docker('rm', '-f', app)
                 base, flags = start(image)
 
             assert flags.get('EDITION') == 'ce', 'Image must run in community edition'
             status, signed_in = request(base, '/api/v1/authentication/sign-in', {'email': email, 'password': password})
-            assert status == 200 and signed_in.get('projectId') == owner['projectId'], 'Owner/project did not survive'
+            assert status == 200 and signed_in.get('id') == owner['id'] and signed_in.get('projectId') == owner['projectId'], 'Owner/project did not survive'
             token = signed_in['token']
             status, saved = request(base, '/api/v1/flows/' + mission_id, token=token)
             assert status == 200 and saved.get('id') == mission_id, 'Saved Mission did not survive'
+            assert saved_payloads() == before_payloads, 'Mission versions or saved agent configuration changed'
+            status, saved_agent = request(base, '/api/v1/agents/' + agent['id'], token=token)
+            assert status == 200 and saved_agent.get('draft') == agent['draft'], 'Saved agent did not survive'
+            assert docker('exec', redis, 'redis-cli', 'GET', 'release:upgrade-fixture') == sentinel, 'Redis state changed'
+            assert docker('exec', app, 'cat', '/usr/src/app/.sydekyks/release-upgrade-fixture') == sentinel, 'Application files changed'
+            assert sql("SELECT count(*) FROM migrations WHERE name = 'SydekyksUpstreamOctober211882000000000'") == '1', 'Release migration was not applied'
+            assert sql("SELECT count(*) FROM information_schema.columns WHERE table_name='platform_configuration' AND column_name='defaultChatModel'") == '1', 'Model configuration migration missing'
+            assert sql("SELECT to_regclass('public.piece_translation') IS NOT NULL") == 't', 'Gadget translation migration missing'
             release = flags['CURRENT_VERSION']
             expected = json.loads(Path('package.json').read_text())['version']
             assert release == expected, 'Image reports the wrong platform version'
@@ -125,11 +156,15 @@ def exercise(image, upgrade=False):
             assert status in (400, 401, 403), 'Uninvited registration must remain closed'
             print(json.dumps({'scenario': 'upgrade' if upgrade else 'fresh', 'edition': 'ce',
                               'platformRelease': release, 'registryEntries': len(registry),
-                              'ownerLogin': True, 'savedMission': True, 'closedRegistration': True}), flush=True)
+                              'ownerLogin': True, 'savedMission': True, 'savedAgent': True,
+                              'missionVersionsPreserved': True, 'redisStatePreserved': True,
+                              'applicationFilesPreserved': True, 'releaseMigrationApplied': True,
+                              'upgradeFrom': '1.0.9' if upgrade else None, 'closedRegistration': True}), flush=True)
         finally:
             for name in (app, pg, redis):
                 docker('rm', '-f', '-v', name, check=False)
             docker('network', 'rm', prefix, check=False)
+            docker('volume', 'rm', volume, check=False)
 
 
 if __name__ == '__main__':
