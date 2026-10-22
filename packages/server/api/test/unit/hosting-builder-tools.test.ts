@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { AgentRunSource } from '@activepieces/shared'
 import { asSchema } from 'ai'
 import { agentWorkerTools } from '../../../worker/src/lib/execute/jobs/ee/agent/agent-worker-tools'
@@ -18,6 +19,7 @@ import { executeHostedBuilderTool, hostedBuilderConfiguration, hostedBuilderTool
 import { mcpUtils } from '../../src/app/mcp/tools/mcp-utils'
 import { staticMcpSchemaScope } from '../../src/app/mcp/tools/static-schema-scope'
 import { hostedCopilotPrompt } from '../../src/app/hosting/hosting-copilot-prompt'
+import { HostedAiInput, HostedAiRequest, hostedAiInputBound } from '../../src/app/hosting/hosting-ai-policy'
 
 const scope = { projectId: 'project', platformId: 'platform', userId: 'user', log: { error: vi.fn(), debug: vi.fn() } as never }
 const invoke = (toolName: string, toolInput: Record<string, unknown> = {}, source = AgentRunSource.CHAT) => executeHostedBuilderTool({ ...scope, source, toolName, toolInput, conversationId: 'conversation', runId: 'run' })
@@ -28,6 +30,10 @@ describe('admitted hosted builder surface', () => {
         const tools = await hostedBuilderConfiguration(scope)
         expect(tools.map(t => t.name)).toEqual(expect.arrayContaining(['ap_build_flow', 'ap_create_flow', 'ap_update_trigger', 'ap_add_step', 'ap_create_table', 'ap_insert_records', 'ap_get_piece_props']))
         for (const name of ['ap_run_action', 'ap_test_flow', 'ap_test_step', 'ap_retry_run', 'ap_lock_and_publish', 'ap_resolve_property_options', 'ap_execute_action', 'ap_run_code']) expect(hostedBuilderToolNames.has(name)).toBe(false)
+        const build = tools.find(t => t.name === 'ap_build_flow')!.inputSchema as { required: string[], properties: { steps: { items: { properties: { type: { enum: string[] }, stepLocationRelativeToParent: { default: string } } } } } }
+        expect(build.required).toEqual(expect.arrayContaining(['flowName', 'trigger', 'steps']))
+        expect(build.properties.steps.items.properties.type.enum).toContain('PIECE')
+        expect(build.properties.steps.items.properties.stepLocationRelativeToParent.default).toBe('AFTER')
         const schema = tools.find(t => t.name === 'ap_get_piece_props')!
         expect(Object.keys((schema.inputSchema as { properties: object }).properties)).toEqual(['pieceName', 'actionOrTriggerName', 'type'])
         expect(Buffer.byteLength(JSON.stringify(tools))).toBeLessThan(40000)
@@ -51,6 +57,23 @@ describe('admitted hosted builder surface', () => {
         const payload = { model: 'sydekyks', messages: [{ role: 'system', content: hostedCopilotPrompt({ projectId: 'project', projectName: 'Home', now: new Date('2026-10-22') }) }, { role: 'user', content: 'Build a lead capture webhook saving name, company and email in a Leads table.' }], tools: wireTools }
         expect(wireTools.length).toBeGreaterThan(30)
         expect(Buffer.byteLength(JSON.stringify(payload))).toBeLessThan(65536)
+        // Real webhook/Tables metadata from the local catalogue, after the hosted
+        // adapter. Exercise the continuation that production's first smoke missed.
+        const catalogue = JSON.parse(readFileSync(new URL('../fixtures/hosted-builder-catalogue.json', import.meta.url), 'utf8')) as Array<{ toolName: string, toolInput: Record<string, unknown>, result: unknown }>
+        const messages: HostedAiInput['messages'] = [...payload.messages]
+        for (const [index, entry] of catalogue.entries()) {
+            messages.push({ role: 'assistant', content: null, tool_calls: [{ id: `catalogue-${index}`, type: 'function', function: { name: entry.toolName, arguments: JSON.stringify(entry.toolInput) } }] })
+            messages.push({ role: 'tool', tool_call_id: `catalogue-${index}`, content: JSON.stringify(entry.result) })
+        }
+        messages.push({ role: 'assistant', content: null, tool_calls: [{ id: 'table', type: 'function', function: { name: 'ap_create_table', arguments: JSON.stringify({ name: 'Leads', fields: [{ name: 'Name', type: 'TEXT' }, { name: 'Company', type: 'TEXT' }, { name: 'Email', type: 'TEXT' }] }) } }] })
+        messages.push({ role: 'tool', tool_call_id: 'table', content: JSON.stringify({ content: [{ type: 'text', text: 'Table Leads created' }], structuredContent: { id: 'table-id', externalId: 'table-external', fields: [{ name: 'Name', type: 'TEXT' }, { name: 'Company', type: 'TEXT' }, { name: 'Email', type: 'TEXT' }] } }) })
+        messages.push({ role: 'assistant', content: null, tool_calls: [{ id: 'mission', type: 'function', function: { name: 'ap_build_flow', arguments: JSON.stringify({ flowName: 'Lead capture', trigger: { pieceName: '@activepieces/piece-webhook', triggerName: 'catch_webhook', input: { authType: 'none' } }, steps: [{ type: 'PIECE', displayName: 'Save lead', pieceName: '@activepieces/piece-tables', actionName: 'tables-create-records', input: { table_id: 'table-external', values: {}, records: [{ Name: "{{trigger['output'].body.name}}", Company: "{{trigger['output'].body.company}}", Email: "{{trigger['output'].body.email}}" }] } }] }) } }] })
+        messages.push({ role: 'tool', tool_call_id: 'mission', content: JSON.stringify({ content: [{ type: 'text', text: 'Lead capture draft created: https://app.sydekyks.com/projects/project/flows/mission' }], structuredContent: { flowId: 'mission', stepCount: 2, validCount: 2, invalidSteps: [], skippedSteps: [] } }) })
+        const continuation = HostedAiRequest.parse({ ...payload, messages, callKey: 'copilot:5', attempt: 0, payer: { type: 'managed' }, max_tokens: 4096 })
+        expect(Buffer.byteLength(JSON.stringify(continuation))).toBeLessThan(55 * 1024)
+        expect(hostedAiInputBound(continuation) + continuation.max_tokens).toBeLessThan(1048576)
+        expect(messages[1].content).toBe(payload.messages[1].content)
+        console.info(JSON.stringify({ hostedBuilderContinuationBytes: Buffer.byteLength(JSON.stringify(continuation)), inputTokenBound: hostedAiInputBound(continuation), tools: wireTools.length }))
     })
     it('marks Mission structure inspection as an untrusted read before any later mutation', async () => {
         await invoke('ap_flow_structure', { flowId: 'mission' })

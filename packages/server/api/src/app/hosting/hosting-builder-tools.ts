@@ -30,6 +30,7 @@ import { projectService } from '../project/project-service'
 import { sydApprovalGate } from '../syd/copilot/approval-gate'
 import { sydRunOperations } from '../syd/copilot/rpc/run-operations'
 import { hostingFail } from './hosting-transactions'
+import { hostedBuilderMetadata } from './hosting-builder-metadata'
 
 // Internal configuration/metadata tools, NOT an authenticated remote MCP client.
 // No execution, dynamic property callbacks, publication/hook activation, retries,
@@ -87,7 +88,12 @@ export async function hostedBuilderConfiguration(scope: Scope): Promise<NonNulla
     return (await available(scope)).map(tool => ({
         name: tool.title,
         description: tool.description.replace(/\bActivepieces\b/gi, 'Sydekyks').slice(0, 420),
-        inputSchema: z.toJSONSchema(z.object(tool.inputSchema), { unrepresentable: 'any' }) as Record<string, unknown>,
+        inputSchema: z.toJSONSchema(z.object(tool.inputSchema), { unrepresentable: 'any', override: ({ jsonSchema }) => {
+            // Field descriptions duplicate catalogue guidance on every model step.
+            // Remove annotations only: keep required/type/enum/default/constraints
+            // and property names (including a property named description) intact.
+            delete jsonSchema.description
+        } }) as Record<string, unknown>,
         readOnly: tool.annotations?.readOnlyHint === true,
     }))
 }
@@ -112,5 +118,5 @@ export async function executeHostedBuilderTool({ source, toolName, toolInput, co
     const result = await staticMcpSchemaScope.run(true, () => tool.execute(parsed))
     if ((tool.annotations?.readOnlyHint || toolName === 'ap_update_record') && !['ap_research_pieces', 'ap_get_piece_props'].includes(toolName)) await sydRunOperations.markTurnAsHavingRead({ conversationId, runId })
     // Retain machine compatibility identifiers; the prompt controls user prose.
-    return result
+    return hostedBuilderMetadata(toolName, result)
 }

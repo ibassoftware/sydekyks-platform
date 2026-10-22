@@ -1,0 +1,52 @@
+[
+  {
+    "toolName": "ap_research_pieces",
+    "toolInput": {
+      "pieceNames": [
+        "webhook",
+        "tables"
+      ],
+      "forIntent": "Receive a website lead and save Name, Company and Email in a Leads table."
+    },
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"pieces\":[{\"name\":\"@activepieces/piece-webhook\",\"displayName\":\"Webhook\",\"description\":\"Receive HTTP requests and trigger flows using unique URLs.\",\"actions\":[{\"name\":\"return_response\",\"displayName\":\"Return Response\",\"description\":\"return a response\",\"requiresAuth\":true},{\"name\":\"return_response_and_wait_for_next_webhook\",\"displayName\":\"Respond and Wait for Next Webhook\"}],\"triggers\":[{\"name\":\"catch_webhook\",\"displayName\":\"Catch Webhook\",\"description\":\"Receive incoming HTTP/webhooks using any HTTP method such as GET, POST, PUT, DELETE, etc.\",\"requiresAuth\":true}],\"recommendedActions\":[\"return_response\"]},{\"name\":\"@activepieces/piece-tables\",\"displayName\":\"Tables\",\"description\":\"\",\"actions\":[{\"name\":\"tables-create-table\",\"displayName\":\"Create Table\",\"description\":\"Create a new table, optionally with fields.\",\"requiresAuth\":true},{\"name\":\"tables-delete-table\",\"displayName\":\"Delete Table\",\"description\":\"Delete a table and all of its records.\",\"requiresAuth\":true},{\"name\":\"tables-create-records\",\"displayName\":\"Create Record(s)\",\"description\":\"Insert one or more new records into a table.\",\"requiresAuth\":true},{\"name\":\"tables-delete-record\",\"displayName\":\"Delete Record(s)\",\"description\":\"Delete record(s) from a table.\",\"requiresAuth\":true},{\"name\":\"tables-update-record\",\"displayName\":\"Update Record\"},{\"name\":\"tables-get-record\",\"displayName\":\"Get Record\"},{\"name\":\"tables-find-records\",\"displayName\":\"Find Records\"},{\"name\":\"tables-clear-table\",\"displayName\":\"Clear Table\"},{\"name\":\"tables-download-table\",\"displayName\":\"Download Table\",\"description\":\"Export a table as a CSV file.\",\"requiresAuth\":true}],\"triggers\":[{\"name\":\"newRecord\",\"displayName\":\"New Record Created\",\"description\":\"Triggers when a new record is added to the selected table.\",\"requiresAuth\":true},{\"name\":\"updatedRecord\",\"displayName\":\"Record Updated\",\"description\":\"Triggers when a record is updated in the selected table.\",\"requiresAuth\":true},{\"name\":\"deletedRecord\",\"displayName\":\"Record Deleted\",\"description\":\"Triggers when a record is deleted from the selected table.\",\"requiresAuth\":true}],\"recommendedActions\":[\"tables-create-table\",\"tables-create-records\",\"tables-download-table\",\"tables-delete-table\",\"tables-delete-record\"]}],\"missing\":[],\"count\":2}"
+        }
+      ]
+    }
+  },
+  {
+    "toolName": "ap_get_piece_props",
+    "toolInput": {
+      "pieceName": "webhook",
+      "actionOrTriggerName": "catch_webhook",
+      "type": "trigger"
+    },
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"piece\":\"@activepieces/piece-webhook\",\"name\":\"catch_webhook\",\"description\":\"Receive incoming HTTP/webhooks using any HTTP method such as GET, POST, PUT, DELETE, etc.\",\"requiresAuth\":false,\"props\":[{\"name\":\"authType\",\"type\":\"STATIC_DROPDOWN\",\"required\":true,\"defaultValue\":\"none\",\"options\":[{\"label\":\"None\",\"value\":\"none\"},{\"label\":\"Basic Auth\",\"value\":\"basic\"},{\"label\":\"Header Auth\",\"value\":\"header\"},{\"label\":\"HMAC Signature\",\"value\":\"hmac\"}]},{\"name\":\"authFields\",\"type\":\"DYNAMIC\",\"required\":false,\"configuration\":\"Dynamic options are not resolved here; use exact known IDs or configure in the Mission editor.\"}],\"requiredInputs\":{\"provideNow\":[\"authType\"],\"needsResolution\":[]},\"staticSchemaOnly\":true}"
+        }
+      ]
+    }
+  },
+  {
+    "toolName": "ap_get_piece_props",
+    "toolInput": {
+      "pieceName": "tables",
+      "actionOrTriggerName": "tables-create-records",
+      "type": "action"
+    },
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"piece\":\"@activepieces/piece-tables\",\"name\":\"tables-create-records\",\"description\":\"Insert one or more new records into a table.\",\"requiresAuth\":false,\"props\":[{\"name\":\"table_id\",\"type\":\"DROPDOWN\",\"required\":true,\"configuration\":\"Dynamic options are not resolved here; use exact known IDs or configure in the Mission editor.\"},{\"name\":\"values\",\"type\":\"DYNAMIC\",\"required\":true,\"description\":\"One entry per record to insert.\",\"configuration\":\"Dynamic options are not resolved here; use exact known IDs or configure in the Mission editor.\"},{\"name\":\"records\",\"type\":\"JSON\",\"required\":false,\"description\":\"Array of objects keyed by field name. Overrides the form above.\"}],\"requiredInputs\":{\"provideNow\":[],\"needsResolution\":[\"table_id\",\"values\"]},\"outputFields\":[\"[].id\",\"[].created (datetime)\",\"[].updated (datetime)\",\"[].cells (dynamic key)\"],\"outputFieldsSource\":\"declared\",\"staticSchemaOnly\":true}"
+        }
+      ]
+    }
+  }
+]
