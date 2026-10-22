@@ -68,14 +68,14 @@ const modelRequest = { callKey: 'model:0', attempt: 0, payer: { type: 'managed' 
 const modelProvider = () => ({ id: 'synthetic', endpoint: 'https://api.deepseek.com/chat/completions', complete: vi.fn(async () => ({ status: 200, data: { id: 'synthetic', model: 'deepseek-flash', created: Math.floor(Date.now() / 1000), object: 'chat.completion', choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'Answer' } }], usage: { prompt_tokens: 100, completion_tokens: 5, total_tokens: 105, prompt_cache_hit_tokens: 0, prompt_cache_miss_tokens: 100 } } })) })
 
 describe('native tools use the single Credits ledger', () => {
-    it('charges3Credits/search plus model tokens and1execution; replay never resends or charges twice', async () => {
+    it('charges one Credit per successful750microUSD search plus model usage and one execution; replay never resends or charges twice', async () => {
         await configure(); const admitted = await root(), execute = vi.fn(successful), tools = createHostedNativeTools({ dataSource: ds, provider: { execute } }), request = nativeRequest()
         const first = await tools.execute({ scope: admitted.scope, request }), replay = await tools.execute({ scope: admitted.scope, request })
         expect(replay).toEqual(first); expect(execute).toHaveBeenCalledTimes(1)
         expect(execute.mock.calls[0][0].apiKey).toBe('synthetic-managed-native-key-not-real')
-        expect(await balance()).toMatchObject({ consumed: 4n, reserved: 0n })
+        expect(await balance()).toMatchObject({ consumed: 2n, reserved: 0n })
         await createHostedAiGateway({ dataSource: ds, provider: modelProvider() }).execute({ scope: admitted.scope, request: modelRequest })
-        expect(await balance()).toMatchObject({ consumed: 5n, reserved: 0n })
+        expect(await balance()).toMatchObject({ consumed: 3n, reserved: 0n })
         expect(await ds.getRepository(HostingModelCallEntity).findOneByOrFail({ callKey: request.callKey })).toMatchObject({ nativeTool: 'search', nativeFeature: true, toolUnitPriceMicroUsd: '750', actualMicroUsd: '750', state: 'settled', usage: { successful_requests: 1 } })
         await ledger().finishExecution({ platformId: actor.platformId, reservationId: admitted.reservation.id, dispatchId: admitted.dispatchId })
     })
@@ -90,15 +90,15 @@ describe('native tools use the single Credits ledger', () => {
         await expect(tools.execute({ scope: admitted.scope, request })).rejects.toThrow('OUTCOME_UNAVAILABLE')
         await expect(createHostedAiGateway({ dataSource: ds, provider: modelProvider() }).execute({ scope: admitted.scope, request: modelRequest })).rejects.toThrow('OUTCOME_UNCERTAIN')
         await expect(ledger().finishExecution({ platformId: actor.platformId, reservationId: admitted.reservation.id, dispatchId: admitted.dispatchId })).rejects.toThrow('UNSETTLED_CHILDREN')
-        expect(execute).toHaveBeenCalledTimes(1); expect(await balance()).toMatchObject({ consumed: 1n, reserved: 3n })
+        expect(execute).toHaveBeenCalledTimes(1); expect(await balance()).toMatchObject({ consumed: 1n, reserved: 1n })
         const call = await ds.getRepository(HostingModelCallEntity).findOneByOrFail({ callKey: request.callKey }), expired = new Date(Date.now() - 1000)
         await ds.getRepository(HostingModelCallEntity).update({ id: call.id }, { leaseUntil: expired })
         await ds.getRepository(HostingDispatchEntity).update({ id: admitted.segmentId }, { state: 'uncertain', leaseUntil: expired, completionStatus: EngineResponseStatus.INTERNAL_ERROR })
         const service = createHostedChargeResolution({ dataSource: ds }), draft = { platformId: actor.platformId, rootReservationId: admitted.reservation.id, outcome: 'verified_usage' as const, billable: true, supplierRequestId: 'synthetic-search-receipt', supplierCreatedAt: call.sentAt!.toISOString(), reason: 'Synthetic supplier investigation', evidenceReference: 'Synthetic authoritative successful search receipt' }
         const preview = await service.preview({ actor, callId: call.id, input: draft })
-        expect(preview.preview.actualCredits).toBe('3')
+        expect(preview.preview.actualCredits).toBe('1')
         await service.resolve({ actor, callId: call.id, input: { ...draft, expectedRevision: preview.preview.expectedRevision, expectedState: preview.preview.expectedState, requestKey: apId() } })
-        expect(await balance()).toMatchObject({ consumed: 4n, reserved: 0n })
+        expect(await balance()).toMatchObject({ consumed: 2n, reserved: 0n })
         expect(await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: admitted.reservation.id })).toMatchObject({ state: 'settled' })
     })
     it('uses the exact BYOK key, creates no managed hold, and keeps unknown BYOK calls blocking completion', async () => {
@@ -141,8 +141,8 @@ describe('native tools use the single Credits ledger', () => {
         expect(execute).toHaveBeenCalledTimes(2)
         // Seed ordinary model exposure on the same root: the native cap counts it
         // together with execution, settled tools and the proposed next tool.
-        const held = await ledger().reserveManagedCall({ actor, rootReservationId: admitted.reservation.id, key: apId(), maxCostMicroUsd: 23_250n })
-        expect(held.amount).toBe(93n)
+        const held = await ledger().reserveManagedCall({ actor, rootReservationId: admitted.reservation.id, key: apId(), maxCostMicroUsd: 145_500n })
+        expect(held.amount).toBe(97n)
         const fetcher = createHostedNativeTools({ dataSource: ds, provider: { execute }, validateUrl: async value => value })
         await expect(fetcher.execute({ scope: admitted.scope, request: nativeRequest('fetch') })).rejects.toThrow('NATIVE_CREDIT_LIMIT')
         expect(execute).toHaveBeenCalledTimes(2)
@@ -168,26 +168,50 @@ describe('independent native Credits boundary acceptance', () => {
         expect(await balance()).toMatchObject({ consumed: 1n, reserved: 0n })
     })
 
-    it.each([{ priorCredits: 96n, allowed: true }, { priorCredits: 97n, allowed: false }])('admits exactly100 total Credits and refuses101 (prior=$priorCredits)', async ({ priorCredits, allowed }) => {
+    it.each([{ priorCredits: 98n, allowed: true }, { priorCredits: 99n, allowed: false }])('admits exactly100 total Credits and refuses101 (prior=$priorCredits)', async ({ priorCredits, allowed }) => {
         await configure()
         const admitted = await root(), execute = vi.fn(successful), request = nativeRequest()
-        const held = await ledger().reserveManagedCall({ actor, rootReservationId: admitted.reservation.id, key: apId(), maxCostMicroUsd: priorCredits * 250n })
+        const held = await ledger().reserveManagedCall({ actor, rootReservationId: admitted.reservation.id, key: apId(), maxCostMicroUsd: priorCredits * 1500n })
         expect(held.amount).toBe(priorCredits)
         const tools = createHostedNativeTools({ dataSource: ds, provider: { execute } })
         if (allowed) {
             await tools.execute({ scope: admitted.scope, request })
             expect(execute).toHaveBeenCalledTimes(1)
-            expect(await balance()).toMatchObject({ consumed: 4n, reserved: 96n })
+            expect(await balance()).toMatchObject({ consumed: 2n, reserved: 98n })
             expect(await ds.getRepository(HostingModelCallEntity).findOneByOrFail({ callKey: request.callKey })).toMatchObject({ inputTokenBound: null, nativeTool: 'search', state: 'settled', actualMicroUsd: '750' })
         }
         else {
             await expect(tools.execute({ scope: admitted.scope, request })).rejects.toThrow('HOSTING_NATIVE_CREDIT_LIMIT')
             expect(execute).not.toHaveBeenCalled()
-            expect(await balance()).toMatchObject({ consumed: 1n, reserved: 97n })
+            expect(await balance()).toMatchObject({ consumed: 1n, reserved: 99n })
             expect(await ds.getRepository(HostingModelCallEntity).countBy({ rootReservationId: admitted.reservation.id })).toBe(0)
         }
     })
 
+    it.each([{ held: 68n, allowed: true }, { held: 69n, allowed: false }])('counts v1 settled and v2 pending Credits at the same native100Credit cap (held=$held)', async ({ held, allowed }) => {
+        await configure()
+        const admitted = await root(), grant = await balance(), execute = vi.fn(successful)
+        const common = { platformId: actor.platformId, projectId, identityId: actor.identityId, grantId: grant.id, kind: 'managed_ai' as const, payer: 'managed' as const, rootReservationId: admitted.reservation.id, day: new Date().toISOString().slice(0, 10), dispatchId: apId() }
+        const oldIds = [apId(), apId()]
+        await ds.getRepository(HostingReservationEntity).insert([
+            { ...common, id: oldIds[0], key: 'native:old-v1-settled', state: 'settled', accountingVersion: 'single-credits-500-microusd-v1', microUsdPerCredit: 500n, amount: 30n, actualAmount: 30n, supplierMaxMicroUsd: 15000n, actualSupplierMicroUsd: 15000n },
+            { ...common, id: oldIds[1], key: 'native:old-v2-held', state: 'running', accountingVersion: 'single-credits-250-microusd-v2', microUsdPerCredit: 250n, amount: held, actualAmount: null, supplierMaxMicroUsd: held * 250n },
+        ])
+        await ds.getRepository(HostingGrantEntity).update({ id: grant.id }, { consumed: 31n, reserved: held })
+        const oldRows = await ds.getRepository(HostingReservationEntity).findBy([{ id: oldIds[0] }, { id: oldIds[1] }])
+        const tools = createHostedNativeTools({ dataSource: ds, provider: { execute } })
+        if (allowed) {
+            await tools.execute({ scope: admitted.scope, request: nativeRequest() })
+            expect(await balance()).toMatchObject({ consumed: 32n, reserved: held })
+            expect(execute).toHaveBeenCalledTimes(1)
+        }
+        else {
+            await expect(tools.execute({ scope: admitted.scope, request: nativeRequest() })).rejects.toThrow('HOSTING_NATIVE_CREDIT_LIMIT')
+            expect(execute).not.toHaveBeenCalled()
+            expect(await balance()).toMatchObject({ consumed: 31n, reserved: held })
+        }
+        expect(await ds.getRepository(HostingReservationEntity).findBy([{ id: oldIds[0] }, { id: oldIds[1] }])).toEqual(oldRows)
+    })
     it('allows three page reads and rejects the fourth before dispatch or charging', async () => {
         await configure()
         const admitted = await root(), execute = vi.fn(async () => ({ status: 200, data: { title: 'Synthetic page', content: 'Synthetic public reference.' } }))
@@ -195,7 +219,7 @@ describe('independent native Credits boundary acceptance', () => {
         for (let index = 0; index < 3; index++) await tools.execute({ scope: admitted.scope, request: nativeRequest('fetch') })
         await expect(tools.execute({ scope: admitted.scope, request: nativeRequest('fetch') })).rejects.toThrow('HOSTING_NATIVE_TOOL_LIMIT')
         expect(execute).toHaveBeenCalledTimes(3)
-        expect(await balance()).toMatchObject({ consumed: 10n, reserved: 0n })
+        expect(await balance()).toMatchObject({ consumed: 4n, reserved: 0n })
         const calls = await ds.getRepository(HostingModelCallEntity).findBy({ rootReservationId: admitted.reservation.id })
         expect(calls).toHaveLength(3)
         expect(calls.every(call => call.inputTokenBound === null && call.nativeTool === 'fetch' && call.state === 'settled' && call.actualMicroUsd === '750')).toBe(true)

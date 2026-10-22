@@ -33,7 +33,7 @@ export const hostingCatalog = Object.freeze({
         team: Object.freeze({ name: 'Growth', amountMinor: 39_900, currency: 'usd', salesAssisted: false }),
         scale: Object.freeze({ name: 'Scale', amountMinor: 129_900, currency: 'usd', salesAssisted: true }),
     }),
-    aiMicroUsdPerCredit: 250,
+    aiMicroUsdPerCredit: 1_500,
     maxCreditsPerRun: 1_000,
     // Legacy accounting conversion; do not use for new managed AI charges.
     microcreditsPerMicroUsd: 1_000,

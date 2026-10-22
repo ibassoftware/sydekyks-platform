@@ -112,7 +112,7 @@ describe('operator shared Credits editor', () => {
   it('shows one allowance with an operator cost estimate and requires a reason', async () => {
     await render();
     expect(container.textContent).toContain('Monthly Credits allowance');
-    expect(container.textContent).toContain('$0.0025');
+    expect(container.textContent).toContain('$0.015');
     expect(container.textContent).toContain(
       'does not increase the subscription price'
     );

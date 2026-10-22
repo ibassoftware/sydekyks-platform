@@ -21,7 +21,7 @@ describe('approved local commercial catalogue', () => {
             return [limits.users, limits.projects, limits.executions]
         })).toEqual([[10, 10, 10000], [30, 30, 100000], [100, 100, 500000]])
         expect(hostingCatalog.getPlan({ planId: 'training' })).toMatchObject({ users: 1, projects: 1 })
-        expect(hostingCatalog.aiMicroUsdPerCredit).toBe(250)
+        expect(hostingCatalog.aiMicroUsdPerCredit).toBe(1500)
         expect(hostingCatalog.partnerHostingMonths).toBe(12)
         expect(hostingCatalog.partnerPackages.core).toMatchObject({ amountMinor: 100000, coachingHours: 2, assessmentAttempts: 2 })
         expect(hostingCatalog.partnerPackages.launch).toMatchObject({ amountMinor: 120000, coachingHours: 4, proposalReviews: 1, assessmentAttempts: 2 })

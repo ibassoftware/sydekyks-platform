@@ -3,13 +3,13 @@ import { EntityManager } from 'typeorm'
 import { HostingReservationEntity } from './hosting-entities'
 import { hostingFail } from './hosting-transactions'
 
-export const HOSTED_CREDIT_ACCOUNTING_VERSION = 'single-credits-250-microusd-v2'
+export const HOSTED_CREDIT_ACCOUNTING_VERSION = 'single-credits-1500-microusd-v3'
 export const HOSTED_LEGACY_MICRO_USD_PER_CREDIT = 500n
 export const HOSTED_MAX_ROOT_CREDITS = 1000n
 
 export function hostedUsesCreditAccounting(version: string | null | undefined): boolean {
     if (version == null) return false
-    if (version === 'single-credits-500-microusd-v1' || version === HOSTED_CREDIT_ACCOUNTING_VERSION) return true
+    if (version === 'single-credits-500-microusd-v1' || version === 'single-credits-250-microusd-v2' || version === HOSTED_CREDIT_ACCOUNTING_VERSION) return true
     hostingFail('HOSTING_AI_ACCOUNTING_VERSION_INVALID')
 }
 

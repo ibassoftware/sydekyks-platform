@@ -10,14 +10,15 @@ import type { JobContext } from '../../../worker/src/lib/execute/types'
 import { AIProviderEntity } from '../../src/app/ai/ai-provider-entity'
 import { UserIdentityEntity } from '../../src/app/authentication/user-identity/user-identity-entity'
 import { SydekyksUnifiedCredits1903000000000 } from '../../src/app/database/migration/postgres/1903000000000-SydekyksUnifiedCredits'
+import { SydekyksCreditRateV31913000000000 } from '../../src/app/database/migration/postgres/1913000000000-SydekyksCreditRateV3'
 import { SydekyksCreditRateV21905000000000 } from '../../src/app/database/migration/postgres/1905000000000-SydekyksCreditRateV2'
 import { FlagEntity } from '../../src/app/flags/flag.entity'
 import { encryptUtils } from '../../src/app/helper/encryption'
 import { createHostedAiGateway } from '../../src/app/hosting/hosting-ai-gateway'
 import { hostedAiInputBound } from '../../src/app/hosting/hosting-ai-policy'
-import { HOSTED_MAX_ROOT_CREDITS, hostedAiCredits, hostedCreditLiability } from '../../src/app/hosting/hosting-credit-policy'
+import { HOSTED_MAX_ROOT_CREDITS, hostedAiCredits, hostedCreditLiability, hostedUsesCreditAccounting } from '../../src/app/hosting/hosting-credit-policy'
 import { HostingDispatchEntity } from '../../src/app/hosting/hosting-dispatch-entity'
-import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrantEntity, HostingReservationEntity } from '../../src/app/hosting/hosting-entities'
+import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrantEntity, HostingLedgerEntity, HostingReservationEntity } from '../../src/app/hosting/hosting-entities'
 import { createHostedExecution } from '../../src/app/hosting/hosting-execution'
 import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
 import { createHostedLedger } from '../../src/app/hosting/hosting-ledger'
@@ -100,15 +101,15 @@ function completion(model: string, prompt = 4000, output = 1000) {
 }
 
 describe('single Credits accounting', () => {
-    it('preserves v1 holds through the additive migration and settles at their recorded rate once', async () => {
+    it.each([{ version: 'single-credits-500-microusd-v1', rate: 500n, amount: 10n, actual: 3n }, { version: 'single-credits-250-microusd-v2', rate: 250n, amount: 20n, actual: 5n }])('preserves $version uncertain holds through V3 and settles/replays at the stored rate once', async ({ version, rate, amount, actual }) => {
         const admitted = await root(), grant = await currentGrant(), old = await reserve(admitted.reservation.id, 5000n)
-        await ds.getRepository(HostingReservationEntity).update({ id: admitted.reservation.id }, { accountingVersion: 'single-credits-500-microusd-v1' })
-        await ds.getRepository(HostingReservationEntity).update({ id: old.id }, { accountingVersion: 'single-credits-500-microusd-v1', microUsdPerCredit: 500n, amount: 10n })
-        await ds.getRepository(HostingGrantEntity).update({ id: grant.id }, { reserved: 10n })
+        await ds.getRepository(HostingReservationEntity).update({ id: admitted.reservation.id }, { accountingVersion: version })
+        await ds.getRepository(HostingReservationEntity).update({ id: old.id }, { accountingVersion: version, microUsdPerCredit: rate, amount })
+        await ds.getRepository(HostingGrantEntity).update({ id: grant.id }, { reserved: amount })
         const claim = await ledger().claimManagedCall({ actor, reservationId: old.id })
         await ledger().markUncertain({ platformId: actor.platformId, reservationId: old.id, dispatchId: claim.dispatchId! })
         const before = await ds.getRepository(HostingReservationEntity).findBy({ platformId: actor.platformId })
-        const runner = ds.createQueryRunner(), migration = new SydekyksCreditRateV21905000000000()
+        const runner = ds.createQueryRunner(), migration = new SydekyksCreditRateV31913000000000()
         try {
             await runner.startTransaction(); await migration.down(runner); await migration.up(runner); await runner.commitTransaction()
         }
@@ -117,13 +118,13 @@ describe('single Credits accounting', () => {
         }
         expect(await ds.getRepository(HostingReservationEntity).findBy({ platformId: actor.platformId })).toEqual(before)
         const retry = await reserve(admitted.reservation.id, 5000n, old.key)
-        expect(retry).toMatchObject({ id: old.id, amount: 10n, microUsdPerCredit: 500n })
+        expect(retry).toMatchObject({ id: old.id, accountingVersion: version, amount, microUsdPerCredit: rate })
         await ledger().settleManagedCall({ platformId: actor.platformId, reservationId: old.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 1200n })
         await ledger().settleManagedCall({ platformId: actor.platformId, reservationId: old.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 1200n })
-        expect(await balance()).toMatchObject({ consumed: 4n, reserved: 0n })
+        expect(await balance()).toMatchObject({ consumed: 1n + actual, reserved: 0n })
         const fresh = await settled(admitted.reservation.id, 1200n, 1200n)
-        expect(fresh.call).toMatchObject({ accountingVersion: 'single-credits-250-microusd-v2', microUsdPerCredit: 250n, amount: 5n })
-        expect(await balance()).toMatchObject({ consumed: 9n, reserved: 0n })
+        expect(fresh.call).toMatchObject({ accountingVersion: 'single-credits-1500-microusd-v3', microUsdPerCredit: 1500n, amount: 1n })
+        expect(await balance()).toMatchObject({ consumed: 2n + actual, reserved: 0n })
         const rollback = ds.createQueryRunner()
         try {
             await expect(migration.down(rollback)).rejects.toThrow('CREDIT_RATE_ROLLBACK_REQUIRES_BACKUP_RESTORE')
@@ -132,20 +133,81 @@ describe('single Credits accounting', () => {
             await rollback.release()
         }
     })
+    it('round-trips V3 with v1/v2 pending and settled history without changing financial rows, grants, daily dollars or ledger entries', async () => {
+        const admitted = await root(), grant = await currentGrant()
+        await ds.getRepository(HostingReservationEntity).update({ id: admitted.reservation.id }, { accountingVersion: 'single-credits-250-microusd-v2' })
+        const common = { platformId: actor.platformId, projectId, identityId: actor.identityId, grantId: grant.id, kind: 'managed_ai' as const, payer: 'managed' as const, rootReservationId: admitted.reservation.id, day: day(), dispatchId: apId(), supplierMaxMicroUsd: 5000n }
+        for (const [version, rate] of [['single-credits-500-microusd-v1', 500n], ['single-credits-250-microusd-v2', 250n]] as const) {
+            await ds.getRepository(HostingReservationEntity).insert([
+                { ...common, id: apId(), key: `${version}:pending`, state: 'uncertain', accountingVersion: version, microUsdPerCredit: rate, amount: 5000n / rate, actualAmount: null },
+                { ...common, id: apId(), key: `${version}:settled`, state: 'settled', accountingVersion: version, microUsdPerCredit: rate, amount: 5000n / rate, actualAmount: hostedAiCredits(1200n, rate), actualSupplierMicroUsd: 1200n },
+            ])
+        }
+        await ds.getRepository(HostingGrantEntity).update({ id: grant.id }, { consumed: 9n, reserved: 30n })
+        await ds.getRepository(HostingDailyBudgetEntity).insert({ id: day(), consumed: 2400n, reserved: 10000n, limit: 1000000n })
+        const snapshot = async () => ({
+            reservations: await ds.getRepository(HostingReservationEntity).find({ order: { id: 'ASC' } }),
+            grants: await ds.getRepository(HostingGrantEntity).find({ order: { id: 'ASC' } }),
+            dollars: await ds.getRepository(HostingDailyBudgetEntity).find({ order: { id: 'ASC' } }),
+            entries: await ds.getRepository(HostingLedgerEntity).find({ order: { id: 'ASC' } }),
+        })
+        const before = await snapshot(), migration = new SydekyksCreditRateV31913000000000(), runner = ds.createQueryRunner()
+        try {
+            await runner.startTransaction(); await migration.down(runner); await migration.up(runner); await runner.commitTransaction()
+        }
+        finally {
+            if (runner.isTransactionActive) await runner.rollbackTransaction()
+            await runner.release()
+        }
+        expect(await snapshot()).toEqual(before)
+        expect(await balance()).toMatchObject({ consumed: 9n, reserved: 30n })
+    })
+    it.each(['execution', 'managed_ai'] as const)('refuses V3 rollback when even one $kind reservation exists', async kind => {
+        const admitted = await root()
+        if (kind === 'managed_ai') {
+            await ds.getRepository(HostingReservationEntity).update({ id: admitted.reservation.id }, { accountingVersion: 'single-credits-250-microusd-v2' })
+            const hold = await reserve(admitted.reservation.id, 1501n)
+            expect(hold).toMatchObject({ accountingVersion: 'single-credits-1500-microusd-v3', amount: 2n, microUsdPerCredit: 1500n })
+        }
+        const before = await ds.getRepository(HostingReservationEntity).find({ order: { id: 'ASC' } }), runner = ds.createQueryRunner()
+        try { await expect(new SydekyksCreditRateV31913000000000().down(runner)).rejects.toThrow('CREDIT_RATE_ROLLBACK_REQUIRES_BACKUP_RESTORE') }
+        finally { await runner.release() }
+        expect(await ds.getRepository(HostingReservationEntity).find({ order: { id: 'ASC' } })).toEqual(before)
+    })
+    it.each([
+        { label: 'plain short reply', costs: [1081n], total: 2n },
+        { label: 'reply plus search, fetch and synthesis', costs: [553n, 750n, 750n, 349n], total: 5n },
+        { label: 'reply crossing the1500microUSD boundary', costs: [1501n], total: 3n },
+    ])('charges a new V3 $label example once without changing supplier-dollar accounting', async ({ costs, total }) => {
+        const admitted = await root()
+        for (const cost of costs) {
+            const { call, dispatchId } = await settled(admitted.reservation.id, cost, cost)
+            expect(call).toMatchObject({ accountingVersion: 'single-credits-1500-microusd-v3', microUsdPerCredit: 1500n })
+            await ledger().settleManagedCall({ platformId: actor.platformId, reservationId: call.id, dispatchId, actualCostMicroUsd: cost })
+        }
+        await ledger().finishExecution({ platformId: actor.platformId, reservationId: admitted.reservation.id, dispatchId: admitted.dispatchId })
+        expect(await balance()).toMatchObject({ consumed: total, reserved: 0n })
+        expect(await ds.getRepository(HostingDailyBudgetEntity).findOneByOrFail({ id: day() })).toMatchObject({ consumed: costs.reduce((sum, cost) => sum + cost, 0n), reserved: 0n })
+    })
     it('counts old Credit-denominated exposure unchanged alongside new-rate calls at the root limit', async () => {
         const admitted = await root(), grant = await currentGrant()
         const common = { platformId: actor.platformId, projectId, identityId: actor.identityId, grantId: grant.id, kind: 'managed_ai' as const, payer: 'managed' as const, rootReservationId: admitted.reservation.id, day: day(), accountingVersion: 'single-credits-500-microusd-v1', microUsdPerCredit: 500n, dispatchId: apId() }
         await ds.getRepository(HostingReservationEntity).insert([
             { ...common, id: apId(), key: 'old:settled', state: 'settled', amount: 300n, actualAmount: 300n, supplierMaxMicroUsd: 150000n, actualSupplierMicroUsd: 150000n },
-            { ...common, id: apId(), key: 'old:held', state: 'running', amount: 697n, actualAmount: null, supplierMaxMicroUsd: 348500n },
+            { ...common, id: apId(), key: 'old:v1-held', state: 'running', amount: 349n, actualAmount: null, supplierMaxMicroUsd: 174500n },
+            { ...common, id: apId(), key: 'old:v2-held', state: 'running', accountingVersion: 'single-credits-250-microusd-v2', microUsdPerCredit: 250n, amount: 348n, actualAmount: null, supplierMaxMicroUsd: 87000n },
         ])
         await ds.getRepository(HostingGrantEntity).update({ id: grant.id }, { amount: 10000n, consumed: 301n, reserved: 697n })
-        await settled(admitted.reservation.id, 500n, 500n)
+        await settled(admitted.reservation.id, 1501n, 1501n)
         expect(await balance()).toMatchObject({ consumed: 303n, reserved: 697n })
         await expect(reserve(admitted.reservation.id, 1n)).rejects.toThrow('RUN_CREDIT_LIMIT')
     })
     it('rounds each verified AI charge upward, handles zero and rejects invalid cost', () => {
-        expect([0n, 1n, 249n, 250n, 251n, 499n, 500n, 501n, 1200n, 2400n].map(value => hostedAiCredits(value))).toEqual([0n, 1n, 1n, 1n, 2n, 2n, 2n, 3n, 5n, 10n])
+        expect([0n, 1n, 249n, 250n, 500n, 501n, 1200n, 1499n, 1500n, 1501n, 2400n, 2999n, 3000n, 3001n].map(value => hostedAiCredits(value))).toEqual([0n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 1n, 2n, 2n, 2n, 2n, 3n])
+        expect(hostedAiCredits(501n, 500n)).toBe(2n)
+        expect(hostedAiCredits(501n, 250n)).toBe(3n)
+        expect(['single-credits-500-microusd-v1', 'single-credits-250-microusd-v2', 'single-credits-1500-microusd-v3'].map(hostedUsesCreditAccounting)).toEqual([true, true, true])
+        expect(() => hostedUsesCreditAccounting('single-credits-unknown-v4')).toThrow('ACCOUNTING_VERSION_INVALID')
         expect(() => hostedAiCredits(-1n)).toThrow('INVALID_AMOUNT')
         expect(() => hostedAiCredits(1n, 0n)).toThrow('INVALID_AMOUNT')
     })
@@ -154,34 +216,34 @@ describe('single Credits accounting', () => {
         await ds.getRepository(HostingGrantEntity).update({ id: legacy.id }, { consumed: legacy.amount })
         const admitted = await root(), before = await currentGrant()
         const { call, dispatchId } = await settled(admitted.reservation.id, 5000n, 2400n, 'managed:first')
-        expect(call.grantId).toBe(before.id); expect(call.amount).toBe(20n); expect(call.supplierMaxMicroUsd).toBe(5000n)
-        expect(await balance()).toMatchObject({ consumed: 11n, reserved: 0n, available: before.amount - 11n })
+        expect(call.grantId).toBe(before.id); expect(call.amount).toBe(4n); expect(call.supplierMaxMicroUsd).toBe(5000n)
+        expect(await balance()).toMatchObject({ consumed: 3n, reserved: 0n, available: before.amount - 3n })
         expect(await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: legacy.id })).toMatchObject({ consumed: legacy.amount, reserved: 0n })
         const budget = await ds.getRepository(HostingDailyBudgetEntity).findOneByOrFail({ id: day() })
         expect(budget).toMatchObject({ consumed: 2400n, reserved: 0n })
         await ledger().settleManagedCall({ platformId: actor.platformId, reservationId: call.id, dispatchId, actualCostMicroUsd: 2400n })
-        expect((await currentGrant()).consumed).toBe(11n)
+        expect((await currentGrant()).consumed).toBe(3n)
         await expect(ledger().settleManagedCall({ platformId: actor.platformId, reservationId: call.id, dispatchId, actualCostMicroUsd: 2401n })).rejects.toThrow('IDEMPOTENCY_CONFLICT')
     })
     it('reserves before sending and refuses a second spender without an additional hold', async () => {
         const grant = await currentGrant()
         await ds.getRepository(HostingGrantEntity).update({ id: grant.id }, { amount: 3n })
-        const admitted = await root(), held = await reserve(admitted.reservation.id, 500n, 'held:first')
+        const admitted = await root(), held = await reserve(admitted.reservation.id, 1501n, 'held:first')
         expect((await balance()).available).toBe(0n)
         await expect(reserve(admitted.reservation.id, 1n, 'held:second')).rejects.toThrow('CREDITS_EXHAUSTED')
-        const duplicate = await reserve(admitted.reservation.id, 500n, 'held:first')
+        const duplicate = await reserve(admitted.reservation.id, 1501n, 'held:first')
         expect(duplicate.id).toBe(held.id); expect((await currentGrant()).reserved).toBe(2n)
         await ledger().cancelUnsent({ platformId: actor.platformId, reservationId: held.id })
         expect((await balance()).available).toBe(2n)
-        await reserve(admitted.reservation.id, 500n, 'held:after-release')
+        await reserve(admitted.reservation.id, 1501n, 'held:after-release')
     })
     it('retains uncertain holds and bounds root cumulative settled and unresolved spend', async () => {
         const admitted = await root()
         await ds.getRepository(HostingGrantEntity).update({ id: admitted.reservation.grantId }, { amount: 10000n })
         await ds.getRepository(HostingReservationEntity).update({ id: admitted.reservation.id }, { maxRootCredits: 14n })
-        await settled(admitted.reservation.id, 1500n, 1500n)
-        const held = await reserve(admitted.reservation.id, 1500n)
-        await expect(reserve(admitted.reservation.id, 1000n)).rejects.toThrow('RUN_CREDIT_LIMIT')
+        await settled(admitted.reservation.id, 9000n, 9000n)
+        const held = await reserve(admitted.reservation.id, 9000n)
+        await expect(reserve(admitted.reservation.id, 6000n)).rejects.toThrow('RUN_CREDIT_LIMIT')
         const claim = await ledger().claimManagedCall({ actor, reservationId: held.id })
         await ledger().markUncertain({ platformId: actor.platformId, reservationId: held.id, dispatchId: claim.dispatchId! })
         await expect(reserve(admitted.reservation.id, 1n)).rejects.toThrow('OUTCOME_UNCERTAIN')
@@ -201,7 +263,7 @@ describe('single Credits accounting', () => {
         expect(await balance()).toMatchObject({ consumed: 1n, reserved: 0n })
         await settled(admitted.reservation.id, 500n, 501n)
         expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: actor.platformId })).status).toBe('suspended')
-        expect((await currentGrant()).consumed).toBe(4n)
+        expect((await currentGrant()).consumed).toBe(2n)
         expect((await ds.getRepository(HostingDailyBudgetEntity).findOneByOrFail({ id: day() })).consumed).toBe(501n)
     })
     it('migrates unresolved legacy holds without changing old financial quantities or charging completed history again', async () => {
@@ -220,6 +282,7 @@ describe('single Credits accounting', () => {
             await migration.down(runner)
             await migration.up(runner)
             await new SydekyksCreditRateV21905000000000().up(runner)
+            await new SydekyksCreditRateV31913000000000().up(runner)
             await runner.commitTransaction()
         }
         finally {
@@ -439,6 +502,6 @@ describe('full gateway Credit journey', () => {
         expect(await ds.getRepository(HostingModelCallEntity).count()).toBe(2)
         expect((await balance()).reserved).toBe(0n)
         expect((await currentGrant()).consumed).toBeGreaterThan(1n)
-        expect(hostingCatalog.aiMicroUsdPerCredit).toBe(250)
+        expect(hostingCatalog.aiMicroUsdPerCredit).toBe(1500)
     })
 })

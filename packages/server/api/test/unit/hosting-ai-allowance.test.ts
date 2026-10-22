@@ -116,7 +116,7 @@ describe('one shared Credits allowance', () => {
         await training()
         const ledger = createHostedLedger({ dataSource: ds }), root = await ledger.reserveExecution({ actor: client.actor, projectId: client.projectId!, key: 'root', payer: 'managed' })
         const rootClaim = await ledger.claimExecution({ actor: client.actor, reservationId: root.id })
-        const call = await ledger.reserveManagedCall({ actor: client.actor, rootReservationId: root.id, key: 'call', maxCostMicroUsd: 2400n })
+        const call = await ledger.reserveManagedCall({ actor: client.actor, rootReservationId: root.id, key: 'call', maxCostMicroUsd: 15000n })
         const callClaim = await ledger.claimManagedCall({ actor: client.actor, reservationId: call.id })
         const oldGrants = await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId })
         await expect(save(0, 'below-committed', 10)).rejects.toThrow('BELOW_COMMITTED')
@@ -130,7 +130,7 @@ describe('one shared Credits allowance', () => {
             if (grant.sourceKey.startsWith('training:') && grant.meter === 'execution') expect(grant.amount).toBe(11n)
             else expect(grant.amount).toBe(old.amount)
         }
-        await ledger.settleManagedCall({ platformId: client.platformId, reservationId: call.id, dispatchId: callClaim.dispatchId!, actualCostMicroUsd: 600n })
+        await ledger.settleManagedCall({ platformId: client.platformId, reservationId: call.id, dispatchId: callClaim.dispatchId!, actualCostMicroUsd: 4500n })
         await ledger.finishExecution({ platformId: client.platformId, reservationId: root.id, dispatchId: rootClaim.dispatchId! })
         expect((await read()).period).toMatchObject({ amount: '11', consumed: '4', reserved: '0', available: '7' })
         expect((await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: call.id })).actualAmount).toBe(3n)

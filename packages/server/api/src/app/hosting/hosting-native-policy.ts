@@ -30,7 +30,7 @@ function nativeStep(step: unknown): boolean {
 
 export async function assertNativeRootBudget({ manager, platformId, rootId, maxCostMicroUsd, native }: { manager: EntityManager, platformId: string, rootId: string, maxCostMicroUsd: bigint, native: boolean }): Promise<void> {
     // Account lock must already serialize every call admission. Count all usage in
-    // the root once it opts into a native feature, not just the three-Credit tools.
+    // the root once it opts into a native feature, including model and tool calls.
     if (!native && !await manager.getRepository(HostingModelCallEntity).existsBy({ platformId, rootReservationId: rootId, nativeFeature: true })) return
     const root = await manager.getRepository(HostingReservationEntity).findOneByOrFail({ id: rootId, platformId })
     const children = await manager.getRepository(HostingReservationEntity).findBy({ platformId, rootReservationId: rootId })
