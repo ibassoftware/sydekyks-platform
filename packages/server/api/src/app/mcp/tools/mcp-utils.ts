@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { expressionRewriter } from '../../flows/flow-version/migrations/expression-rewriter'
 import { HostingJobOrigin } from '../../hosting/hosting-execution'
 import { projectService } from '../../project/project-service'
+import { staticMcpSchemaScope } from './static-schema-scope'
 
 const NON_INPUT_PROP_TYPES = new Set<PropertyType>([
     PropertyType.OAUTH2,
@@ -762,6 +763,8 @@ async function resolveDynamicPropertySettings({ pieceName, pieceVersion, compone
     log: FastifyBaseLogger
 }): Promise<Record<string, PropertySettings>> {
     const current = z.record(z.string(), PropertySettings).safeParse(propertySettings).data ?? {}
+    // Hosted builder saves configuration without invoking Gadget/provider code.
+    if (staticMcpSchemaScope.getStore()) return current
     const { pieceMetadataService } = await import('../../pieces/metadata/piece-metadata-service')
     const { data: piece } = await tryCatch(() => pieceMetadataService(log).getOrThrow({ platformId, name: pieceName, version: pieceVersion }))
     const component = isNil(piece) ? undefined : (componentType === 'action' ? piece.actions[componentName] : piece.triggers[componentName])

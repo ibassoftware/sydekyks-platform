@@ -11,6 +11,7 @@ import { HOSTED_AI_MAX_OUTPUT, HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL } fro
 import { hostingConfiguration } from '../../../hosting/hosting-configuration'
 import { hostedCopilotPayer } from '../../../hosting/hosting-copilot'
 import { hostedCopilotPrompt } from '../../../hosting/hosting-copilot-prompt'
+import { hostedBuilderConfiguration } from '../../../hosting/hosting-builder-tools'
 import { platformService } from '../../../platform/platform.service'
 import { userService } from '../../../user/user-service'
 import { sydApprovalGate } from '../approval-gate'
@@ -95,11 +96,11 @@ export const sydCopilotConfigRpc = (log: FastifyBaseLogger) => ({
             state = await sydConversationCompaction.compactMessages({ messages: history, existingSummary: state.summary, summarizedUpToIndex: state.summarizedUpToIndex, provider: credentials.provider, reservedTokens: payloadReserve, model: aiUtils.createModel({ credentials, modelId }), log })
             await sydRunOperations.updateConversationForRun({ conversationId, platformId, runId, updates: state })
         }
-        return { ...(hosted && payer ? { hosted: { protocol: 1 as const, model: hostedModel, payer, nativeFileIds: input.nativeFileIds, nativeWebSearch: input.nativeWebSearch } } : {}), credentials, providerConfigId: credentials.configId, modelId, fastModelId, resolvedModelName: hosted && payer?.type === 'managed' ? HOSTED_MANAGED_MODEL : sydChatModelSelection.conversationModelName({ provider: credentials.provider, modelId, surface: 'chat' }),
+        return { ...(hosted ? { hostedBuilderTools: await hostedBuilderConfiguration({ projectId: selectedProjectId!, platformId, userId, log }) } : {}), ...(hosted && payer ? { hosted: { protocol: 1 as const, model: hostedModel, payer, nativeFileIds: input.nativeFileIds, nativeWebSearch: input.nativeWebSearch } } : {}), credentials, providerConfigId: credentials.configId, modelId, fastModelId, resolvedModelName: hosted && payer?.type === 'managed' ? HOSTED_MANAGED_MODEL : sydChatModelSelection.conversationModelName({ provider: credentials.provider, modelId, surface: 'chat' }),
             ...(imageModelId ? { imageModelId } : {}), ...(chosen.search ? { searchCredentials: chosen.search.credentials, searchModelId: chosen.search.modelId } : {}), ...(chosen.image ? { imageCredentials: chosen.image.credentials } : {}),
             systemPrompt, messages: sydConversationCompaction.buildCompactedPayload({ messages: history, ...state, provider: credentials.provider, reservedTokens: payloadReserve }), allMessages, previousUiMessages,
             tier: { id: hosted ? 'sydekyks' : tier.id, modelId: hosted ? hostedModel : tier.modelId, thinkingBudget: hosted ? 0 : tier.thinkingBudget }, mcpCredentials: mcp.mcpServerUrl && mcp.mcpToken ? { mcpServerUrl: mcp.mcpServerUrl, mcpToken: mcp.mcpToken } : null,
-            projects: (hosted ? projects.filter(project => project.id === selectedProjectId) : projects).map(({ id, displayName, type }) => ({ id, displayName, type })), guides: { ...sydCopilotPrompt.guides, ...input.promptOverride?.guides }, aiTools, emailEnabled, agentsAvailable, userEmail: user.email, source: AgentRunSource.CHAT,
+            projects: (hosted ? projects.filter(project => project.id === selectedProjectId) : projects).map(({ id, displayName, type }) => ({ id, displayName, type })), guides: hosted ? {} : { ...sydCopilotPrompt.guides, ...input.promptOverride?.guides }, aiTools, emailEnabled, agentsAvailable, userEmail: user.email, source: AgentRunSource.CHAT,
         }
     },
 })

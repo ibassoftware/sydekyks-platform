@@ -168,6 +168,7 @@ export type AgentAiToolsConfig = {
 }
 
 export type AgentConfigResponse = {
+    hostedBuilderTools?: Array<{ name: string, description: string, inputSchema: Record<string, unknown>, readOnly: boolean }>
     hosted?: { protocol: 1, model: string, payer: { type: 'managed' } | { type: 'byok', configId: string }, nativeWebSearch?: boolean, nativeFileIds?: string[] }
     credentials: AiProviderCredentials
     providerConfigId: string

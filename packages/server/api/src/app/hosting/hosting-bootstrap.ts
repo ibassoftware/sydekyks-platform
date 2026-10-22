@@ -16,6 +16,8 @@ async function verify(): Promise<void> {
     if (rows.some(row => !row.relation)) throw new Error('Hosted pilot accounting schema is incomplete; run the supported migrations')
     const redis = await redisConnections.useExisting()
     if (await redis.ping() !== 'PONG') throw new Error('Hosted pilot shared Redis is unavailable')
+    const { initializeHostedOperatorCredits } = await import('./hosting-operator-credits')
+    await initializeHostedOperatorCredits(dataSource)
 }
 
 export const hostingBootstrap = { verify }

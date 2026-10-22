@@ -1,6 +1,8 @@
 import { AgentConversationStatus, AgentRunSource, WorkerJobType, WorkerToApiContract } from '@activepieces/shared'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('../../src/app/hosting/hosting-builder-tools', () => ({ hostedBuilderToolNames: new Set(['ap_build_flow']), executeHostedBuilderTool: vi.fn(async () => ({ ok: true })) }))
+
 const state = vi.hoisted(() => ({ source: 'AGENT', status: 'STREAMING', projectId: 'project', cancelled: false, lookedUp: [] as string[], payload: {} as Record<string, unknown> }))
 vi.mock('../../src/app/database/database-connection', () => ({ databaseConnection: () => ({}) }))
 vi.mock('../../src/app/hosting/hosting-configuration', () => ({ hostingConfiguration: { getServiceMode: () => 'hosted' } }))

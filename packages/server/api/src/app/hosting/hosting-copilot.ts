@@ -8,6 +8,7 @@ import { SydAgentConversationEntity } from '../syd/copilot/models/agent-conversa
 import { SydConversationEntity } from '../syd/copilot/models/conversation.entity'
 import { HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL, HostedAiInput } from './hosting-ai-policy'
 import { hostingConfiguration } from './hosting-configuration'
+import { executeHostedBuilderTool, hostedBuilderToolNames } from './hosting-builder-tools'
 import { HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { hostingFail, hostingTransactions as tx } from './hosting-transactions'
@@ -63,6 +64,12 @@ export function protectHostedCopilotRpc(handlers: WorkerToApiContract, connectio
             if (key === 'getAgentConfig') {
                 if (await sydApprovalGate.isCancelled({ conversationId: scope.conversation.id, runId: scope.data.runId })) hostingFail('HOSTING_AI_SEGMENT_DENIED')
                 return value({ ...scope.data, admissionId: input.admissionId })
+            }
+            if (key === 'executeAgentTool' && typeof input.toolName === 'string' && hostedBuilderToolNames.has(input.toolName)) {
+                if (!input.toolInput || typeof input.toolInput !== 'object' || Array.isArray(input.toolInput)) hostingFail('HOSTING_TOOL_NOT_METERED')
+                if (scope.data.source !== AgentRunSource.CHAT || !scope.data.runId) hostingFail('HOSTING_TOOL_NOT_METERED')
+                await hostedCopilotScope({ admissionId: input.admissionId as string, connectionId, spending: true })
+                return { result: await executeHostedBuilderTool({ source: scope.data.source, toolName: input.toolName, toolInput: input.toolInput as Record<string, unknown>, conversationId: scope.data.conversationId, runId: scope.data.runId, projectId: scope.segment.projectId, platformId: scope.segment.platformId, userId: scope.data.userId, log: (await import('../helper/logger')).pinoLogging.initLogger() }) }
             }
             if (key === 'executeAgentTool') {
                 const tools = new Set(['__cancel_check', '__approval_wait', '__store_pending_gate', '__get_selected_connection', '__get_available_connections', '__store_selected_connection', 'ap_list_agents', 'ap_create_agent', 'ap_update_agent', 'ap_add_agent_tool', 'ap_remove_agent_tool'])

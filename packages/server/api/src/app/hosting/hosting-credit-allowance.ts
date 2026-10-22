@@ -8,6 +8,7 @@ import { CreditAllowanceSnapshot, HostingCreditAllowanceBindingEntity, HostingCr
 import { hostedCreditLiability } from './hosting-credit-policy'
 import { HostingAccount, HostingAccountEntity, HostingGrant, HostingGrantEntity, HostingLedgerEntity } from './hosting-entities'
 import { currentManualTerm, manualGrantPlan } from './hosting-manual-terms'
+import { hasOperatorCreditFunding, HOSTED_OPERATOR_MONTHLY_CREDITS } from './hosting-operator-credits'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
 import { HostingStripePeriodEntity } from './hosting-stripe-entities'
 import { subscriptionAccountActive, subscriptionGrantActive, subscriptionGrantUntil } from './hosting-subscription-policy'
@@ -24,6 +25,7 @@ export type HostingCreditAllowanceInput = z.input<typeof HostingCreditAllowanceI
 // Grant issuers already hold the account lock. Trial/assessment remain fixed;
 // the policy changes funded periods only and can never renew access by itself.
 export async function effectiveHostedCredits(manager: EntityManager, platformId: string, planId: HostedPlanId): Promise<number> {
+    if (planId === 'team' && await hasOperatorCreditFunding(manager, platformId)) return HOSTED_OPERATOR_MONTHLY_CREDITS
     if (planId === 'trial' || planId === 'assessment') return hostingCatalog.getPlan({ planId }).executions
     const { change } = await currentPolicy(manager, platformId)
     return change?.monthlyCredits ?? await fundedDefaultCredits(manager, platformId, planId)
@@ -48,6 +50,7 @@ export function createHostedCreditAllowance({ dataSource, manager: existingManag
                     return { ...await view(manager, account, await tx.now(manager)), platformId: actor.platformId, userId: user.id }
                 }
                 if (account.planId === 'trial' || account.planId === 'assessment') hostingFail('HOSTING_CREDIT_ALLOWANCE_FIXED_ENTITLEMENT')
+                if (await hasOperatorCreditFunding(manager, account.id)) hostingFail('HOSTING_CREDIT_ALLOWANCE_FIXED_ENTITLEMENT')
                 const now = await tx.now(manager), { binding, change: previous } = await currentPolicy(manager, account.id)
                 if ((binding?.revision ?? 0) !== value.expectedRevision) hostingFail('HOSTING_CREDIT_ALLOWANCE_REVISION_CONFLICT')
                 if ((binding?.revision ?? 0) >= 1000) hostingFail('HOSTING_CREDIT_ALLOWANCE_HISTORY_LIMIT')
@@ -99,7 +102,7 @@ async function currentPolicy(manager: EntityManager, platformId: string) {
     return { binding, change }
 }
 async function view(manager: EntityManager, account: HostingAccount, now: Date) {
-    const { binding, change } = await currentPolicy(manager, account.id), fixed = account.planId === 'trial' || account.planId === 'assessment'
+    const { binding, change } = await currentPolicy(manager, account.id), fixed = account.planId === 'trial' || account.planId === 'assessment' || await hasOperatorCreditFunding(manager, account.id)
     const defaultMonthlyCredits = await fundedDefaultCredits(manager, account.id, account.planId)
     const grants = await manager.getRepository(HostingGrantEntity).find({ where: { platformId: account.id, meter: 'execution', revokedAt: IsNull() }, order: { validFrom: 'DESC', id: 'ASC' }, take: 257 })
     const current = grants.find(grant => hostingGrantMatchesPlan(grant, account.planId) && subscriptionGrantActive(account, grant, now))

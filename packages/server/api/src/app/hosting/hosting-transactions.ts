@@ -9,6 +9,7 @@ import { UserEntity } from '../user/user-entity'
 import { hasOperationalAccess, isOperationalUser } from './hosting-access-policy'
 import { HostingAccount, HostingAccountEntity, HostingGrant, HostingLedgerEntity, HostingOutboxEntity, HostingReservation } from './hosting-entities'
 import { INSTALLATION_MODE_FLAG_ID } from './hosting-installation'
+import { synchronizeHostedOperatorCredits } from './hosting-operator-credits'
 import { loadSubscriptionContext, subscriptionAccountActive, subscriptionGrantActive } from './hosting-subscription-policy'
 
 async function run<T>({ dataSource, manager: existing, fn }: { dataSource: DataSource, manager?: EntityManager, fn: (manager: EntityManager) => Promise<T> }): Promise<T> {
@@ -29,7 +30,8 @@ async function now(manager: EntityManager): Promise<Date> {
 async function account({ manager, platformId }: { manager: EntityManager, platformId: string }): Promise<HostingAccount> {
     const value = await manager.getRepository(HostingAccountEntity).findOne({ where: { id: platformId }, lock: { mode: 'pessimistic_write' } })
     if (!value) hostingFail('HOSTING_ACCOUNT_NOT_FOUND')
-    return { ...value, subscription: await loadSubscriptionContext(manager, value) }
+    const current = await synchronizeHostedOperatorCredits(manager, value)
+    return { ...current, subscription: await loadSubscriptionContext(manager, current) }
 }
 
 async function member({ manager, actor, admin = false, projectId, write = false }: { manager: EntityManager, actor: HostingActor, admin?: boolean, projectId?: string, write?: boolean }) {

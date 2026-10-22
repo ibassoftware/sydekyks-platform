@@ -12,6 +12,7 @@ import { agentWorkerTools, GateDecision, TaintState } from './agent-worker-tools
 import { createHostedAgentModel, createHostedNativeWebTools, hostedAgentFailureMessage, hostedAgentRefusalOf } from './hosted-agent-model'
 import { classifyAgentRunError, delayWithJitter, drainOf, firstStepUsesFastModel, isTransientFailureText, NO_STEP_CONTENT, runAgentTurn, StreamDrain, trackStepContent } from './run-agent-turn'
 import { unwrapLazyToolChunk } from './tools/skill-tools'
+import { createHostedBuilderTools } from './hosted-builder-tools'
 
 const BATCH_SIZE = 10
 const BATCH_FLUSH_MS = 50
@@ -232,6 +233,7 @@ export const executeAgentRunJob: JobHandler<ExecuteAgentRunJobData, FireAndForge
 
             const allTools = buildToolSet({
                 hosted,
+                hostedBuilderTools: config.hostedBuilderTools,
                 provider,
                 providerConfigId: config.providerConfigId,
                 modelId: config.modelId,
@@ -559,8 +561,9 @@ function pickImageGenerator({ falApiKey, imageModelId, credentials, billing, rea
     }
 }
 
-function buildToolSet({ hosted = false, ctx, eventEmitter, log, phaseState, taintState, mcpToolSet, webTools, projects, projectId, conversationId, flowRunId, runId, platformId, userId, userEmail, guides, dryRun, discoveryOnly, emailEnabled, agentsAvailable, abortSignal, source, provider, providerConfigId, modelId, configuredPieceTools, configuredFlowTools, configuredKnowledgeBaseTools, structuredOutput, captureStructured }: {
+function buildToolSet({ hosted = false, hostedBuilderTools, ctx, eventEmitter, log, phaseState, taintState, mcpToolSet, webTools, projects, projectId, conversationId, flowRunId, runId, platformId, userId, userEmail, guides, dryRun, discoveryOnly, emailEnabled, agentsAvailable, abortSignal, source, provider, providerConfigId, modelId, configuredPieceTools, configuredFlowTools, configuredKnowledgeBaseTools, structuredOutput, captureStructured }: {
     hosted?: boolean
+    hostedBuilderTools?: Parameters<typeof createHostedBuilderTools>[0]['definitions']
     ctx: JobContext
     provider: AIProviderName
     providerConfigId: string
@@ -803,7 +806,7 @@ function buildToolSet({ hosted = false, ctx, eventEmitter, log, phaseState, tain
             buildPlan: buildPlanTools,
             email: emailTools,
             agentSurface: agentSurfaceTools,
-            mcp: hosted ? {} : mcpTools as ToolSet,
+            mcp: hosted ? (source === AgentRunSource.CHAT ? createHostedBuilderTools({ definitions: hostedBuilderTools, execute: executeCrossProjectTool, taintState, eventEmitter, waitForApproval, storePendingGate }) : {}) : mcpTools as ToolSet,
             configuredPiece: configuredTools,
             configuredFlow: configuredFlowToolSet,
             knowledgeBase: knowledgeBaseTools,
