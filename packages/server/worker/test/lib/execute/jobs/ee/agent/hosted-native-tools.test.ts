@@ -191,7 +191,7 @@ describe('native tool schema wire compaction', () => {
         expect(inputSchema.shape.description.description).toContain('Long property annotation.')
         expect(JSON.stringify(native).length).toBeLessThan(JSON.stringify(ordinary).length / 2)
     })
-    it('compacts ordinary presentation metadata while retaining all tools, consent guidance, business parameter instructions and message history', async () => {
+    it('retains full ordinary presentation metadata, all tools, consent guidance, business parameter instructions and message history', async () => {
         const fetch = vi.fn(async () => new Response(JSON.stringify({ id: 'reply', object: 'chat.completion', created: 1, model: 'sydekyks', choices: [{ index: 0, message: { role: 'assistant', content: 'Done' }, finish_reason: 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 } }), { headers: { 'Content-Type': 'application/json' } }))
         vi.stubGlobal('fetch', fetch)
         const displayTools = createDisplayTools({ waitForApproval: async () => ({ outcome: 'approved' }), displayToolTimeoutMs: 1 })
@@ -206,7 +206,7 @@ describe('native tool schema wire compaction', () => {
         const byName = Object.fromEntries(payload.tools.map((entry: { function: { name: string } }) => [entry.function.name, entry.function]))
         expect(byName.ap_show_questions.description).toBe(displayTools.ap_show_questions.description)
         expect(byName.ap_show_showcase.description).toBe(displayTools.ap_show_showcase.description)
-        expect(JSON.stringify(byName.ap_show_questions.parameters)).not.toContain('Allowed names:')
+        expect(JSON.stringify(byName.ap_show_questions.parameters)).toContain('Allowed names:')
         const questions = byName.ap_show_questions.parameters.properties.questions
         const variants = questions.items.oneOf ?? questions.items.anyOf
         expect(questions).toMatchObject({ type: 'array', minItems: 1 })
@@ -224,7 +224,7 @@ describe('native tool schema wire compaction', () => {
         expect(byName.send_customer_notice.parameters.properties.description).toMatchObject({ description: parameterGuidance, type: 'string', minLength: 2, maxLength: 80 })
         expect(payload.messages).toEqual(messages)
     })
-    it('still validates and executes a complete real question-tool call with ordinary hosted compact wire', async () => {
+    it('still validates and executes a complete real question-tool call with ordinary hosted full wire', async () => {
         const question = { questions: [{ type: 'choice', question: 'Which format?', options: [{ label: 'Summary' }, { label: 'Details' }] }] }
         const fetch = vi.fn(async () => new Response(JSON.stringify({ id: 'reply', object: 'chat.completion', created: 1, model: 'sydekyks', choices: [{ index: 0, message: { role: 'assistant', content: null, tool_calls: [{ id: 'question-call', type: 'function', function: { name: 'ap_show_questions', arguments: JSON.stringify(question) } }] }, finish_reason: 'tool_calls' }], usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 } }), { headers: { 'Content-Type': 'application/json' } }))
         vi.stubGlobal('fetch', fetch)
