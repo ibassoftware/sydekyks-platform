@@ -373,7 +373,9 @@ The application started on ${await domainHelper.getPublicApiUrl({ path: '' })}, 
             `[WARNING]: This is only shows pieces specified in AP_DEV_PIECES ${pieces} environment variable.`,
         )
     }
-    void startDevPieceWatcher(app)
+    if (environment === ApEnvironment.DEVELOPMENT) {
+        void startDevPieceWatcher(app)
+    }
 }
 
 async function dispatchBackgroundMigrations(log: FastifyBaseLogger): Promise<void> {
