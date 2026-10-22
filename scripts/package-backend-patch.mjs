@@ -29,7 +29,8 @@ for (const file of changed) {
 }
 if (!sources.length) throw new Error('No backend changes to package');
 fs.mkdirSync(destination, { mode: 0o700 });
-const manifest = { sourceRevision, baseRevision: git('rev-parse', baseRevision), baseImage, files: [] };
+const baseAlias = `sydekyks:patch-base-${baseImage.slice(7)}`;
+const manifest = { sourceRevision, baseRevision: git('rev-parse', baseRevision), baseImage, baseAlias, files: [] };
 for (const { source, compiled } of sources) {
     const data = fs.readFileSync(compiled), target = path.join(destination, 'payload', compiled);
     fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -37,5 +38,7 @@ for (const { source, compiled } of sources) {
     manifest.files.push({ source, compiled, sha256: createHash('sha256').update(data).digest('hex') });
 }
 fs.writeFileSync(path.join(destination, 'payload', 'backend-patch-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
-fs.writeFileSync(path.join(destination, 'Dockerfile'), `FROM ${baseImage}\nWORKDIR /usr/src/app\nCOPY payload/ ./\nLABEL org.opencontainers.image.revision="${sourceRevision}" org.sydekyks.base-revision="${manifest.baseRevision}"\n`);
+// BuildKit interprets a naked image ID as a registry reference. Tag the exact
+// manifest.baseImage with baseAlias on the build host before invoking Docker.
+fs.writeFileSync(path.join(destination, 'Dockerfile'), `FROM ${baseAlias}\nWORKDIR /usr/src/app\nCOPY payload/ ./\nLABEL org.opencontainers.image.revision="${sourceRevision}" org.sydekyks.base-revision="${manifest.baseRevision}"\n`);
 console.log(JSON.stringify({ sourceRevision, changedModules: sources.length, destination }));
