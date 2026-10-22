@@ -50,6 +50,7 @@ import { releaseAvailability } from '@/lib/release-availability';
 import { determineDefaultRoute } from '@/lib/route-utils';
 import { cn } from '@/lib/utils';
 
+import { mcpHooks } from '../../project-settings/mcp-server/utils/mcp-hooks';
 import { ApSidebarItem, SidebarItemType } from '../ap-sidebar-item';
 import { SidebarUser } from '../sidebar-user';
 
@@ -57,6 +58,7 @@ export function PlatformSidebar() {
   const { platform } = platformHooks.useCurrentPlatform();
   const { data: edition } = flagsHooks.useFlag<ApEdition>(ApFlagId.EDITION);
   const hostedBilling = useHostedBillingEnabled();
+  const { reachesMcp } = mcpHooks.useMcpReach({ enabled: hostedBilling });
   const operator = useHostedOperatorAccess();
   const workspaces = useOperationalWorkspaces();
   const trainer = usePlatformTrainerAccess();
@@ -235,6 +237,9 @@ export function PlatformSidebar() {
           label: t('MCP Server'),
           icon: McpSvg,
           subItems: [
+            ...(hostedBilling && reachesMcp
+              ? [{ to: '/mcp-server', label: t('Connect clients') }]
+              : []),
             { to: '/platform/mcp', label: t('Tools'), end: true },
             { to: '/platform/mcp/activity', label: t('Activity') },
           ],

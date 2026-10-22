@@ -15,7 +15,7 @@ import {
   HostedChatBillingNote,
 } from '@/features/hosted-chat/hosted-chat-selector';
 import {
-  HostedNativeFileManager,
+  HostedAttachmentControl,
   HostedWebSearchControl,
 } from '@/features/hosted-chat/hosted-native-controls';
 import {
@@ -163,6 +163,14 @@ export function ChatBottomBar({
           }
           attachmentAccept={hostedChat ? NATIVE_FILE_ACCEPT : undefined}
           validateAttachments={hostedChat ? validateNativeFiles : undefined}
+          attachmentControl={
+            hostedChat?.options?.nativeFeatures?.files ? (
+              <HostedAttachmentControl
+                disabled={isStreaming}
+                uploadDisabled={!hostedChat.ready}
+              />
+            ) : undefined
+          }
           leftActions={<HostedWebSearchControl disabled={isStreaming} />}
           onStop={onStop}
           onInputChange={onInputChange}
@@ -190,7 +198,6 @@ export function ChatBottomBar({
             )
           }
         />
-        <HostedNativeFileManager disabled={isStreaming} />
         <HostedChatBillingNote />
       </div>
     </div>

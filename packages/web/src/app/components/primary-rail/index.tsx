@@ -44,6 +44,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -100,8 +103,11 @@ export function PrimaryRail() {
     ? !mobileExpanded
     : railIsCollapsed({ preference, pathname, openedOn });
   const showAgents = useAgentsNavVisible();
+  const hostedBilling = useHostedBillingEnabled();
   const isRailHidden = embedState.isEmbedded || embedState.hideSideNav;
-  const { reachesMcp } = mcpHooks.useMcpReach({ enabled: !isRailHidden });
+  const { reachesMcp } = mcpHooks.useMcpReach({
+    enabled: !isRailHidden && !hostedBilling,
+  });
 
   if (isRailHidden) {
     return null;
@@ -165,7 +171,7 @@ export function PrimaryRail() {
                 }
               />
             )}
-            {reachesMcp && (
+            {!hostedBilling && reachesMcp && (
               <RailNavButton
                 collapsed={collapsed}
                 to="/mcp-server"
@@ -770,6 +776,10 @@ function RailAccountRow({ collapsed }: { collapsed: boolean }) {
   const { data: user } = userHooks.useCurrentUser();
   const queryClient = useQueryClient();
   const hosted = useHostedBillingEnabled();
+  const showPlatformAdmin = useIsPlatformAdmin();
+  const { reachesMcp } = mcpHooks.useMcpReach({
+    enabled: hosted && !!user && !showPlatformAdmin,
+  });
   const trainer = usePlatformTrainerAccess();
   const workspaces = useOperationalWorkspaces();
   const navigate = useNavigate();
@@ -889,6 +899,25 @@ function RailAccountRow({ collapsed }: { collapsed: boolean }) {
               </DropdownMenuItem>
             )}
 
+            {hosted && !showPlatformAdmin && reachesMcp && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <SlidersHorizontal
+                    className="mr-2 size-4"
+                    aria-hidden="true"
+                  />
+                  {t('Developers')}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem asChild>
+                    <Link to="/mcp-server">
+                      <Unplug className="mr-2 size-4" aria-hidden="true" />
+                      {t('MCP Server')}
+                    </Link>
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
             <DropdownMenuItem onClick={() => setAccountSettingsOpen(true)}>
               <UserCogIcon className="w-4 h-4 mr-2" />
               {t('Account Settings')}

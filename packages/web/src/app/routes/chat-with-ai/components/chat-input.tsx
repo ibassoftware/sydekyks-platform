@@ -34,12 +34,14 @@ export function ChatInput({
   attachmentsAllowed = true,
   attachmentAccept,
   validateAttachments,
+  attachmentControl,
 }: {
   isStreaming: boolean;
   sendDisabled?: boolean;
   attachmentsAllowed?: boolean;
   attachmentAccept?: string;
   validateAttachments?: (files: File[]) => void;
+  attachmentControl?: React.ReactNode;
   onSend: (text: string, files?: File[]) => void;
   onStop?: () => void;
   onInputChange?: (hasInput: boolean) => void;
@@ -226,19 +228,20 @@ export function ChatInput({
         {showToolbar && (
           <PromptInputActions className="flex items-center justify-between">
             <div className="flex items-center gap-1">
-              {attachmentsAllowed && (
-                <PromptInputAction tooltip={t('Attach files')}>
-                  <FileUploadTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={t('Attach files')}
-                      className="flex h-9 w-9 sm:h-7 sm:w-7 cursor-pointer items-center justify-center rounded-full text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                    >
-                      <Paperclip className="size-4" />
-                    </button>
-                  </FileUploadTrigger>
-                </PromptInputAction>
-              )}
+              {attachmentControl ??
+                (attachmentsAllowed && (
+                  <PromptInputAction tooltip={t('Attach files')}>
+                    <FileUploadTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={t('Attach files')}
+                        className="flex h-9 w-9 sm:h-7 sm:w-7 cursor-pointer items-center justify-center rounded-full text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                      >
+                        <Paperclip className="size-4" />
+                      </button>
+                    </FileUploadTrigger>
+                  </PromptInputAction>
+                ))}
               {leftActions}
             </div>
             <div className="flex items-center gap-1">

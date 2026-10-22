@@ -61,6 +61,11 @@ export function compactHostedNativeToolSchema(schema: unknown): unknown {
     }))
 }
 
+// These built-in presentation schemas carry long repeated rendering guidance.
+// Keep all their validation and full behavior/consent descriptions on ordinary
+// hosted turns; configured business tools retain their parameter guidance too.
+const HOSTED_PRESENTATION_SCHEMAS = new Set(['ap_show_questions', 'ap_show_showcase', 'ap_set_build_plan'])
+
 type HostedWireTool = { type: string, function: { name: string, description?: string, parameters?: unknown } }
 function hostedToolWire(entry: HostedWireTool, native: boolean): HostedWireTool {
     const fullDescription = entry.function.description
@@ -68,7 +73,7 @@ function hostedToolWire(entry: HostedWireTool, native: boolean): HostedWireTool 
     return { type: entry.type, function: {
         name: entry.function.name,
         description: native ? (firstSentence ?? fullDescription)?.slice(0, 512) : fullDescription,
-        parameters: native ? compactHostedNativeToolSchema(entry.function.parameters ?? {}) : entry.function.parameters ?? {},
+        parameters: native || HOSTED_PRESENTATION_SCHEMAS.has(entry.function.name) ? compactHostedNativeToolSchema(entry.function.parameters ?? {}) : entry.function.parameters ?? {},
     } }
 }
 

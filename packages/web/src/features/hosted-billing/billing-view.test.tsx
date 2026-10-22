@@ -168,7 +168,9 @@ describe('role-appropriate hosted billing', () => {
       'AI allowance',
     ])
       expect(text).not.toContain(value);
-    expect(text).toContain('Request payment instructions or an invoice');
+    expect(text).toContain(
+      'Contact Sydekyks for payment instructions, invoices',
+    );
     expect(text).toContain('No funded allowance scheduled');
     expect(element.querySelectorAll('button')).toHaveLength(0);
   });

@@ -94,18 +94,12 @@ export function HostedAuthView(props: HostedAuthViewProps) {
   const unavailable = !offer?.emailCodesAvailable;
   return (
     <main className="min-h-dvh bg-gray-2 px-4 py-6 sm:px-6 sm:py-12">
-      <div className={ready ? 'mx-auto max-w-2xl' : 'mx-auto max-w-[60rem]'}>
+      <div className={ready ? 'mx-auto max-w-2xl' : 'mx-auto max-w-md'}>
         <header className="mb-8 flex items-center justify-between gap-4">
           {brand}
           <span className="text-sm text-gray-11">{t('Hosted workspace')}</span>
         </header>
-        <div
-          className={
-            ready
-              ? 'grid items-start gap-8'
-              : 'grid items-start gap-8 md:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] md:gap-12'
-          }
-        >
+        <div>
           <section
             aria-labelledby="hosted-auth-title"
             className="rounded-2xl border bg-gray-1 p-5 sm:p-8"
@@ -132,42 +126,38 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                 ? t('Create your Sydekyks account')
                 : t('Sign in to your workspace')}
             </h1>
-            <p className="mt-2 text-sm leading-relaxed text-gray-11">
-              {approvalPending
-                ? t(
-                    'Your account is ready. Ask the Sydekyks team to approve this account for pilot access, then sign in again. You do not need to create another account.',
-                  )
-                : ready && status
-                ? t(
-                    'Your current access is verified by the server. Signing in never restarts a trial.',
-                  )
-                : ready
-                ? t(
-                    'Your workspace access is checked on the server. Signing in never restarts a trial.',
-                  )
-                : details
-                ? t(
-                    'Your account is ready. Add your name to continue. New pilot workspace access requires Sydekyks approval; existing memberships and trial eligibility are checked on the server.',
-                  )
-                : verification
-                ? t(
-                    'Enter the complete verification code from your email and choose a new password to secure your account.',
-                  )
-                : code
-                ? t(
-                    'If this address can sign in, a six-digit code was sent to {email}. Codes expire after 10 minutes.',
-                    { email },
-                  )
-                : password
-                ? t(
-                    offer?.emailCodesAvailable
-                      ? 'Use your existing account password. You can also sign in with an email code.'
-                      : 'Use the password provided by your administrator or chosen from your private setup link. For a new account, ask the Sydekyks team or your workspace admin for access.',
-                  )
-                : t(
-                    'Use your email to create an account or return to an existing workspace. We’ll send a sign-in code.',
-                  )}
-            </p>
+            {(!password || approvalPending) && (
+              <p className="mt-2 text-sm leading-relaxed text-gray-11">
+                {approvalPending
+                  ? t(
+                      'Your account is ready. Ask the Sydekyks team to approve this account for pilot access, then sign in again. You do not need to create another account.',
+                    )
+                  : ready && status
+                  ? t(
+                      'Your current access is verified by the server. Signing in never restarts a trial.',
+                    )
+                  : ready
+                  ? t(
+                      'Your workspace access is checked on the server. Signing in never restarts a trial.',
+                    )
+                  : details
+                  ? t(
+                      'Your account is ready. Add your name to continue. New pilot workspace access requires Sydekyks approval; existing memberships and trial eligibility are checked on the server.',
+                    )
+                  : verification
+                  ? t(
+                      'Enter the complete verification code from your email and choose a new password to secure your account.',
+                    )
+                  : code
+                  ? t(
+                      'If this address can sign in, a six-digit code was sent to {email}. Codes expire after 10 minutes.',
+                      { email },
+                    )
+                  : t(
+                      'Use your email to create an account or return to an existing workspace. We’ll send a sign-in code.',
+                    )}
+              </p>
+            )}
             {loading && (
               <p role="status" className="mt-6 text-sm text-gray-11">
                 {t('Loading hosted setup…')}
@@ -480,58 +470,6 @@ export function HostedAuthView(props: HostedAuthViewProps) {
               </Button>
             )}
           </section>
-          {!ready && (
-            <aside
-              aria-labelledby="hosted-trial-heading"
-              className="space-y-6 py-1 text-sm"
-            >
-              <div>
-                <h2
-                  id="hosted-trial-heading"
-                  className="text-base font-semibold"
-                >
-                  {t('Hosted pilot access')}
-                </h2>
-                <p className="mt-2 leading-relaxed text-gray-11">
-                  {t(
-                    'Contact Sydekyks to arrange pilot access and build your first workflows. Trial access is time limited; continued access and payments are arranged directly with the team.',
-                  )}
-                </p>
-              </div>
-              {offer && (
-                <dl className="space-y-3">
-                  <Term
-                    label={t('Trial duration')}
-                    value={t('{days} days', { days: offer.trialDays })}
-                  />
-                  <Term
-                    label={t('Credits')}
-                    value={offer.trial.executions.toLocaleString()}
-                  />
-                  <Term
-                    label={t('Workspace capacity')}
-                    value={t('{users} member · {projects} project', {
-                      users: offer.trial.users,
-                      projects: offer.trial.projects,
-                    })}
-                  />
-                </dl>
-              )}
-              <div className="border-t pt-5">
-                <h3 className="font-medium">{t('Bring your own key')}</h3>
-                <p className="mt-2 leading-relaxed text-gray-11">
-                  {t(
-                    'BYOK is included in every plan and uses Credits. Your provider bills AI usage separately. Managed AI is provided by Sydekyks and is subject to service limits. BYOK currently supports DeepSeek.',
-                  )}
-                </p>
-              </div>
-              <p className="rounded-lg bg-gray-3 p-4 leading-relaxed text-gray-11">
-                {t(
-                  'Your administrator can provide an initial password or a private setup link. Payments and renewals are handled directly by Sydekyks during the pilot.',
-                )}
-              </p>
-            </aside>
-          )}
         </div>
       </div>
     </main>
@@ -562,14 +500,6 @@ function Field({
           {description}
         </p>
       )}
-    </div>
-  );
-}
-function Term({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4">
-      <dt className="text-gray-11">{label}</dt>
-      <dd className="text-right font-medium tabular-nums">{value}</dd>
     </div>
   );
 }

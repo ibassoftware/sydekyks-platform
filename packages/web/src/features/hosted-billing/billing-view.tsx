@@ -154,11 +154,9 @@ export function HostedBillingView({
             {partner
               ? info.planId === 'assessment'
                 ? t(
-                    'Assessment access includes a one-time Credit allowance. Contact Sydekyks to discuss training enrollment.',
+                    'One-time assessment allowance. Contact Sydekyks for training.',
                   )
-                : t(
-                    'Your included Partner workspace uses the Credits below. Continuing hosting after the funded term requires a separate agreement.',
-                  )
+                : t('Contact Sydekyks to renew hosting after this term.')
               : info.planId === 'trial'
               ? t(
                   'Your trial has limited time and Credits. Contact Sydekyks to arrange continued hosting.',
@@ -255,9 +253,7 @@ export function HostedBillingView({
               {t('Credits')}
             </h2>
             <p className="mt-1 text-sm text-gray-11">
-              {t(
-                'Workflows, messages and Sydekyks AI use this shared balance. Held Credits are reserved for work in progress; unused holds return to your available balance. Unused Credits do not roll over.',
-              )}
+              {t('One balance for workflows, messages and Sydekyks AI.')}
             </p>
           </div>
           <Allowance
@@ -265,11 +261,16 @@ export function HostedBillingView({
             meter={info.meters.execution}
             format={quantity}
           />
-          <p className="text-sm text-gray-11">
-            {t(
-              'With your own AI key, workflow runs use Credits and your provider bills AI usage separately.',
-            )}
-          </p>
+          <details className="text-sm text-gray-11">
+            <summary className="w-fit cursor-pointer underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4">
+              {t('How Credits work')}
+            </summary>
+            <p className="mt-2 leading-relaxed">
+              {t(
+                'Held Credits are reserved for work in progress; unused holds return to your available balance. Unused Credits do not roll over. With your own AI key, runs use Credits and your provider bills AI usage separately.',
+              )}
+            </p>
+          </details>
         </section>
         {eligiblePlans.length > 0 && (
           <>
@@ -385,7 +386,7 @@ export function HostedBillingView({
           <p className="text-sm text-gray-11">
             {manual
               ? t(
-                  'Request payment instructions or an invoice from the Sydekyks team. Include your workspace name and the package or hosting term concerned. The team can also arrange changes or cancellation.',
+                  'Contact Sydekyks for payment instructions, invoices, plan changes or cancellation.',
                 )
               : t(
                   'Use Stripe to manage payment details, view invoices or cancel at the end of the paid period. Cancellation does not add a free hosted plan.',

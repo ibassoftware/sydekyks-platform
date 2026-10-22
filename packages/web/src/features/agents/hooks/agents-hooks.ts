@@ -199,10 +199,32 @@ export const agentsMutations = {
   },
   useUpdateAgent: ({ id }: { id: string }) => {
     const queryClient = useQueryClient();
+    const isThisAgent = (query: { queryKey: readonly unknown[] }) =>
+      query.queryKey[0] === AGENTS_KEY &&
+      query.queryKey[1] === 'one' &&
+      query.queryKey[2] === id;
     return useMutation({
       mutationFn: (request: UpdateAgentRequest) =>
         agentsApi.update(id, request),
-      onSuccess: async () => {
+      onMutate: () => ({
+        observedQueries: queryClient.getQueriesData<Agent>({
+          predicate: isThisAgent,
+        }),
+      }),
+      onSuccess: async (agent, _request, context) => {
+        // Expose the actual saved response before refetching. Editors can
+        // acknowledge their own write without mistaking JSONB normalization
+        // for a concurrent change, and publish state is immediately current.
+        for (const [key, observed] of context?.observedQueries ?? []) {
+          const current = queryClient.getQueryData<Agent>(key);
+          if (!current) continue;
+          // A refetch/chat edit may already have delivered a different server
+          // version. Do not rewind that newer cache entry with this response.
+          // React Query keeps cache data immutable. Any intervening replacement
+          // is authoritative here; invalidation will refresh it if necessary.
+          if (current !== observed) continue;
+          queryClient.setQueryData(key, { ...current, ...agent });
+        }
         await queryClient.invalidateQueries({ queryKey: [AGENTS_KEY] });
       },
       onError: internalErrorToast,

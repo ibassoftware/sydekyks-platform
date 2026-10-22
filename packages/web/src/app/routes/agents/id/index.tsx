@@ -280,7 +280,11 @@ const AgentEditorContent = () => {
         </div>
       </div>
       <div className="relative flex min-h-0 min-w-0 grow overflow-hidden">
-        <div className="flex min-h-0 min-w-0 flex-1">
+        <div
+          className="flex min-h-0 min-w-0 flex-1"
+          inert={activePanel !== null && !roomForBoth}
+          aria-hidden={activePanel !== null && !roomForBoth}
+        >
           <AgentChatView
             key={agent.id}
             onOpenConfigure={() => {

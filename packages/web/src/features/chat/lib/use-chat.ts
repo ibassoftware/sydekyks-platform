@@ -590,9 +590,10 @@ export function useAgentChat({
           );
         updateSendStatus({
           type: 'error',
-          message: failureIsInTranscript
-            ? t('The last reply did not finish. Please try again.')
-            : opts.errorMessage,
+          message:
+            failureIsInTranscript && !hostedChatRef.current
+              ? t('The last reply did not finish. Please try again.')
+              : opts.errorMessage,
         });
       } else if (!hasReply && !opts?.suppressNoReply) {
         updateSendStatus({
@@ -1032,7 +1033,11 @@ export function useAgentChat({
         if (convResult.data.status === AgentConversationStatus.ERROR) {
           updateSendStatus({
             type: 'error',
-            message: t('The last reply did not finish. Please try again.'),
+            message: hostedChatRef.current
+              ? t(
+                  'This reply stopped. Review the explanation in the conversation before sending again.',
+                )
+              : t('The last reply did not finish. Please try again.'),
           });
         }
       }
