@@ -29,6 +29,10 @@ const History = z.object({
   result: z.record(z.string(), z.unknown()),
 });
 const View = z.object({
+  creditScope: z.literal('execution_root').optional(),
+  rootConsumedCredits: amount.optional(),
+  rootReservedCredits: amount.optional(),
+  rootTotalCredits: amount.optional(),
   nativeTool: z.enum(['search', 'fetch']).nullable().optional(),
   toolUnitPriceMicroUsd: amount.nullable().optional(),
   identity: Identity,
@@ -64,6 +68,10 @@ const List = z.object({
 const Preview = z.object({
   view: View,
   preview: z.object({
+    creditScope: z.literal('execution_root').optional(),
+    rootConsumedCredits: amount.optional(),
+    rootReservedCredits: amount.optional(),
+    rootTotalCredits: amount.optional(),
     expectedRevision: z.number().int(),
     expectedState: hash,
     actualMicroUsd: amount.nullable(),

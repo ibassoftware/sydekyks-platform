@@ -185,3 +185,40 @@ it.each([true, false])(
     expect(mocks.request.mock.calls[0][1].data).not.toHaveProperty('usage');
   },
 );
+
+it('retains root-wide totals separately from the marginal resolution charge', async () => {
+  const value = response();
+  mocks.request.mockResolvedValue({
+    ...value,
+    view: {
+      ...value.view,
+      creditScope: 'execution_root',
+      rootConsumedCredits: '1',
+      rootReservedCredits: '3',
+      rootTotalCredits: '4',
+    },
+    preview: {
+      ...value.preview,
+      creditScope: 'execution_root',
+      actualCredits: '0',
+      releasedCredits: '3',
+      rootConsumedCredits: '1',
+      rootReservedCredits: '0',
+      rootTotalCredits: '1',
+    },
+  });
+  const result = await previewCharge(
+    session,
+    callId,
+    draft,
+    new AbortController().signal,
+  );
+  expect(result.preview).toMatchObject({
+    creditScope: 'execution_root',
+    actualCredits: '0',
+    releasedCredits: '3',
+    rootConsumedCredits: '1',
+    rootTotalCredits: '1',
+  });
+  expect(result.view.rootReservedCredits).toBe('3');
+});

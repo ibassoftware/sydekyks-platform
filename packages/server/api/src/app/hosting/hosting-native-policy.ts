@@ -4,6 +4,7 @@ import { FlowVersionEntity } from '../flows/flow-version/flow-version-entity'
 import { HOSTED_LEGACY_MICRO_USD_PER_CREDIT, hostedAiCredits, hostedUsesCreditAccounting } from './hosting-credit-policy'
 import { HostingDispatch } from './hosting-dispatch-entity'
 import { HostingReservationEntity } from './hosting-entities'
+import { hostedInclusiveCredits, hostedInclusiveExposure } from './hosting-inclusive-credits'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { NativeToolInput } from './hosting-native-provider'
 import { hostingFail } from './hosting-transactions'
@@ -34,6 +35,11 @@ export async function assertNativeRootBudget({ manager, platformId, rootId, maxC
     if (!native && !await manager.getRepository(HostingModelCallEntity).existsBy({ platformId, rootReservationId: rootId, nativeFeature: true })) return
     const root = await manager.getRepository(HostingReservationEntity).findOneByOrFail({ id: rootId, platformId })
     const children = await manager.getRepository(HostingReservationEntity).findBy({ platformId, rootReservationId: rootId })
+    if (hostedInclusiveCredits(root)) {
+        const projected = hostedInclusiveExposure({ root, children: children.filter(child => child.kind === 'managed_ai'), additionalSupplierMicroUsd: maxCostMicroUsd })
+        if (projected.totalCredits > HOSTED_NATIVE_CREDIT_LIMIT) hostingFail('HOSTING_NATIVE_CREDIT_LIMIT')
+        return
+    }
     const exposed = children.reduce((sum, item) => {
         if (['released', 'cancelled'].includes(item.state)) return sum
         const quantity = item.state === 'settled' ? item.actualAmount ?? item.amount : item.amount

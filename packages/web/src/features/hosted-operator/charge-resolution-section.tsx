@@ -132,7 +132,11 @@ export function ChargeResolutionSection({
                     {call.callId} ·{' '}
                     {call.payer === 'byok'
                       ? 'BYOK'
-                      : `${call.heldCredits} Credits`}{' '}
+                      : `${call.heldCredits} Credits${
+                          call.creditScope === 'execution_root'
+                            ? ' held across execution'
+                            : ''
+                        }`}{' '}
                     · {call.state}
                   </option>
                 ))}
@@ -380,7 +384,20 @@ function ChargeEditor({
           />
         )}
         <Fact name="Execution" value={view.rootReservationId} />
-        <Fact name="Held Credits" value={view.heldCredits} />
+        <Fact
+          name={
+            view.creditScope === 'execution_root'
+              ? 'Credits held across execution'
+              : 'Held Credits'
+          }
+          value={view.heldCredits}
+        />
+        {view.creditScope === 'execution_root' && (
+          <Fact
+            name="Execution Credits already used"
+            value={view.rootConsumedCredits ?? '0'}
+          />
+        )}
         <Fact
           name="Supplier liability"
           value={
@@ -639,13 +656,29 @@ function ChargeEditor({
               <h4 className="font-semibold">Review the Credit change</h4>
               <dl className="grid gap-4 text-sm sm:grid-cols-2">
                 <Fact
-                  name="AI Credits to charge"
+                  name={
+                    preview.preview.creditScope === 'execution_root'
+                      ? 'Additional Credits to charge'
+                      : 'AI Credits to charge'
+                  }
                   value={
                     outcome === 'retain'
                       ? 'No change'
                       : preview.preview.actualCredits ?? '0 (BYOK)'
                   }
                 />
+                {preview.preview.creditScope === 'execution_root' && (
+                  <>
+                    <Fact
+                      name="Resulting execution Credits used"
+                      value={preview.preview.rootConsumedCredits ?? '0'}
+                    />
+                    <Fact
+                      name="Resulting execution Credits held"
+                      value={preview.preview.rootReservedCredits ?? '0'}
+                    />
+                  </>
+                )}
                 <Fact
                   name="Credits released from hold"
                   value={preview.preview.releasedCredits}

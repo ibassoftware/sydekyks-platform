@@ -9,6 +9,7 @@ import * as agentTurnRuntime from '../../../worker/src/lib/execute/jobs/ee/agent
 import type { JobContext } from '../../../worker/src/lib/execute/types'
 import { AIProviderEntity } from '../../src/app/ai/ai-provider-entity'
 import { UserIdentityEntity } from '../../src/app/authentication/user-identity/user-identity-entity'
+import { SydekyksInclusiveCredits1914000000000 } from '../../src/app/database/migration/postgres/1914000000000-SydekyksInclusiveCredits'
 import { SydekyksUnifiedCredits1903000000000 } from '../../src/app/database/migration/postgres/1903000000000-SydekyksUnifiedCredits'
 import { SydekyksCreditRateV31913000000000 } from '../../src/app/database/migration/postgres/1913000000000-SydekyksCreditRateV3'
 import { SydekyksCreditRateV21905000000000 } from '../../src/app/database/migration/postgres/1905000000000-SydekyksCreditRateV2'
@@ -20,6 +21,7 @@ import { HOSTED_MAX_ROOT_CREDITS, hostedAiCredits, hostedCreditLiability, hosted
 import { HostingDispatchEntity } from '../../src/app/hosting/hosting-dispatch-entity'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrantEntity, HostingLedgerEntity, HostingReservationEntity } from '../../src/app/hosting/hosting-entities'
 import { createHostedExecution } from '../../src/app/hosting/hosting-execution'
+import { HostingRootCreditUsageEntity } from '../../src/app/hosting/hosting-inclusive-credits-entity'
 import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
 import { createHostedLedger } from '../../src/app/hosting/hosting-ledger'
 import { saveManagedSettings } from '../../src/app/hosting/hosting-managed-settings'
@@ -63,6 +65,9 @@ beforeEach(async () => {
 })
 async function root(payer: 'managed' | 'byok' = 'managed', configId?: string) {
     const reservation = await ledger().reserveExecution({ actor, projectId, key: apId(), payer })
+    // Historical V3 fixture: keep additive tariff coverage separate from real V4 journeys.
+    await ds.getRepository(HostingRootCreditUsageEntity).delete({ id: reservation.id })
+    await ds.getRepository(HostingReservationEntity).update({ id: reservation.id }, { accountingVersion: 'single-credits-1500-microusd-v3' })
     const claim = await ledger().claimExecution({ actor, reservationId: reservation.id })
     const admissionId = apId()
     await ds.getRepository(HostingDispatchEntity).insert({ id: apId(), platformId: actor.platformId, projectId, identityId: actor.identityId, tokenVersion: actor.tokenVersion, originType: 'user', queueKey: apId(), payloadHash: 'x'.repeat(64), state: 'running', rootKey: apId(), reservationId: reservation.id, admissionId, dispatchId: claim.dispatchId, leaseUntil: new Date(Date.now() + 60000), payload: scopedAiActionPayload({ platformId: actor.platformId, projectId, payer, configId }) })
@@ -100,7 +105,7 @@ function completion(model: string, prompt = 4000, output = 1000) {
     return { status: 200, data: { id: 'private-upstream', model, created: Math.floor(Date.now() / 1000), object: 'chat.completion', choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'Synthetic response' } }], usage: { prompt_tokens: prompt, completion_tokens: output, total_tokens: prompt + output, prompt_cache_hit_tokens: 0, prompt_cache_miss_tokens: prompt } } }
 }
 
-describe('single Credits accounting', () => {
+describe('historical additive V1–V3 Credits accounting', () => {
     it.each([{ version: 'single-credits-500-microusd-v1', rate: 500n, amount: 10n, actual: 3n }, { version: 'single-credits-250-microusd-v2', rate: 250n, amount: 20n, actual: 5n }])('preserves $version uncertain holds through V3 and settles/replays at the stored rate once', async ({ version, rate, amount, actual }) => {
         const admitted = await root(), grant = await currentGrant(), old = await reserve(admitted.reservation.id, 5000n)
         await ds.getRepository(HostingReservationEntity).update({ id: admitted.reservation.id }, { accountingVersion: version })
@@ -111,7 +116,7 @@ describe('single Credits accounting', () => {
         const before = await ds.getRepository(HostingReservationEntity).findBy({ platformId: actor.platformId })
         const runner = ds.createQueryRunner(), migration = new SydekyksCreditRateV31913000000000()
         try {
-            await runner.startTransaction(); await migration.down(runner); await migration.up(runner); await runner.commitTransaction()
+            await runner.startTransaction(); await new SydekyksInclusiveCredits1914000000000().down(runner); await migration.down(runner); await migration.up(runner); await new SydekyksInclusiveCredits1914000000000().up(runner); await runner.commitTransaction()
         }
         finally {
             if (runner.isTransactionActive) await runner.rollbackTransaction(); await runner.release()
@@ -153,7 +158,7 @@ describe('single Credits accounting', () => {
         })
         const before = await snapshot(), migration = new SydekyksCreditRateV31913000000000(), runner = ds.createQueryRunner()
         try {
-            await runner.startTransaction(); await migration.down(runner); await migration.up(runner); await runner.commitTransaction()
+            await runner.startTransaction(); await new SydekyksInclusiveCredits1914000000000().down(runner); await migration.down(runner); await migration.up(runner); await new SydekyksInclusiveCredits1914000000000().up(runner); await runner.commitTransaction()
         }
         finally {
             if (runner.isTransactionActive) await runner.rollbackTransaction()
@@ -279,10 +284,12 @@ describe('single Credits accounting', () => {
         const runner = ds.createQueryRunner(), migration = new SydekyksUnifiedCredits1903000000000()
         try {
             await runner.startTransaction()
+            await new SydekyksInclusiveCredits1914000000000().down(runner)
             await migration.down(runner)
             await migration.up(runner)
             await new SydekyksCreditRateV21905000000000().up(runner)
             await new SydekyksCreditRateV31913000000000().up(runner)
+            await new SydekyksInclusiveCredits1914000000000().up(runner)
             await runner.commitTransaction()
         }
         finally {

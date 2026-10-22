@@ -1,9 +1,10 @@
 import { apId } from '@activepieces/core-utils'
 import { hostingCatalog } from '@activepieces/shared'
 import { DataSource, EntityManager, In, IsNull } from 'typeorm'
-import { HOSTED_CREDIT_ACCOUNTING_VERSION, HOSTED_LEGACY_MICRO_USD_PER_CREDIT, HOSTED_MAX_ROOT_CREDITS, hostedAiCredits, hostedCreditLiability, hostedCreditRate, hostedUsesCreditAccounting } from './hosting-credit-policy'
+import { HOSTED_ADDITIVE_CREDIT_ACCOUNTING_VERSION, HOSTED_CREDIT_ACCOUNTING_VERSION, HOSTED_LEGACY_MICRO_USD_PER_CREDIT, HOSTED_MAX_ROOT_CREDITS, hostedAiCredits, hostedCreditLiability, hostedCreditRate, hostedUsesCreditAccounting } from './hosting-credit-policy'
 import { HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrant, HostingGrantEntity, HostingReservation, HostingReservationEntity } from './hosting-entities'
+import { hostedInclusiveCredits, hostedInclusiveExposure, reconcileHostedInclusiveCredits } from './hosting-inclusive-credits'
 import { hasDefinitiveHostedCompletion, isHostedCoordinatorJob } from './hosting-job-policy'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
@@ -30,11 +31,12 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             const liability = await hostedCreditLiability(manager, grant.id)
             if (grant.amount - grant.reserved - grant.consumed - liability.reserved - liability.consumed < 1n) hostingFail('HOSTING_CREDITS_EXHAUSTED')
             if (account.activeExecutions >= hostingCatalog.getPlan({ planId: account.planId }).concurrency) hostingFail('HOSTING_CONCURRENCY_LIMIT')
-            const reservation = manager.getRepository(HostingReservationEntity).create({ id: apId(), platformId: account.id, projectId, identityId: actor.identityId, grantId: grant.id, key, kind: 'execution', payer, state: 'reserved', rootReservationId: null, day: null, amount: 1n, actualAmount: null, dispatchId: null, accountingVersion: HOSTED_CREDIT_ACCOUNTING_VERSION, maxRootCredits: HOSTED_MAX_ROOT_CREDITS })
+            const reservation = manager.getRepository(HostingReservationEntity).create({ id: apId(), platformId: account.id, projectId, identityId: actor.identityId, grantId: grant.id, key, kind: 'execution', payer, state: 'reserved', rootReservationId: null, day: null, amount: 1n, actualAmount: null, dispatchId: null, accountingVersion: HOSTED_CREDIT_ACCOUNTING_VERSION, microUsdPerCredit: hostedCreditRate(), maxRootCredits: HOSTED_MAX_ROOT_CREDITS })
             await manager.getRepository(HostingReservationEntity).save(reservation)
-            await manager.getRepository(HostingGrantEntity).update({ id: grant.id }, { reserved: grant.reserved + 1n })
+            if (hostedInclusiveCredits(reservation)) await reconcileHostedInclusiveCredits({ manager, root: reservation, key: `base-reserve:${reservation.id}` })
+            else await manager.getRepository(HostingGrantEntity).update({ id: grant.id }, { reserved: grant.reserved + 1n })
             await manager.getRepository(HostingAccountEntity).update({ id: account.id }, { activeExecutions: account.activeExecutions + 1 })
-            await tx.entry({ manager, reservation, operation: 'reserve', amount: 1n })
+            if (!hostedInclusiveCredits(reservation)) await tx.entry({ manager, reservation, operation: 'reserve', amount: 1n })
             await tx.event({ manager, platformId: account.id, event: 'execution.reserved', payload: { reservationId: reservation.id } })
             return reservation
         } })
@@ -55,9 +57,12 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             }
             tx.assertActive({ account, now })
             const dispatchId = apId()
-            await manager.getRepository(HostingGrantEntity).update({ id: grant.id }, { reserved: grant.reserved - 1n, consumed: grant.consumed + 1n })
             await manager.getRepository(HostingReservationEntity).update({ id: reservation.id }, { state: 'running', dispatchId })
-            await tx.entry({ manager, reservation, operation: 'dispatch', amount: 1n })
+            if (hostedInclusiveCredits(reservation)) await reconcileHostedInclusiveCredits({ manager, root: { ...reservation, state: 'running', dispatchId }, key: `base-dispatch:${reservation.id}`, operation: 'dispatch' })
+            else {
+                await manager.getRepository(HostingGrantEntity).update({ id: grant.id }, { reserved: grant.reserved - 1n, consumed: grant.consumed + 1n })
+                await tx.entry({ manager, reservation, operation: 'dispatch', amount: 1n })
+            }
             return { claimed: true, dispatchId }
         } })
     }
@@ -72,16 +77,19 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             if (await manager.getRepository(HostingReservationEntity).existsBy({ platformId, rootReservationId: reservation.id, state: In(['reserved', 'running', 'uncertain']) })) hostingFail('HOSTING_UNSETTLED_CHILDREN')
             if (await manager.getRepository(HostingModelCallEntity).existsBy({ platformId, rootReservationId: reservation.id, state: In(['prepared', 'running', 'uncertain']) })) hostingFail('HOSTING_UNSETTLED_CHILDREN')
             const coordinator = await isConfirmedCoordinator({ manager, reservation })
-            const actualAmount = coordinator ? 0n : 1n
-            if (coordinator) {
+            const inclusive = hostedInclusiveCredits(reservation)
+            const children = inclusive ? await manager.getRepository(HostingReservationEntity).findBy({ platformId, rootReservationId: reservation.id, kind: 'managed_ai' }) : []
+            const actualAmount = coordinator ? 0n : inclusive ? hostedInclusiveExposure({ root: reservation, children }).consumedCredits : 1n
+            if (coordinator && !inclusive) {
                 const grant = await manager.getRepository(HostingGrantEntity).findOneByOrFail({ id: reservation.grantId, platformId })
                 if (grant.consumed < reservation.amount) hostingFail('HOSTING_INVALID_TRANSITION')
                 await manager.getRepository(HostingGrantEntity).update({ id: grant.id }, { consumed: grant.consumed - reservation.amount })
                 await tx.event({ manager, platformId, event: 'execution.coordinator_settled', payload: { reservationId: reservation.id, heldCredits: reservation.amount.toString(), actualCredits: '0' } })
             }
             await manager.getRepository(HostingReservationEntity).update({ id: reservation.id }, { state: 'settled', actualAmount })
+            if (inclusive) await reconcileHostedInclusiveCredits({ manager, root: { ...reservation, state: 'settled', actualAmount }, key: `root-finish:${reservation.id}` })
             if (reservation.state !== 'paused') await manager.getRepository(HostingAccountEntity).update({ id: platformId }, { activeExecutions: account.activeExecutions - 1 })
-            await tx.entry({ manager, reservation, operation: 'settle', amount: actualAmount })
+            if (!inclusive) await tx.entry({ manager, reservation, operation: 'settle', amount: actualAmount })
         } })
     }
 
@@ -109,18 +117,23 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             const executionGrant = await manager.getRepository(HostingGrantEntity).findOneByOrFail({ id: root.grantId, platformId: account.id })
             tx.assertGrantActive({ grant: executionGrant, now, account })
             const grant = executionGrant
-            const microUsdPerCredit = hostedCreditRate()
-            const creditAmount = hostedAiCredits(maxCostMicroUsd, microUsdPerCredit)
-            const liability = await hostedCreditLiability(manager, grant.id)
-            if (grant.amount - grant.reserved - grant.consumed - liability.reserved - liability.consumed < creditAmount) hostingFail('HOSTING_CREDITS_EXHAUSTED')
+            const inclusive = hostedInclusiveCredits(root)
+            const microUsdPerCredit = inclusive ? root.microUsdPerCredit ?? 0n : hostedCreditRate()
+            const creditAmount = inclusive ? 0n : hostedAiCredits(maxCostMicroUsd, microUsdPerCredit)
             const children = await manager.getRepository(HostingReservationEntity).findBy({ platformId: account.id, rootReservationId: root.id, kind: 'managed_ai' })
             if (children.some(child => child.state === 'uncertain')) hostingFail('HOSTING_AI_OUTCOME_UNCERTAIN')
-            const spentAndHeld = children.reduce((total, child) => total + reservationCreditExposure(child), root.amount)
-            if (spentAndHeld + creditAmount > (root.maxRootCredits ?? HOSTED_MAX_ROOT_CREDITS)) hostingFail('HOSTING_RUN_CREDIT_LIMIT')
+            const currentExposure = inclusive ? hostedInclusiveExposure({ root, children }) : null
+            const proposedExposure = inclusive ? hostedInclusiveExposure({ root, children, additionalSupplierMicroUsd: maxCostMicroUsd }) : null
+            const additionalCredits = proposedExposure && currentExposure ? proposedExposure.totalCredits - currentExposure.totalCredits : creditAmount
+            const liability = await hostedCreditLiability(manager, grant.id)
+            if (grant.amount - grant.reserved - grant.consumed - liability.reserved - liability.consumed < additionalCredits) hostingFail('HOSTING_CREDITS_EXHAUSTED')
+            const proposedTotal = proposedExposure?.totalCredits ?? children.reduce((total, child) => total + reservationCreditExposure(child), root.amount) + creditAmount
+            if (proposedTotal > (root.maxRootCredits ?? HOSTED_MAX_ROOT_CREDITS)) hostingFail('HOSTING_RUN_CREDIT_LIMIT')
             if (budget.limit - budget.reserved - budget.consumed < maxCostMicroUsd) hostingFail('HOSTING_OPERATOR_BUDGET_EXHAUSTED')
-            const reservation = manager.getRepository(HostingReservationEntity).create({ id: apId(), platformId: account.id, projectId: root.projectId, identityId: actor.identityId, grantId: grant.id, rootReservationId: root.id, kind: 'managed_ai', payer: 'managed', key, state: 'reserved', day, amount: creditAmount, actualAmount: null, dispatchId: null, accountingVersion: HOSTED_CREDIT_ACCOUNTING_VERSION, supplierMaxMicroUsd: maxCostMicroUsd, actualSupplierMicroUsd: null, microUsdPerCredit })
+            const reservation = manager.getRepository(HostingReservationEntity).create({ id: apId(), platformId: account.id, projectId: root.projectId, identityId: actor.identityId, grantId: grant.id, rootReservationId: root.id, kind: 'managed_ai', payer: 'managed', key, state: 'reserved', day, amount: creditAmount, actualAmount: inclusive ? 0n : null, dispatchId: null, accountingVersion: inclusive ? root.accountingVersion : HOSTED_ADDITIVE_CREDIT_ACCOUNTING_VERSION, supplierMaxMicroUsd: maxCostMicroUsd, actualSupplierMicroUsd: null, microUsdPerCredit })
             await manager.getRepository(HostingReservationEntity).save(reservation)
-            await manager.getRepository(HostingGrantEntity).update({ id: grant.id }, { reserved: grant.reserved + creditAmount })
+            if (inclusive) await reconcileHostedInclusiveCredits({ manager, root, key: `child-reserve:${reservation.id}` })
+            else await manager.getRepository(HostingGrantEntity).update({ id: grant.id }, { reserved: grant.reserved + creditAmount })
             await manager.getRepository(HostingDailyBudgetEntity).update({ id: day }, { reserved: budget.reserved + maxCostMicroUsd })
             await tx.entry({ manager, reservation, operation: 'reserve', amount: creditAmount })
             return reservation
@@ -162,19 +175,25 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             assertFence({ reservation, dispatchId })
             const unified = hostedUsesCreditAccounting(reservation.accountingVersion)
             const maxSupplierCost = reservation.supplierMaxMicroUsd ?? reservation.amount
-            const actualCredits = unified ? hostedAiCredits(actualCostMicroUsd, reservation.microUsdPerCredit ?? 0n) : actualCostMicroUsd
+            const inclusive = hostedInclusiveCredits(reservation)
+            const actualCredits = inclusive ? 0n : unified ? hostedAiCredits(actualCostMicroUsd, reservation.microUsdPerCredit ?? 0n) : actualCostMicroUsd
             if (reservation.state === 'settled') {
                 if ((unified ? reservation.actualSupplierMicroUsd : reservation.actualAmount) !== actualCostMicroUsd) hostingFail('HOSTING_IDEMPOTENCY_CONFLICT')
                 return
             }
             if (reservation.state !== 'running' && reservation.state !== 'uncertain') hostingFail('HOSTING_INVALID_TRANSITION')
             const grant = await manager.getRepository(HostingGrantEntity).findOneByOrFail({ id: reservation.grantId, platformId })
-            await manager.getRepository(HostingGrantEntity).update({ id: grant.id }, { reserved: grant.reserved - reservation.amount, consumed: grant.consumed + actualCredits })
+            if (!inclusive) await manager.getRepository(HostingGrantEntity).update({ id: grant.id }, { reserved: grant.reserved - reservation.amount, consumed: grant.consumed + actualCredits })
             await manager.getRepository(HostingDailyBudgetEntity).update({ id: budget.id }, { reserved: budget.reserved - maxSupplierCost, consumed: budget.consumed + actualCostMicroUsd })
             await manager.getRepository(HostingReservationEntity).update({ id: reservation.id }, { state: 'settled', actualAmount: actualCredits, actualSupplierMicroUsd: unified ? actualCostMicroUsd : null })
+            if (inclusive) {
+                const root = await findReservation({ manager, platformId, reservationId: reservation.rootReservationId ?? '', kind: 'execution' })
+                if (!hostedInclusiveCredits(root)) hostingFail('HOSTING_AI_ACCOUNTING_VERSION_INVALID')
+                await reconcileHostedInclusiveCredits({ manager, root, key: `child-settle:${reservation.id}` })
+            }
             if (actualCostMicroUsd > maxSupplierCost) await manager.getRepository(HostingAccountEntity).update({ id: platformId }, { status: 'suspended' })
             await tx.entry({ manager, reservation, operation: 'settle', amount: actualCredits })
-            if (grant.revokedAt && reservation.amount > actualCredits) await tx.entry({ manager, reservation, operation: 'revoke', amount: reservation.amount - actualCredits, key: `revoke-released:${reservation.id}` })
+            if (!inclusive && grant.revokedAt && reservation.amount > actualCredits) await tx.entry({ manager, reservation, operation: 'revoke', amount: reservation.amount - actualCredits, key: `revoke-released:${reservation.id}` })
             await tx.event({ manager, platformId, event: actualCostMicroUsd > maxSupplierCost ? 'account.cost_bound_exceeded' : 'managed_call.settled', payload: { reservationId, actualCostMicroUsd: actualCostMicroUsd.toString(), actualCredits: actualCredits.toString(), accountingVersion: reservation.accountingVersion ?? 'legacy-microusd' } })
         } })
     }
@@ -307,16 +326,25 @@ async function lockBudget({ manager, day, create }: { manager: EntityManager, da
 }
 
 async function release({ manager, reservation }: { manager: EntityManager, reservation: HostingReservation }): Promise<void> {
+    const inclusive = hostedInclusiveCredits(reservation)
     const grant = await manager.getRepository(HostingGrantEntity).findOneByOrFail({ id: reservation.grantId, platformId: reservation.platformId })
-    await manager.getRepository(HostingGrantEntity).update({ id: grant.id }, { reserved: grant.reserved - reservation.amount })
+    if (!inclusive) await manager.getRepository(HostingGrantEntity).update({ id: grant.id }, { reserved: grant.reserved - reservation.amount })
     if (reservation.kind === 'managed_ai') {
         const budget = await manager.getRepository(HostingDailyBudgetEntity).findOneByOrFail({ id: requiredDay(reservation) })
         await manager.getRepository(HostingDailyBudgetEntity).update({ id: budget.id }, { reserved: budget.reserved - (reservation.supplierMaxMicroUsd ?? reservation.amount) })
     }
     else await manager.getRepository(HostingAccountEntity).decrement({ id: reservation.platformId }, 'activeExecutions', 1)
     await manager.getRepository(HostingReservationEntity).update({ id: reservation.id }, { state: 'released', actualAmount: 0n })
-    await tx.entry({ manager, reservation, operation: 'release', amount: reservation.amount })
-    if (grant.revokedAt) await tx.entry({ manager, reservation, operation: 'revoke', amount: reservation.amount, key: `revoke-released:${reservation.id}` })
+    if (inclusive) {
+        const root = reservation.kind === 'execution' ? { ...reservation, state: 'released' as const, actualAmount: 0n } : await findReservation({ manager, platformId: reservation.platformId, reservationId: reservation.rootReservationId ?? '', kind: 'execution' })
+        if (!hostedInclusiveCredits(root)) hostingFail('HOSTING_AI_ACCOUNTING_VERSION_INVALID')
+        await reconcileHostedInclusiveCredits({ manager, root, key: `release:${reservation.id}` })
+        if (reservation.kind === 'managed_ai') await tx.entry({ manager, reservation, operation: 'release', amount: 0n })
+    }
+    else {
+        await tx.entry({ manager, reservation, operation: 'release', amount: reservation.amount })
+        if (grant.revokedAt) await tx.entry({ manager, reservation, operation: 'revoke', amount: reservation.amount, key: `revoke-released:${reservation.id}` })
+    }
 }
 
 function assertOwner({ actor, reservation }: { actor: HostingActor, reservation: HostingReservation }): void {

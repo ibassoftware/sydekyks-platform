@@ -28,6 +28,7 @@ import { HOSTING_CHARGE_RESOLUTION_ENTITIES } from '../hosting/hosting-charge-re
 import { HOSTING_CREDIT_ALLOWANCE_ENTITIES } from '../hosting/hosting-credit-allowance-entities'
 import { HostingDispatchEntity } from '../hosting/hosting-dispatch-entity'
 import { HOSTING_ENTITIES } from '../hosting/hosting-entities'
+import { HostingRootCreditUsageEntity } from '../hosting/hosting-inclusive-credits-entity'
 import { HOSTING_MANUAL_ACCOUNT_ENTITIES } from '../hosting/hosting-manual-accounts-entities'
 import { HostingModelCallEntity } from '../hosting/hosting-model-call-entity'
 import { HOSTING_PARTNER_ADMIN_ENTITIES } from '../hosting/hosting-partner-admin-entities'
@@ -106,6 +107,7 @@ function getEntities(): EntitySchema<unknown>[] {
         ...HOSTING_PRICING_ENTITIES,
         HostingDispatchEntity,
         HostingModelCallEntity,
+        HostingRootCreditUsageEntity,
         HostingTrainingEntity,
         TriggerEventEntity,
         AppEventRoutingEntity,

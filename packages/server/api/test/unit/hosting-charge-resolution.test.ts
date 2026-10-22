@@ -20,6 +20,7 @@ import { HostingChargeResolutionEntity } from '../../src/app/hosting/hosting-cha
 import { HostingDispatchEntity } from '../../src/app/hosting/hosting-dispatch-entity'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrantEntity, HostingReservationEntity } from '../../src/app/hosting/hosting-entities'
 import { createHostedExecution } from '../../src/app/hosting/hosting-execution'
+import { HostingRootCreditUsageEntity } from '../../src/app/hosting/hosting-inclusive-credits-entity'
 import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
 import { createHostedLedger } from '../../src/app/hosting/hosting-ledger'
 import { saveManagedSettings } from '../../src/app/hosting/hosting-managed-settings'
@@ -70,7 +71,11 @@ beforeEach(async () => {
     vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', id)
 })
 async function uncertain(payer: 'managed' | 'byok' = 'managed') {
-    const root = await ledger().reserveExecution({ actor, projectId, key: apId(), payer }), rootClaim = await ledger().claimExecution({ actor, reservationId: root.id }), admissionId = apId(), segmentId = apId(), now = new Date()
+    const root = await ledger().reserveExecution({ actor, projectId, key: apId(), payer })
+    // Preserve original additive recovery coverage for historical roots.
+    await ds.getRepository(HostingRootCreditUsageEntity).delete({ id: root.id })
+    await ds.getRepository(HostingReservationEntity).update({ id: root.id }, { accountingVersion: 'single-credits-1500-microusd-v3' })
+    const rootClaim = await ledger().claimExecution({ actor, reservationId: root.id }), admissionId = apId(), segmentId = apId(), now = new Date()
     await ds.getRepository(HostingDispatchEntity).insert({ id: segmentId, platformId: actor.platformId, projectId, identityId: actor.identityId, tokenVersion: actor.tokenVersion, originType: 'user', queueKey: apId(), payloadHash: 'a'.repeat(64), state: 'uncertain', rootKey: apId(), reservationId: root.id, admissionId, dispatchId: rootClaim.dispatchId, completionStatus: EngineResponseStatus.INTERNAL_ERROR, leaseUntil: new Date(now.getTime() - 1000) })
     const reservation = payer === 'managed' ? await ledger().reserveManagedCall({ actor, rootReservationId: root.id, key: apId(), maxCostMicroUsd: 5000n }) : null
     const claim = reservation ? await ledger().claimManagedCall({ actor, reservationId: reservation.id }) : null
@@ -277,4 +282,26 @@ it('resolves multiple uncertain sibling holds sequentially and releases root cap
     await service().resolve({ actor, callId: sibling.id, input }); await service().resolve({ actor, callId: sibling.id, input })
     expect(await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: actor.platformId })).toMatchObject({ activeExecutions: 0 })
     expect(await ds.getRepository(HostingDailyBudgetEntity).findOneByOrFail({ id: fixture.call.budgetDay! })).toMatchObject({ reserved: 0n, consumed: 0n })
+})
+
+it.runIf(pgMode).each([{ secondBound: 750n, admitted: 2, supplierHeld: 1500n }, { secondBound: 751n, admitted: 1, supplierHeld: null }])('serializes V4 supplier holds against the sole consumed base Credit (second=$secondBound)', async ({ secondBound, admitted, supplierHeld }) => {
+    const grant = await ds.getRepository(HostingGrantEntity).findOneByOrFail({ platformId: actor.platformId, meter: 'execution' })
+    await ds.getRepository(HostingGrantEntity).update({ id: grant.id }, { amount: 1n })
+    // Deliberately use real new admission, not the historical uncertain() fixture.
+    const root = await ledger().reserveExecution({ actor, projectId, key: apId(), payer: 'managed' })
+    expect(root.accountingVersion).toBe('single-credits-inclusive-1500-microusd-v4')
+    await ledger().claimExecution({ actor, reservationId: root.id })
+    const outcomes = await Promise.allSettled([750n, secondBound].map(maxCostMicroUsd => ledger().reserveManagedCall({ actor, rootReservationId: root.id, key: apId(), maxCostMicroUsd })))
+    expect(outcomes.filter(outcome => outcome.status === 'fulfilled')).toHaveLength(admitted)
+    const rejected = outcomes.filter(outcome => outcome.status === 'rejected')
+    expect(rejected).toHaveLength(2 - admitted)
+    if (rejected.length) expect(rejected[0]).toMatchObject({ reason: { message: 'HOSTING_CREDITS_EXHAUSTED' } })
+    const children = await ds.getRepository(HostingReservationEntity).findBy({ rootReservationId: root.id })
+    expect(children).toHaveLength(admitted)
+    const held = children.reduce((total, child) => total + child.supplierMaxMicroUsd!, 0n)
+    if (supplierHeld !== null) expect(held).toBe(supplierHeld)
+    else expect([750n, 751n]).toContain(held)
+    expect(await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: grant.id })).toMatchObject({ consumed: 1n, reserved: 0n })
+    expect(await ds.getRepository(HostingRootCreditUsageEntity).findOneByOrFail({ id: root.id })).toMatchObject({ consumedCredits: 1n, reservedCredits: 0n, heldSupplierMicroUsd: held })
+    expect(await ds.getRepository(HostingDailyBudgetEntity).findOneByOrFail({ id: children[0].day! })).toMatchObject({ consumed: 0n, reserved: held })
 })

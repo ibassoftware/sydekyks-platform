@@ -119,21 +119,21 @@ describe('one shared Credits allowance', () => {
         const call = await ledger.reserveManagedCall({ actor: client.actor, rootReservationId: root.id, key: 'call', maxCostMicroUsd: 15000n })
         const callClaim = await ledger.claimManagedCall({ actor: client.actor, reservationId: call.id })
         const oldGrants = await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId })
-        await expect(save(0, 'below-committed', 10)).rejects.toThrow('BELOW_COMMITTED')
+        await expect(save(0, 'below-committed', 9)).rejects.toThrow('BELOW_COMMITTED')
         expect(await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId })).toEqual(oldGrants)
-        const result = await save(0, 'equal-committed', 11)
-        expect(result.period).toMatchObject({ amount: '11', consumed: '1', reserved: '10', available: '0' })
+        const result = await save(0, 'equal-committed', 10)
+        expect(result.period).toMatchObject({ amount: '10', consumed: '1', reserved: '9', available: '0' })
         for (const grant of await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId })) {
             const old = oldGrants.find(value => value.id === grant.id)!
             expect(grant.validFrom).toEqual(old.validFrom); expect(grant.validUntil).toEqual(old.validUntil)
             expect(grant.consumed).toEqual(old.consumed); expect(grant.reserved).toEqual(old.reserved)
-            if (grant.sourceKey.startsWith('training:') && grant.meter === 'execution') expect(grant.amount).toBe(11n)
+            if (grant.sourceKey.startsWith('training:') && grant.meter === 'execution') expect(grant.amount).toBe(10n)
             else expect(grant.amount).toBe(old.amount)
         }
         await ledger.settleManagedCall({ platformId: client.platformId, reservationId: call.id, dispatchId: callClaim.dispatchId!, actualCostMicroUsd: 4500n })
         await ledger.finishExecution({ platformId: client.platformId, reservationId: root.id, dispatchId: rootClaim.dispatchId! })
-        expect((await read()).period).toMatchObject({ amount: '11', consumed: '4', reserved: '0', available: '7' })
-        expect((await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: call.id })).actualAmount).toBe(3n)
+        expect((await read()).period).toMatchObject({ amount: '10', consumed: '3', reserved: '0', available: '7' })
+        expect((await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: call.id })).actualAmount).toBe(0n)
     })
     it('includes unresolved legacy supplier holds in the committed Credit floor and billing projection', async () => {
         await training()

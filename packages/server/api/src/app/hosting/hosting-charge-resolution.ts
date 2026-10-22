@@ -10,6 +10,8 @@ import { HostingChargeResolutionEntity } from './hosting-charge-resolution-entit
 import { HOSTED_LEGACY_MICRO_USD_PER_CREDIT, hostedAiCredits, hostedUsesCreditAccounting } from './hosting-credit-policy'
 import { HostingDispatch, HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingAccountEntity, HostingReservationEntity } from './hosting-entities'
+import { hostedInclusiveCredits, hostedInclusiveExposure } from './hosting-inclusive-credits'
+import { HostingRootCreditUsageEntity } from './hosting-inclusive-credits-entity'
 import { createHostedLedger, lockHostedBudget } from './hosting-ledger'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
@@ -118,10 +120,12 @@ async function contextOf(manager: EntityManager, callId: string, platformId: str
     const reservations = await manager.getRepository(HostingReservationEntity).find({ where: { rootReservationId: root.id, platformId }, order: { id: 'ASC' } })
     const reservation = call.reservationId ? reservations.find(value => value.id === call.reservationId) : null
     if (call.payer === 'managed' ? !reservation || reservation.kind !== 'managed_ai' || reservation.payer !== 'managed' || reservation.identityId !== call.identityId || reservation.projectId !== call.projectId || reservation.dispatchId !== call.dispatchId || reservation.day !== call.budgetDay : call.reservationId !== null || !!reservation || !!call.budgetDay || !!call.quote) hostingFail('HOSTING_CHARGE_CHAIN_INVALID')
+    const inclusiveUsage = hostedInclusiveCredits(root) ? await manager.getRepository(HostingRootCreditUsageEntity).findOneBy({ id: root.id, platformId }) : null
+    if (hostedInclusiveCredits(root) && !inclusiveUsage) hostingFail('HOSTING_CHARGE_CHAIN_INVALID')
     const history = await manager.getRepository(HostingChargeResolutionEntity).find({ where: { callId }, order: { revision: 'ASC' }, take: 1000 })
     const revision = history.at(-1)?.revision ?? 0, now = await tx.now(manager)
-    const snapshot = json({ call: { id: call.id, platformId, projectId: call.projectId, segmentId: call.segmentId, rootReservationId: root.id, state: call.state, fence: call.fence, dispatchId: call.dispatchId, admissionId: call.admissionId, reservationId: call.reservationId, budgetDay: call.budgetDay, quote: call.quote, nativeTool: call.nativeTool, toolUnitPriceMicroUsd: call.toolUnitPriceMicroUsd, toolTariffVersion: call.toolTariffVersion, inputTokenBound: call.inputTokenBound, requestHash: call.requestHash, sentAt: call.sentAt, leaseUntil: call.leaseUntil, payer: call.payer }, root, segments: segments.map(value => ({ id: value.id, state: value.state, leaseUntil: value.leaseUntil, completionStatus: value.completionStatus, terminalReceipt: value.terminalReceipt, resolutionStatus: value.resolutionStatus, waitpointId: value.waitpointId })), calls: calls.map(value => ({ id: value.id, state: value.state, fence: value.fence })), reservations, revision })
-    return { call, root, rootDispatch, reservation, segments, calls, reservations, history, revision, now, snapshot, stateHash: hash(snapshot) }
+    const snapshot = json({ call: { id: call.id, platformId, projectId: call.projectId, segmentId: call.segmentId, rootReservationId: root.id, state: call.state, fence: call.fence, dispatchId: call.dispatchId, admissionId: call.admissionId, reservationId: call.reservationId, budgetDay: call.budgetDay, quote: call.quote, nativeTool: call.nativeTool, toolUnitPriceMicroUsd: call.toolUnitPriceMicroUsd, toolTariffVersion: call.toolTariffVersion, inputTokenBound: call.inputTokenBound, requestHash: call.requestHash, sentAt: call.sentAt, leaseUntil: call.leaseUntil, payer: call.payer }, root, segments: segments.map(value => ({ id: value.id, state: value.state, leaseUntil: value.leaseUntil, completionStatus: value.completionStatus, terminalReceipt: value.terminalReceipt, resolutionStatus: value.resolutionStatus, waitpointId: value.waitpointId })), calls: calls.map(value => ({ id: value.id, state: value.state, fence: value.fence })), reservations, inclusiveUsage, revision })
+    return { call, root, rootDispatch, reservation, segments, calls, reservations, inclusiveUsage, history, revision, now, snapshot, stateHash: hash(snapshot) }
 }
 function canResolve(context: Context) {
     return context.call.state === 'uncertain' && context.call.leaseUntil <= context.now && context.segments.every(segment => safeTerminal(segment, context.now)) && (!context.reservation || ['running', 'uncertain'].includes(context.reservation.state))
@@ -139,8 +143,9 @@ function safeTerminal(segment: HostingDispatch, now: Date) {
     return segment.state === 'uncertain' && !!segment.leaseUntil && segment.leaseUntil <= now && !segment.waitpointId && segment.completionStatus === EngineResponseStatus.INTERNAL_ERROR && (!segment.flowRunId || [FlowRunStatus.INTERNAL_ERROR, FlowRunStatus.FAILED].includes(segment.terminalReceipt!))
 }
 function project(context: Context, input: ChargeResolutionDraftInput) {
-    const reservation = context.reservation, rate = reservation?.microUsdPerCredit ?? HOSTED_LEGACY_MICRO_USD_PER_CREDIT
-    const heldCredits = reservation ? hostedUsesCreditAccounting(reservation.accountingVersion) ? reservation.amount : hostedAiCredits(reservation.amount, rate) : 0n
+    const reservation = context.reservation, inclusive = hostedInclusiveCredits(context.root), rate = inclusive ? context.root.microUsdPerCredit ?? 0n : reservation?.microUsdPerCredit ?? HOSTED_LEGACY_MICRO_USD_PER_CREDIT
+    const before = inclusive ? hostedInclusiveExposure({ root: context.root, children: context.reservations }) : null
+    const heldCredits = before?.reservedCredits ?? (reservation ? hostedUsesCreditAccounting(reservation.accountingVersion) ? reservation.amount : hostedAiCredits(reservation.amount, rate) : 0n)
     if (input.outcome === 'verified_usage' && context.call.payer === 'managed') {
         const quote = HostedAiQuote.parse(context.call.quote), created = new Date(input.supplierCreatedAt!).getTime(), sent = context.call.sentAt?.getTime()
         if (!sent || sent < new Date(quote.validFrom).getTime() || sent > new Date(quote.validUntil).getTime() || created + 999 < new Date(quote.validFrom).getTime() || created > new Date(quote.validUntil).getTime() || created < sent - 5000 || created > context.now.getTime() + 5000) hostingFail('HOSTING_AI_TARIFF_UNCERTAIN')
@@ -149,13 +154,31 @@ function project(context: Context, input: ChargeResolutionDraftInput) {
     const cost = input.outcome === 'verified_usage' && context.call.payer === 'managed'
         ? context.call.nativeTool ? input.billable ? BigInt(context.call.toolUnitPriceMicroUsd!) : 0n : hostedAiCost({ hit: input.usage!.prompt_cache_hit_tokens, miss: input.usage!.prompt_cache_miss_tokens, output: input.usage!.completion_tokens, prices: HostedAiQuote.parse(context.call.quote).rates })
         : input.outcome !== 'retain' ? 0n : null
-    const actualCredits = cost === null ? null : hostedAiCredits(cost, rate), blockers = rootBlockers(context)
-    return { expectedRevision: context.revision, expectedState: hash({ state: context.stateHash, input }), actualMicroUsd: cost?.toString() ?? null, actualCredits: actualCredits?.toString() ?? null, releasedCredits: input.outcome === 'retain' ? '0' : (heldCredits > (actualCredits ?? 0n) ? heldCredits - (actualCredits ?? 0n) : 0n).toString(), releasedSupplierMicroUsd: input.outcome === 'retain' ? '0' : ((reservation?.supplierMaxMicroUsd ?? reservation?.amount ?? 0n) > (cost ?? 0n) ? (reservation?.supplierMaxMicroUsd ?? reservation?.amount ?? 0n) - (cost ?? 0n) : 0n).toString(), rootWillSettle: input.outcome !== 'retain' && blockers.length === 0 && canResolve(context), blockers }
+    const projectedChildren = before && reservation && input.outcome !== 'retain' ? context.reservations.map(child => child.id === reservation.id ? {
+        ...child, state: input.outcome === 'verified_usage' ? 'settled' as const : 'released' as const,
+        actualAmount: 0n, actualSupplierMicroUsd: input.outcome === 'verified_usage' ? cost : child.actualSupplierMicroUsd,
+    } : child) : context.reservations
+    const after = before ? hostedInclusiveExposure({ root: context.root, children: projectedChildren }) : null
+    const actualCredits = cost === null ? null : before && after ? after.consumedCredits - before.consumedCredits : hostedAiCredits(cost, rate)
+    // For inclusive roots, only the drop in total wallet exposure is released.
+    // A reserved-to-consumed transfer is not a refund of available Credits.
+    const releasedCredits = input.outcome === 'retain' ? 0n : before && after ? maxZero(before.totalCredits - after.totalCredits) : maxZero(heldCredits - (actualCredits ?? 0n))
+    const blockers = rootBlockers(context)
+    return { expectedRevision: context.revision, expectedState: hash({ state: context.stateHash, input }), actualMicroUsd: cost?.toString() ?? null, actualCredits: actualCredits?.toString() ?? null, releasedCredits: releasedCredits.toString(), releasedSupplierMicroUsd: input.outcome === 'retain' ? '0' : ((reservation?.supplierMaxMicroUsd ?? reservation?.amount ?? 0n) > (cost ?? 0n) ? (reservation?.supplierMaxMicroUsd ?? reservation?.amount ?? 0n) - (cost ?? 0n) : 0n).toString(), rootWillSettle: input.outcome !== 'retain' && blockers.length === 0 && canResolve(context), blockers, ...(after ? aggregateFields(after) : {}) }
+
 }
 async function viewOf(context: Context, actor: HostingActor, userId: string) {
-    const reservation = context.reservation, pending = reservation && ['reserved', 'running', 'uncertain'].includes(reservation.state), rate = reservation?.microUsdPerCredit ?? HOSTED_LEGACY_MICRO_USD_PER_CREDIT
-    return { nativeTool: context.call.nativeTool ?? null, toolUnitPriceMicroUsd: context.call.toolUnitPriceMicroUsd ?? null, toolTariffVersion: context.call.toolTariffVersion ?? null, identity: identity(actor, userId), callId: context.call.id, platformId: context.call.platformId, projectId: context.call.projectId, callKey: context.call.callKey, attempt: context.call.attempt, requestHash: context.call.requestHash, model: context.call.model, endpoint: context.call.endpoint, sentAt: context.call.sentAt?.toISOString() ?? null, budgetDay: context.call.budgetDay, quote: context.call.quote, rootReservationId: context.root.id, payer: context.call.payer, state: context.call.state, revision: context.revision, stateHash: context.stateHash, heldCredits: pending ? (hostedUsesCreditAccounting(reservation.accountingVersion) ? reservation.amount : hostedAiCredits(reservation.amount, rate)).toString() : '0', heldSupplierMicroUsd: pending ? (reservation.supplierMaxMicroUsd ?? reservation.amount).toString() : '0', accountingVersion: reservation?.accountingVersion ?? 'legacy-microusd', microUsdPerCredit: rate.toString(), leaseUntil: context.call.leaseUntil.toISOString(), canResolve: canResolve(context), blockers: rootBlockers(context), history: context.history.map(row => ({ id: row.id, revision: row.revision, created: row.created.toISOString(), outcome: row.outcome, reason: row.reason, evidenceReference: row.evidenceReference, supplierRequestId: row.supplierRequestId, operatorIdentityId: row.operatorIdentityId, result: row.result })) }
+    const reservation = context.reservation, pending = reservation && ['reserved', 'running', 'uncertain'].includes(reservation.state), inclusive = hostedInclusiveCredits(context.root), rate = inclusive ? context.root.microUsdPerCredit ?? 0n : reservation?.microUsdPerCredit ?? HOSTED_LEGACY_MICRO_USD_PER_CREDIT
+    const exposure = inclusive ? hostedInclusiveExposure({ root: context.root, children: context.reservations }) : null
+    return { nativeTool: context.call.nativeTool ?? null, toolUnitPriceMicroUsd: context.call.toolUnitPriceMicroUsd ?? null, toolTariffVersion: context.call.toolTariffVersion ?? null, identity: identity(actor, userId), callId: context.call.id, platformId: context.call.platformId, projectId: context.call.projectId, callKey: context.call.callKey, attempt: context.call.attempt, requestHash: context.call.requestHash, model: context.call.model, endpoint: context.call.endpoint, sentAt: context.call.sentAt?.toISOString() ?? null, budgetDay: context.call.budgetDay, quote: context.call.quote, rootReservationId: context.root.id, payer: context.call.payer, state: context.call.state, revision: context.revision, stateHash: context.stateHash, heldCredits: exposure ? exposure.reservedCredits.toString() : pending ? (hostedUsesCreditAccounting(reservation.accountingVersion) ? reservation.amount : hostedAiCredits(reservation.amount, rate)).toString() : '0', heldSupplierMicroUsd: pending ? (reservation.supplierMaxMicroUsd ?? reservation.amount).toString() : '0', accountingVersion: inclusive ? context.root.accountingVersion ?? 'legacy-microusd' : reservation?.accountingVersion ?? 'legacy-microusd', microUsdPerCredit: rate.toString(), leaseUntil: context.call.leaseUntil.toISOString(), canResolve: canResolve(context), blockers: rootBlockers(context), ...(exposure ? aggregateFields(exposure) : {}), history: context.history.map(row => ({ id: row.id, revision: row.revision, created: row.created.toISOString(), outcome: row.outcome, reason: row.reason, evidenceReference: row.evidenceReference, supplierRequestId: row.supplierRequestId, operatorIdentityId: row.operatorIdentityId, result: row.result })) }
 }
+function aggregateFields(exposure: ReturnType<typeof hostedInclusiveExposure>): { creditScope: 'execution_root', rootConsumedCredits: string, rootReservedCredits: string, rootTotalCredits: string } {
+    return { creditScope: 'execution_root' as const, rootConsumedCredits: exposure.consumedCredits.toString(), rootReservedCredits: exposure.reservedCredits.toString(), rootTotalCredits: exposure.totalCredits.toString() }
+}
+function maxZero(value: bigint): bigint {
+    return value > 0n ? value : 0n
+}
+
 function identity(actor: HostingActor, userId: string) {
     return { userId, identityId: actor.identityId, platformId: actor.platformId, tokenVersion: actor.tokenVersion ?? null } 
 }

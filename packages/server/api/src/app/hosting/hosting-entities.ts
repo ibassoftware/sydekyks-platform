@@ -59,7 +59,7 @@ export const HostingReservationEntity = new EntitySchema<HostingReservation>({
     },
     uniques: [{ columns: ['platformId', 'kind', 'key'] }, { columns: ['id', 'platformId'] }],
     indices: [{ columns: ['platformId', 'rootReservationId', 'state'] }],
-    checks: [{ expression: 'amount > 0 AND ("actualAmount" IS NULL OR "actualAmount" >= 0)' }, { expression: 'state IN (\'reserved\', \'running\', \'settled\', \'released\', \'uncertain\', \'paused\')' }, { expression: 'kind IN (\'execution\', \'managed_ai\')' }, { expression: 'payer IN (\'managed\', \'byok\')' }],
+    checks: [{ name: 'chk_hosting_reservation_amount_v4', expression: '(amount > 0 OR (kind=\'managed_ai\' AND "accountingVersion" IS NOT NULL AND "accountingVersion"=\'single-credits-inclusive-1500-microusd-v4\' AND amount=0)) AND ("actualAmount" IS NULL OR "actualAmount" >= 0)' }, { expression: 'state IN (\'reserved\', \'running\', \'settled\', \'released\', \'uncertain\', \'paused\')' }, { expression: 'kind IN (\'execution\', \'managed_ai\')' }, { expression: 'payer IN (\'managed\', \'byok\')' }],
     foreignKeys: [accountForeignKey,
         { target: 'hosting_grant', columnNames: ['grantId', 'platformId'], referencedColumnNames: ['id', 'platformId'], onDelete: 'RESTRICT' },
         { target: 'hosting_reservation', columnNames: ['rootReservationId', 'platformId'], referencedColumnNames: ['id', 'platformId'], onDelete: 'RESTRICT' },

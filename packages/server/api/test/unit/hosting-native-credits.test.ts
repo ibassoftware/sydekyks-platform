@@ -12,6 +12,7 @@ import { createHostedAiGateway } from '../../src/app/hosting/hosting-ai-gateway'
 import { createHostedChargeResolution } from '../../src/app/hosting/hosting-charge-resolution'
 import { HostingDispatchEntity } from '../../src/app/hosting/hosting-dispatch-entity'
 import { HostingGrantEntity, HostingReservationEntity } from '../../src/app/hosting/hosting-entities'
+import { HostingRootCreditUsageEntity } from '../../src/app/hosting/hosting-inclusive-credits-entity'
 import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
 import { createHostedLedger } from '../../src/app/hosting/hosting-ledger'
 import { saveManagedSettings } from '../../src/app/hosting/hosting-managed-settings'
@@ -52,7 +53,11 @@ async function configure(includeNative = true) {
     await pricing.approve({ actor, input: { expectedRevision: view.revision, observationId: view.observationId!, termsHash: view.termsHash!, requestKey: apId(), validUntil: PRICING_CALENDAR.until, calendarVersion: PRICING_CALENDAR.version } })
 }
 async function root(payer: 'managed' | 'byok' = 'managed', configId?: string, enabled = true) {
-    const reservation = await ledger().reserveExecution({ actor, projectId, key: apId(), payer }), claim = await ledger().claimExecution({ actor, reservationId: reservation.id }), admissionId = apId(), segmentId = apId()
+    const reservation = await ledger().reserveExecution({ actor, projectId, key: apId(), payer })
+    // Historical additive V3 roots remain additive when they later invoke native tools.
+    await ds.getRepository(HostingRootCreditUsageEntity).delete({ id: reservation.id })
+    await ds.getRepository(HostingReservationEntity).update({ id: reservation.id }, { accountingVersion: 'single-credits-1500-microusd-v3' })
+    const claim = await ledger().claimExecution({ actor, reservationId: reservation.id }), admissionId = apId(), segmentId = apId()
     const payload = scopedAiActionPayload({ platformId: actor.platformId, projectId, payer, configId })
     if ('settings' in payload.step) payload.step.settings.input.webSearch = enabled
     await ds.getRepository(HostingDispatchEntity).insert({ id: segmentId, platformId: actor.platformId, projectId, identityId: actor.identityId, tokenVersion: actor.tokenVersion, originType: 'user', queueKey: apId(), payloadHash: 'a'.repeat(64), state: 'running', rootKey: apId(), reservationId: reservation.id, admissionId, dispatchId: claim.dispatchId, leaseUntil: new Date(Date.now() + 60000), payload })
@@ -67,7 +72,7 @@ const successful = vi.fn(async (_input: Parameters<NativeToolProvider['execute']
 const modelRequest = { callKey: 'model:0', attempt: 0, payer: { type: 'managed' as const }, model: 'sydekyks' as const, messages: [{ role: 'user' as const, content: 'Synthetic question' }], max_tokens: 100 }
 const modelProvider = () => ({ id: 'synthetic', endpoint: 'https://api.deepseek.com/chat/completions', complete: vi.fn(async () => ({ status: 200, data: { id: 'synthetic', model: 'deepseek-flash', created: Math.floor(Date.now() / 1000), object: 'chat.completion', choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'Answer' } }], usage: { prompt_tokens: 100, completion_tokens: 5, total_tokens: 105, prompt_cache_hit_tokens: 0, prompt_cache_miss_tokens: 100 } } })) })
 
-describe('native tools use the single Credits ledger', () => {
+describe('historical V3 native tools use the additive Credits ledger', () => {
     it('charges one Credit per successful750microUSD search plus model usage and one execution; replay never resends or charges twice', async () => {
         await configure(); const admitted = await root(), execute = vi.fn(successful), tools = createHostedNativeTools({ dataSource: ds, provider: { execute } }), request = nativeRequest()
         const first = await tools.execute({ scope: admitted.scope, request }), replay = await tools.execute({ scope: admitted.scope, request })
@@ -155,7 +160,7 @@ describe('native tools use the single Credits ledger', () => {
     })
 })
 
-describe('independent native Credits boundary acceptance', () => {
+describe('historical V3 independent native Credits boundary acceptance', () => {
     it('refuses zero available Credits before any supplier call or native reservation', async () => {
         await configure()
         const admitted = await root(), grant = await balance(), execute = vi.fn(successful)

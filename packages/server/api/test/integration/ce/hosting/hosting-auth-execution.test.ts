@@ -33,8 +33,9 @@ import { createHostedAiGateway } from '../../../../src/app/hosting/hosting-ai-ga
 import { hostingController } from '../../../../src/app/hosting/hosting-controller'
 import { hostedCopilotScope } from '../../../../src/app/hosting/hosting-copilot'
 import { HostingDispatchEntity } from '../../../../src/app/hosting/hosting-dispatch-entity'
-import { HostingAccountEntity, HostingGrantEntity, HostingReservationEntity } from '../../../../src/app/hosting/hosting-entities'
+import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrantEntity, HostingReservationEntity } from '../../../../src/app/hosting/hosting-entities'
 import { createHostedExecution } from '../../../../src/app/hosting/hosting-execution'
+import { HostingRootCreditUsageEntity } from '../../../../src/app/hosting/hosting-inclusive-credits-entity'
 import { INSTALLATION_MODE_FLAG_ID } from '../../../../src/app/hosting/hosting-installation'
 import { createHostedLedger } from '../../../../src/app/hosting/hosting-ledger'
 import { saveManagedSettings } from '../../../../src/app/hosting/hosting-managed-settings'
@@ -879,7 +880,7 @@ describe('trigger coordination does not spend customer execution Credits', () =>
         expect(await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: dispatch.reservationId! })).toMatchObject({ state: 'uncertain', amount: 1n, actualAmount: null })
         expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: value.platformId })).activeExecutions).toBe(1)
     })
-    it('keeps a real managed AI flow charged for its execution plus its model usage', async () => {
+    it('includes verified managed AI supplier usage within the real flow base Credit', async () => {
         const value = await flow(), version = await ds.getRepository(FlowVersionEntity).findOneByOrFail({ id: value.data.flowVersionId })
         await ds.getRepository(FlowVersionEntity).update({ id: version.id }, { trigger: { ...version.trigger, nextAction: { name: 'managed_ai', type: FlowActionType.PIECE, displayName: 'Managed AI', valid: true, settings: { pieceName: '@activepieces/piece-ai', pieceVersion: '0.11.0', actionName: 'askAi', input: { provider: { provider: 'activepieces' }, model: 'sydekyks', prompt: 'Synthetic prompt' }, propertySettings: {} } } } })
         const previousAllowlist = process.env['AP_HOSTED_OPERATOR_IDENTITY_IDS'] ?? ''
@@ -904,9 +905,16 @@ describe('trigger coordination does not spend customer execution Credits', () =>
         await execution.flowReceipt({ admissionId, connectionId: fence.connectionId, projectId: value.projectId, runId: value.data.runId, status: FlowRunStatus.SUCCEEDED })
         expect(complete).toHaveBeenCalledTimes(1)
         const root = await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ admissionId })
-        expect(await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: root.reservationId! })).toMatchObject({ state: 'settled', actualAmount: 1n })
+        expect(await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: root.reservationId! })).toMatchObject({ state: 'settled', actualAmount: 1n, accountingVersion: 'single-credits-inclusive-1500-microusd-v4', microUsdPerCredit: 1500n })
         const model = await ds.getRepository(HostingModelCallEntity).findOneByOrFail({ admissionId })
         expect(model.state).toBe('settled')
-        expect((await grant(value.platformId)).consumed).toBeGreaterThan(1n)
+        expect(model.actualMicroUsd).not.toBeNull()
+        const supplierCost = BigInt(model.actualMicroUsd!)
+        expect(supplierCost).toBeGreaterThan(0n)
+        expect(supplierCost).toBeLessThanOrEqual(1500n)
+        expect(await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: model.reservationId! })).toMatchObject({ state: 'settled', amount: 0n, actualAmount: 0n, actualSupplierMicroUsd: supplierCost, rootReservationId: root.reservationId })
+        expect(await ds.getRepository(HostingDailyBudgetEntity).findOneByOrFail({ id: model.budgetDay! })).toMatchObject({ consumed: supplierCost, reserved: 0n })
+        expect(await ds.getRepository(HostingRootCreditUsageEntity).findOneByOrFail({ id: root.reservationId! })).toMatchObject({ consumedCredits: 1n, reservedCredits: 0n, settledSupplierMicroUsd: supplierCost, heldSupplierMicroUsd: 0n, microUsdPerCredit: 1500n })
+        expect(await grant(value.platformId)).toMatchObject({ consumed: 1n, reserved: 0n })
     })
 })
