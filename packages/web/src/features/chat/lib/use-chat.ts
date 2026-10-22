@@ -24,6 +24,7 @@ import {
   assertHostedChatScope,
 } from '@/features/hosted-chat/hosted-chat-api';
 import { useHostedChatPayer } from '@/features/hosted-chat/hosted-chat-provider';
+import { hostedNativeFilesApi } from '@/features/hosted-chat/hosted-native-files-api';
 import { api } from '@/lib/api';
 import { chatDebug } from '@/lib/chat-debug-logger';
 
@@ -746,13 +747,7 @@ export function useAgentChat({
       updateSendStatus({ type: 'submitting' });
       if (hostedChat) setIsLoadingHistory(false);
       let hosted: HostedChatSubmission | undefined;
-      if (hostedChat && files?.length) {
-        updateSendStatus({
-          type: 'error',
-          message: 'Attachments are not available in hosted chat yet.',
-        });
-        return;
-      }
+      let nativeFileIds: string[] | undefined;
       if (hostedChat) {
         const prepared = await tryCatch(() => hostedChat.prepare());
         if (attempt !== sendAttemptRef.current) return;
@@ -794,7 +789,24 @@ export function useAgentChat({
       setOptimisticUserMessage(optimisticUser);
       store.getState().resetInteractions();
 
-      if (files && files.length > 0) {
+      if (hosted && files?.length) {
+        const uploaded = await tryCatch(() =>
+          hostedNativeFilesApi.upload(hosted!, files),
+        );
+        if (attempt !== sendAttemptRef.current) return;
+        if (uploaded.error || !uploaded.data) {
+          setOptimisticUserMessage(null);
+          updateSendStatus({
+            type: 'error',
+            message:
+              uploaded.error?.message ??
+              'The files could not be prepared. Attach them again.',
+          });
+          return;
+        }
+        nativeFileIds = uploaded.data.map((file) => file.id);
+        pendingFilesRef.current = undefined;
+      } else if (files && files.length > 0) {
         const oversized = files.find((f) => f.size > MAX_FILE_SIZE);
         if (oversized) {
           setOptimisticUserMessage(null);
@@ -876,6 +888,7 @@ export function useAgentChat({
           runId,
           editorContext: editorContextRef.current,
           files: pendingFilesRef.current,
+          nativeFileIds,
           ...(options?.messageSource
             ? { messageSource: options.messageSource }
             : {}),

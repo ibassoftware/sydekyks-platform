@@ -39,6 +39,7 @@ export const sydAgentRunController: FastifyPluginAsyncZod = async (app) => {
             const version = await flowVersionService(request.log).getFlowVersionOrThrow({ flowId: flowRun.flowId, versionId: flowRun.flowVersionId, projectId, platformId: platform.id })
             const step = flowStructureUtil.getStep(waitpoint.stepName, version.trigger)
             if (!step || !flowStructureUtil.isAgentPiece(step) || step.settings.actionName !== 'run_agent') throw invalid('The waiting mission step is not an Agent action')
+            if (body.nativeWebSearch && step.settings.input.webSearch !== true) throw invalid('Web search was not enabled on this mission step')
         }
         let agentId: string | null = null
         let config = AgentConfig.parse({ instructions: body.instruction, provider: body.provider, providerConfigId: body.providerConfigId, modelName: body.modelName, tools: body.tools, structuredOutput: body.structuredOutput, maxSteps: body.maxSteps })
@@ -61,7 +62,7 @@ export const sydAgentRunController: FastifyPluginAsyncZod = async (app) => {
             if (hosted) await sydAgentRuntime.repo().createQueryBuilder().insert().values(saved).orIgnore().execute()
             else await sydAgentRuntime.repo().save(saved)
             const conversation = await sydAgentRuntime.repo().findOneByOrFail({ id, platformId: platform.id, projectId, flowRunId: flowRun.id })
-            return sydAgentRuntime.start({ conversation, config, content: body.instruction, waitpointId: body.waitpointId, ...(hosted ? { hostedOrigin: { type: 'agent-step' as const, admissionId: request.principal.id, waitpointId: body.waitpointId } } : {}), log: request.log })
+            return sydAgentRuntime.start({ conversation, config, content: body.instruction, waitpointId: body.waitpointId, ...(hosted ? { nativeFileIds: body.nativeFileIds, nativeWebSearch: body.nativeWebSearch, tokenVersion: parent?.tokenVersion, hostedOrigin: { type: 'agent-step' as const, admissionId: request.principal.id, waitpointId: body.waitpointId } } : {}), log: request.log })
         })
         if (result.error) {
             if (!hosted) await redis.del(claimKey)
@@ -74,4 +75,4 @@ export const sydAgentRunController: FastifyPluginAsyncZod = async (app) => {
 function invalid(message: string) {
     return new ActivepiecesError({ code: ErrorCode.VALIDATION, params: { message } })
 }
-const runRequest = z.object({ instruction: z.string().min(1).max(MAX_AGENT_TEXT_LENGTH), flowRunId: ApId, waitpointId: ApId, agentId: z.optional(ApId), provider: z.enum(AIProviderName).optional(), providerConfigId: z.string().optional(), modelName: z.string().optional(), tools: z.array(AgentTool).max(MAX_AGENT_TOOLS).optional(), structuredOutput: z.array(AgentOutputField).max(MAX_AGENT_OUTPUT_FIELDS).optional(), maxSteps: z.number().int().positive().max(MAX_AGENT_STEP_BUDGET).optional() })
+const runRequest = z.object({ nativeFileIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{21}$/)).max(4).optional(), nativeWebSearch: z.boolean().optional(), instruction: z.string().min(1).max(MAX_AGENT_TEXT_LENGTH), flowRunId: ApId, waitpointId: ApId, agentId: z.optional(ApId), provider: z.enum(AIProviderName).optional(), providerConfigId: z.string().optional(), modelName: z.string().optional(), tools: z.array(AgentTool).max(MAX_AGENT_TOOLS).optional(), structuredOutput: z.array(AgentOutputField).max(MAX_AGENT_OUTPUT_FIELDS).optional(), maxSteps: z.number().int().positive().max(MAX_AGENT_STEP_BUDGET).optional() })

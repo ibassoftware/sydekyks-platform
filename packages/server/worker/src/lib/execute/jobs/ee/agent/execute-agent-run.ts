@@ -9,7 +9,7 @@ import { agentMcpClient, McpConnection } from './agent-mcp-client'
 import { stepResultFrom } from './agent-step-result'
 import { agentToolPolicy } from './agent-tool-policy'
 import { agentWorkerTools, GateDecision, TaintState } from './agent-worker-tools'
-import { createHostedAgentModel, hostedAgentFailureMessage, hostedAgentRefusalOf } from './hosted-agent-model'
+import { createHostedAgentModel, createHostedNativeWebTools, hostedAgentFailureMessage, hostedAgentRefusalOf } from './hosted-agent-model'
 import { classifyAgentRunError, delayWithJitter, drainOf, firstStepUsesFastModel, isTransientFailureText, NO_STEP_CONTENT, runAgentTurn, StreamDrain, trackStepContent } from './run-agent-turn'
 import { unwrapLazyToolChunk } from './tools/skill-tools'
 
@@ -104,6 +104,7 @@ export const executeAgentRunJob: JobHandler<ExecuteAgentRunJobData, FireAndForge
         try {
             const config = await ctx.apiClient.getAgentConfig({
                 conversationId, runId, platformId, userId, userMessage, modelName, files,
+                nativeFileIds: data.nativeFileIds, nativeWebSearch: data.nativeWebSearch,
                 ...spreadIfDefined('source', jobSource),
                 ...spreadIfDefined('messageSource', data.messageSource),
                 ...spreadIfDefined('editorContext', data.editorContext),
@@ -206,13 +207,13 @@ export const executeAgentRunJob: JobHandler<ExecuteAgentRunJobData, FireAndForge
             heartbeatInterval = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS)
 
             const phaseState: { phase: AgentPhase } = { phase: 'discovery' }
-            const taintState = agentWorkerTools.createTaintState({ carried: source === AgentRunSource.FLOW_STEP || agentWorkerTools.previousReplyReadData(config.previousUiMessages) })
+            const taintState = agentWorkerTools.createTaintState({ carried: Boolean(config.hosted?.nativeFileIds?.length) || source === AgentRunSource.FLOW_STEP || agentWorkerTools.previousReplyReadData(config.previousUiMessages) })
 
             const readImage = async (fileId: string) => toResolvedAiFile({
                 stored: await ctx.apiClient.readAgentFile({ platformId, conversationId, fileId, ...spreadIfDefined('projectId', projectId ?? undefined) }),
             })
             const imageGenerator = pickImageGenerator({ falApiKey: aiTools.imageGeneration?.apiKey, imageModelId: config.imageModelId, credentials: imageCredentials, billing, readImage })
-            const webTools: ToolSet = dryRun ? {} : {
+            const webTools: ToolSet = hosted && config.hosted ? createHostedNativeWebTools({ ctx, config: config.hosted, taintState, abortSignal: abortController.signal }) : dryRun ? {} : {
                 ...agentWorkerTools.createWebTools({ taintState }),
                 ...(aiTools.webSearch ? agentWorkerTools.createSearchTools({ webSearch: aiTools.webSearch, taintState }) : {}),
                 ...(providerSearchActive ? agentWorkerTools.createProviderSearchTools({
@@ -790,12 +791,13 @@ function buildToolSet({ hosted = false, ctx, eventEmitter, log, phaseState, tain
         ? {}
         : agentWorkerTools.createStructuredOutputTool({ fields: structuredOutput, capture: captureStructured })
     return agentToolPolicy.selectToolsForSource({
-        source,
+        source, hosted,
         groups: {
             local: hosted ? {} : localTools,
             display: displayTools,
             crossProject: hosted ? {} : crossProjectTools,
-            web: hosted ? {} : webTools,
+            // Hosted webTools are constructed exclusively by the metered gateway adapter.
+            web: webTools,
             thinking: thinkingTools,
             phase: phaseTools,
             buildPlan: buildPlanTools,

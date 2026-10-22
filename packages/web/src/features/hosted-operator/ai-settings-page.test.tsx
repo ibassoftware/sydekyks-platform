@@ -141,6 +141,19 @@ function approvalButton() {
   )!;
 }
 describe('Managed AI setup clarity', () => {
+  it('includes successful native tool fees in the explicit pricing review', async () => {
+    mocks.settings!.pricing.terms!.nativeTools = {
+      version: 'deepseek-search-fetch-success-v1',
+      search: 750,
+      fetch: 750,
+    };
+    await render();
+    expect(pageText()).toContain('Successful search and page retrieval');
+    expect(pageText()).toContain('$0.00075');
+    expect(pageText()).toContain('Known empty or failed');
+    expect(approvalButton().disabled).toBe(true);
+    expect(mocks.approve).not.toHaveBeenCalled();
+  });
   it('shows saved configuration and next action, with approval expanded and metadata disclosed on demand', async () => {
     await render();
     expect(pageText()).toContain('DeepSeek Flash');

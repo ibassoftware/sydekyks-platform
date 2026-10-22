@@ -14,16 +14,18 @@ const action = () => buildPieceAction({ name: 'ai', pieceName: '@activepieces/pi
 const run = () => pieceExecutor.handle({ action: action(), executionState: FlowExecutorContext.empty(), constants: generateMockEngineConstants({ engineToken: token, internalApiUrl: 'http://127.0.0.1:1/' }) })
 beforeEach(() => {
     vi.clearAllMocks()
-    mockGetPieceAndAction.mockResolvedValue({ piece: { auth: undefined }, pieceAction: { name: 'askAi', props: {}, requireAuth: false, run: async (context: { run: { callAi: (request: object) => Promise<unknown> } }) => context.run.callAi({}) } })
+    mockGetPieceAndAction.mockResolvedValue({ piece: { auth: undefined }, pieceAction: { name: 'askAi', props: {}, requireAuth: false, run: async (context: { run: { callAi: (request: object) => Promise<unknown> } }) => context.run.callAi({ stepName: 'forged' }) } })
 })
 afterEach(() => vi.unstubAllGlobals())
 
 describe('hosted AI accounting refusal at the actual piece executor boundary', () => {
-    it.each(['HOSTING_CREDITS_EXHAUSTED', 'HOSTING_RUN_CREDIT_LIMIT', 'HOSTING_OPERATOR_BUDGET_EXHAUSTED', 'HOSTING_BYOK_SCOPE_DENIED'])('turns verified %s into one terminal FAILED AI step even when generic retry and continue are enabled', async code => {
+    it.each(['HOSTING_CREDITS_EXHAUSTED', 'HOSTING_RUN_CREDIT_LIMIT', 'HOSTING_OPERATOR_BUDGET_EXHAUSTED', 'HOSTING_BYOK_SCOPE_DENIED', 'HOSTING_NATIVE_CREDIT_LIMIT', 'HOSTING_NATIVE_FEATURE_DENIED', 'HOSTING_AI_FILE_UNAVAILABLE', 'HOSTING_AI_STEP_DENIED', 'HOSTING_NATIVE_PRICING_APPROVAL_REQUIRED'])('turns verified %s into one terminal FAILED AI step even when generic retry and continue are enabled', async code => {
         const fetch = vi.fn(async () => new Response(JSON.stringify({ code }), { status: 403, headers: { 'Content-Type': 'application/json' } }))
         vi.stubGlobal('fetch', fetch)
         const result = await run()
         expect(fetch).toHaveBeenCalledTimes(1)
+        const request = JSON.parse((fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)
+        expect(request.stepName).toBe('ai')
         expect(result.verdict.status).toBe(FlowRunStatus.FAILED)
         expect(result.steps.ai.status).toBe('FAILED')
         expect(result.steps.ai.errorMessage).toContain(hostedAiRefusalMessage(403, { code }))

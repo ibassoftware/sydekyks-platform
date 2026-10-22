@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
+
 const mocks = vi.hoisted(() => ({
   request: vi.fn(),
   current: null as unknown,
@@ -83,22 +84,22 @@ it.each(['user', 'scope', 'call'] as const)(
     if (field === 'call') value.view.callId = 'x'.repeat(21);
     mocks.request.mockResolvedValue(value);
     await expect(
-      previewCharge(session, callId, draft, new AbortController().signal)
+      previewCharge(session, callId, draft, new AbortController().signal),
     ).rejects.toMatchObject({ code: 'SESSION' });
-  }
+  },
 );
 it('discards a late preview when the operator session changes', async () => {
   let complete!: (value: unknown) => void;
   mocks.request.mockReturnValue(
     new Promise((resolve) => {
       complete = resolve;
-    })
+    }),
   );
   const pending = previewCharge(
     session,
     callId,
     draft,
-    new AbortController().signal
+    new AbortController().signal,
   );
   mocks.current = null;
   complete(response());
@@ -118,10 +119,10 @@ it('keeps the same idempotency key and server preview fences when retrying a con
       draft,
       value.preview,
       'one-confirmation',
-      new AbortController().signal
+      new AbortController().signal,
     );
   expect(mocks.request.mock.calls[0][1].data).toEqual(
-    mocks.request.mock.calls[1][1].data
+    mocks.request.mock.calls[1][1].data,
   );
   expect(mocks.request.mock.calls[0][1].data).toMatchObject({
     requestKey: 'one-confirmation',
@@ -129,7 +130,7 @@ it('keeps the same idempotency key and server preview fences when retrying a con
     expectedRevision: 0,
   });
   expect(mocks.request.mock.calls[0][1].data).not.toHaveProperty(
-    'actualMicroUsd'
+    'actualMicroUsd',
   );
 });
 it('sanitizes transport errors without retaining supplier keys or session headers', async () => {
@@ -144,9 +145,43 @@ it('sanitizes transport errors without retaining supplier keys or session header
     session,
     callId,
     draft,
-    new AbortController().signal
+    new AbortController().signal,
   ).catch((value) => value);
   expect(error.code).toBe('HOSTING_CHARGE_RESOLUTION_CONFLICT');
   expect(JSON.stringify(error)).not.toContain('private-fixture-token');
   expect(error).not.toHaveProperty('config');
 });
+it.each([true, false])(
+  'sends a verified native tool billable decision of %s without inventing token usage',
+  async (billable) => {
+    const value = response();
+    mocks.request.mockResolvedValue({
+      ...value,
+      view: {
+        ...value.view,
+        nativeTool: 'search',
+        toolUnitPriceMicroUsd: '750',
+        toolTariffVersion: 'deepseek-search-fetch-success-v1',
+      },
+    });
+    const nativeDraft = {
+      ...draft,
+      outcome: 'verified_usage' as const,
+      billable,
+      supplierRequestId: 'synthetic-search-receipt',
+      supplierCreatedAt: '2026-10-21T00:00:00Z',
+    };
+    const result = await previewCharge(
+      session,
+      callId,
+      nativeDraft,
+      new AbortController().signal,
+    );
+    expect(result.view.nativeTool).toBe('search');
+    expect(mocks.request.mock.calls[0][1].data).toMatchObject({
+      billable,
+      outcome: 'verified_usage',
+    });
+    expect(mocks.request.mock.calls[0][1].data).not.toHaveProperty('usage');
+  },
+);

@@ -7,6 +7,9 @@ describe('hosted agent billing safeguards', () => {
         ['HOSTING_CREDITS_EXHAUSTED', 'Not enough Credits'],
         ['HOSTING_RUN_CREDIT_LIMIT', 'safety limit'],
         ['HOSTING_AI_CALL_LIMIT', 'safety limit'],
+        ['HOSTING_NATIVE_CREDIT_LIMIT', 'safety limit'],
+        ['HOSTING_NATIVE_TOOL_LIMIT', 'safety limit'],
+        ['HOSTING_AI_FILE_UNAVAILABLE', 'Upload it again'],
         ['HOSTING_OPERATOR_BUDGET_EXHAUSTED', 'temporarily unavailable'],
         ['HOSTING_AI_OUTCOME_UNCERTAIN', 'Credits may remain held'],
     ])('explains %s without exposing internal supplier billing details', (code, expected) => {

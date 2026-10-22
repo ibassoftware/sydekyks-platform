@@ -306,9 +306,12 @@ export const SendAgentMessageRequest = z.object({
     content: z.string().max(MAX_AGENT_TEXT_LENGTH),
     runId: z.string().optional(),
     files: z.array(AgentMessageFile).max(10).optional(),
+    // Hosted uploads are private, expiring references; never put their bytes in a job.
+    nativeFileIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{21}$/)).max(4).optional(),
+    nativeWebSearch: z.boolean().optional(),
     messageSource: AgentMessageSource.optional(),
 }).refine(
-    (val) => val.content.length > 0 || (val.files && val.files.length > 0),
+    (val) => val.content.length > 0 || (val.files && val.files.length > 0) || (val.nativeFileIds && val.nativeFileIds.length > 0),
     { message: formErrors.messageRequiresContentOrFiles },
 )
 export type SendAgentMessageRequest = z.infer<typeof SendAgentMessageRequest>

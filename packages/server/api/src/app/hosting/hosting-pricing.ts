@@ -94,7 +94,7 @@ export async function hostedPricingView(manager: EntityManager, now: Date) {
     const approval = state?.approvalId ? await manager.getRepository(PricingApprovalEntity).findOneBy({ id: state.approvalId }) : null
     let status: string = state?.status ?? 'unconfigured'
     if (['ready', 'needs_approval', 'mismatch'].includes(status) && (!observation || !fresh(observation, now) || (approval && approval.validUntil <= now) || now < new Date(PRICING_CALENDAR.from) || now >= new Date(PRICING_CALENDAR.until))) status = 'expired'
-    return { status, revision: state?.revision ?? 0, observationId: observation?.id ?? null, termsHash: observation?.termsHash ?? null, observedAt: observation?.observedAt.toISOString() ?? null, sourceValidUntil: observation?.sourceAt ? new Date(Math.min(observation.sourceAt.getTime(), observation.observedAt.getTime()) + PRICING_FRESH_MS).toISOString() : null, sourceUrl: HOSTED_PRICING_URL, calendar: PRICING_CALENDAR, terms: observation?.terms ? { models: observation.terms.models } : null, approval: approval ? { id: approval.id, validUntil: approval.validUntil.toISOString(), termsHash: approval.termsHash } : null }
+    return { status, revision: state?.revision ?? 0, observationId: observation?.id ?? null, termsHash: observation?.termsHash ?? null, observedAt: observation?.observedAt.toISOString() ?? null, sourceValidUntil: observation?.sourceAt ? new Date(Math.min(observation.sourceAt.getTime(), observation.observedAt.getTime()) + PRICING_FRESH_MS).toISOString() : null, sourceUrl: HOSTED_PRICING_URL, calendar: PRICING_CALENDAR, terms: observation?.terms ? { models: observation.terms.models, ...(observation.terms.nativeTools ? { nativeTools: observation.terms.nativeTools } : {}) } : null, approval: approval ? { id: approval.id, validUntil: approval.validUntil.toISOString(), termsHash: approval.termsHash } : null }
 }
 async function authority(manager: EntityManager, now: Date) {
     const state = await manager.getRepository(PricingStateEntity).findOne({ where: { id: STATE_ID }, lock: { mode: 'pessimistic_read' } })
@@ -113,4 +113,11 @@ async function lockedState(manager: EntityManager): Promise<PricingState> {
 }
 function digest(value: unknown): string {
     return createHash('sha256').update(JSON.stringify(value)).digest('hex') 
+}
+
+export async function readApprovedNativeToolPricing(manager: EntityManager, now: Date, model: ManagedModel, kind: 'search' | 'fetch') {
+    const { terms } = await authority(manager, now)
+    if (!terms.nativeTools) hostingFail('HOSTING_NATIVE_PRICING_APPROVAL_REQUIRED')
+    const quote = await readApprovedPricing(manager, now, model)
+    return { quote, unitPriceMicroUsd: BigInt(terms.nativeTools[kind]), tariffVersion: terms.nativeTools.version }
 }

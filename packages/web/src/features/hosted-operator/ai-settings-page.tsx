@@ -751,6 +751,23 @@ function PricingReview({
             Refresh pricing status
           </Button>
         </div>
+        {pricing.terms?.nativeTools && (
+          <section
+            className="mt-5 max-w-3xl space-y-2"
+            aria-label="Web search pricing for approval"
+          >
+            <h4 className="text-sm font-medium">
+              Successful search and page retrieval
+            </h4>
+            <p className="text-sm text-gray-11">
+              Search: {money(pricing.terms.nativeTools.search)} per successful
+              request. Page retrieval: {money(pricing.terms.nativeTools.fetch)}{' '}
+              per successful request. These fees are included in this approval;
+              model usage is additional. Known empty or failed requests have no
+              tool fee.
+            </p>
+          </section>
+        )}
         <div className="mt-5 max-w-sm">
           <label
             htmlFor="pricing-approval-until"

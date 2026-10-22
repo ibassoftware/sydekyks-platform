@@ -21,6 +21,7 @@ export type HostedChatSubmission = {
   scope: HostedChatScope;
   assertCurrent: () => void;
   bindConversation: (id: string) => void;
+  nativeWebSearch?: boolean;
 };
 const creditQuantity = z.string().regex(/^\d+$/);
 export const HostedCreditMeter = z.object({
@@ -47,6 +48,14 @@ export function formatHostedCredits(value: string, scale = '1') {
   return `${(n / d).toLocaleString()}${fraction ? `.${fraction}` : ''}`;
 }
 export const HostedChatOptions = z.object({
+  nativeFeatures: z
+    .object({
+      files: z.boolean(),
+      webSearch: z.boolean(),
+      maxTurnCredits: z.number().int().positive(),
+      maxFilesPerTurn: z.number().int().positive().max(4),
+    })
+    .optional(),
   credits: HostedCustomerCredits,
   platformId: z.string().length(21),
   userId: z.string().length(21),
@@ -89,6 +98,7 @@ export class HostedChatError extends Error {
       | 'limit'
       | 'access'
       | 'context'
+      | 'file'
       | 'send',
   ) {
     super(hostedChatErrorText(kind));
@@ -117,6 +127,8 @@ export function hostedChatErrorText(kind: HostedChatError['kind']) {
       return 'Workspace access is paused or expired. Check billing or contact your workspace administrator.';
     case 'context':
       return 'This conversation exceeds the current chat limits. Start a new chat with a shorter message. No Credits were charged for this send.';
+    case 'file':
+      return 'An attachment was removed, expired or is unavailable. Start a new chat and upload the file again. No Credits were charged for this send.';
     case 'send':
       return 'The send outcome could not be confirmed. Refresh the conversation before sending again; another send may use Credits.';
     default:
@@ -149,6 +161,7 @@ export async function hostedChatRequest<T>(
     const code = api.isError(error)
       ? (error.response?.data as { code?: string })?.code
       : undefined;
+    if (status === 410) throw new HostedChatError('file');
     if (code === 'HOSTING_CHAT_CONTEXT_LIMIT')
       throw new HostedChatError('context');
     if (
@@ -167,7 +180,11 @@ export async function hostedChatRequest<T>(
       throw new HostedChatError('project');
     if (code === 'HOSTING_OPERATOR_BUDGET_EXHAUSTED')
       throw new HostedChatError('budget');
-    if (code === 'HOSTING_RUN_CREDIT_LIMIT') throw new HostedChatError('limit');
+    if (
+      code === 'HOSTING_RUN_CREDIT_LIMIT' ||
+      code === 'HOSTING_NATIVE_CREDIT_LIMIT'
+    )
+      throw new HostedChatError('limit');
     if (code?.startsWith('HOSTING_') && /CREDITS/.test(code))
       throw new HostedChatError('credits');
     if (

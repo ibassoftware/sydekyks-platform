@@ -111,6 +111,50 @@ describe('native hosted Agent payer metadata', () => {
 });
 
 describe('inherited hosted chat payer', () => {
+  it('explains zero Credits even when managed availability and key choices are empty', async () => {
+    control.options.mockResolvedValue({
+      ...options(),
+      managedAvailable: false,
+      keys: [],
+      credits: { execution: { available: '0' } },
+    });
+    view();
+    await waitFor(() => expect(chat?.loading).toBe(false));
+    expect(chat?.ready).toBe(false);
+    expect(chat?.error).toMatchObject({ message: 'credits' });
+    await expect(chat!.prepare()).rejects.toThrow('credits');
+  });
+  it('captures an explicit search choice and rejects it if access changes before send', async () => {
+    control.options.mockResolvedValue({
+      ...options(),
+      nativeFeatures: {
+        files: true,
+        webSearch: true,
+        maxTurnCredits: 100,
+        maxFilesPerTurn: 4,
+      },
+    });
+    view();
+    await waitFor(() => expect(chat?.ready).toBe(true));
+    expect(chat?.nativeWebSearch).toBe(false);
+    act(() => chat!.setNativeWebSearch(true));
+    await act(async () => {
+      expect((await chat!.prepare()).nativeWebSearch).toBe(true);
+    });
+    control.options.mockResolvedValue({
+      ...options(),
+      nativeFeatures: {
+        files: true,
+        webSearch: false,
+        maxTurnCredits: 100,
+        maxFilesPerTurn: 4,
+      },
+    });
+    await act(async () => {
+      await expect(chat!.prepare()).rejects.toThrow('unavailable');
+    });
+    expect(chat?.nativeWebSearch).toBe(true);
+  });
   it('inherits the configured Sydekyks default for the first root chat send', async () => {
     control.options.mockResolvedValue(options());
     view();

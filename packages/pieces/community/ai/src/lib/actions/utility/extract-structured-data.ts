@@ -1,7 +1,7 @@
 import { AiStepAction, ApFile, createAction, PieceAuth, Property, spreadIfDefined } from '@activepieces/pieces-framework';
 import Ajv from 'ajv';
 import mime from 'mime-types';
-import { runOnWorker, uploadAiFiles } from '../../common/ai-step';
+import { nativeFileIds, runOnWorker, uploadAiFiles } from '../../common/ai-step';
 import { aiProps, aiProviderSelection } from '../../common/props';
 
 export const extractStructuredData = createAction({
@@ -24,7 +24,7 @@ export const extractStructuredData = createAction({
 			display: 'section',
 			label: 'Extract from',
 			icon: 'file',
-			props: ['text', 'files'],
+			props: ['text', 'files', 'fileIds'],
 		},
 		{
 			key: 'output',
@@ -42,6 +42,7 @@ export const extractStructuredData = createAction({
 			description: 'Text to extract from. Fill this, Files, or both.',
 			required: false,
 		}),
+		fileIds: Property.Array({ displayName: 'Private Sydekyks file IDs', description: 'Hosted Sydekyks: upload in chat > My AI files, copy each ID and add up to four here. Uploads expire after 24 hours and must belong to the user running this workflow.', required: false }),
 		files: Property.Array({
 			displayName: 'Files',
 			description: 'Images or PDFs to extract from.',
@@ -154,7 +155,9 @@ export const extractStructuredData = createAction({
 		const { provider, configId } = aiProviderSelection.resolveOrThrow(context.propsValue.provider);
 		const attachments = ((context.propsValue.files as { file?: ApFile }[] | undefined) ?? []).map((row) => row?.file);
 
-		if (!context.propsValue.text && attachments.length === 0) {
+		const fileIds = context.run.callAi ? nativeFileIds(context.propsValue.fileIds) : [];
+		if (context.run.callAi && attachments.some(Boolean)) throw new Error('Use private Sydekyks file IDs for hosted document extraction.');
+		if (!context.propsValue.text && attachments.length === 0 && fileIds.length === 0) {
 			throw new Error('Please provide text or image/PDF to extract data from.');
 		}
 
@@ -171,7 +174,8 @@ export const extractStructuredData = createAction({
 				modelId: context.propsValue.model,
 				...spreadIfDefined('text', context.propsValue.text),
 				...spreadIfDefined('prompt', context.propsValue.prompt),
-				files: await uploadAiFiles({ context, files: attachments, mimeTypeOf: documentMimeType }),
+				files: context.run.callAi ? [] : await uploadAiFiles({ context, files: attachments, mimeTypeOf: documentMimeType }),
+                ...(context.run.callAi ? { fileIds } : {}),
 				schema: { mode: context.propsValue.mode ?? 'simple', fields: context.propsValue.schema['fields'] },
 				...spreadIfDefined('maxOutputTokens', context.propsValue.maxOutputTokens),
 			}),

@@ -77,6 +77,18 @@ describe('what the agent builder may reach', () => {
         expect(names).toContain('ap_update_thinking_status')
     })
 
+    it('lets a hosted builder reach only the approved native web pair', () => {
+        const groups = { ...GROUPS, web: { ...GROUPS.web, ...toolSet('ap_search_web', 'ap_read_web_page') } }
+        const hosted = agentToolPolicy.selectToolsForSource({ source: AgentRunSource.AGENT_BUILDER, groups, hosted: true })
+        expect(hosted).toHaveProperty('ap_search_web')
+        expect(hosted).toHaveProperty('ap_read_web_page')
+        expect(hosted).not.toHaveProperty('ap_fetch_url')
+        expect(hosted).not.toHaveProperty('ap_web_search')
+        const selfHosted = agentToolPolicy.selectToolsForSource({ source: AgentRunSource.AGENT_BUILDER, groups })
+        expect(selfHosted).not.toHaveProperty('ap_search_web')
+        expect(selfHosted).not.toHaveProperty('ap_read_web_page')
+    })
+
     it('never reaches the flow-building surface it sits beside, nor the web', () => {
         const names = namesFor(AgentRunSource.AGENT_BUILDER)
 

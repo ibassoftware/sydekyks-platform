@@ -29,6 +29,8 @@ const History = z.object({
   result: z.record(z.string(), z.unknown()),
 });
 const View = z.object({
+  nativeTool: z.enum(['search', 'fetch']).nullable().optional(),
+  toolUnitPriceMicroUsd: amount.nullable().optional(),
   identity: Identity,
   callId: id,
   platformId: id,
@@ -83,6 +85,7 @@ export type ChargeDraft = {
   evidenceReference: string;
   supplierRequestId?: string;
   supplierCreatedAt?: string;
+  billable?: boolean;
   usage?: {
     prompt_cache_hit_tokens: number;
     prompt_cache_miss_tokens: number;

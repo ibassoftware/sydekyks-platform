@@ -22,6 +22,7 @@ import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { HOSTING_ACCESS_ENTITIES } from '../hosting/hosting-access-entities'
 import { HOSTING_AI_ALLOWANCE_ENTITIES } from '../hosting/hosting-ai-allowance-entities'
+import { HostedAiFileEntity } from '../hosting/hosting-ai-file-entity'
 import { HostingAssessmentEntity } from '../hosting/hosting-assessment-entity'
 import { HOSTING_CHARGE_RESOLUTION_ENTITIES } from '../hosting/hosting-charge-resolution-entities'
 import { HOSTING_CREDIT_ALLOWANCE_ENTITIES } from '../hosting/hosting-credit-allowance-entities'
@@ -65,6 +66,7 @@ import { RecordEntity } from '../tables/record/record.entity'
 import { TableWebhookEntity } from '../tables/table/table-webhook.entity'
 import { TableEntity } from '../tables/table/table.entity'
 import { TemplateEntity } from '../template/template.entity'
+import { CATALOGUE_TODO_ENTITIES } from '../todos/todo-entities'
 import { ToolSearchIndexEntity } from '../tool-search/tool-search-index.entity'
 import { AppEventRoutingEntity } from '../trigger/app-event-routing/app-event-routing.entity'
 import { TriggerEventEntity } from '../trigger/trigger-events/trigger-event.entity'
@@ -74,7 +76,6 @@ import { UserInvitationEntity } from '../user-invitations/user-invitation.entity
 import { VariableEntity } from '../variable/variable.entity'
 import { WaitpointEntity } from '../waitpoints/waitpoint-entity'
 import { WaitpointSignalEntity } from '../waitpoints/waitpoint-signal-entity'
-import { CATALOGUE_TODO_ENTITIES } from '../todos/todo-entities'
 import { DatabaseType } from './database-type'
 import { createPGliteDataSource } from './pglite-connection'
 import { createPostgresDataSource, createPostgresMigrationDataSource } from './postgres-connection'
@@ -84,6 +85,7 @@ const databaseType = system.get(AppSystemProp.DB_TYPE)
 function getEntities(): EntitySchema<unknown>[] {
     return [
         ...CATALOGUE_TODO_ENTITIES,
+        HostedAiFileEntity,
         ...LMS_ENTITIES,
         ...HOSTING_ENTITIES,
         ...HOSTING_MANUAL_ACCOUNT_ENTITIES,

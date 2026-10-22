@@ -18,6 +18,7 @@ export const PricingTerms = z.strictObject({
     parserVersion: z.literal('deepseek-html-v1'), schedule: z.literal('weekdays-utc-01-04-06-10-except-cn-holidays'),
     models: z.strictObject({ [HOSTED_DEEPSEEK_MODEL]: model, [HOSTED_DEEPSEEK_PRO_MODEL]: model }),
     table: z.array(z.array(z.string().max(1000)).length(5)).min(10).max(40),
+    nativeTools: z.strictObject({ version: z.literal('deepseek-search-fetch-success-v1'), search: rate.positive(), fetch: rate.positive() }).optional(),
 })
 export type PricingTerms = z.infer<typeof PricingTerms>
 export function parseOfficialPricing(source: PricingSource, now: Date): { terms: PricingTerms, termsHash: string, contentHash: string, sourceAt: Date, sourceValidation: PricingSourceValidation | null } {
@@ -83,7 +84,7 @@ export function parseOfficialPricing(source: PricingSource, now: Date): { terms:
         if (peak.cacheHit > peak.cacheMiss || Object.keys(peak).some(key => peak[key as keyof typeof peak] !== offPeak[key as keyof typeof peak] * 2)) hostingFail('HOSTING_PRICING_RATE_INVALID')
         return { peak, offPeak, version: versions[column] }
     }
-    const terms = PricingTerms.parse({ parserVersion: 'deepseek-html-v1', schedule: 'weekdays-utc-01-04-06-10-except-cn-holidays', models: { [HOSTED_DEEPSEEK_MODEL]: extract(3), [HOSTED_DEEPSEEK_PRO_MODEL]: extract(4) }, table: grid })
+    const terms = PricingTerms.parse({ parserVersion: 'deepseek-html-v1', schedule: 'weekdays-utc-01-04-06-10-except-cn-holidays', models: { [HOSTED_DEEPSEEK_MODEL]: extract(3), [HOSTED_DEEPSEEK_PRO_MODEL]: extract(4) }, table: grid, nativeTools: parseNativeToolPricing(html) })
     return { terms, termsHash: hash(terms), contentHash: hash(source.html), sourceAt, sourceValidation: source.sourceValidation ?? null }
 }
 export function pricingBand(now: Date): 'peak' | 'offPeak' {
@@ -100,4 +101,24 @@ function clean(value: string): string {
 }
 function hash(value: unknown): string {
     return createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex') 
+}
+
+// No fee is inferred from a model name or promotional banner. Both successful
+// request prices must be present in one unambiguous official table. Including
+// these terms in the approval hash makes a fee change require a fresh approval.
+export function parseNativeToolPricing(html: string): PricingTerms['nativeTools'] {
+    const candidates = [...html.matchAll(/<table\b[^>]*>([^]*?)<\/table\s*>/gi)]
+        .map(match => [...match[1].matchAll(/<tr\b[^>]*>([^]*?)<\/tr\s*>/gi)].map(row => [...row[1].matchAll(/<(?:td|th)\b[^>]*>([^]*?)<\/(?:td|th)\s*>/gi)].map(cell => clean(cell[1]))))
+        .filter(rows => rows.some(row => row[0] === 'Search') || rows.some(row => row[0] === 'Fetch'))
+    if (!candidates.length) return undefined
+    if (candidates.length !== 1) hostingFail('HOSTING_NATIVE_PRICING_AMBIGUOUS')
+    const price = (kind: string) => {
+        const rows = candidates[0].filter(row => row[0] === kind)
+        if (rows.length !== 1 || rows[0].length !== 3 || rows[0][1] !== 'Per 1,000 successful requests' || !/^\$\d+(?:\.\d{1,6})?$/.test(rows[0][2])) hostingFail('HOSTING_NATIVE_PRICING_INVALID')
+        const [whole, fraction = ''] = rows[0][2].slice(1).split('.')
+        const microUsdPerThousand = BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'))
+        if (microUsdPerThousand <= 0n || microUsdPerThousand % 1000n !== 0n || microUsdPerThousand > 1_000_000_000n) hostingFail('HOSTING_NATIVE_PRICING_INVALID')
+        return Number(microUsdPerThousand / 1000n)
+    }
+    return { version: 'deepseek-search-fetch-success-v1', search: price('Search'), fetch: price('Fetch') }
 }

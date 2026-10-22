@@ -137,7 +137,7 @@ const executeAction: ActionHandler<PieceAction> = async ({ action, executionStat
                 id: constants.flowRunId,
                 ...(constants.hostedAccounting ? { callAi: async (request: Record<string, unknown>) => {
                     const callKey = createHash('sha256').update(executionState.currentPath.waitpointKeyFor({ stepName: action.name })).digest('hex')
-                    const response = await fetch(`${constants.internalApiUrl}v1/engine/hosting-ai/step`, { method: 'POST', headers: { Authorization: `Bearer ${constants.engineToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...request, callKey }) })
+                    const response = await fetch(`${constants.internalApiUrl}v1/engine/hosting-ai/step`, { method: 'POST', headers: { Authorization: `Bearer ${constants.engineToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...request, callKey, stepName: action.name }) })
                     if (!response.ok) {
                         const body: unknown = await response.json().catch(() => null)
                         const refusal = hostedAiRefusalMessage(response.status, body)
@@ -372,7 +372,25 @@ export function hostedAiRefusalMessage(status: number, body: unknown): string | 
             return 'Not enough Credits are available for this AI step. Check billing or contact your workspace administrator.'
         case 'HOSTING_RUN_CREDIT_LIMIT':
         case 'HOSTING_AI_CALL_LIMIT':
+        case 'HOSTING_NATIVE_TOOL_LIMIT':
+        case 'HOSTING_NATIVE_CREDIT_LIMIT':
+        case 'HOSTING_NATIVE_OUTPUT_LIMIT':
+        case 'HOSTING_AI_REQUEST_LIMIT':
             return 'This Mission reached its AI safety limit. Reduce its AI workload or contact your workspace administrator.'
+        case 'HOSTING_AI_CAPABILITY_DENIED':
+        case 'HOSTING_NATIVE_FEATURE_DENIED':
+            return 'This AI feature is not enabled for this Mission. Ask your workspace administrator to review its settings.'
+        case 'HOSTING_NATIVE_URL_DENIED':
+            return 'This page cannot be opened. Choose a public HTTPS page.'
+        case 'HOSTING_NATIVE_PRICING_APPROVAL_REQUIRED':
+            return 'Web search is awaiting administrator approval. Ask your workspace administrator to review its settings.'
+        case 'HOSTING_AI_STEP_DENIED':
+            return 'This AI step no longer matches the saved Mission. Refresh its configuration before running again.'
+        case 'HOSTING_AI_FILE_CHANGED':
+        case 'HOSTING_AI_FILE_INVALID':
+        case 'HOSTING_AI_FILE_SCOPE_DENIED':
+        case 'HOSTING_AI_FILE_UNAVAILABLE':
+            return 'An attachment is no longer available. Upload it again before running this Mission.'
         case 'HOSTING_OPERATOR_BUDGET_EXHAUSTED':
             return 'Sydekyks AI is temporarily unavailable. Contact your workspace administrator before trying again.'
         case 'HOSTING_BYOK_SCOPE_DENIED':

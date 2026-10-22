@@ -148,6 +148,8 @@ export type GetAgentConfigRequest = {
     modelName: string | null
     modelTierId?: string
     files?: Array<{ name: string, mimeType: string, data: string }>
+    nativeWebSearch?: boolean
+    nativeFileIds?: string[]
     promptOverride?: AgentPromptOverride
     dryRun?: boolean
     discoveryOnly?: boolean
@@ -166,7 +168,7 @@ export type AgentAiToolsConfig = {
 }
 
 export type AgentConfigResponse = {
-    hosted?: { protocol: 1, model: string, payer: { type: 'managed' } | { type: 'byok', configId: string } }
+    hosted?: { protocol: 1, model: string, payer: { type: 'managed' } | { type: 'byok', configId: string }, nativeWebSearch?: boolean, nativeFileIds?: string[] }
     credentials: AiProviderCredentials
     providerConfigId: string
     modelId: string

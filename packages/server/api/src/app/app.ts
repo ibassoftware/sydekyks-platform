@@ -46,7 +46,9 @@ import { SystemJobBackoff, systemJobsSchedule } from './helper/system-jobs/syste
 import { systemSnapshot } from './helper/system-snapshot'
 import { validateEnvPropsOnStartup } from './helper/system-validator'
 import { shutdownTelemetry } from './helper/telemetry.utils'
+import { expireHostedAiFiles } from './hosting/hosting-ai-files'
 import { hostingBootstrap } from './hosting/hosting-bootstrap'
+import { hostingConfiguration } from './hosting/hosting-configuration'
 import { hostingController } from './hosting/hosting-controller'
 import { knowledgeBaseModule } from './knowledge-base/knowledge-base.module'
 import { lmsController } from './lms/lms-controller'
@@ -70,10 +72,10 @@ import { sydCopilotContext } from './syd/copilot/copilot-context'
 import { sydCopilotModule } from './syd/copilot/copilot.module'
 import { communityProjectModule } from './sydekyks-community/project.module'
 import { communityUserModule } from './sydekyks-community/user.module'
-import { todoService } from './todos/todo-service'
-import { todoController } from './todos/todo-controller'
 import { tablesModule } from './tables/tables.module'
 import { templateModule } from './template/template.module'
+import { todoController } from './todos/todo-controller'
+import { todoService } from './todos/todo-service'
 import { toolSearchReindexJob } from './tool-search/tool-search-reindex.job'
 import { appEventRoutingModule } from './trigger/app-event-routing/app-event-routing.module'
 import { triggerModule } from './trigger/trigger.module'
@@ -249,6 +251,7 @@ export const setupApp = async (app: FastifyInstance): Promise<FastifyInstance> =
     })
 
     systemJobHandlers.registerJobHandler(SystemJobName.WAITPOINT_DEADLINE_SWEEP, async () => {
+        if (hostingConfiguration.getServiceMode() === 'hosted') await expireHostedAiFiles()
         await todoService(app.log).recoverDeliveries()
         await sweepOverdueDeadlines({ log: app.log })
     })

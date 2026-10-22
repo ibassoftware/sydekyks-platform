@@ -5,6 +5,7 @@ import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { IsNull } from 'typeorm'
 import { z } from 'zod'
 import { securityAccess } from '../../core/security/authorization/fastify-security'
+import { validateHostedAiFileIdsForActor } from '../../hosting/hosting-ai-files'
 import { hostingConfiguration } from '../../hosting/hosting-configuration'
 import { assertHostedChatContext, hostedCopilotPayer } from '../../hosting/hosting-copilot'
 import { hostingFail } from '../../hosting/hosting-transactions'
@@ -17,6 +18,7 @@ import { sydConversationService } from './conversation-service'
 import { ActorScope, sydCopilotContext } from './copilot-context'
 import { sydEditorContext } from './editor-context'
 import { sydMemoryEditor } from './memory-editor'
+import { nativeFilesForTurn } from './native-features'
 import { sydCopilotActions } from './tools/copilot-actions'
 
 async function sendMessage({ platformId, userId, id, body, log, tokenVersion }: ActorScope & { id: string, body: SydSendMessageRequest, log: FastifyBaseLogger, tokenVersion?: string | null }): Promise<{ conversationId: string, runId: string }> {
@@ -31,6 +33,8 @@ async function sendMessage({ platformId, userId, id, body, log, tokenVersion }: 
     if (hosted && (!projectId || !projects.some(project => project.id === projectId) || (body.hostedProjectId && ((conversation.projectId && conversation.projectId !== projectId) || (editor && editor.projectId !== projectId))))) hostingFail('HOSTING_PROJECT_ACCESS_DENIED')
     const payer = hosted ? await hostedCopilotPayer({ platformId, projectId: projectId!, provider: body.hostedPayer?.type === 'byok' ? AIProviderName.DEEPSEEK : AIProviderName.ACTIVEPIECES, configId: body.hostedPayer?.type === 'byok' ? body.hostedPayer.configId : undefined }) : undefined
     if (hosted && body.files?.length) throw new Error('HOSTING_TOOL_NOT_METERED')
+    const nativeFileIds = hosted ? nativeFilesForTurn(conversation.messages, body.nativeFileIds) : []
+    if (hosted && nativeFileIds.length) await validateHostedAiFileIdsForActor({ platformId, userId, tokenVersion, projectId: projectId!, fileIds: nativeFileIds, log })
     if (!hosted) await sydCopilotContext.assertRunProviderConfigured({ platformId, scope: sydCopilotContext.runScopeOrThrow({ projectId }), log })
     if (!hosted) await assertCreditsAndAppSumoNotExceeded({ platformId, log })
     const runId = hostingConfiguration.getServiceMode() === 'hosted' ? apId() : body.runId ?? apId()
@@ -47,6 +51,7 @@ async function sendMessage({ platformId, userId, id, body, log, tokenVersion }: 
         schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, jobType: WorkerJobType.EXECUTE_AGENT_RUN,
         platformId, userId, projectId, conversationId: id, runId,
         ...(payer ? { provider: payer.type === 'managed' ? AIProviderName.ACTIVEPIECES : AIProviderName.DEEPSEEK, ...(payer.type === 'byok' ? { providerConfigId: payer.configId } : {}) } : {}),
+        ...(hosted ? { nativeFileIds, nativeWebSearch: body.nativeWebSearch === true } : {}),
         userMessage: body.content, modelName: conversation.modelName ?? null, files: body.files, source: AgentRunSource.CHAT, messageSource: body.messageSource, editorContext: body.editorContext,
     } })
     return { conversationId: id, runId }

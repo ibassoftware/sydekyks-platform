@@ -14,6 +14,14 @@ import {
   HostedChatSelector,
   HostedChatBillingNote,
 } from '@/features/hosted-chat/hosted-chat-selector';
+import {
+  HostedNativeFileManager,
+  HostedWebSearchControl,
+} from '@/features/hosted-chat/hosted-native-controls';
+import {
+  NATIVE_FILE_ACCEPT,
+  validateNativeFiles,
+} from '@/features/hosted-chat/hosted-native-files-api';
 import { cn } from '@/lib/utils';
 
 import {
@@ -147,7 +155,15 @@ export function ChatBottomBar({
           isStreaming={activeCard ? false : isStreaming}
           onSend={handleSend}
           sendDisabled={Boolean(hostedChat && !hostedChat.ready)}
-          attachmentsAllowed={!hostedChat}
+          attachmentsAllowed={
+            !hostedChat ||
+            Boolean(
+              hostedChat.options?.nativeFeatures?.files && hostedChat.ready,
+            )
+          }
+          attachmentAccept={hostedChat ? NATIVE_FILE_ACCEPT : undefined}
+          validateAttachments={hostedChat ? validateNativeFiles : undefined}
+          leftActions={<HostedWebSearchControl disabled={isStreaming} />}
           onStop={onStop}
           onInputChange={onInputChange}
           minimalUntilFocus={recede === true && !activeCard}
@@ -174,13 +190,7 @@ export function ChatBottomBar({
             )
           }
         />
-        {hostedChat && (
-          <p className="px-3 pb-2 text-xs leading-5 text-gray-11">
-            {t(
-              'Direct attachments, native image generation and web search are not available in hosted chat. Use configured app tools or knowledge sources for supported tasks.',
-            )}
-          </p>
-        )}
+        <HostedNativeFileManager disabled={isStreaming} />
         <HostedChatBillingNote />
       </div>
     </div>

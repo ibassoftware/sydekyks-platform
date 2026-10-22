@@ -11,7 +11,7 @@ import { AppConnectionType, AppConnectionValue, PiecePackage } from '@activepiec
 import { AgentTool } from '../agents/tools'
 import { AgentOutputField } from '../agents'
 
-export const LATEST_JOB_DATA_SCHEMA_VERSION = 11
+export const LATEST_JOB_DATA_SCHEMA_VERSION = 12
 
 export const InlineJobPayload = z.object({
     type: z.literal('inline'),
@@ -340,6 +340,9 @@ export const ExecuteAgentRunJobData = z.object({
     providerConfigId: z.string().optional(),
     modelName: z.string().nullable(),
     modelTierId: z.string().optional(),
+    nativeWebSearch: z.boolean().optional(),
+    // Server-authorized current and historical attachment references, pinned before enqueue.
+    nativeFileIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{21}$/)).max(20).optional(),
     files: z.array(z.object({
         name: z.string(),
         mimeType: z.string(),

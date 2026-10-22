@@ -237,6 +237,7 @@ function ChargeEditor({
     [evidence, setEvidence] = useState(''),
     [supplierId, setSupplierId] = useState('');
   const [supplierCreatedAt, setSupplierCreatedAt] = useState('');
+  const [billable, setBillable] = useState('');
   const [hit, setHit] = useState('0'),
     [miss, setMiss] = useState(''),
     [output, setOutput] = useState('');
@@ -269,7 +270,9 @@ function ChargeEditor({
     (outcome !== 'verified_usage' ||
       (supplierId.trim().length > 0 &&
         Number.isFinite(Date.parse(supplierCreatedAt + 'Z')) &&
-        [hit, miss, output].every(validToken))) &&
+        (view.nativeTool
+          ? ['yes', 'no'].includes(billable)
+          : [hit, miss, output].every(validToken)))) &&
     (outcome === 'retain' || view.canResolve);
   function draft(): ChargeDraft {
     return {
@@ -282,11 +285,15 @@ function ChargeEditor({
         ? {
             supplierRequestId: supplierId.trim(),
             supplierCreatedAt: new Date(supplierCreatedAt + 'Z').toISOString(),
-            usage: {
-              prompt_cache_hit_tokens: Number(hit),
-              prompt_cache_miss_tokens: Number(miss),
-              completion_tokens: Number(output),
-            },
+            ...(view.nativeTool
+              ? { billable: billable === 'yes' }
+              : {
+                  usage: {
+                    prompt_cache_hit_tokens: Number(hit),
+                    prompt_cache_miss_tokens: Number(miss),
+                    completion_tokens: Number(output),
+                  },
+                }),
           }
         : {}),
     };
@@ -364,6 +371,14 @@ function ChargeEditor({
       </div>
       <dl className="grid gap-4 text-sm sm:grid-cols-2">
         <Fact name="AI call" value={view.callId} />
+        {view.nativeTool && (
+          <Fact
+            name="Operation"
+            value={
+              view.nativeTool === 'search' ? 'Web search' : 'Web page retrieval'
+            }
+          />
+        )}
         <Fact name="Execution" value={view.rootReservationId} />
         <Fact name="Held Credits" value={view.heldCredits} />
         <Fact
@@ -518,47 +533,85 @@ function ChargeEditor({
                   }
                 />
               </div>
-              <div className="grid gap-4 sm:grid-cols-3">
-                {[
-                  {
-                    id: 'hit',
-                    label: 'Cached input tokens',
-                    value: hit,
-                    set: setHit,
-                  },
-                  {
-                    id: 'miss',
-                    label: 'Uncached input tokens',
-                    value: miss,
-                    set: setMiss,
-                  },
-                  {
-                    id: 'output',
-                    label: 'Output tokens',
-                    value: output,
-                    set: setOutput,
-                  },
-                ].map((item) => (
-                  <div key={item.id}>
+              {view.nativeTool ? (
+                <fieldset className="space-y-3">
+                  <legend className="text-sm font-medium">
+                    Supplier billing evidence for this{' '}
+                    {view.nativeTool === 'search' ? 'search' : 'page retrieval'}
+                  </legend>
+                  <p className="text-sm text-gray-11">
+                    Use the saved supplier receipt. A successful request with
+                    usable results is billable; a verified empty or failed
+                    response is not. A network timeout alone is not evidence of
+                    either outcome.
+                  </p>
+                  {[
+                    [
+                      'yes',
+                      'Billed: a successful request returned usable results',
+                    ],
+                    ['no', 'Not billed: verified empty or failed response'],
+                  ].map(([value, label]) => (
                     <label
-                      htmlFor={`charge-${item.id}`}
-                      className="block text-sm font-medium"
+                      key={value}
+                      className="flex items-start gap-3 text-sm"
                     >
-                      {item.label}
+                      <input
+                        type="radio"
+                        name="native-tool-billable"
+                        value={value}
+                        checked={billable === value}
+                        disabled={busy}
+                        onChange={() => changed(() => setBillable(value))}
+                        className="mt-0.5 accent-accent-9"
+                      />
+                      {label}
                     </label>
-                    <Input
-                      id={`charge-${item.id}`}
-                      className="mt-2 text-base"
-                      inputMode="numeric"
-                      value={item.value}
-                      disabled={busy}
-                      onChange={(event) =>
-                        changed(() => item.set(event.target.value))
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </fieldset>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-3">
+                  {[
+                    {
+                      id: 'hit',
+                      label: 'Cached input tokens',
+                      value: hit,
+                      set: setHit,
+                    },
+                    {
+                      id: 'miss',
+                      label: 'Uncached input tokens',
+                      value: miss,
+                      set: setMiss,
+                    },
+                    {
+                      id: 'output',
+                      label: 'Output tokens',
+                      value: output,
+                      set: setOutput,
+                    },
+                  ].map((item) => (
+                    <div key={item.id}>
+                      <label
+                        htmlFor={`charge-${item.id}`}
+                        className="block text-sm font-medium"
+                      >
+                        {item.label}
+                      </label>
+                      <Input
+                        id={`charge-${item.id}`}
+                        className="mt-2 text-base"
+                        inputMode="numeric"
+                        value={item.value}
+                        disabled={busy}
+                        onChange={(event) =>
+                          changed(() => item.set(event.target.value))
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
           <div>

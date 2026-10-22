@@ -107,6 +107,7 @@ export type AiStepRequest = {
   text?: string;
   categories?: string[];
   files?: AiStepFile[];
+  fileIds?: string[];
   schema?: { mode: 'simple' | 'advanced'; fields: unknown };
   advancedOptions?: Record<string, unknown>;
   conversation?: Record<string, unknown>[];
@@ -123,3 +124,10 @@ export type AiStepOutput = {
 export type AiStepResult =
   | { status: 'paused' }
   | { status: 'done'; output: AiStepOutput };
+
+// Sydekyks private uploads are scoped IDs, never public URLs or raw file bytes.
+export function nativeFileIds(value: unknown): string[] {
+  const rows = value === undefined || value === null ? [] : value;
+  if (!Array.isArray(rows) || rows.length > 4 || rows.some((id) => typeof id !== 'string' || !/^[A-Za-z0-9_-]{21}$/.test(id))) throw new Error('Choose up to four private Sydekyks uploads.');
+  return [...new Set(rows as string[])];
+}

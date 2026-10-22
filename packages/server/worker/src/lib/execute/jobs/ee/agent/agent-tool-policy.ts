@@ -1,7 +1,7 @@
 import { AGENT_SELF_EDIT_TOOLS, AgentRunSource, mcpToolNameUtils, TASK_COMPLETION_TOOL_NAME } from '@activepieces/shared'
 import { ToolSet } from 'ai'
 
-const UNATTENDED_WEB_TOOLS = ['ap_fetch_url', 'ap_web_search', 'ap_scrape_url']
+const UNATTENDED_WEB_TOOLS = ['ap_fetch_url', 'ap_web_search', 'ap_scrape_url', 'ap_search_web', 'ap_read_web_page']
 const BUILT_IN_TOOL_PREFIX = 'ap_'
 
 function withValidNames<T extends { toolName: string }>({ tools, reserved = [] }: { tools: T[], reserved?: string[] }): T[] {
@@ -30,7 +30,7 @@ function pick({ tools, names }: { tools: ToolSet, names: string[] }): ToolSet {
     return Object.fromEntries(Object.entries(tools).filter(([name]) => names.includes(name)))
 }
 
-function selectToolsForSource({ source, groups }: { source: AgentRunSource, groups: AgentToolGroups }): ToolSet {
+function selectToolsForSource({ source, groups, hosted = false }: { source: AgentRunSource, groups: AgentToolGroups, hosted?: boolean }): ToolSet {
     if (source === AgentRunSource.CHAT) {
         return {
             ...groups.local,
@@ -52,6 +52,9 @@ function selectToolsForSource({ source, groups }: { source: AgentRunSource, grou
     }
     if (source === AgentRunSource.AGENT_BUILDER) {
         return {
+            // Only the hosted gateway pair is approved for this surface. The
+            // ordinary self-hosted HTTP/search tools retain their previous policy.
+            ...(hosted ? pick({ tools: groups.web, names: ['ap_search_web', 'ap_read_web_page'] }) : {}),
             ...groups.agentSurface,
             ...pick({ tools: groups.display, names: ['ap_show_questions', 'ap_show_quick_replies', 'ap_show_connection_picker', 'ap_show_connection_required'] }),
             ...pick({ tools: groups.mcp, names: ['ap_research_pieces', 'ap_list_connections'] }),

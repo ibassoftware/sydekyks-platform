@@ -47,7 +47,7 @@ export const sydAgentConversationController: FastifyPluginAsyncZod = async (app)
         if (!row.projectId) throw unavailable(row.id)
         const agent = row.agentId ? await sydChatAgentAdministration(request.log).getOneOrThrow({ id: row.agentId, projectId: row.projectId, userId: row.userId }) : null
         if (!agent && row.source !== AgentRunSource.AGENT_BUILDER) throw unavailable(row.id)
-        return sydAgentRuntime.start({ conversation: row, config: agent?.draft ?? AgentConfig.parse({ instructions: '' }), content: request.body.content, files: request.body.files, modelName: row.source === AgentRunSource.AGENT_BUILDER ? row.modelName : undefined, tokenVersion: request.principal.type === PrincipalType.USER ? request.principal.tokenVersion ?? null : undefined, log: request.log })
+        return sydAgentRuntime.start({ conversation: row, config: agent?.draft ?? AgentConfig.parse({ instructions: '' }), content: request.body.content, files: request.body.files, nativeFileIds: request.body.nativeFileIds, nativeWebSearch: request.body.nativeWebSearch, modelName: row.source === AgentRunSource.AGENT_BUILDER ? row.modelName : undefined, tokenVersion: request.principal.type === PrincipalType.USER ? request.principal.tokenVersion ?? null : undefined, log: request.log })
     })
     app.post('/conversations/:id/cancel', { config: userConfig, schema: { params } }, async (request) => {
         const row = await owned(request)

@@ -61,6 +61,13 @@ const Settings = z.object({
     terms: z
       .object({
         models: z.object({ 'deepseek-flash': rates, 'deepseek-v4-pro': rates }),
+        nativeTools: z
+          .object({
+            version: z.string(),
+            search: z.number().int().positive(),
+            fetch: z.number().int().positive(),
+          })
+          .optional(),
       })
       .nullable(),
     approval: z

@@ -37,7 +37,16 @@ describe('server persisted workflow payer selection', () => {
         expect(hostedFlowPayer(version(extract))).toBe('managed')
         const input = (extract.settings as { input: Record<string, unknown> }).input
         input.files = [{ file: '{{trigger.file}}' }]
-        expect(() => hostedFlowPayer(version(extract))).toThrow('HOSTING_AI_EXTRACTION_TEXT_ONLY')
+        expect(() => hostedFlowPayer(version(extract))).toThrow('HOSTING_NATIVE_PRIVATE_UPLOAD_REQUIRED')
+    })
+    it('accepts private file references and web opt-in without changing the payer', () => {
+        const action = ai('native'); const input = (action.settings as { input: Record<string, unknown> }).input
+        input.fileIds = [apId()]; input.webSearch = true
+        expect(hostedFlowPayer(version(action))).toBe('managed')
+        input.fileIds = ['https://example.com/private.pdf']
+        expect(() => hostedFlowPayer(version(action))).toThrow('HOSTING_NATIVE_FILE_INVALID')
+        input.fileIds = Array.from({ length: 5 }, () => apId())
+        expect(() => hostedFlowPayer(version(action))).toThrow('HOSTING_NATIVE_FILE_INVALID')
     })
     it('keeps unsupported image generation fenced while managed router and Agent execution are supported', () => {
         const extract = ai('extract'); (extract.settings as Record<string, unknown>).actionName = 'generateImage'

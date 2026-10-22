@@ -1,5 +1,5 @@
 import { AiStepAction, createAction, isNil, Property, spreadIfDefined } from '@activepieces/pieces-framework';
-import { runOnWorker } from '../../common/ai-step';
+import { nativeFileIds, runOnWorker } from '../../common/ai-step';
 import { aiProps, aiProviderSelection } from '../../common/props';
 import { buildWebSearchOptionsProperty, sanitizeWebSearchOptions, usesNativeWebSearchTools } from '../../common/web-search';
 
@@ -23,7 +23,7 @@ export const askAI = createAction({
       display: 'section',
       label: 'Request',
       icon: 'text',
-      props: ['prompt', 'conversationKey', 'webSearch', 'webSearchOptions'],
+      props: ['prompt', 'fileIds', 'conversationKey', 'webSearch', 'webSearchOptions'],
     },
   ],
   props: {
@@ -34,6 +34,7 @@ export const askAI = createAction({
       required: true,
       placeholder: 'e.g. Draft a friendly reply to this customer email',
     }),
+    fileIds: Property.Array({ displayName: 'Private Sydekyks file IDs', description: 'Hosted Sydekyks: upload in chat > My AI files, copy each ID and add up to four here. Uploads expire after 24 hours and must belong to the user running this workflow.', required: false }),
     conversationKey: Property.ShortText({
       displayName: 'Conversation Key',
       required: false,
@@ -65,7 +66,7 @@ export const askAI = createAction({
     }),
     webSearchOptions: buildWebSearchOptionsProperty(
       (propsValue) => ({
-        provider: aiProviderSelection.resolve(propsValue['provider'])?.provider,
+        provider: ['sydekyks', 'deepseek-flash'].includes(propsValue['model'] as string) ? undefined : aiProviderSelection.resolve(propsValue['provider'])?.provider,
         model: propsValue['model'] as string | undefined,
       }),
       ['webSearch', 'provider', 'model'],
@@ -89,10 +90,11 @@ export const askAI = createAction({
         ...spreadIfDefined('providerConfigId', configId),
         modelId: context.propsValue.model,
         prompt: context.propsValue.prompt,
+        ...(context.run.callAi ? { fileIds: nativeFileIds(context.propsValue.fileIds) } : {}),
         ...spreadIfDefined('maxOutputTokens', context.propsValue.maxOutputTokens),
         ...spreadIfDefined('temperature', isNil(context.propsValue.creativity) ? undefined : context.propsValue.creativity / 100),
         ...spreadIfDefined('conversation', isNil(storageKey) ? undefined : await readConversation(context.store, storageKey)),
-        webSearch: { enabled: webSearchEnabled, options: webSearchOptions },
+        webSearch: { enabled: webSearchEnabled, options: context.run.callAi ? {} : webSearchOptions },
       }),
     });
 

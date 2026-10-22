@@ -118,7 +118,14 @@ function createMigrations(log: FastifyBaseLogger): JobMigration[] {
         migrate: async (job: JobData) => ({ ...job, schemaVersion: 11 }),
     }
 
-    return [enrichFlowId, migratePayloadToUnion, renameProgressAndHandlerFields, dropLogsUploadUrl, backfillRequiredExecuteFlowFields, bridgeV8ToV9, addResumeReason, addScopedMaintenance]
+    // Native work is opt-in and pinned by a fresh authenticated admission. Old
+    // jobs must never acquire file references or paid web tools during migration.
+    const addNativeFileSearchOptIn: JobMigration = {
+        runAtSchemaVersion: 11,
+        migrate: async (job: JobData) => ({ ...job, schemaVersion: 12 }),
+    }
+
+    return [enrichFlowId, migratePayloadToUnion, renameProgressAndHandlerFields, dropLogsUploadUrl, backfillRequiredExecuteFlowFields, bridgeV8ToV9, addResumeReason, addScopedMaintenance, addNativeFileSearchOptIn]
 }
 
 function migrateProgressUpdateType(progressUpdateType: string | undefined): StreamStepProgress {

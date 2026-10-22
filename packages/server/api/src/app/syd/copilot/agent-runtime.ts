@@ -7,6 +7,7 @@ import { transaction } from '../../core/db/transaction'
 import { databaseConnection } from '../../database/database-connection'
 import { distributedStore } from '../../database/redis-connections'
 import { flowService } from '../../flows/flow/flow.service'
+import { validateHostedAiFileIdsForActor } from '../../hosting/hosting-ai-files'
 import { hostingConfiguration } from '../../hosting/hosting-configuration'
 import { assertHostedChatContext, hostedCopilotPayer } from '../../hosting/hosting-copilot'
 import { HostingDispatchEntity } from '../../hosting/hosting-dispatch-entity'
@@ -19,6 +20,7 @@ import { jobQueue, JobType } from '../../workers/job-queue/job-queue'
 import { sydApprovalGate } from './approval-gate'
 import { ActorScope, sydCopilotContext } from './copilot-context'
 import { SydAgentConversationEntity } from './models/agent-conversation.entity'
+import { nativeFilesForTurn } from './native-features'
 import { sydChatAgentAdministration } from './tools/chat-agent-administration'
 
 function repo() {
@@ -80,7 +82,7 @@ function validateTools(config: AgentConfig): void {
     if (new Set(names).size !== names.length || names.some((name) => name.startsWith('ap_') || name === TASK_COMPLETION_TOOL_NAME)) throw new ActivepiecesError({ code: ErrorCode.VALIDATION, params: { message: 'Agent tools need unique names that are not reserved for built-in tools' } })
 }
 
-async function start({ conversation, config, content, files, modelName, waitpointId, tokenVersion, hostedOrigin, log }: { conversation: AgentConversation, config: AgentConfig, content: string, files?: Array<{ name: string, mimeType: string, data: string }>, modelName?: string | null, waitpointId?: string, tokenVersion?: string | null, hostedOrigin?: HostingJobOrigin, log: FastifyBaseLogger }): Promise<{ conversationId: string, runId: string }> {
+async function start({ conversation, config, content, files, nativeFileIds: addedNativeFileIds, nativeWebSearch, modelName, waitpointId, tokenVersion, hostedOrigin, log }: { conversation: AgentConversation, config: AgentConfig, content: string, nativeFileIds?: string[], nativeWebSearch?: boolean, files?: Array<{ name: string, mimeType: string, data: string }>, modelName?: string | null, waitpointId?: string, tokenVersion?: string | null, hostedOrigin?: HostingJobOrigin, log: FastifyBaseLogger }): Promise<{ conversationId: string, runId: string }> {
     if (!conversation.projectId) throw unavailable(conversation.id)
     const builder = conversation.source === AgentRunSource.AGENT_BUILDER
     const jobConfig = builder ? { ...config, provider: null, providerConfigId: null, tools: [], structuredOutput: [] } : config
@@ -90,9 +92,11 @@ async function start({ conversation, config, content, files, modelName, waitpoin
     const limit = await sydCopilotContext.incrementAndCheckLimit({ key: `syd:agent-rate:${platformId}:${flowStep ? projectId : userId}`, limit: flowStep ? 60 : 40, ttlSeconds: flowStep ? 60 : 600 })
     if (!limit.allowed) throw new ActivepiecesError({ code: ErrorCode.CHAT_MESSAGE_LIMIT_EXCEEDED, params: { limit: flowStep ? 60 : 40, windowSeconds: flowStep ? 60 : 600 } })
     const hosted = hostingConfiguration.getServiceMode() === 'hosted'
+    const nativeFileIds = hosted ? nativeFilesForTurn(conversation.messages, addedNativeFileIds) : []
+    if (hosted && nativeFileIds.length) await validateHostedAiFileIdsForActor({ platformId, userId, tokenVersion, projectId, fileIds: nativeFileIds, log })
     if (hosted) {
         assertHostedChatContext({ messages: conversation.messages, content })
-        if (files?.length || jobConfig.tools.some(tool => tool.type === AgentToolType.MCP)) throw new ActivepiecesError({ code: ErrorCode.VALIDATION, params: { message: 'This hosted run supports configured Gadgets, Missions and knowledge sources. Remote MCP and direct attachments need a supported hosted adapter.' } })
+        if (files?.length || jobConfig.tools.some(tool => tool.type === AgentToolType.MCP)) throw new ActivepiecesError({ code: ErrorCode.VALIDATION, params: { message: 'This hosted run supports configured Gadgets, Missions and knowledge sources. Remote MCP is not enabled. Upload attachments through the private Sydekyks file picker.' } })
         await hostedCopilotPayer({ platformId, projectId, provider: jobConfig.provider ?? undefined, configId: jobConfig.providerConfigId ?? undefined })
     }
     else {
@@ -113,7 +117,7 @@ async function start({ conversation, config, content, files, modelName, waitpoin
         await distributedStore.put(snapshotKey({ conversationId: conversation.id, runId }), sanitizeObjectForPostgresql(snapshot), 86400)
         await distributedStore.put(activeSnapshotKey(conversation.id), { runId, platformId, projectId, userId }, 86400)
         await sydApprovalGate.clearCancel({ conversationId: conversation.id })
-        await jobQueue(log).add({ id: runId, type: JobType.ONE_TIME, hostedOrigin: hostedOrigin ?? { type: 'user', userId, tokenVersion }, data: { schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, jobType: WorkerJobType.EXECUTE_AGENT_RUN, conversationId: conversation.id, runId, platformId, userId, projectId, source: conversation.source, ...(hosted ? { agentInstructions: jobConfig.instructions } : {}), ...(conversation.agentId ? { agentId: conversation.agentId } : {}), ...(conversation.flowRunId ? { flowRunId: conversation.flowRunId } : {}), waitpointId, userMessage: content, files, tools: jobConfig.tools, flowTools, structuredOutput: jobConfig.structuredOutput, maxSteps: jobConfig.maxSteps, ...(jobConfig.provider ? { provider: jobConfig.provider } : {}), ...(jobConfig.providerConfigId ? { providerConfigId: jobConfig.providerConfigId } : {}), modelName: builder ? modelName ?? null : config.modelName ?? null } })
+        await jobQueue(log).add({ id: runId, type: JobType.ONE_TIME, hostedOrigin: hostedOrigin ?? { type: 'user', userId, tokenVersion }, data: { schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, jobType: WorkerJobType.EXECUTE_AGENT_RUN, conversationId: conversation.id, runId, platformId, userId, projectId, source: conversation.source, ...(hosted ? { agentInstructions: jobConfig.instructions, nativeFileIds, nativeWebSearch: nativeWebSearch === true } : {}), ...(conversation.agentId ? { agentId: conversation.agentId } : {}), ...(conversation.flowRunId ? { flowRunId: conversation.flowRunId } : {}), waitpointId, userMessage: content, files, tools: jobConfig.tools, flowTools, structuredOutput: jobConfig.structuredOutput, maxSteps: jobConfig.maxSteps, ...(jobConfig.provider ? { provider: jobConfig.provider } : {}), ...(jobConfig.providerConfigId ? { providerConfigId: jobConfig.providerConfigId } : {}), modelName: builder ? modelName ?? null : config.modelName ?? null } })
     })
     if (queued.error) {
         // Durable outbox ownership survives an ambiguous queue acknowledgement.

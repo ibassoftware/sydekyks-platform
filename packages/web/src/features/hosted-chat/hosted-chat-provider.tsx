@@ -100,6 +100,7 @@ function HostedChatProvider({
     [session, projectPointer, conversationId, agentId, builder],
   );
   const [payer, setPayer] = useState<HostedChatPayer | null>(null);
+  const [nativeWebSearch, setNativeWebSearch] = useState(false);
   const initialPayerResolved = useRef(false);
   const [deniedFor, setDeniedFor] = useState<string | null | undefined>(
     undefined,
@@ -126,6 +127,7 @@ function HostedChatProvider({
         previousConversation.current === null &&
         conversationId === ownConversation.current;
       if (!createdTransition) setPayer(null);
+      if (!createdTransition) setNativeWebSearch(false);
       ownConversation.current = null;
     }
     previousConversation.current = conversationId;
@@ -175,17 +177,15 @@ function HostedChatProvider({
   } catch (error) {
     selectionError = error as HostedChatError;
   }
-  if (
-    !selectionError &&
-    query.data &&
-    BigInt(query.data.credits.execution.available) === 0n
-  )
+  if (query.data && BigInt(query.data.credits.execution.available) === 0n)
     selectionError = new HostedChatError('credits');
   const ready = !denied && !query.isFetching && !query.error && !selectionError;
   const context = {
     scope,
     payer: effectivePayer,
     payerLocked: query.data?.payerLock !== undefined,
+    nativeWebSearch,
+    setNativeWebSearch,
     setPayer: (next: HostedChatPayer) => {
       initialPayerResolved.current = true;
       setPayer(next);
@@ -203,6 +203,7 @@ function HostedChatProvider({
     },
     async prepare(): Promise<HostedChatSubmission> {
       const captured = effectivePayer ? { ...effectivePayer } : null;
+      const capturedWebSearch = nativeWebSearch;
       const capturedGeneration = generation.current.value;
       let createdId: string | null = null;
       const assertCurrent = () => {
@@ -226,6 +227,8 @@ function HostedChatProvider({
       const result = await query.refetch({ throwOnError: true });
       assertCurrent();
       assertHostedPayerAvailable(captured, result.data);
+      if (capturedWebSearch && !result.data?.nativeFeatures?.webSearch)
+        throw new HostedChatError('unavailable');
       if (
         (scope.nativeAgent && !result.data?.payerLock) ||
         JSON.stringify(result.data?.payerLock ?? captured) !==
@@ -234,6 +237,7 @@ function HostedChatProvider({
         throw new HostedChatError('selection');
       return {
         payer: captured,
+        nativeWebSearch: capturedWebSearch,
         projectId: result.data!.projectId,
         scope,
         assertCurrent,
@@ -255,6 +259,8 @@ type HostedChatContextValue = {
   scope: import('./hosted-chat-api').HostedChatScope;
   payer: HostedChatPayer | null;
   payerLocked: boolean;
+  nativeWebSearch: boolean;
+  setNativeWebSearch: (enabled: boolean) => void;
   setPayer: (payer: HostedChatPayer) => void;
   options?: import('./hosted-chat-api').HostedChatOptions;
   ready: boolean;

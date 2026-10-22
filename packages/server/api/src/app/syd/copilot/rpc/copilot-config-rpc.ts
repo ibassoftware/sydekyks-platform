@@ -20,6 +20,7 @@ import { sydConversationFiles } from '../conversation-files'
 import { sydCopilotContext } from '../copilot-context'
 import { sydEditorContext } from '../editor-context'
 import { sydCopilotMcp } from '../mcp/copilot-mcp'
+import { hostedNativePrompt, nativeUserParts, nativeUserTurn } from '../native-features'
 import { sydPersonalizationService } from '../personalization/personalization-service'
 import { sydCopilotPrompt } from '../prompt/copilot-prompt'
 import { sydRunContext } from '../prompt/run-context'
@@ -64,28 +65,28 @@ export const sydCopilotConfigRpc = (log: FastifyBaseLogger) => ({
         const modelParams: Parameters<typeof sydCopilotContext.resolveFastModelId>[0] = { platformId, providerConfig: credentials, scope, surface: 'chat', log }
         const modelId = hosted ? hostedModel : await sydCopilotContext.resolveModelId({ ...modelParams, selectedModel })
         const fastModelId = hosted ? hostedModel : await sydCopilotContext.resolveFastModelId({ ...modelParams, fallbackModelId: modelId })
-        const references = files?.length && selectedProjectId ? await sydConversationFiles.persistAgentAttachments({ files, projectId: selectedProjectId, platformId, conversationId, log }) : []
-        const userContent = await sydConversationFiles.buildUserContentWithFiles({ text: userMessage, files, attachmentNote: sydConversationFiles.buildAttachmentNote(references) })
+        const references = !hosted && files?.length && selectedProjectId ? await sydConversationFiles.persistAgentAttachments({ files, projectId: selectedProjectId, platformId, conversationId, log }) : []
+        const userContent = hosted ? userMessage : await sydConversationFiles.buildUserContentWithFiles({ text: userMessage, files, attachmentNote: sydConversationFiles.buildAttachmentNote(references) })
         const runId = input.runId ?? conversation.activeRunId ?? undefined
         const lock = await sydCopilotContext.acquireStreamingLock({ platformId, userId, conversationId, runId })
         if (lock !== 'acquired') throw new ActivepiecesError({ code: lock === 'superseded' ? ErrorCode.AGENT_RUN_SUPERSEDED : ErrorCode.VALIDATION, params: { message: lock === 'superseded' ? 'This message was replaced by a newer one' : 'An agent is already running for this conversation' } })
         const inventory = !hosted && !input.dryRun && selectedProjectId ? await tryCatch(() => appConnectionService(log).list({ platformId, projectId: selectedProjectId, pieceName: undefined, displayName: undefined, status: undefined, cursorRequest: null, scope: undefined, externalIds: undefined, limit: CONNECTION_INVENTORY_LIMIT })) : null
-        const systemPrompt = hosted ? hostedCopilotPrompt({ projectId: selectedProjectId!, projectName: projects[0].displayName, now: new Date() }) : (editor ? `${editor.note}\n\n` : '') + sydCopilotPrompt.buildSystemPrompt({ projects, currentProjectId: selectedProjectId, frontendUrl: system.getOrThrow(AppSystemProp.FRONTEND_URL), templates: input.promptOverride }) + sydRunContext.buildRunNotes({
+        const systemPrompt = hosted ? hostedCopilotPrompt({ projectId: selectedProjectId!, projectName: projects[0].displayName, now: new Date() }) + hostedNativePrompt({ search: input.nativeWebSearch, fileIds: input.nativeFileIds }) : (editor ? `${editor.note}\n\n` : '') + sydCopilotPrompt.buildSystemPrompt({ projects, currentProjectId: selectedProjectId, frontendUrl: system.getOrThrow(AppSystemProp.FRONTEND_URL), templates: input.promptOverride }) + sydRunContext.buildRunNotes({
             source: AgentRunSource.CHAT, messageSource: input.messageSource, currentDate: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }),
             searchAvailable, fetchAvailable: !hosted && !input.dryRun, scrapeAvailable: !input.dryRun && Boolean(aiTools.webScraping),
             imageAvailable: active && Boolean(aiTools.imageGeneration || imageModelId), imageEditAvailable: Boolean(imageModelId), emailAvailable: emailEnabled, agentsAvailable, userEmail: user.email,
             userIdentity: { firstName: user.firstName, lastName: user.lastName, email: user.email, platformName: platform?.data?.name ?? null, identity: personalization?.data ?? null },
             connections: inventory?.data ? { connections: inventory.data.data, truncated: inventory.data.data.length >= CONNECTION_INVENTORY_LIMIT } : null, memory,
         })
-        const userTurn: ModelMessage = { role: 'user', content: userContent }
+        const userTurn: ModelMessage = hosted ? nativeUserTurn(userMessage, input.nativeFileIds) : { role: 'user', content: userContent }
         const allMessages = [...conversation.messages.map((message) => modelMessageSchema.parse(message)), userTurn]
-        const previousUiMessages: PersistedAgentMessage[] = [...conversation.uiMessages ?? [], { role: PersistedAgentRole.USER, parts: [{ type: PersistedAgentPartType.TEXT, text: userMessage }] }]
+        const previousUiMessages: PersistedAgentMessage[] = [...conversation.uiMessages ?? [], { role: PersistedAgentRole.USER, parts: hosted ? nativeUserParts(userMessage, input.nativeFileIds?.map(() => ({ name: 'Private attachment' }))) : [{ type: PersistedAgentPartType.TEXT, text: userMessage }] }]
         const persisted = await sydRunOperations.updateConversationForRun({ conversationId, platformId, runId, updates: { messages: allMessages, uiMessages: previousUiMessages, ...(!input.dryRun ? { projectId: selectedProjectId } : {}) } })
         if (!persisted) throw new ActivepiecesError({ code: ErrorCode.AGENT_RUN_SUPERSEDED, params: { message: 'The active run changed during preparation' } })
         if (!hosted) await sydApprovalGate.clearCancel({ conversationId })
         else if (await sydApprovalGate.isCancelled({ conversationId, runId })) throw new Error('HOSTING_AI_SEGMENT_DENIED')
         const history = agentAiUtils.collapseStaleToolOutputs({ messages: allMessages })
-        const outputTokens = hosted ? HOSTED_AI_MAX_OUTPUT : await agentAiUtils.affordableOutputTokens({ provider: credentials.provider, modelIds: [modelId, fastModelId], thinkingBudget: tier.thinkingBudget })
+        const outputTokens = hosted ? (input.nativeWebSearch || input.nativeFileIds?.length ? 2048 : HOSTED_AI_MAX_OUTPUT) : await agentAiUtils.affordableOutputTokens({ provider: credentials.provider, modelIds: [modelId, fastModelId], thinkingBudget: tier.thinkingBudget })
         const reservedTokens = outputTokens + 12_000
         const payloadReserve = reservedTokens + agentAiUtils.estimateTokenCount({ messages: [], systemPromptLength: systemPrompt.length })
         const estimate = sydConversationCompaction.estimateTokenCount({ messages: history, systemPromptLength: systemPrompt.length })
@@ -94,7 +95,7 @@ export const sydCopilotConfigRpc = (log: FastifyBaseLogger) => ({
             state = await sydConversationCompaction.compactMessages({ messages: history, existingSummary: state.summary, summarizedUpToIndex: state.summarizedUpToIndex, provider: credentials.provider, reservedTokens: payloadReserve, model: aiUtils.createModel({ credentials, modelId }), log })
             await sydRunOperations.updateConversationForRun({ conversationId, platformId, runId, updates: state })
         }
-        return { ...(hosted && payer ? { hosted: { protocol: 1 as const, model: hostedModel, payer } } : {}), credentials, providerConfigId: credentials.configId, modelId, fastModelId, resolvedModelName: hosted && payer?.type === 'managed' ? HOSTED_MANAGED_MODEL : sydChatModelSelection.conversationModelName({ provider: credentials.provider, modelId, surface: 'chat' }),
+        return { ...(hosted && payer ? { hosted: { protocol: 1 as const, model: hostedModel, payer, nativeFileIds: input.nativeFileIds, nativeWebSearch: input.nativeWebSearch } } : {}), credentials, providerConfigId: credentials.configId, modelId, fastModelId, resolvedModelName: hosted && payer?.type === 'managed' ? HOSTED_MANAGED_MODEL : sydChatModelSelection.conversationModelName({ provider: credentials.provider, modelId, surface: 'chat' }),
             ...(imageModelId ? { imageModelId } : {}), ...(chosen.search ? { searchCredentials: chosen.search.credentials, searchModelId: chosen.search.modelId } : {}), ...(chosen.image ? { imageCredentials: chosen.image.credentials } : {}),
             systemPrompt, messages: sydConversationCompaction.buildCompactedPayload({ messages: history, ...state, provider: credentials.provider, reservedTokens: payloadReserve }), allMessages, previousUiMessages,
             tier: { id: hosted ? 'sydekyks' : tier.id, modelId: hosted ? hostedModel : tier.modelId, thinkingBudget: hosted ? 0 : tier.thinkingBudget }, mcpCredentials: mcp.mcpServerUrl && mcp.mcpToken ? { mcpServerUrl: mcp.mcpServerUrl, mcpToken: mcp.mcpToken } : null,

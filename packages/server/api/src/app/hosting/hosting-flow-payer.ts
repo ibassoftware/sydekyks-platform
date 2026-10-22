@@ -32,7 +32,8 @@ function hostedStepsPayer(steps: (FlowAction | FlowTrigger)[]): 'managed' | 'byo
         if (step.type !== FlowActionType.PIECE || step.settings.pieceName !== '@activepieces/piece-ai') continue
         if (!step.settings.actionName || !['askAi', 'summarizeText', 'classifyText', 'extractStructuredData'].includes(step.settings.actionName)) hostingFail('HOSTING_FLOW_AI_PATH_UNSUPPORTED')
         const input = step.settings.input
-        if (step.settings.actionName === 'extractStructuredData' && input.files !== undefined && (!Array.isArray(input.files) || input.files.length > 0)) hostingFail('HOSTING_AI_EXTRACTION_TEXT_ONLY')
+        if (step.settings.actionName === 'extractStructuredData' && input.files !== undefined && (!Array.isArray(input.files) || input.files.length > 0)) hostingFail('HOSTING_NATIVE_PRIVATE_UPLOAD_REQUIRED')
+        if (input.fileIds !== undefined && typeof input.fileIds !== 'string' && (!Array.isArray(input.fileIds) || input.fileIds.length > 4 || input.fileIds.some(id => typeof id !== 'string' || !/^[A-Za-z0-9_-]{21}$/.test(id)))) hostingFail('HOSTING_NATIVE_FILE_INVALID')
         const value: unknown = input.provider
         const provider = typeof value === 'string' ? value : value && typeof value === 'object' && 'provider' in value ? value.provider : undefined
         const configId = value && typeof value === 'object' && 'configId' in value ? value.configId : undefined

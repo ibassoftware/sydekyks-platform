@@ -164,8 +164,10 @@ async function sendMessage({
   messageSource,
   editorContext,
   hosted,
+  nativeFileIds,
 }: {
   hosted?: HostedChatSubmission;
+  nativeFileIds?: string[];
   conversationId: string;
   content: string;
   runId?: string;
@@ -195,6 +197,8 @@ async function sendMessage({
           messageSource,
           hostedProjectId: hosted.projectId,
           hostedPayer: hosted.payer,
+          nativeWebSearch: hosted.nativeWebSearch ?? false,
+          nativeFileIds,
         },
       },
       true,

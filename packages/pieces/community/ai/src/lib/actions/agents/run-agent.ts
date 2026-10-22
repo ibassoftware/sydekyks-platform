@@ -6,6 +6,7 @@ import {
   ExecutionType,
 } from '@activepieces/pieces-framework';
 import { httpClient, HttpMethod, AuthenticationType } from '@activepieces/pieces-common';
+import { nativeFileIds } from '../../common/ai-step';
 import { isNil } from '@activepieces/pieces-framework';
 import { AGENT_STEP_TEST_TIMEOUT_MS, AGENT_STEP_TIMEOUT_MS, AgentPieceProps, AgentResult, spreadIfDefined } from '@activepieces/pieces-framework';
 
@@ -66,6 +67,8 @@ export const runAgent = createAction({
   aiMetadata: { description: 'Runs an agent that reasons over your prompt and calls the piece actions you attach to this step, iterating until the task is done. Pick it when the work needs tool use or an unknown number of steps; prefer askAi for a single prompt-in/answer-out call, or classifyText and extractStructuredData for one narrow analysis. Sub-flow, MCP and knowledge-base tools are not supported on this step. Requires a prompt and an AI Model; not idempotent, as the agent performs side effects through its tools.', idempotent: false },
   auth: PieceAuth.None(),
   props: {
+    fileIds: Property.Array({ displayName: 'Private Sydekyks file IDs', description: 'Hosted Sydekyks: upload in chat > My AI files, copy each ID and add up to four here. Uploads expire after 24 hours and must belong to the user running this workflow.', required: false }),
+    webSearch: Property.Checkbox({ displayName: 'Web Search', description: 'Allow metered public search for this run.', required: false, defaultValue: false }),
     [AgentPieceProps.AGENT_ID]: Property.ShortText({
       displayName: 'Agent',
       description: 'Run a saved agent. Its instructions, tools and model come from the agent itself, so improving it improves every flow that uses it.',
@@ -138,6 +141,7 @@ export const runAgent = createAction({
       authentication: { type: AuthenticationType.BEARER_TOKEN, token: context.server.token },
       body: {
         instruction: context.propsValue.prompt,
+        ...(context.run.callAi ? { nativeFileIds: nativeFileIds(context.propsValue.fileIds), nativeWebSearch: context.propsValue.webSearch === true } : {}),
         flowRunId: context.run.id,
         waitpointId: waitpoint.id,
         ...(agentId ? { agentId } : {

@@ -32,10 +32,14 @@ export function ChatInput({
   onFocusChange,
   sendDisabled = false,
   attachmentsAllowed = true,
+  attachmentAccept,
+  validateAttachments,
 }: {
   isStreaming: boolean;
   sendDisabled?: boolean;
   attachmentsAllowed?: boolean;
+  attachmentAccept?: string;
+  validateAttachments?: (files: File[]) => void;
   onSend: (text: string, files?: File[]) => void;
   onStop?: () => void;
   onInputChange?: (hasInput: boolean) => void;
@@ -120,9 +124,20 @@ export function ChatInput({
 
   const handleFilesAdded = useCallback(
     (files: File[]) => {
-      if (attachmentsAllowed) setAttachedFiles((prev) => [...prev, ...files]);
+      if (!attachmentsAllowed) return;
+      const next = [...attachedFiles, ...files];
+      try {
+        validateAttachments?.(next);
+        setAttachedFiles(next);
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : t('These files could not be attached.'),
+        );
+      }
     },
-    [attachmentsAllowed],
+    [attachmentsAllowed, attachedFiles, validateAttachments],
   );
 
   const canSend = value.trim().length > 0 || attachedFiles.length > 0;
@@ -133,6 +148,7 @@ export function ChatInput({
     <FileUpload
       onFilesAdded={handleFilesAdded}
       multiple
+      accept={attachmentAccept}
       disabled={!attachmentsAllowed}
     >
       <PromptInput
@@ -213,9 +229,13 @@ export function ChatInput({
               {attachmentsAllowed && (
                 <PromptInputAction tooltip={t('Attach files')}>
                   <FileUploadTrigger asChild>
-                    <div className="flex h-9 w-9 sm:h-7 sm:w-7 cursor-pointer items-center justify-center rounded-full text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12">
+                    <button
+                      type="button"
+                      aria-label={t('Attach files')}
+                      className="flex h-9 w-9 sm:h-7 sm:w-7 cursor-pointer items-center justify-center rounded-full text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                    >
                       <Paperclip className="size-4" />
-                    </div>
+                    </button>
                   </FileUploadTrigger>
                 </PromptInputAction>
               )}

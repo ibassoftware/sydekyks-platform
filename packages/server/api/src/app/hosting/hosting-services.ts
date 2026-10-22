@@ -4,6 +4,7 @@ import { createHostedAiGateway } from './hosting-ai-gateway'
 import { createHostedBillingView } from './hosting-billing-view'
 import { createHostedExecution } from './hosting-execution'
 import { createHostedLedger } from './hosting-ledger'
+import { createHostedNativeTools } from './hosting-native-tools'
 import { createHostedOnboarding } from './hosting-onboarding'
 import { createHostedPartnerBilling } from './hosting-partner-billing'
 import { createHostedStripe } from './hosting-stripe'
@@ -33,4 +34,7 @@ async function partnerBilling() {
 function billingView() {
     return createHostedBillingView({ dataSource: databaseConnection() })
 }
-export const hostingServices = { onboarding, ledger, execution, gateway, billing, billingView, partnerBilling }
+function nativeTools() {
+    return createHostedNativeTools({ dataSource: databaseConnection() })
+}
+export const hostingServices = { nativeTools, onboarding, ledger, execution, gateway, billing, billingView, partnerBilling }

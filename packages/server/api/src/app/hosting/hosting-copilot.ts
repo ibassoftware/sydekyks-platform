@@ -42,9 +42,10 @@ export async function hostedCopilotScope({ admissionId, connectionId, input, spe
         if (spending) {
             tx.assertActive({ account, now }); if (row.status !== AgentConversationStatus.STREAMING || await sydApprovalGate.isCancelled({ conversationId: row.id, runId: data.runId })) hostingFail('HOSTING_AI_SEGMENT_DENIED')
         }
-        for (const [key, expected] of Object.entries({ conversationId: data.conversationId, runId: data.runId, platformId: segment.platformId, projectId: segment.projectId, userId: data.userId, source: data.source, provider: data.provider ?? AIProviderName.ACTIVEPIECES, providerConfigId: data.providerConfigId ?? '', userMessage: data.userMessage, flowRunId: data.flowRunId, waitpointId: data.waitpointId })) {
+        for (const [key, expected] of Object.entries({ conversationId: data.conversationId, runId: data.runId, platformId: segment.platformId, projectId: segment.projectId, userId: data.userId, source: data.source, provider: data.provider ?? AIProviderName.ACTIVEPIECES, providerConfigId: data.providerConfigId ?? '', userMessage: data.userMessage, nativeWebSearch: data.nativeWebSearch, flowRunId: data.flowRunId, waitpointId: data.waitpointId })) {
             if (input && key in input && input[key] !== undefined && input[key] !== expected) hostingFail('HOSTING_AI_SEGMENT_DENIED')
         }
+        if (input && 'nativeFileIds' in input && JSON.stringify(input.nativeFileIds ?? []) !== JSON.stringify(data.nativeFileIds ?? [])) hostingFail('HOSTING_AI_SEGMENT_DENIED')
         return { segment, data, conversation: row }
     } })
 }
@@ -86,6 +87,7 @@ export async function assertHostedCopilotModel({ admissionId, request }: { admis
     const { segment, data } = await hostedCopilotScope({ admissionId, spending: true })
     const payer = await hostedCopilotPayer({ platformId: segment.platformId, projectId: segment.projectId, provider: data.provider, configId: data.providerConfigId })
     if (request.model !== (payer.type === 'managed' ? HOSTED_MANAGED_MODEL : HOSTED_DEEPSEEK_MODEL) || JSON.stringify(payer) !== JSON.stringify(request.payer) || !request.callKey.startsWith('copilot:') || request.attempt !== 0) hostingFail('HOSTING_AI_PAYER_CONFLICT')
+    if (JSON.stringify(request.fileIds ?? []) !== JSON.stringify(data.nativeFileIds ?? [])) hostingFail('HOSTING_AI_SEGMENT_DENIED')
     // A preceding uncertain call cannot be disguised as a fresh continuation.
     if (await databaseConnection().getRepository(HostingModelCallEntity).existsBy({ segmentId: segment.id, state: 'uncertain' })) hostingFail('HOSTING_AI_OUTCOME_UNCERTAIN')
     return segment

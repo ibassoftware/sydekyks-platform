@@ -29,6 +29,15 @@ beforeEach(() => {
 });
 
 describe('single Credits refusal messages', () => {
+  it('identifies a definitively unsent expired attachment and gives a recovery action', async () => {
+    mocks.request.mockRejectedValue({ response: { status: 410, data: {} } });
+    await expect(
+      hostedChatRequest(scope, '/v1/example', { method: 'POST' }, true),
+    ).rejects.toMatchObject({
+      kind: 'file',
+      message: expect.stringContaining('No Credits were charged for this send'),
+    });
+  });
   it('distinguishes the platform emergency pause from a customer balance problem', async () => {
     mocks.request.mockRejectedValue({
       response: {
@@ -37,7 +46,7 @@ describe('single Credits refusal messages', () => {
       },
     });
     await expect(
-      hostedChatRequest(scope, '/v1/example', { method: 'POST' })
+      hostedChatRequest(scope, '/v1/example', { method: 'POST' }),
     ).rejects.toMatchObject({ kind: 'budget' });
   });
   it('identifies a wallet shortfall without claiming that an earlier execution was free', async () => {
@@ -45,7 +54,7 @@ describe('single Credits refusal messages', () => {
       response: { status: 403, data: { code: 'HOSTING_CREDITS_EXHAUSTED' } },
     });
     await expect(
-      hostedChatRequest(scope, '/v1/example', { method: 'POST' })
+      hostedChatRequest(scope, '/v1/example', { method: 'POST' }),
     ).rejects.toMatchObject({ kind: 'credits' });
   });
   it('distinguishes the run spending ceiling from account expiration', async () => {
@@ -53,13 +62,13 @@ describe('single Credits refusal messages', () => {
       response: { status: 403, data: { code: 'HOSTING_RUN_CREDIT_LIMIT' } },
     });
     await expect(
-      hostedChatRequest(scope, '/v1/example', { method: 'POST' })
+      hostedChatRequest(scope, '/v1/example', { method: 'POST' }),
     ).rejects.toMatchObject({ kind: 'limit' });
     mocks.request.mockRejectedValue({
       response: { status: 403, data: { code: 'HOSTING_ENTITLEMENT_EXPIRED' } },
     });
     await expect(
-      hostedChatRequest(scope, '/v1/example', { method: 'POST' })
+      hostedChatRequest(scope, '/v1/example', { method: 'POST' }),
     ).rejects.toMatchObject({ kind: 'access' });
   });
 });
