@@ -133,3 +133,7 @@ deploy/terraform/**/terraform-*.tfvars
 **/STYLE.md
 *.oci.tar
 !**/.env.*.example
+
+# Hosted deployment secrets are never part of the public branch.
+/deploy/saas/production.env
+/deploy/saas/backups/

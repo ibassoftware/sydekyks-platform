@@ -1,0 +1,45 @@
+name: sydekyks-saas
+services:
+  app:
+    image: ${SYDEKYKS_IMAGE:?Set the reviewed immutable SaaS image}
+    restart: unless-stopped
+    init: true
+    env_file: ./production.env
+    ports: ["127.0.0.1:8080:80"]
+    volumes: [app_data:/usr/src/app/.sydekyks]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    logging: &logging
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg16-trixie@sha256:1e4956185a7fd9306a41ee759a7b4329c4faf9a2bb91a1d01437310c97002433
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sydekyks
+      POSTGRES_USER: sydekyks
+      POSTGRES_PASSWORD: ${AP_POSTGRES_PASSWORD:?Set the database password}
+    command: [postgres, -c, shared_buffers=64MB, -c, max_connections=40, -c, work_mem=2MB]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U sydekyks -d sydekyks]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *logging
+  redis:
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    restart: unless-stopped
+    command: [redis-server, --appendonly, 'yes', --maxmemory, 128mb, --maxmemory-policy, noeviction]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *logging
+volumes:
+  app_data:
+  postgres_data:
+  redis_data:

@@ -134,3 +134,7 @@ The [Sydekyks Sustainable Use License](LICENSE.sydekyks.txt) keeps every availab
 The existing MIT source baseline and published `1.0.6` image retain their original permissions, including commercial hosting and redistribution. The new restrictions apply to future covered contributions; this change adds no new functional application code. Read [license scope and transition](LICENSE_SCOPE.md) before relying on those restrictions.
 
 See [LICENSE](LICENSE), [LICENSE.activepieces.txt](LICENSE.activepieces.txt), and [NOTICE.sydekyks.txt](NOTICE.sydekyks.txt) for all applicable licensing and attribution notices.
+
+## Optional hosted SaaS MVP
+
+The `codex/partner-pilot` branch includes a separate, opt-in hosted service with tenant isolation, Partner/client administration, Learning and one metered Credits balance. The default Compose deployment remains free self-hosted software. For the manual-billing MVP deployment, see [the SaaS operations guide](deploy/saas/README.md). Do not switch a populated self-hosted database into hosted mode. Stripe live checkout and public automatic provisioning are not enabled in this MVP.

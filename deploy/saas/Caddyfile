@@ -1,0 +1,15 @@
+app.sydekyks.com {
+    encode zstd gzip
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+    @manual_signup path /sign-up* /api/v1/authentication/sign-up* /api/v1/hosting/onboarding/email-code* /api/v1/hosting/onboarding/verification-code*
+    handle @manual_signup {
+        respond "Access is arranged by the Sydekyks team. Request an account at https://www.sydekyks.com/#conversation" 403
+    }
+    handle {
+        reverse_proxy 127.0.0.1:8080
+    }
+}
