@@ -27,7 +27,7 @@ export function hostedAgentFailureMessage(message: string): string {
 // into a definitive user refusal. Upstream statuses/bodies remain untrusted.
 export function hostedAgentRefusalOf(error: unknown, internalApiUrl: string): { code: string, message: string } | null {
     const cause = RetryError.isInstance(error) ? error.lastError : error
-    if (!APICallError.isInstance(cause) || cause.statusCode !== 403) return null
+    if (!APICallError.isInstance(cause) || ![403, 413].includes(cause.statusCode ?? 0)) return null
     const base = `${internalApiUrl.replace(/\/$/, '')}/v1/engine/hosting-ai/copilot`
     if (![`${base}/completions`, `${base}/chat/completions`].includes(cause.url)) return null
     let body: unknown
@@ -36,6 +36,13 @@ export function hostedAgentRefusalOf(error: unknown, internalApiUrl: string): { 
     }
     catch {
         return null
+    }
+    // Fastify rejects oversized internal HTTP bodies before the gateway can
+    // dispatch a supplier call. Recognize only that exact transport receipt at
+    // our pinned internal completion endpoint; upstream/unknown 413s stay uncertain.
+    if (cause.statusCode === 413) {
+        if (!body || typeof body !== 'object' || Array.isArray(body) || !('code' in body) || body.code !== 'FST_ERR_CTP_BODY_TOO_LARGE') return null
+        return { code: 'HOSTING_AI_REQUEST_LIMIT', message: hostedAgentFailureMessage('HOSTING_AI_REQUEST_LIMIT') }
     }
     if (!body || typeof body !== 'object' || !('code' in body) || typeof body.code !== 'string' || !['HOSTING_CREDITS_EXHAUSTED', 'HOSTING_RUN_CREDIT_LIMIT', 'HOSTING_AI_CALL_LIMIT', 'HOSTING_NATIVE_CREDIT_LIMIT', 'HOSTING_NATIVE_TOOL_LIMIT', 'HOSTING_AI_FILE_UNAVAILABLE', 'HOSTING_AI_CAPABILITY_DENIED', 'HOSTING_NATIVE_OUTPUT_LIMIT', 'HOSTING_AI_REQUEST_LIMIT', 'HOSTING_NATIVE_FEATURE_DENIED', 'HOSTING_NATIVE_URL_DENIED', 'HOSTING_NATIVE_PRICING_APPROVAL_REQUIRED', 'HOSTING_AI_STEP_DENIED', 'HOSTING_AI_FILE_CHANGED', 'HOSTING_AI_FILE_INVALID', 'HOSTING_AI_FILE_SCOPE_DENIED', 'HOSTING_OPERATOR_BUDGET_EXHAUSTED', 'HOSTING_BYOK_SCOPE_DENIED', 'HOSTING_EXACT_BYOK_KEY_REQUIRED'].includes(body.code)) return null
     return { code: body.code, message: hostedAgentFailureMessage(body.code) }

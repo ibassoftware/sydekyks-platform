@@ -28,6 +28,24 @@ describe('trusted hosted gateway refusal classification', () => {
         expect(hostedAgentRefusalOf(failure(), base)).toEqual({ code: 'HOSTING_CREDITS_EXHAUSTED', message: expect.stringContaining('Not enough Credits') })
         expect(hostedAgentRefusalOf(new RetryError({ message: 'Failed', reason: 'errorNotRetryable', errors: [failure()] }), base)?.code).toBe('HOSTING_CREDITS_EXHAUSTED')
     })
+    it('classifies only our exact internal Fastify 413 as a definitive pre-dispatch limit refusal', () => {
+        expect(hostedAgentRefusalOf(failure(413, 'FST_ERR_CTP_BODY_TOO_LARGE'), base)).toEqual({ code: 'HOSTING_AI_REQUEST_LIMIT', message: expect.stringContaining('chat limits') })
+        const directEndpoint = `${base}v1/engine/hosting-ai/copilot/completions`
+        expect(hostedAgentRefusalOf(failure(413, 'FST_ERR_CTP_BODY_TOO_LARGE', directEndpoint), base)?.code).toBe('HOSTING_AI_REQUEST_LIMIT')
+        const retry = new RetryError({ message: 'Failed', reason: 'errorNotRetryable', errors: [failure(413, 'FST_ERR_CTP_BODY_TOO_LARGE')] })
+        expect(hostedAgentRefusalOf(retry, base)?.code).toBe('HOSTING_AI_REQUEST_LIMIT')
+    })
+    it('never trusts supplier 413s, arbitrary 413 messages, wrong codes or malformed bodies', () => {
+        expect(hostedAgentRefusalOf(failure(413, 'FST_ERR_CTP_BODY_TOO_LARGE', 'https://supplier.test/chat/completions'), base)).toBeNull()
+        expect(hostedAgentRefusalOf(failure(413, 'HOSTING_AI_REQUEST_LIMIT'), base)).toBeNull()
+        expect(hostedAgentRefusalOf(failure(413, 'UNKNOWN'), base)).toBeNull()
+        expect(hostedAgentRefusalOf(failure(403, 'FST_ERR_CTP_BODY_TOO_LARGE'), base)).toBeNull()
+        expect(hostedAgentRefusalOf(new Error('FST_ERR_CTP_BODY_TOO_LARGE'), base)).toBeNull()
+        for (const responseBody of ['not-json', 'null', '[]', JSON.stringify('FST_ERR_CTP_BODY_TOO_LARGE'), JSON.stringify({ message: 'Payload Too Large' })]) {
+            const error = new APICallError({ message: 'Payload Too Large', url, requestBodyValues: {}, statusCode: 413, responseBody, isRetryable: false })
+            expect(hostedAgentRefusalOf(error, base)).toBeNull()
+        }
+    })
     it('never classifies unknown, non-403 or external-provider errors as definitive hosted refusals', () => {
         expect(hostedAgentRefusalOf(failure(403, 'HOSTING_AI_OUTCOME_UNCERTAIN'), base)).toBeNull()
         expect(hostedAgentRefusalOf(failure(429), base)).toBeNull()
