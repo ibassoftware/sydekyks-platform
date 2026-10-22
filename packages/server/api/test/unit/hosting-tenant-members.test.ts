@@ -107,7 +107,8 @@ describe('tenant-scoped member administration', () => {
         const training = { identityId: other.id, platformId: own.platformId, tokenVersion: own.tokenVersion }
         const current = await service().list({ actor: training })
         expect(current.seats).toEqual({ used: 1, reserved: 0, limit: 1 })
-        await expect(service().command({ actor: training, action: 'invite', input: { email: three.email, role: PlatformRole.MEMBER, expectedRevision: current.revision, expectedState: current.stateHash, requestKey: apId() } })).rejects.toThrow('RESOURCE_LIMIT')
+        expect(current.canInvite).toBe(false)
+        await expect(service().command({ actor: training, action: 'invite', input: { email: three.email, role: PlatformRole.MEMBER, expectedRevision: current.revision, expectedState: current.stateHash, requestKey: apId() } })).rejects.toThrow('PARTNER_SINGLE_USER')
     })
     it('revokes a legacy pending reservation and safely replays its request', async () => {
         const target = await identity(), legacy = await onboarding().invite({ actor: admin, email: target.email, role: PlatformRole.MEMBER }), current = await service().list({ actor: admin })

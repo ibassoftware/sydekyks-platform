@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto'
 import { apId } from '@activepieces/core-utils'
 import { hostingCatalog } from '@activepieces/shared'
-import { DataSource, EntityManager, LessThanOrEqual } from 'typeorm'
+import { DataSource, EntityManager, IsNull, LessThanOrEqual, Not } from 'typeorm'
+import { enrollClientDefaultCourses } from '../lms/lms-client-defaults'
 import { hostingResourceFits as resourceFits } from './hosting-billing-resources'
 import { hostingConfiguration } from './hosting-configuration'
 import { effectiveHostedCredits } from './hosting-credit-allowance'
+import { assertClientSubscriptionUser } from './hosting-customer-billing-policy'
 import { HostingAccount, HostingAccountEntity, HostingGrant, HostingGrantEntity, HostingLedgerEntity } from './hosting-entities'
 import { HostingManualAccountEntity } from './hosting-manual-accounts-entities'
 import { createStripeAdapter, PaidPeriodEvidence } from './hosting-stripe-adapter'
@@ -20,6 +22,12 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
     if (hostingConfiguration.getBillingMode() !== 'stripe_test') hostingFail('HOSTING_MANUAL_BILLING_REQUIRED')
     const policy = readStripePolicy()
     const adapter = await createStripeAdapter(policy)
+    async function billingMember(manager: EntityManager, actor: HostingActor) {
+        const user = await tx.member({ manager, actor, admin: true })
+        const account = await manager.getRepository(HostingAccountEntity).findOneByOrFail({ id: actor.platformId })
+        assertClientSubscriptionUser(account, user, actor)
+        return user
+    }
     async function binding(manager: EntityManager, platformId: string): Promise<StripeBinding> {
         const repo = manager.getRepository(HostingStripeBindingEntity)
         let value = await repo.findOneBy({ platformId })
@@ -35,10 +43,18 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
         if (!await resourceFits(manager, account.id, planId, now)) hostingFail('HOSTING_STRIPE_PLAN_RESOURCE_LIMIT')
         if (bound.subscriptionId && (!['canceled', 'incomplete_expired'].includes(bound.subscriptionStatus ?? '') || account.validUntil > now)) hostingFail('HOSTING_STRIPE_SUBSCRIPTION_EXISTS')
     }
+    async function assertPlanChange(manager: EntityManager, account: HostingAccount, bound: StripeBinding, planId: 'starter' | 'team' | 'scale', now: Date) {
+        if (await manager.getRepository(HostingManualAccountEntity).existsBy({ id: account.id })) hostingFail('HOSTING_MANUAL_FUNDING_REQUIRES_REVIEW')
+        if (hostingCatalog.paidPlans[planId].salesAssisted) hostingFail('HOSTING_STRIPE_SALES_REVIEW_REQUIRED')
+        if (!['starter', 'team', 'scale'].includes(account.planId) || account.status !== 'active' || account.billingHold || bound.holds.length || bound.subscriptionStatus !== 'active' || !bound.customerId || !bound.subscriptionId || bound.cancelAtPeriodEnd || account.validUntil <= now) hostingFail('HOSTING_STRIPE_PLAN_CHANGE_UNSUPPORTED')
+        if (!await resourceFits(manager, account.id, planId, now)) hostingFail('HOSTING_STRIPE_PLAN_RESOURCE_LIMIT')
+        const funded = await manager.getRepository(HostingStripePeriodEntity).findOneBy({ platformId: account.id, subscriptionId: bound.subscriptionId, planId: selectedPlan(account.planId), periodEnd: account.validUntil, revokedAt: IsNull() })
+        if (!funded || funded.periodEnd.getTime() !== account.validUntil.getTime() || funded.periodStart > now) hostingFail('HOSTING_STRIPE_PLAN_CHANGE_STALE')
+    }
     async function command(actor: HostingActor, kind: StripeCommand['kind'], payload: Record<string, unknown>): Promise<StripeCommand> {
         return tx.run({ dataSource, fn: async manager => {
             const account = await tx.account({ manager, platformId: actor.platformId })
-            await tx.member({ manager, actor, admin: true })
+            await billingMember(manager, actor)
             const bound = await binding(manager, account.id)
             const repo = manager.getRepository(HostingStripeCommandEntity)
             let previous = await repo.findOne({ where: { platformId: account.id, kind }, order: { created: 'DESC' } })
@@ -50,6 +66,7 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
             const fullPayload = { catalogHash: policy.hash, ...payload }
             const hash = stripeDigest(fullPayload)
             if (kind === 'checkout') await assertCheckoutPolicy(manager, account, bound, selectedPlan(payload.planId), now)
+            if (kind === 'plan_change') await assertPlanChange(manager, account, bound, selectedPlan(payload.planId), now)
             if (previous) {
                 if (previous.payloadHash !== hash || previous.actorIdentityId !== actor.identityId || previous.tokenVersion !== (actor.tokenVersion ?? null)) hostingFail('HOSTING_STRIPE_COMMAND_CONFLICT')
                 return previous
@@ -61,11 +78,13 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
     async function send(actor: HostingActor, command: StripeCommand): Promise<StripeCommand> {
         const claimed = await tx.run({ dataSource, fn: async manager => {
             const account = await tx.account({ manager, platformId: actor.platformId })
-            await tx.member({ manager, actor, admin: true })
+            await billingMember(manager, actor)
             const bound = await binding(manager, actor.platformId)
             const row = await manager.getRepository(HostingStripeCommandEntity).findOneByOrFail({ id: command.id, platformId: actor.platformId })
             if (row.kind === 'checkout') await assertCheckoutPolicy(manager, account, bound, selectedPlan(row.payload.planId), await tx.now(manager))
+            if (row.kind === 'plan_change') await assertPlanChange(manager, account, bound, selectedPlan(row.payload.planId), await tx.now(manager))
             if (row.state === 'ready') return row
+            if (row.kind === 'plan_change' && row.state === 'uncertain') hostingFail('HOSTING_STRIPE_COMMAND_RECONCILIATION_REQUIRED')
             if (row.state === 'closed' || row.payloadHash !== stripeDigest(row.payload) || row.payload.catalogHash !== policy.hash || row.actorIdentityId !== actor.identityId || row.tokenVersion !== (actor.tokenVersion ?? null)) hostingFail('HOSTING_STRIPE_COMMAND_CONFLICT')
             const now = await tx.now(manager)
             if ((row.state === 'running' && row.leaseUntil && row.leaseUntil > now) || (row.firstSentAt && now.getTime() - row.firstSentAt.getTime() > 23 * 3600_000)) hostingFail('HOSTING_STRIPE_COMMAND_RECONCILIATION_REQUIRED')
@@ -85,6 +104,7 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
                     if (bound.customerId && bound.customerId !== result.objectId) hostingFail('HOSTING_STRIPE_CUSTOMER_CONFLICT')
                     await manager.getRepository(HostingStripeBindingEntity).save({ ...bound, customerId: result.objectId, reconcileAt: await tx.now(manager), revision: bound.revision + 1 })
                 }
+                else if (row.kind === 'plan_change') await manager.getRepository(HostingStripeBindingEntity).update({ id: bound.id }, { pendingPlanId: selectedPlan(row.payload.planId), pendingChangeAt: new Date(String(row.payload.effectiveAt)), reconcileAt: await tx.now(manager), revision: bound.revision + 1 })
                 else await manager.getRepository(HostingStripeBindingEntity).update({ id: bound.id }, { reconcileAt: await tx.now(manager) })
                 await tx.event({ manager, platformId: row.platformId, event: `stripe.${row.kind}.created`, payload: { commandId: row.id, objectId: result.objectId } })
                 return saved
@@ -102,7 +122,7 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
     async function deliver(actor: HostingActor, commandId: string): Promise<StripeCommand> {
         return tx.run({ dataSource, fn: async manager => {
             const account = await tx.account({ manager, platformId: actor.platformId })
-            await tx.member({ manager, actor, admin: true })
+            await billingMember(manager, actor)
             const row = await manager.getRepository(HostingStripeCommandEntity).findOneByOrFail({ id: commandId, platformId: actor.platformId })
             if (row.kind === 'checkout') await assertCheckoutPolicy(manager, account, await binding(manager, actor.platformId), selectedPlan(row.payload.planId), await tx.now(manager))
             if (row.state !== 'ready' || row.actorIdentityId !== actor.identityId || row.tokenVersion !== (actor.tokenVersion ?? null)) hostingFail('HOSTING_ACCESS_DENIED')
@@ -112,7 +132,7 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
     }
     async function customer(actor: HostingActor): Promise<string> {
         const existing = await tx.run({ dataSource, fn: async manager => {
-            await tx.account({ manager, platformId: actor.platformId }); await tx.member({ manager, actor, admin: true })
+            await tx.account({ manager, platformId: actor.platformId }); await billingMember(manager, actor)
             if (await manager.getRepository(HostingManualAccountEntity).existsBy({ id: actor.platformId })) hostingFail('HOSTING_MANUAL_FUNDING_REQUIRES_REVIEW')
             return (await binding(manager, actor.platformId)).customerId
         } })
@@ -127,7 +147,7 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
         if (previous?.objectId && previous.expiresAt && previous.expiresAt <= new Date()) {
             const current = await adapter.checkout(previous.objectId, customerId)
             await tx.run({ dataSource, fn: async manager => {
-                await tx.account({ manager, platformId: actor.platformId }); await tx.member({ manager, actor, admin: true })
+                await tx.account({ manager, platformId: actor.platformId }); await billingMember(manager, actor)
                 if (current.status === 'expired') await manager.getRepository(HostingStripeCommandEntity).update({ id: previous.id, state: 'ready' }, { state: 'closed' })
             } })
             if (current.status !== 'expired') hostingFail('HOSTING_STRIPE_PURCHASE_RECONCILIATION_REQUIRED')
@@ -139,6 +159,27 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
         const customerId = await customer(actor)
         const result = await send(actor, await command(actor, 'portal', { customerId }))
         return { commandId: result.id, url: result.url, deliveryUntil: result.expiresAt?.toISOString() ?? null }
+    }
+    async function changePlan(actor: HostingActor, planId: 'starter' | 'team' | 'scale') {
+        selectedPlan(planId)
+        const payload = await tx.run({ dataSource, fn: async manager => {
+            const account = await tx.account({ manager, platformId: actor.platformId })
+            const user = await billingMember(manager, actor)
+            const bound = await binding(manager, account.id)
+            await assertPlanChange(manager, account, bound, planId, await tx.now(manager))
+            const open = await manager.getRepository(HostingStripeCommandEntity).findOne({ where: { platformId: account.id, kind: 'plan_change', state: Not('closed') } })
+            if (open && open.payload.planId !== planId) hostingFail('HOSTING_STRIPE_COMMAND_CONFLICT')
+            if (open && ['running', 'uncertain'].includes(open.state)) hostingFail('HOSTING_STRIPE_COMMAND_RECONCILIATION_REQUIRED')
+            return { userId: user.id, customerId: bound.customerId!, subscriptionId: bound.subscriptionId!, planId, effectiveAt: account.validUntil.toISOString(), alreadySelected: !open && (bound.pendingPlanId === planId || (!bound.pendingPlanId && account.planId === planId)) }
+        } })
+        if (payload.alreadySelected) return { platformId: actor.platformId, userId: payload.userId, planId, effectiveAt: payload.effectiveAt, timing: 'next_renewal' as const }
+        const { alreadySelected: _alreadySelected, userId: _userId, ...commandPayload } = payload
+        const result = await send(actor, await command(actor, 'plan_change', commandPayload))
+        await tx.run({ dataSource, fn: async manager => {
+            await tx.account({ manager, platformId: actor.platformId }); await billingMember(manager, actor)
+            await manager.getRepository(HostingStripeCommandEntity).update({ id: result.id, platformId: actor.platformId, state: 'ready' }, { state: 'closed' })
+        } })
+        return { platformId: actor.platformId, userId: payload.userId, commandId: result.id, planId, effectiveAt: payload.effectiveAt, timing: 'next_renewal' as const }
     }
     async function ingest(raw: string, signature: string): Promise<void> {
         const event = adapter.verify(raw, signature)
@@ -232,7 +273,14 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
                 if (observed.customerPlatformId !== platformId || (!issues.length && observed.subscriptionId && observed.subscriptionPlatformId !== platformId)) issues.push('HOSTING_STRIPE_OBJECT_MISMATCH')
                 if (!issues.length && observed.subscriptionId) {
                     const purchase = observed.commandId ? await manager.getRepository(HostingStripeCommandEntity).findOneBy({ id: observed.commandId, platformId, kind: 'checkout' }) : null
-                    if (!purchase || !['running', 'uncertain', 'ready', 'closed'].includes(purchase.state) || purchase.payload.customerId !== bound.customerId || (observed.period && purchase.payload.planId !== observed.period.planId)) issues.push('HOSTING_STRIPE_SUBSCRIPTION_UNBOUND')
+                    const recorded = observed.period ? await manager.getRepository(HostingStripePeriodEntity).findOneBy({ platformId, subscriptionId: observed.period.subscriptionId, itemId: observed.period.itemId, priceId: observed.period.priceId, planId: observed.period.planId, periodStart: new Date(observed.period.start * 1000), periodEnd: new Date(observed.period.end * 1000) }) : null
+                    const recordedEvidence = !!recorded && recorded.customerId === bound.customerId && !!observed.period && recorded.invoiceIds.includes(observed.period.invoiceId) && recorded.lineIds.includes(observed.period.lineId) && recorded.chargeIds.includes(observed.period.chargeId)
+                    let planAuthorized = !observed.period || recordedEvidence || purchase?.payload.planId === observed.period.planId
+                    if (!planAuthorized && observed.period && 'planChangeCommandId' in observed && observed.planChangeCommandId) {
+                        const change = await manager.getRepository(HostingStripeCommandEntity).findOneBy({ id: observed.planChangeCommandId, platformId, kind: 'plan_change' })
+                        planAuthorized = !!change && !!change.firstSentAt && ['running', 'uncertain', 'ready', 'closed'].includes(change.state) && change.payloadHash === stripeDigest(change.payload) && change.payload.customerId === bound.customerId && change.payload.subscriptionId === observed.subscriptionId && change.payload.planId === observed.period.planId && Date.parse(String(change.payload.effectiveAt)) <= observed.period.start * 1000
+                    }
+                    if (!purchase || !['running', 'uncertain', 'ready', 'closed'].includes(purchase.state) || purchase.payload.customerId !== bound.customerId || !planAuthorized) issues.push('HOSTING_STRIPE_SUBSCRIPTION_UNBOUND')
                     if (bound.subscriptionId && bound.subscriptionId !== observed.subscriptionId && !['canceled', 'incomplete_expired'].includes(bound.subscriptionStatus ?? '')) issues.push('HOSTING_STRIPE_SUBSCRIPTION_CONFLICT')
                 }
                 if (!issues.length && observed.period) {
@@ -248,6 +296,20 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
                 for (const period of periods) {
                     if (period.chargeIds.some(id => observed.charges.some(charge => charge.id === id && (charge.refunded || charge.lost)))) await revokePeriod({ manager, period, now })
                 }
+                // A provider-confirmed selection also resolves an unknown
+                // update that restored the current plan, or crossed renewal.
+                // Closing delivery supplies no new funding authority.
+                if (!issues.length && 'planChangeCommandId' in observed && observed.planChangeCommandId && 'selectedPlanId' in observed && observed.selectedPlanId) {
+                    const selected = await manager.getRepository(HostingStripeCommandEntity).findOneBy({ id: observed.planChangeCommandId, platformId, kind: 'plan_change' })
+                    if (!selected || !selected.firstSentAt || !['running', 'uncertain', 'ready', 'closed'].includes(selected.state) || selected.payloadHash !== stripeDigest(selected.payload) || selected.payload.customerId !== bound.customerId || selected.payload.subscriptionId !== observed.subscriptionId || selected.payload.planId !== observed.selectedPlanId) hostingFail('HOSTING_STRIPE_PLAN_CHANGE_UNVERIFIED')
+                    if (selected.state !== 'running' || !selected.leaseUntil || selected.leaseUntil <= await tx.now(manager)) await manager.getRepository(HostingStripeCommandEntity).update({ id: selected.id }, { state: 'closed', objectId: observed.subscriptionId, expiresAt: new Date(String(selected.payload.effectiveAt)), leaseUntil: null })
+                }
+                const pendingPlan = 'pendingPlan' in observed ? observed.pendingPlan : null
+                if (pendingPlan) {
+                    const change = await manager.getRepository(HostingStripeCommandEntity).findOneBy({ id: pendingPlan.commandId, platformId, kind: 'plan_change' })
+                    if (!change || !change.firstSentAt || !['running', 'uncertain', 'ready', 'closed'].includes(change.state) || change.payloadHash !== stripeDigest(change.payload) || change.payload.planId !== pendingPlan.planId || change.payload.subscriptionId !== observed.subscriptionId || Date.parse(String(change.payload.effectiveAt)) !== pendingPlan.effectiveAt * 1000) hostingFail('HOSTING_STRIPE_PLAN_CHANGE_UNVERIFIED')
+                    if (!issues.length && (change.state !== 'running' || !change.leaseUntil || change.leaseUntil <= await tx.now(manager))) await manager.getRepository(HostingStripeCommandEntity).update({ id: change.id }, { state: 'closed', objectId: observed.subscriptionId, expiresAt: new Date(pendingPlan.effectiveAt * 1000), leaseUntil: null })
+                }
                 const allPeriods = await manager.getRepository(HostingStripePeriodEntity).findBy({ platformId })
                 const current = allPeriods.filter(value => value.periodStart <= now && value.periodEnd > now).sort((a, b) => b.periodStart.getTime() - a.periodStart.getTime())[0]
                 const transient = issues.some(value => ['HOSTING_STRIPE_READ_FAILED', 'HOSTING_STRIPE_RECONCILIATION_DEADLINE'].includes(value))
@@ -260,10 +322,11 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
                     if (!await resourceFits(manager, platformId, current.planId, now)) holds.push('resource_limits')
                     if (current.revokedAt) holds.push('current_period_revoked')
                     await manager.getRepository(HostingAccountEntity).update({ id: platformId }, { planId: current.planId, validUntil: current.periodEnd, catalogVersion: hostingCatalog.version, ...(account.status === 'trialing' ? { status: 'active' as const } : {}) })
+                    if (!current.revokedAt && holds.length === 0) await enrollClientDefaultCourses(manager, { platformId, enrolledBy: account.ownerIdentityId, now })
                 }
                 if (observed.subscriptionStatus === 'canceled' && !current && now >= subscriptionAccountUntil(account)) holds.push('subscription_ended')
                 await manager.getRepository(HostingAccountEntity).update({ id: platformId }, { billingHold: holds.length > 0 })
-                await manager.getRepository(HostingStripeBindingEntity).save({ ...bound, ...(!issues.length ? { subscriptionId: observed.subscriptionId, subscriptionStatus: observed.subscriptionStatus } : {}), lastError: issues.join(',') || null, holds: [...new Set(holds)], fence: null, leaseUntil: null, reconcileAt: new Date(now.getTime() + 300_000) })
+                await manager.getRepository(HostingStripeBindingEntity).save({ ...bound, ...(!issues.length ? { subscriptionId: observed.subscriptionId, subscriptionStatus: observed.subscriptionStatus, pendingPlanId: pendingPlan?.planId ?? null, pendingChangeAt: pendingPlan ? new Date(pendingPlan.effectiveAt * 1000) : null, cancelAtPeriodEnd: 'cancelAtPeriodEnd' in observed ? observed.cancelAtPeriodEnd : false } : {}), lastError: issues.join(',') || null, holds: [...new Set(holds)], fence: null, leaseUntil: null, reconcileAt: new Date(now.getTime() + 300_000) })
                 if (!issues.length && observed.subscriptionId && observed.commandId) await manager.getRepository(HostingStripeCommandEntity).update({ id: observed.commandId, platformId, kind: 'checkout' }, { state: 'closed' })
                 await tx.event({ manager, platformId, event: 'stripe.reconciled', payload: { subscriptionId: observed.subscriptionId, billingHold: holds.length > 0 } })
             } })
@@ -294,12 +357,12 @@ export async function createHostedStripe({ dataSource }: { dataSource: DataSourc
     }
     async function status(actor: HostingActor) {
         return tx.run({ dataSource, fn: async manager => {
-            const account = await tx.account({ manager, platformId: actor.platformId }); await tx.member({ manager, actor, admin: true })
+            const account = await tx.account({ manager, platformId: actor.platformId }); await billingMember(manager, actor)
             const bound = await manager.getRepository(HostingStripeBindingEntity).findOneBy({ platformId: actor.platformId })
-            return { environment: 'test', planId: account.planId, status: account.status, validUntil: account.validUntil.toISOString(), trialEndsAt: account.trialEndsAt.toISOString(), billingHold: account.billingHold ?? false, billingReasons: bound?.holds ?? [], lastBillingError: bound?.lastError ?? null, subscriptionStatus: bound?.subscriptionStatus ?? null, planChangesEnabled: false }
+            return { environment: 'test', planId: account.planId, status: account.status, validUntil: account.validUntil.toISOString(), trialEndsAt: account.trialEndsAt.toISOString(), billingHold: account.billingHold ?? false, billingReasons: bound?.holds ?? [], lastBillingError: bound?.lastError ?? null, subscriptionStatus: bound?.subscriptionStatus ?? null, planChangesEnabled: ['starter', 'team', 'scale'].includes(account.planId) && account.status === 'active' && !account.billingHold && !!bound?.subscriptionId && bound.subscriptionStatus === 'active' && !bound.cancelAtPeriodEnd && bound.holds.length === 0 && !await manager.getRepository(HostingManualAccountEntity).existsBy({ id: account.id }) }
         } })
     }
-    return { checkout, portal, ingest, recover, status }
+    return { checkout, portal, changePlan, ingest, recover, status }
 }
 
 async function recordPeriod({ manager, bound, evidence }: { manager: EntityManager, bound: StripeBinding, evidence: PaidPeriodEvidence }): Promise<void> {

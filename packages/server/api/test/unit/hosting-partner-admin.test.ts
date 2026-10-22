@@ -1,18 +1,23 @@
 import { apId } from '@activepieces/core-utils'
 import { PlatformRole, UserStatus } from '@activepieces/shared'
+import { FastifyBaseLogger } from 'fastify'
 import { DataSource } from 'typeorm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { UserIdentityEntity } from '../../src/app/authentication/user-identity/user-identity-entity'
 import { FlagEntity } from '../../src/app/flags/flag.entity'
 import { createHostedAccess } from '../../src/app/hosting/hosting-access'
 import { HostingAccessMembershipEntity, HostingAccessRoleEntity } from '../../src/app/hosting/hosting-access-entities'
-import { hasOperationalAccess } from '../../src/app/hosting/hosting-access-policy'
+import { assertHostingOperator, hasOperationalAccess, hostedCustomerSeatCount, hostedWorkspaceAllowsMembers } from '../../src/app/hosting/hosting-access-policy'
 import { HostingAccountEntity } from '../../src/app/hosting/hosting-entities'
 import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
 import { createHostedOnboarding } from '../../src/app/hosting/hosting-onboarding'
 import { createHostedPartnerAdmin, PartnerAssignmentInput, PartnerDecisionInput } from '../../src/app/hosting/hosting-partner-admin'
 import { HostingPartnerAdminCommandEntity } from '../../src/app/hosting/hosting-partner-admin-entities'
+import { assertTenantAdministrator } from '../../src/app/hosting/hosting-tenant-members-policy'
 import { HostingActor, hostingTransactions } from '../../src/app/hosting/hosting-transactions'
+import { mcpOAuthRevocationList } from '../../src/app/mcp/oauth/token/mcp-oauth-revocation-list'
+import { McpOAuthTokenEntity } from '../../src/app/mcp/oauth/token/mcp-oauth-token.entity'
+import { mcpOAuthTokenService } from '../../src/app/mcp/oauth/token/mcp-oauth-token.service'
 import { PlatformEntity } from '../../src/app/platform/platform.entity'
 import { UserEntity } from '../../src/app/user/user-entity'
 import { bootstrapHostedOperator, migratedHostedPGlite } from '../helpers/hosting-fixtures'
@@ -53,7 +58,9 @@ beforeAll(async () => {
 afterAll(async () => {
     if (ds?.isInitialized) await ds.destroy()
 })
-afterEach(() => vi.unstubAllEnvs())
+afterEach(() => {
+    vi.unstubAllEnvs(); vi.restoreAllMocks()
+})
 beforeEach(async () => {
     vi.stubEnv('AP_SERVICE_MODE', 'hosted')
     await ds.query(`TRUNCATE ${ds.entityMetadatas.map(entity => `"${entity.tableName}"`).join(',')} CASCADE`)
@@ -143,7 +150,7 @@ describe('operator partner administration', () => {
         const partnerActor = { identityId: target, platformId: home.platformId!, tokenVersion: identity.tokenVersion ?? null }
         const entry = await access().enter({ actor: partnerActor, platformId: customer.platformId })
         const user = await ds.getRepository(UserEntity).findOneByOrFail({ id: entry.userId })
-        expect(user.platformRole).toBe(PlatformRole.OPERATOR)
+        expect(user.platformRole).toBe(PlatformRole.ADMIN)
         expect(await hasOperationalAccess({ manager: ds.manager, user })).toBe(true)
         await expect(access().enter({ actor: customer.actor, platformId: home.platformId! })).rejects.toThrow('OPERATIONAL_ACCESS_DENIED')
         await assignment(customer.platformId, false)
@@ -169,6 +176,77 @@ describe('operator partner administration', () => {
         const current = await candidate()
         await expect(admin().mutate({ actor: operator, identityId: target, input: { platformId: customer.platformId, assigned: true, requestKey: 'independent-guard', expectedRevision: current.revision, expectedState: current.stateHash } })).rejects.toThrow('EXISTING_CLIENT_MEMBERSHIP')
         expect(await ds.getRepository(HostingPartnerAdminCommandEntity).count()).toBe(1)
+    })
+    it('gives assigned Partners tenant administration without seats, billing-operator authority or cross-client access', async () => {
+        await decision(true)
+        const home = await ds.getRepository(UserEntity).findOneByOrFail({ identityId: target, platformRole: PlatformRole.ADMIN })
+        const customer = await client(), other = await client()
+        const seats = await hostedCustomerSeatCount(ds.manager, customer.platformId)
+        await assignment(customer.platformId, true)
+        const identity = await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: target })
+        const actor = { identityId: target, platformId: home.platformId!, tokenVersion: identity.tokenVersion ?? null }
+        const entered = await access().enter({ actor, platformId: customer.platformId })
+        const clientActor = { ...actor, platformId: customer.platformId }
+        expect((await assertTenantAdministrator({ manager: ds.manager, actor: clientActor })).id).toBe(entered.userId)
+        await expect(assertHostingOperator({ manager: ds.manager, actor: clientActor })).rejects.toThrow('OPERATOR_REQUIRED')
+        await expect(assertTenantAdministrator({ manager: ds.manager, actor: { ...actor, platformId: other.platformId } })).rejects.toThrow('TENANT_ADMIN_REQUIRED')
+        expect(await hostedCustomerSeatCount(ds.manager, customer.platformId)).toBe(seats)
+        expect(await hostedWorkspaceAllowsMembers(ds.manager, await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: home.platformId! }))).toBe(false)
+        expect(await hostedWorkspaceAllowsMembers(ds.manager, await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: customer.platformId }))).toBe(true)
+        const listed = await access().list({ actor: clientActor })
+        expect(listed.operational).toBe(true)
+        expect(listed.workspaces).toEqual(expect.arrayContaining([expect.objectContaining({ platformId: home.platformId, home: true }), expect.objectContaining({ platformId: customer.platformId, home: false })]))
+        const returned = await access().enter({ actor: clientActor, platformId: home.platformId! })
+        expect(returned.userId).toBe(home.id)
+        await ds.getRepository(UserEntity).update({ id: entered.userId }, { platformRole: PlatformRole.OPERATOR })
+        await access().enter({ actor: clientActor, platformId: customer.platformId })
+        expect((await ds.getRepository(UserEntity).findOneByOrFail({ id: entered.userId })).platformRole).toBe(PlatformRole.ADMIN)
+        await assignment(customer.platformId, false)
+        await expect(assertTenantAdministrator({ manager: ds.manager, actor: clientActor })).rejects.toThrow('TENANT_ADMIN_REQUIRED')
+    })
+    it('keeps the independent Partner home visible when the assigned-client directory reaches its bound', async () => {
+        await decision(true)
+        const home = await ds.getRepository(UserEntity).findOneByOrFail({ identityId: target, platformRole: PlatformRole.ADMIN })
+        const template = await client()
+        const platform = await ds.getRepository(PlatformEntity).createQueryBuilder('platform').addSelect('platform.federatedAuthProviders').where('platform.id = :id', { id: template.platformId }).getOneOrFail()
+        const account = await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: template.platformId })
+        const entries = Array.from({ length: 100 }, () => ({ platformId: apId(), userId: apId(), ownerId: apId() }))
+        // Persist synthetic directory fixtures in one batch; this test never
+        // provisions runtime grants or impersonates paid billing admission.
+        await ds.getRepository(UserEntity).insert(entries.map(entry => ({ id: entry.ownerId, identityId: template.identityId, platformId: null, platformRole: PlatformRole.ADMIN, status: UserStatus.ACTIVE })))
+        await ds.getRepository(PlatformEntity).insert(entries.map(entry => ({ ...platform, id: entry.platformId, ownerId: entry.ownerId, name: 'Assigned client fixture' })))
+        await ds.getRepository(HostingAccountEntity).insert(entries.map(entry => ({ ...account, id: entry.platformId })))
+        await ds.getRepository(UserEntity).insert(entries.map(entry => ({ id: entry.userId, identityId: target, platformId: entry.platformId, platformRole: PlatformRole.ADMIN, status: UserStatus.ACTIVE, externalId: `sydekyks-operational:${target}` })))
+        await ds.getRepository(HostingAccessMembershipEntity).insert(entries.map(entry => ({ id: apId(), platformId: entry.platformId, userId: entry.userId, identityId: target, role: 'partner' as const, active: true })))
+        const identity = await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: target })
+        const list = await access().list({ actor: { identityId: target, platformId: home.platformId!, tokenVersion: identity.tokenVersion ?? null } })
+        expect(list.workspaces).toHaveLength(100)
+        expect(list.workspaces[0]).toMatchObject({ platformId: home.platformId, home: true })
+    })
+    it('checks assigned-client MCP context on every authentication and revokes the client grant without changing home access', async () => {
+        const previous = Reflect.get(globalThis, '__AP_DB_CONNECTION__')
+        Reflect.set(globalThis, '__AP_DB_CONNECTION__', ds)
+        try {
+            await decision(true)
+            const customer = await client(), other = await client()
+            await assignment(customer.platformId, true)
+            const user = await ds.getRepository(UserEntity).findOneByOrFail({ identityId: target, platformId: customer.platformId })
+            const grantId = apId(), payload = { sub: user.id, platformId: customer.platformId, projectId: customer.projectId!, clientId: 'synthetic-client', grantId, clientKey: 'unknown' as const, scopes: [], type: 'mcp_oauth' as const, iat: 0, exp: Math.floor(Date.now() / 1000) + 60 }
+            await ds.getRepository(McpOAuthTokenEntity).insert({ id: grantId, refreshToken: 'synthetic-never-issued-refresh', userId: user.id, platformId: customer.platformId, projectId: customer.projectId!, clientId: payload.clientId, clientKey: payload.clientKey, scopes: [], expiresAt: new Date(Date.now() + 60000).toISOString(), revoked: false, lastUsedAt: null })
+            const verified = vi.spyOn(mcpOAuthTokenService, 'verifyAccessToken').mockResolvedValue(payload)
+            vi.spyOn(mcpOAuthRevocationList, 'isRevoked').mockResolvedValue(false)
+            const log = { debug: vi.fn(), error: vi.fn() } as unknown as FastifyBaseLogger
+            expect((await mcpOAuthTokenService.authenticate({ token: 'synthetic', log })).status).toBe('ok')
+            verified.mockResolvedValue({ ...payload, projectId: other.projectId! })
+            expect((await mcpOAuthTokenService.authenticate({ token: 'synthetic', log })).status).toBe('invalid')
+            verified.mockResolvedValue(payload)
+            await assignment(customer.platformId, false)
+            expect((await mcpOAuthTokenService.authenticate({ token: 'synthetic', log })).status).toBe('invalid')
+            expect((await ds.getRepository(McpOAuthTokenEntity).findOneByOrFail({ id: grantId })).revoked).toBe(true)
+        }
+        finally {
+            Reflect.set(globalThis, '__AP_DB_CONNECTION__', previous)
+        }
     })
     it('bounds mutation inputs and does not accept browser-supplied roles or identities', () => {
         const base = { expectedRevision: 0, expectedState: 'a'.repeat(64), requestKey: 'bounded', active: true }

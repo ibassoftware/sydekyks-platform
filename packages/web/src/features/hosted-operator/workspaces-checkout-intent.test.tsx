@@ -61,12 +61,12 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('checkout selection after workspace entry', () => {
-  it('does not enter a workspace on GET and resumes review after explicit selection', async () => {
+describe('safe workspace entry destination', () => {
+  it('does not enter a workspace on GET and opens the workspace after explicit selection', async () => {
     openPicker();
     expect(enterOperationalWorkspace).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Open {name}' }));
-    await screen.findByText('/platform/billing');
+    await screen.findByText('/');
     expect(enterOperationalWorkspace).toHaveBeenCalledOnce();
   });
   it('keeps the existing home destination after the offer is cleared', async () => {

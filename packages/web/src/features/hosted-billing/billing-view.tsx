@@ -4,7 +4,7 @@ import {
 } from '@activepieces/shared';
 import { t } from 'i18next';
 import { ExternalLink, RefreshCw } from 'lucide-react';
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 
 import { CenteredPage } from '@/components/custom/centered-page';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -27,6 +27,7 @@ type Props = {
   onRefresh: () => void;
   onCheckout: (id: 'starter' | 'team' | 'scale') => void;
   onPortal: () => void;
+  onPlanChange?: (id: 'starter' | 'team' | 'scale') => void;
 };
 export function HostedBillingView({
   overview: info,
@@ -38,7 +39,11 @@ export function HostedBillingView({
   onRefresh,
   onCheckout,
   onPortal,
+  onPlanChange,
 }: Props) {
+  const [reviewPlan, setReviewPlan] = useState<
+    'starter' | 'team' | 'scale' | null
+  >(null);
   const { intent } = useCheckoutIntent();
   const selectedPlan =
     intent?.offer === 'starter'
@@ -63,7 +68,8 @@ export function HostedBillingView({
   const showPartnerPurchase =
     !partner && info.planId === 'trial' && selectedPackage !== null;
   const currentPlan = info.plans.find((plan) => plan.id === info.planId);
-  const manual = info.billingMode === 'manual';
+  const reviewedPlan = info.plans.find((plan) => plan.id === reviewPlan);
+  const manual = info.billingMode === 'manual' || info.manualFunding === true;
   const blocked = stale || refreshing || pending !== null;
   return (
     <CenteredPage
@@ -227,13 +233,19 @@ export function HostedBillingView({
               })}
             />
             <Detail
-              label={t('Work in progress')}
+              label={t('Runs in progress')}
               value={t('{used} of {limit}', {
                 used: info.usage.activeExecutions,
                 limit: info.limits.concurrency,
               })}
             />
           </dl>
+          <p className="text-sm text-gray-11">
+            {t(
+              'Up to {limit} runs can be active at the same time. This limit is included in your plan; each run uses your shared Credits.',
+              { limit: info.limits.concurrency },
+            )}
+          </p>
           {(info.usage.pendingUsers > 0 || info.usage.pendingProjects > 0) && (
             <p className="text-sm text-gray-11">
               {t(
@@ -372,6 +384,161 @@ export function HostedBillingView({
             </section>
           </>
         )}
+        {!partner && ['starter', 'team', 'scale'].includes(info.planId) && (
+          <section aria-labelledby="subscription-actions" className="space-y-4">
+            <h2 id="subscription-actions" className="text-base font-semibold">
+              {t('Manage subscription')}
+            </h2>
+            {info.cancelAtPeriodEnd ? (
+              <p role="status" className="text-sm">
+                {t(
+                  'Cancellation is scheduled for the end of your paid term. Use the billing portal to review it.',
+                )}
+              </p>
+            ) : info.pendingPlanId && info.pendingChangeAt ? (
+              <p role="status" className="text-sm">
+                {t(
+                  '{plan} is selected for your next renewal on {date}. Your current plan and remaining Credits stay in place until then.',
+                  {
+                    plan: planName(info.pendingPlanId),
+                    date: new Date(info.pendingChangeAt).toLocaleDateString(),
+                  },
+                )}
+              </p>
+            ) : null}
+            {manual ? (
+              <p className="text-sm text-gray-11">
+                {t(
+                  'This account was funded manually and has no Stripe subscription. Contact Sydekyks to arrange a plan change or cancellation; no automatic card charge is scheduled here.',
+                )}
+              </p>
+            ) : (
+              <>
+                <p className="max-w-prose text-sm text-gray-11">
+                  {t(
+                    'Choose a plan at any time for your next renewal. Nothing is charged today. The next paid invoice activates the new plan and its monthly Credits. Cancellation is available in the billing portal below.',
+                  )}
+                </p>
+                <div className="divide-y border-y">
+                  {info.plans.map((plan) => (
+                    <div
+                      key={plan.id}
+                      className="flex flex-wrap items-center justify-between gap-3 py-4"
+                    >
+                      <div className="space-y-1">
+                        <p className="font-medium text-sm">
+                          {planName(plan.id)}
+                          {plan.price
+                            ? ` · ${price(plan.price)} / ${t('month')}`
+                            : ''}
+                        </p>
+                        <p className="text-sm text-gray-11">
+                          {t(
+                            '{users} users · {credits} monthly Credits · {runs} simultaneous runs',
+                            {
+                              users: plan.limits.users,
+                              credits: quantity(String(plan.limits.executions)),
+                              runs: plan.limits.concurrency,
+                            },
+                          )}
+                        </p>
+                      </div>
+                      {plan.salesAssisted ? (
+                        <p className="max-w-64 text-sm text-gray-11">
+                          {t('Contact Sydekyks for a capacity review.')}
+                        </p>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          disabled={
+                            blocked ||
+                            !info.planChangesEnabled ||
+                            plan.checkout.reason === 'resource_limit' ||
+                            (plan.id === info.planId && !info.pendingPlanId) ||
+                            plan.id === info.pendingPlanId ||
+                            !onPlanChange
+                          }
+                          onClick={() => setReviewPlan(plan.id)}
+                        >
+                          {plan.id === info.pendingPlanId
+                            ? t('Selected for renewal')
+                            : plan.id === info.planId && !info.pendingPlanId
+                            ? t('Current plan')
+                            : t('Review {plan}', { plan: planName(plan.id) })}
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {reviewPlan && (
+                  <div
+                    className="space-y-3 rounded-lg border p-4"
+                    role="region"
+                    aria-label={t('Review plan change')}
+                  >
+                    <h3 className="font-medium">
+                      {t('Confirm {plan} for your next renewal', {
+                        plan: planName(reviewPlan),
+                      })}
+                    </h3>
+                    <p className="text-sm font-medium">
+                      {t('Effective {date}. No charge today.', {
+                        date: new Date(
+                          info.hostingEndsAt ?? info.validUntil,
+                        ).toLocaleDateString(),
+                      })}
+                    </p>
+                    {reviewedPlan?.price && (
+                      <p className="text-sm">
+                        {t(
+                          '{price} per month · {users} users · {credits} monthly Credits · {runs} simultaneous runs',
+                          {
+                            price: price(reviewedPlan.price),
+                            users: reviewedPlan.limits.users,
+                            credits: quantity(
+                              String(reviewedPlan.limits.executions),
+                            ),
+                            runs: reviewedPlan.limits.concurrency,
+                          },
+                        )}
+                      </p>
+                    )}
+                    <p className="text-sm">
+                      {t(
+                        'Your current paid term remains unchanged. The new monthly price, user limit and Credits apply only after the renewal invoice is paid. If your users or Command Centers exceed the new limit at renewal, access may pause until capacity is resolved.',
+                      )}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        disabled={blocked || !info.planChangesEnabled}
+                        onClick={() => {
+                          onPlanChange?.(reviewPlan);
+                          setReviewPlan(null);
+                        }}
+                      >
+                        {t('Confirm plan for renewal')}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        disabled={blocked}
+                        onClick={() => setReviewPlan(null)}
+                      >
+                        {t('Keep current selection')}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {!info.planChangesEnabled && !info.cancelAtPeriodEnd && (
+                  <p className="text-sm text-gray-11">
+                    {t(
+                      'Plan changes are unavailable until an active Stripe subscription is verified. Refresh or contact Sydekyks for help.',
+                    )}
+                  </p>
+                )}
+              </>
+            )}
+          </section>
+        )}
         {showPartnerPurchase && (
           <PartnerPurchaseSection
             selectedPackage={selectedPackage}
@@ -392,7 +559,7 @@ export function HostedBillingView({
                   'Use Stripe to manage payment details, view invoices or cancel at the end of the paid period. Cancellation does not add a free hosted plan.',
                 )}
           </p>
-          {!manual && (
+          {!manual && !partner && (
             <Button
               variant="outline"
               disabled={blocked || !info.portal.enabled}
@@ -402,11 +569,11 @@ export function HostedBillingView({
             >
               {pending === 'portal'
                 ? t('Opening Stripe…')
-                : t('Open test billing portal')}
+                : t('Manage payments or cancel in Stripe')}
               <ExternalLink className="ml-2 size-4" aria-hidden="true" />
             </Button>
           )}
-          {!manual && (
+          {!manual && !partner && (
             <p id="hosted-portal-reason" className="text-xs text-gray-11">
               {reason(info.portal.reason)}
             </p>

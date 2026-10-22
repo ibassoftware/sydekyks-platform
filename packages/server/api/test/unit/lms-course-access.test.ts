@@ -9,13 +9,14 @@ import { UserIdentityEntity } from '../../src/app/authentication/user-identity/u
 import { authenticationMiddleware } from '../../src/app/core/security/v2/authn/authentication-middleware'
 import { authorizationMiddleware } from '../../src/app/core/security/v2/authz/authorization-middleware'
 import { FlagEntity } from '../../src/app/flags/flag.entity'
-import { HostingGrantEntity } from '../../src/app/hosting/hosting-entities'
+import { HostingAccountEntity, HostingGrantEntity } from '../../src/app/hosting/hosting-entities'
 import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
 import { createLearningFulfillment } from '../../src/app/hosting/hosting-learning-fulfillment'
 import { createHostedOnboarding } from '../../src/app/hosting/hosting-onboarding'
 import { createHostedTraining } from '../../src/app/hosting/hosting-training'
 import { HostingTrainingEntity } from '../../src/app/hosting/hosting-training-entity'
 import { HostingActor } from '../../src/app/hosting/hosting-transactions'
+import { enrollClientDefaultCourses } from '../../src/app/lms/lms-client-defaults'
 import { foundingCourseDraft } from '../../src/app/lms/lms-content'
 import { lmsController } from '../../src/app/lms/lms-controller'
 import { LmsCertificateEntity, LmsCourseEntity, LmsEnrollmentEntity } from '../../src/app/lms/lms-entities'
@@ -161,5 +162,61 @@ describe('multi-course access with real persisted authorities', () => {
         for (const extra of [{ package: 'core' }, { paymentReference: 'fake' }, { workspacePlatformId: client.platformId }, { grantPlatformId: other.platformId }, { monthlyCredits: 1000000 }]) expect((await request(client, '/operator/enroll', { accessType: 'learning', identityId: client.identityId, courseId: course.id, ...extra })).statusCode).toBe(400)
         await expect(ds.getRepository(LmsCourseEntity).update({ id: course.id }, { certificationMode: 'partner' })).rejects.toThrow()
         expect(await ds.getRepository(LmsEnrollmentEntity).count()).toBe(0)
+    })
+})
+
+
+describe('client learning defaults and dashboard', () => {
+    it('allows only global operators to select published global end-user defaults', async () => {
+        const course = await createCourse(operator, 'global')
+        expect((await request(operator, `/operator/course/${course.id}/client-default`, { enabled: true })).statusCode).toBe(403)
+        await publish(operator, course)
+        expect((await request(client, `/operator/course/${course.id}/client-default`, { enabled: true })).statusCode).toBe(403)
+        expect((await request(operator, `/operator/course/${course.id}/client-default`, { enabled: true })).statusCode).toBe(200)
+        const privateCourse = await createCourse(); await publish(client, privateCourse)
+        expect((await request(operator, `/operator/course/${privateCourse.id}/client-default`, { enabled: true })).statusCode).toBe(403)
+        const partnerCourse = await createCourse(operator, 'global', 'partner'); await publish(operator, partnerCourse)
+        expect((await request(operator, `/operator/course/${partnerCourse.id}/client-default`, { enabled: true })).statusCode).toBe(403)
+    })
+    it('assigns a client default once, preserves progress/revocation and grants no Credits or Partner rights', async () => {
+        const course = await createCourse(operator, 'global'); await publish(operator, course)
+        await request(operator, `/operator/course/${course.id}/client-default`, { enabled: true })
+        await ds.getRepository(HostingAccountEntity).update(client.platformId, { planId: 'starter', status: 'active' })
+        const grants = await ds.getRepository(HostingGrantEntity).count()
+        await ds.transaction(manager => enrollClientDefaultCourses(manager, { platformId: client.platformId, enrolledBy: operator.identityId }))
+        let response = await request(client, '/me')
+        expect(response.statusCode, response.body).toBe(200)
+        expect(response.json().enrollments).toHaveLength(1)
+        const enrollment = response.json().enrollments[0]
+        expect(enrollment).toMatchObject({ grantPlatformId: client.platformId, completedLessons: 0, totalLessons: 1 })
+        const published = await ds.getRepository(LmsCourseEntity).findOneByOrFail({ id: course.id })
+        await request(client, `/enrollments/${enrollment.id}/progress`, { lessonId: published.content.lessons[0].id, completed: true })
+        response = await request(client, '/me')
+        expect(response.json().enrollments[0].completedLessons).toBe(1)
+        await ds.getRepository(LmsEnrollmentEntity).update(enrollment.id, { status: 'revoked' })
+        expect((await request(client, '/me')).json().enrollments).toHaveLength(0)
+        expect(await ds.getRepository(LmsEnrollmentEntity).count()).toBe(1)
+        expect(await ds.getRepository(HostingGrantEntity).count()).toBe(grants)
+        expect(await ds.getRepository(HostingTrainingEntity).count()).toBe(0)
+    })
+    it('does not give training/trial accounts default courses or Partner-owned course administration', async () => {
+        const course = await createCourse(operator, 'global'); await publish(operator, course)
+        await request(operator, `/operator/course/${course.id}/client-default`, { enabled: true })
+        expect((await request(client, '/me')).json().enrollments).toHaveLength(0)
+        await ds.getRepository(HostingAccountEntity).update(client.platformId, { planId: 'training', status: 'active' })
+        const me = await request(client, '/me')
+        expect(me.json()).toMatchObject({ canManage: false, enrollments: [] })
+        expect((await request(client, '/operator/courses')).statusCode).toBe(403)
+    })
+    it('validates client deep-link scope and explicitly scoped global enrollments', async () => {
+        const course = await createCourse(operator, 'global'); await publish(operator, course)
+        expect((await request(operator, `/operator/client/${client.platformId}`)).json().learners[0].identityId).toBe(client.identityId)
+        expect((await request(other, `/operator/client/${client.platformId}`)).statusCode).toBe(403)
+        const enrolled = await request(operator, '/operator/enroll', { accessType: 'learning', courseId: course.id, identityId: client.identityId, clientPlatformId: client.platformId })
+        expect(enrolled.statusCode, enrolled.body).toBe(200)
+        expect(enrolled.json().grantPlatformId).toBe(client.platformId)
+        expect((await request(client, `/enrollments/${enrolled.json().id}`)).statusCode).toBe(200)
+        expect((await request(other, `/enrollments/${enrolled.json().id}`)).statusCode).toBe(403)
+        expect((await request(operator, '/operator/enroll', { accessType: 'learning', courseId: course.id, identityId: other.identityId, clientPlatformId: client.platformId })).statusCode).toBe(403)
     })
 })

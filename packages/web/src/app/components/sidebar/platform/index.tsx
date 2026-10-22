@@ -375,6 +375,14 @@ export function PlatformSidebar() {
     .map((group) => ({
       ...group,
       items: group.items
+        .filter(
+          (item) =>
+            !(
+              hostedBilling &&
+              (!workspaces.data || workspaces.data.operational) &&
+              item.to.startsWith('/platform/billing')
+            ),
+        )
         .filter((item) =>
           releaseAvailability.isRouteAvailable({
             pathname: item.to,

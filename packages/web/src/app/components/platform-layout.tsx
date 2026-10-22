@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/sidebar-shadcn';
 import { ManagePlanDialog } from '@/features/billing';
 import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
+import { useOperationalWorkspaces } from '@/features/hosted-operator/workspaces-api';
 import { useIsPlatformAdmin } from '@/hooks/authorization-hooks';
 import { flagsHooks } from '@/hooks/flags-hooks';
 import { releaseAvailability } from '@/lib/release-availability';
@@ -24,11 +25,14 @@ export function PlatformLayout({ children }: { children: React.ReactNode }) {
   const hostedBilling = useHostedBillingEnabled();
   const { pathname } = useLocation();
   const showPlatformAdminDashboard = useIsPlatformAdmin();
+  const workspaces = useOperationalWorkspaces();
+  const workspacePicker =
+    pathname === '/partners/workspaces' && workspaces.allowed;
 
   return (
     <AllowOnlyLoggedInUserOnlyGuard>
       <GlobalSearchProvider>
-        {showPlatformAdminDashboard ? (
+        {showPlatformAdminDashboard || workspacePicker ? (
           <SidebarProvider open={true} style={PLATFORM_SIDEBAR_STYLE}>
             <PlatformSidebar />
             <SidebarInset className="flex min-w-0 flex-col h-full overflow-hidden bg-gray-2">

@@ -1,3 +1,4 @@
+import { enrollClientDefaultCourses } from '../lms/lms-client-defaults'
 import { createHash, createHmac, randomBytes } from 'node:crypto'
 import { apId } from '@activepieces/core-utils'
 import { ColorName, hostingCatalog, PlatformRole, ProjectType, UserStatus } from '@activepieces/shared'
@@ -8,7 +9,7 @@ import { McpOAuthTokenEntity } from '../mcp/oauth/token/mcp-oauth-token.entity'
 import { PlatformEntity } from '../platform/platform.entity'
 import { ProjectEntity } from '../project/project-entity'
 import { UserEntity } from '../user/user-entity'
-import { assertHostingOperator, hostedCustomerSeatCount, hostingOperatorIdentityIds, isOperationalUser } from './hosting-access-policy'
+import { assertHostingOperator, hostedCustomerSeatCount, hostedWorkspaceAllowsMembers, hostingOperatorIdentityIds, isOperationalUser } from './hosting-access-policy'
 import { HostingAccount, HostingAccountEntity, HostingEligibilityEntity, HostingGrantEntity, HostingInvitationEntity, HostingLedgerEntity, HostingPolicyEntity } from './hosting-entities'
 import { assertTenantAdministrator, assertTenantMemberTarget } from './hosting-tenant-members-policy'
 import { assertTrainerProvisioning } from './hosting-trainer-policy'
@@ -95,6 +96,7 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
             const account = await tx.account({ manager, platformId: actor.platformId })
             await lockPlatform({ manager, platformId: actor.platformId })
             await assertTenantAdministrator({ manager, actor })
+            if (!await hostedWorkspaceAllowsMembers(manager, account)) hostingFail('HOSTING_PARTNER_SINGLE_USER')
             const now = await tx.now(manager)
             tx.assertActive({ account, now })
             const existingIdentity = await manager.getRepository(UserIdentityEntity).findOneBy({ email: email.trim().toLowerCase() })
@@ -124,6 +126,7 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
             const peek = await manager.getRepository(HostingInvitationEntity).findOneBy({ tokenDigest: digest(token) })
             if (!peek || peek.subject !== subject(identity.email)) hostingFail('HOSTING_INVALID_INVITATION')
             const account = await tx.account({ manager, platformId: peek.platformId })
+            if (!await hostedWorkspaceAllowsMembers(manager, account)) hostingFail('HOSTING_PARTNER_SINGLE_USER')
             await lockPlatform({ manager, platformId: account.id })
             const invitation = await manager.getRepository(HostingInvitationEntity).findOneByOrFail({ id: peek.id, platformId: account.id, tokenDigest: digest(token) })
             if (invitation.status === 'accepted' && invitation.acceptedIdentityId === identityId) {
@@ -146,6 +149,7 @@ export function createHostedOnboarding({ dataSource, subjectSecret }: { dataSour
             const tokenVersion = apId()
             await manager.getRepository(UserIdentityEntity).update({ id: identityId }, { tokenVersion, lastLoggedInPlatformId: account.id })
             await tx.event({ manager, platformId: account.id, event: 'invitation.accepted', payload: { invitationId: invitation.id, identityId, userId } })
+            await enrollClientDefaultCourses(manager, { platformId: account.id, identityId, enrolledBy: identityId, now })
             return { platformId: account.id, userId, projectId, created: false, tokenVersion }
         } })
     }

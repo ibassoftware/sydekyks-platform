@@ -2,7 +2,7 @@ import { randomBytes, randomInt } from 'node:crypto'
 import { apId } from '@activepieces/core-utils'
 import { PlatformRole, PrincipalType, UserStatus } from '@activepieces/shared'
 import { FastifyRequest } from 'fastify'
-import { EntityManager } from 'typeorm'
+import { EntityManager, In } from 'typeorm'
 import { UserIdentityEntity } from '../authentication/user-identity/user-identity-entity'
 import { databaseConnection } from '../database/database-connection'
 import { hasOperationalAccess, hostingOperatorIdentityIds, isOperationalUser } from '../hosting/hosting-access-policy'
@@ -37,7 +37,9 @@ export async function lmsActor(manager: EntityManager, request: FastifyRequest):
     const trainer = trainerRecorded ? await currentPlatformTrainer({ manager, actor, lock: true }) : null
     if (operational && !trainer && !await hasOperationalAccess({ manager, user })) return fail('LMS_ACCESS_DENIED')
     const ordinaryMember = !operational
-    const tenantAdmin = !trainerRecorded && ordinaryMember && user.platformRole === PlatformRole.ADMIN && (hostingConfiguration.getServiceMode() !== 'hosted' || await manager.getRepository(HostingAccountEntity).existsBy({ id: principal.platform.id }))
+    const partnerWorkspace = hostingConfiguration.getServiceMode() === 'hosted' && await manager.getRepository(HostingAccountEntity).existsBy({ id: principal.platform.id, planId: In(['training', 'assessment']) })
+    const clientPartnerAdmin = operational && user.platformRole === PlatformRole.ADMIN && await manager.getRepository(HostingAccountEntity).existsBy({ id: principal.platform.id, planId: In(['starter', 'team', 'scale']) })
+    const tenantAdmin = !partnerWorkspace && !trainerRecorded && (ordinaryMember || clientPartnerAdmin) && user.platformRole === PlatformRole.ADMIN && (hostingConfiguration.getServiceMode() !== 'hosted' || await manager.getRepository(HostingAccountEntity).existsBy({ id: principal.platform.id }))
     return { identityId: identity.id, platformId: principal.platform.id, tokenVersion: principal.tokenVersion, operator, tenantAdmin, ordinaryMember, trainer: !!trainer, trainerRecorded, trainerClientIds: trainer ? (await listTrainerClients({ manager, actor })).map(client => client.platformId) : [] }
 }
 export function requireManager(actor: LmsActor): void {

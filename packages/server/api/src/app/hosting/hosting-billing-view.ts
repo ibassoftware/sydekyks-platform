@@ -4,6 +4,7 @@ import { assertHostingOperator } from './hosting-access-policy'
 import { hostingResourceUsage } from './hosting-billing-resources'
 import { hostingConfiguration } from './hosting-configuration'
 import { hostedCreditLiability } from './hosting-credit-policy'
+import { assertCustomerBillingUser } from './hosting-customer-billing-policy'
 import { HostingGrant, HostingGrantEntity } from './hosting-entities'
 import { HostingManualAccountEntity } from './hosting-manual-accounts-entities'
 import { currentManualTerm } from './hosting-manual-terms'
@@ -19,6 +20,7 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
         return tx.run({ dataSource, fn: async manager => {
             const account = await tx.account({ manager, platformId: actor.platformId })
             const user = await tx.member({ manager, actor, admin: true })
+            assertCustomerBillingUser(user)
             const now = await tx.now(manager)
             const manualAccount = await manager.getRepository(HostingManualAccountEntity).findOneBy({ id: account.id })
             const manualFunding = !!manualAccount
@@ -65,7 +67,7 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
             const paused = account.status === 'suspended' || (account.billingHold === true && !ended)
             const plans = (['starter', 'team', 'scale'] as const).map(id => {
                 const limits = hostingCatalog.getPlan({ planId: id })
-                let reason: HostedBillingActionReason | null = billingMode === 'manual' ? 'manual_billing' : manualFunding ? 'billing_review' : !configured ? 'billing_unavailable' : account.status === 'suspended' ? 'account_paused' : null
+                let reason: HostedBillingActionReason | null = platformAdmin || partnerHome ? 'billing_review' : billingMode === 'manual' ? 'manual_billing' : manualFunding ? 'billing_review' : !configured ? 'billing_unavailable' : account.status === 'suspended' ? 'account_paused' : null
                 if (!reason && hostingCatalog.paidPlans[id].salesAssisted) reason = 'sales_assisted'
                 if (!reason && bound?.holds.some(value => value !== 'subscription_ended')) reason = 'billing_review'
                 if (!reason && account.billingHold && !(bound?.holds.length === 1 && bound.holds[0] === 'subscription_ended')) reason = 'billing_review'
@@ -78,7 +80,7 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
                 const price = { amountMinor: advertised.amountMinor, currency: advertised.currency, interval: 'month' as const }
                 return { id, salesAssisted: advertised.salesAssisted, limits: { ...limits, byokEnabled: true as const }, price, checkout: { enabled: reason === null, reason, continuing: !!checkout && (expiredCheckout || checkout.payload.planId === id) } }
             })
-            const portalReason = billingMode === 'manual' ? 'manual_billing' as const : manualFunding ? 'billing_review' : !configured ? 'billing_unavailable' : !bound?.customerId ? 'customer_missing' : commandReason(portal)
+            const portalReason = platformAdmin || partnerHome ? 'billing_review' as const : billingMode === 'manual' ? 'manual_billing' as const : manualFunding ? 'billing_review' : !configured ? 'billing_unavailable' : !bound?.customerId ? 'customer_missing' : commandReason(portal)
             const legacyLiability = current ? await hostedCreditLiability(manager, current.id) : { reserved: 0n, consumed: 0n }
             const unified = current ? { ...current, reserved: current.reserved + legacyLiability.reserved, consumed: current.consumed + legacyLiability.consumed } : undefined
             const previousHeld = grants.filter(value => value.meter === 'managed_ai' && value.id !== managed?.id).reduce((sum, value) => sum + value.reserved, 0n)
@@ -87,7 +89,8 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
                 .sort((left, right) => left.validFrom.getTime() - right.validFrom.getTime())[0] : undefined
             return HostedBillingOverview.parse({
                 schemaVersion: 1, platformId: account.id, userId: user.id, catalogVersion: account.catalogVersion, serverTime: now.toISOString(), billingMode, environment: billingMode === 'manual' ? 'manual' : 'test',
-                planId: account.planId, status: account.status, entitlementState: paused ? 'paused' : subscriptionAccountUntil(account) <= now ? 'expired' : account.planId === 'trial' ? 'trial' : account.planId === 'training' ? 'training' : account.planId === 'assessment' ? 'assessment' : 'paid', validUntil: subscriptionAccountUntil(account).toISOString(), trialEndsAt: account.trialEndsAt.toISOString(), billingHold: account.billingHold ?? false, subscriptionStatus: bound?.subscriptionStatus ?? null, planChangesEnabled: false,
+                manualFunding, planId: account.planId, status: account.status, entitlementState: paused ? 'paused' : subscriptionAccountUntil(account) <= now ? 'expired' : account.planId === 'trial' ? 'trial' : account.planId === 'training' ? 'training' : account.planId === 'assessment' ? 'assessment' : 'paid', validUntil: subscriptionAccountUntil(account).toISOString(), trialEndsAt: account.trialEndsAt.toISOString(), billingHold: account.billingHold ?? false, subscriptionStatus: bound?.subscriptionStatus ?? null, planChangesEnabled: !platformAdmin && !partnerHome && billingMode === 'stripe_test' && !manualFunding && configured && !paused && !!bound?.subscriptionId && bound.subscriptionStatus === 'active' && !bound.cancelAtPeriodEnd && bound.holds.length === 0,
+                pendingPlanId: bound?.pendingPlanId ?? null, pendingChangeAt: bound?.pendingChangeAt?.toISOString() ?? null, cancelAtPeriodEnd: bound?.cancelAtPeriodEnd ?? false,
                 accountKind: platformAdmin ? 'platform_admin' : partnerHome ? 'partner' : account.planId === 'trial' ? 'trial' : 'client',
                 trainingPackage: partnerHome ? manualAccount?.package ?? training?.tier ?? null : null,
                 hostingEndsAt: (manualTerm?.expiresAt ?? training?.endsAt ?? account.validUntil).toISOString(),

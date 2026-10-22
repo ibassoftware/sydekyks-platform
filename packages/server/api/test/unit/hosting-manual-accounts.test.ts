@@ -12,6 +12,7 @@ import { HostingCreditAllowanceChangeEntity } from '../../src/app/hosting/hostin
 import { HostingAccountEntity, HostingGrantEntity, HostingInvitationEntity, HostingLedgerEntity } from '../../src/app/hosting/hosting-entities'
 import { identityAdmission } from '../../src/app/hosting/hosting-identity-admission'
 import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
+import { HostingRootCreditUsageEntity } from '../../src/app/hosting/hosting-inclusive-credits-entity'
 import { createHostedLedger } from '../../src/app/hosting/hosting-ledger'
 import { createHostedManualAccounts } from '../../src/app/hosting/hosting-manual-accounts'
 import { HostingManualAccountEntity, HostingManualCommandEntity, HostingManualTermEntity } from '../../src/app/hosting/hosting-manual-accounts-entities'
@@ -80,7 +81,7 @@ describe('operator manual accounts and bounded funding', () => {
     it('distinguishes the configured operator from tenant admins and reports the actual Partner package, due date and funded refill', async () => {
         vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', actor.identityId)
         const billing = createHostedBillingView({ dataSource: ds })
-        expect((await billing.read(actor)).accountKind).toBe('platform_admin')
+        await expect(billing.read(actor)).rejects.toThrow('HOSTING_CUSTOMER_BILLING_REQUIRED')
         expect((await billing.read(other)).accountKind).toBe('trial')
         const client = (await created()).account
         expect(await billing.read(await scope(client.identityId, client.platformId))).toMatchObject({ accountKind: 'client', hostingEndsAt: client.expiresAt, renewalDueAt: client.expiresAt, trainingPackage: null })
@@ -174,7 +175,9 @@ describe('operator manual accounts and bounded funding', () => {
     it('enforces the Partner one-seat workspace limit and keeps BYOK separate from managed funding while held work settles after cutoff', async () => {
         const partner = (await created({ kind: 'partner', planId: 'training', partner: { package: 'core', approve: false }, monthlyCredits: 20 })).account
         const learner = await scope(partner.identityId, partner.platformId)
-        await expect(createHostedOnboarding({ dataSource: ds, subjectSecret: secret }).invite({ actor: learner, email: 'additional@test.invalid', role: PlatformRole.MEMBER })).rejects.toThrow('LIMIT')
+        const invitationsBefore = await ds.getRepository(HostingInvitationEntity).count()
+        await expect(createHostedOnboarding({ dataSource: ds, subjectSecret: secret }).invite({ actor: learner, email: 'additional@test.invalid', role: PlatformRole.MEMBER })).rejects.toThrow('HOSTING_PARTNER_SINGLE_USER')
+        expect(await ds.getRepository(HostingInvitationEntity).count()).toBe(invitationsBefore)
         const projectId = (await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: partner.platformId })).initialProjectId, ledger = createHostedLedger({ dataSource: ds })
         const byok = await ledger.reserveExecution({ actor: learner, projectId, key: 'manual-byok', payer: 'byok' }), byokClaim = await ledger.claimExecution({ actor: learner, reservationId: byok.id })
         await expect(ledger.reserveManagedCall({ actor: learner, rootReservationId: byok.id, key: 'byok-cannot-charge-managed', maxCostMicroUsd: 250n })).rejects.toThrow('BYOK_HAS_NO_MANAGED_ALLOWANCE')
@@ -187,7 +190,8 @@ describe('operator manual accounts and bounded funding', () => {
         await ledger.settleManagedCall({ platformId: partner.platformId, reservationId: call.id, dispatchId: sent.dispatchId!, actualCostMicroUsd: 250n })
         await ledger.finishExecution({ platformId: partner.platformId, reservationId: root.id, dispatchId: rootClaim.dispatchId! })
         const grant = await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: root.grantId })
-        expect(grant).toMatchObject({ consumed: 3n, reserved: 0n })
+        expect(grant).toMatchObject({ consumed: 2n, reserved: 0n })
+        expect(await ds.getRepository(HostingRootCreditUsageEntity).findOneByOrFail({ id: root.id })).toMatchObject({ consumedCredits: 1n, reservedCredits: 0n, settledSupplierMicroUsd: 250n })
         expect((await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: partner.platformId })).activeExecutions).toBe(0)
     })
     it('never overwrites an existing identity, including differently cased email, and rejects nonoperators or stale sessions', async () => {
@@ -343,7 +347,8 @@ describe('operator manual accounts and bounded funding', () => {
         expect(audit.monthlyCredits).toBe(12); expect(audit.grantSnapshots.every(grant => grant.sourceKey.includes(result.account.termId))).toBe(true)
         await ledger.settleManagedCall({ platformId: account.platformId, reservationId: call.id, dispatchId: sent.dispatchId!, actualCostMicroUsd: 250n })
         await ledger.finishExecution({ platformId: account.platformId, reservationId: root.id, dispatchId: rootClaim.dispatchId! })
-        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: old.id }))).toMatchObject({ amount: 25n, consumed: 2n, reserved: 0n })
+        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: old.id }))).toMatchObject({ amount: 25n, consumed: 1n, reserved: 0n })
+        expect(await ds.getRepository(HostingRootCreditUsageEntity).findOneByOrFail({ id: root.id })).toMatchObject({ consumedCredits: 1n, reservedCredits: 0n, settledSupplierMicroUsd: 250n })
     })
     it('rejects invalid expiry, overlong funding, unpublished/nonpartner courses and self-hosted activation atomically', async () => {
         await expect(created({ expiresAt: new Date(Date.now() - 1).toISOString() })).rejects.toThrow('DATE_INVALID')

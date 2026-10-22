@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronRight, GraduationCap } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,6 +16,8 @@ import { useLmsSession } from './session';
 
 export function LearningPage() {
   const scope = useLmsSession();
+  const [params] = useSearchParams();
+  const management = !!params.get('client');
   const hosted = useHostedBillingEnabled();
   const pilotReady = useHostedRuntimeReady();
   return (
@@ -30,6 +32,7 @@ export function LearningPage() {
         scope={scope}
         hosted={hosted}
         pilotReady={pilotReady}
+        management={management}
       />
     </>
   );
@@ -38,7 +41,9 @@ function LearningCatalogue({
   scope,
   hosted,
   pilotReady,
+  management,
 }: {
+  management: boolean;
   scope: number;
   hosted: boolean;
   pilotReady: boolean;
@@ -49,7 +54,7 @@ function LearningCatalogue({
     gcTime: 0,
   });
   const [selection, setSelection] = useState('');
-  const [manage, setManage] = useState(false);
+  const [manage, setManage] = useState(management);
   if (catalogue.isPending)
     return (
       <p className="p-6" role="status">
@@ -62,44 +67,91 @@ function LearningCatalogue({
         Courses could not load. Refresh to try again.
       </p>
     );
+  const managing = manage && catalogue.data.canManage;
   const selected =
     catalogue.data.enrollments.find((item) => item.id === selection)?.id ??
-    catalogue.data.enrollments[0]?.id;
+    undefined;
   return (
     <>
-      <div className="mx-auto flex w-full max-w-6xl flex-wrap items-end gap-4 px-4 pt-6 md:px-8">
-        <label className="min-w-0 flex-1" htmlFor="enrolled-course">
-          Your courses
-          <select
-            id="enrolled-course"
-            className="mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 p-2"
-            value={selected ?? ''}
-            onChange={(event) => {
-              setSelection(event.target.value);
-              setManage(false);
-            }}
-          >
-            {!catalogue.data.enrollments.length && (
-              <option value="">No course access yet</option>
-            )}
-            {catalogue.data.enrollments.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        {catalogue.data.canManage && (
-          <Button
-            variant={manage ? 'default' : 'outline'}
-            aria-pressed={manage}
-            onClick={() => setManage(!manage)}
-          >
-            Manage courses
+      <header className="mx-auto w-full max-w-6xl px-4 pt-8 md:px-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold">Your learning</h1>
+            <p className="mt-2 text-gray-11">
+              Your assigned courses and progress, all in one place.
+            </p>
+          </div>
+          {catalogue.data.canManage && (
+            <Button
+              variant="outline"
+              aria-pressed={manage}
+              onClick={() => setManage(!manage)}
+            >
+              {manage ? 'View my learning' : 'Manage courses'}
+            </Button>
+          )}
+        </div>
+      </header>
+      {!managing && !selected && catalogue.data.enrollments.length > 0 && (
+        <main className="mx-auto w-full max-w-6xl px-4 py-8 md:px-8">
+          <div className="grid gap-5 md:grid-cols-2">
+            {catalogue.data.enrollments.map((course) => {
+              const progress = course.totalLessons
+                ? Math.round(
+                    (course.completedLessons / course.totalLessons) * 100,
+                  )
+                : 0;
+              return (
+                <section
+                  key={course.id}
+                  className="flex flex-col rounded-lg border border-gray-6 bg-gray-1 p-6"
+                >
+                  <p className="text-sm text-gray-11">
+                    {progress === 100
+                      ? 'Completed'
+                      : course.completedLessons
+                      ? 'In progress'
+                      : 'Ready to start'}
+                  </p>
+                  <h2 className="mt-2 text-xl font-semibold">{course.title}</h2>
+                  <p className="mt-3 line-clamp-3 text-sm leading-6 text-gray-11">
+                    {course.description}
+                  </p>
+                  <progress
+                    className="mt-6 h-2 w-full accent-accent-9"
+                    aria-label={`${course.title} progress`}
+                    value={course.completedLessons}
+                    max={course.totalLessons || 1}
+                  />
+                  <p className="mt-2 text-sm text-gray-11">
+                    {course.completedLessons} of {course.totalLessons} lessons
+                    complete
+                  </p>
+                  <Button
+                    className="mt-5 self-start"
+                    onClick={() => setSelection(course.id)}
+                  >
+                    {progress === 100
+                      ? 'Review course'
+                      : course.completedLessons
+                      ? 'Continue learning'
+                      : 'Start course'}
+                    <ChevronRight aria-hidden="true" />
+                  </Button>
+                </section>
+              );
+            })}
+          </div>
+        </main>
+      )}
+      {!managing && selected && (
+        <div className="mx-auto w-full max-w-6xl px-4 pt-6 md:px-8">
+          <Button variant="outline" onClick={() => setSelection('')}>
+            All my courses
           </Button>
-        )}
-      </div>
-      {manage ? (
+        </div>
+      )}
+      {managing ? (
         <main className="mx-auto w-full max-w-6xl p-4 md:p-8">
           <LmsOperator
             scope={scope}
@@ -115,7 +167,7 @@ function LearningCatalogue({
           hosted={hosted}
           pilotReady={pilotReady}
         />
-      ) : (
+      ) : !catalogue.data.enrollments.length ? (
         <main className="mx-auto max-w-6xl p-6">
           <h1 className="text-2xl font-semibold">Learning</h1>
           <p className="mt-3">
@@ -123,7 +175,7 @@ function LearningCatalogue({
             training.
           </p>
         </main>
-      )}
+      ) : null}
     </>
   );
 }
@@ -181,7 +233,11 @@ function LearningSession({
     );
   const { course, enrollment, certificate, attempts } = state.data;
   const lesson =
-    course?.lessons.find((item) => item.id === selected) ?? course?.lessons[0];
+    course?.lessons.find((item) => item.id === selected) ??
+    course?.lessons.find(
+      (item) => !enrollment?.completedLessons.includes(item.id),
+    ) ??
+    course?.lessons[0];
   const practical = enrollment?.practicalReviews.at(-1);
   const waitingReview =
     !!enrollment?.assignment &&

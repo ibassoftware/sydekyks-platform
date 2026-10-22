@@ -17,6 +17,7 @@ import { hostingMonthAnniversary } from '../hosting/hosting-training-periods'
 import { HostingError, hostingTransactions as tx } from '../hosting/hosting-transactions'
 import { PlatformEntity } from '../platform/platform.entity'
 import { UserEntity } from '../user/user-entity'
+import { enrollClientDefaultCourses } from './lms-client-defaults'
 import { foundingCourseDraft } from './lms-content'
 import { LmsCertificateEntity, LmsCourseEntity, LmsEnrollment, LmsEnrollmentEntity, LmsExamAttemptEntity } from './lms-entities'
 import { courseContentSchema, safetySchema } from './lms-schema'
@@ -41,11 +42,12 @@ export const lmsController: FastifyPluginAsyncZod = async app => {
         return reply.code(500).send({ code: 'LMS_UNAVAILABLE' })
     })
     app.get('/me', { config }, async request => lmsTransaction(request, async (manager, actor, now) => {
+        if (actor.ordinaryMember && !actor.operator) await enrollClientDefaultCourses(manager, { platformId: actor.platformId, identityId: actor.identityId, enrolledBy: actor.identityId, now })
         const rows = await manager.getRepository(LmsEnrollmentEntity).find({ where: { identityId: actor.identityId, status: 'active' }, order: { created: 'ASC' } })
         const enrollments = []
         for (const enrollment of rows.filter(row => learnerScope(actor, row) && row.startsAt <= now && row.accessUntil > now)) {
             const course = await courseForEnrollment(manager, enrollment)
-            enrollments.push({ id: enrollment.id, courseId: course.id, title: course.content.title, audience: course.audience, certificationMode: course.certificationMode, grantPlatformId: enrollment.grantPlatformId })
+            enrollments.push({ id: enrollment.id, courseId: course.id, title: course.content.title, audience: course.audience, certificationMode: course.certificationMode, grantPlatformId: enrollment.grantPlatformId, description: course.content.description, completedLessons: course.content.lessons.filter(lesson => enrollment.completedLessons.includes(lesson.id)).length, totalLessons: course.content.lessons.length })
         }
         return { operator: actor.operator, trainer: actor.trainer, canManage: actor.operator || actor.tenantAdmin || actor.trainer, enrollments }
     }))
@@ -111,12 +113,31 @@ export const lmsController: FastifyPluginAsyncZod = async app => {
         if (!actor.trainer) fail('LMS_TRAINER_REQUIRED')
         return listTrainerClients({ manager, actor })
     }))
+    app.get('/operator/client/:id', { config, schema: { params: enrollmentParams } }, async request => lmsTransaction(request, async (manager, actor) => {
+        requireManager(actor)
+        if (actor.trainer) await assertTrainerClient({ manager, actor, platformId: request.params.id })
+        else if (!actor.operator && actor.platformId !== request.params.id) fail('LMS_COURSE_ACCESS_DENIED')
+        const platform = await manager.getRepository(PlatformEntity).findOneBy({ id: request.params.id })
+        if (!platform) return fail('LMS_WORKSPACE_NOT_FOUND', 404)
+        const members = await manager.getRepository(UserEntity).findBy({ platformId: platform.id, status: UserStatus.ACTIVE })
+        const ordinary = members.filter(member => !isOperationalUser(member))
+        const learners = ordinary.length ? await manager.getRepository(UserIdentityEntity).findBy({ id: In(ordinary.map(member => member.identityId)), verified: true }) : []
+        return { platformId: platform.id, name: platform.name, learners: learners.map(learner => ({ identityId: learner.id, email: learner.email, firstName: learner.firstName, lastName: learner.lastName })) }
+    }))
     app.get('/operator/courses', { config }, async request => lmsTransaction(request, async (manager, actor) => {
         requireManager(actor)
         const rows = await manager.getRepository(LmsCourseEntity).find({ order: { created: 'ASC' } })
         const ownerIds = rows.flatMap(course => course.ownerPlatformId ? [course.ownerPlatformId] : [])
         const owners = ownerIds.length ? await manager.getRepository(PlatformEntity).findBy({ id: In(ownerIds) }) : []
         return rows.filter(course => canManageCourse(actor, course) || (course.ownerPlatformId === null && (course.audience === 'end_user' || actor.trainer) && course.status === 'published')).map(course => ({ ...course, content: actor.trainer ? { ...course.content, questions: [] } : course.content, ownerName: owners.find(owner => owner.id === course.ownerPlatformId)?.name ?? null, canEdit: canManageCourse(actor, course) }))
+    }))
+    app.post('/operator/course/:id/client-default', { config, schema: { params: enrollmentParams, body: z.strictObject({ enabled: z.boolean() }) } }, async request => lmsTransaction(request, async (manager, actor) => {
+        requireOperator(actor)
+        const course = await manager.getRepository(LmsCourseEntity).findOne({ where: { id: request.params.id }, lock: { mode: 'pessimistic_write' } })
+        if (!course) return fail('LMS_COURSE_NOT_FOUND', 404)
+        if (request.body.enabled && (course.ownerPlatformId !== null || course.audience !== 'end_user' || course.certificationMode !== 'none' || course.status !== 'published')) fail('LMS_PUBLISHED_GLOBAL_END_USER_REQUIRED')
+        course.clientDefault = request.body.enabled
+        return manager.getRepository(LmsCourseEntity).save(course)
     }))
     app.post('/operator/courses', { config, schema: { body: z.strictObject({ title: z.string().trim().min(3).max(160), scope: z.enum(['global', 'tenant']), ownerPlatformId: id.optional(), audience: z.enum(['partner', 'end_user']), certificationMode: z.enum(['partner', 'none']) }) } }, async request => lmsTransaction(request, async (manager, actor) => {
         requireManager(actor)
@@ -256,7 +277,7 @@ export const lmsController: FastifyPluginAsyncZod = async app => {
         // attached to this same enrollment. Runtime activation is a separate action.
         return enrollment
     }))
-    app.post('/operator/enroll', { config, schema: { body: z.discriminatedUnion('accessType', [z.strictObject({ accessType: z.literal('learning'), identityId: id, courseId: id }), z.strictObject({ accessType: z.literal('partner_course'), identityId: id, courseId: id }), z.strictObject({ accessType: z.literal('partner_training'), identityId: id, courseId: id, package: z.enum(['core', 'launch']), paymentReference: z.string().trim().min(3).max(160), workspacePlatformId: id.optional(), paymentVerified: z.literal(true) })]) } }, async request => lmsTransaction(request, async (manager, actor, now) => {
+    app.post('/operator/enroll', { config, schema: { body: z.discriminatedUnion('accessType', [z.strictObject({ accessType: z.literal('learning'), identityId: id, courseId: id, clientPlatformId: id.optional() }), z.strictObject({ accessType: z.literal('partner_course'), identityId: id, courseId: id }), z.strictObject({ accessType: z.literal('partner_training'), identityId: id, courseId: id, package: z.enum(['core', 'launch']), paymentReference: z.string().trim().min(3).max(160), workspacePlatformId: id.optional(), paymentVerified: z.literal(true) })]) } }, async request => lmsTransaction(request, async (manager, actor, now) => {
         requireManager(actor)
         const body = request.body
         const course = await manager.getRepository(LmsCourseEntity).findOneBy({ id: body.courseId, status: 'published' })
@@ -265,7 +286,14 @@ export const lmsController: FastifyPluginAsyncZod = async app => {
         const identity = await manager.getRepository(UserIdentityEntity).findOneBy({ id: body.identityId, verified: true })
         if (!identity) fail('LMS_VERIFIED_IDENTITY_REQUIRED')
         const trainerRecipient = actor.trainer ? await assertTrainerRecipient({ manager, actor, identityId: body.identityId, audience: course.audience, ...(course.ownerPlatformId ? { platformId: course.ownerPlatformId } : {}) }) : null
-        const grantPlatformId = course.ownerPlatformId ?? (actor.operator ? null : trainerRecipient ? trainerRecipient.platformId : actor.platformId)
+        const explicitClient = body.accessType === 'learning' ? body.clientPlatformId : undefined
+        if (explicitClient) {
+            if (actor.operator) await assertOrdinaryRecipient(manager, body.identityId, explicitClient)
+            else if (actor.trainer) await assertTrainerRecipient({ manager, actor, identityId: body.identityId, audience: 'end_user', platformId: explicitClient })
+            else if (explicitClient !== actor.platformId) fail('LMS_COURSE_ACCESS_DENIED')
+            if (course.ownerPlatformId !== null && course.ownerPlatformId !== explicitClient) fail('LMS_COURSE_ACCESS_DENIED')
+        }
+        const grantPlatformId = explicitClient ?? course.ownerPlatformId ?? (actor.operator ? null : trainerRecipient ? trainerRecipient.platformId : actor.platformId)
         if (grantPlatformId) await assertOrdinaryRecipient(manager, body.identityId, grantPlatformId)
         if (body.accessType === 'partner_training') {
             requireOperator(actor)

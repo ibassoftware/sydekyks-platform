@@ -13,8 +13,8 @@ import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { PlatformEntity } from '../platform/platform.entity'
 import { UserEntity } from '../user/user-entity'
-import { hostedCustomerSeatCount, isOperationalUser } from './hosting-access-policy'
-import { HostingInvitationEntity } from './hosting-entities'
+import { hostedCustomerSeatCount, hostedWorkspaceAllowsMembers, isOperationalUser } from './hosting-access-policy'
+import { HostingAccountEntity, HostingInvitationEntity } from './hosting-entities'
 import { identityAdmission } from './hosting-identity-admission'
 import { createHostedOnboarding } from './hosting-onboarding'
 import { subscriptionAccountUntil } from './hosting-subscription-policy'
@@ -48,6 +48,8 @@ export function createHostedTenantMembers({ dataSource, onboarding, log }: { dat
         try {
             return await tx.run({ dataSource, fn: async manager => {
                 await assertTenantAdministrator({ manager, actor })
+                const workspace = await manager.getRepository(HostingAccountEntity).findOneByOrFail({ id: actor.platformId })
+                if (action === 'invite' && !await hostedWorkspaceAllowsMembers(manager, workspace)) hostingFail('HOSTING_PARTNER_SINGLE_USER')
                 // Target identity first, account and platform second, matching normal
                 // onboarding and operational membership revocation lock order.
                 let identityId: string
@@ -197,7 +199,7 @@ async function view(manager: EntityManager, actor: HostingActor) {
     }
     const revision = (await manager.getRepository(HostingTenantMembersBindingEntity).findOneBy({ id: account.id }))?.revision ?? 0
     const state = { revision, members: users.map(user => [user.id, user.identityId, user.status, user.platformRole, user.externalId]), pending: invitations.sort((a, b) => a.id.localeCompare(b.id)).map(invite => [invite.id, invite.status, invite.role, invite.expiresAt.toISOString()]), plan: account.planId, validUntil: account.validUntil.toISOString(), hold: account.billingHold, status: account.status }
-    return { platformId: account.id, userId: admin.id, revision, stateHash: hash(state), members, invitations: pending, seats: { used: await hostedCustomerSeatCount(manager, account.id), reserved: invitations.length, limit: hostingCatalog.getPlan({ planId: account.planId }).users } }
+    return { platformId: account.id, userId: admin.id, revision, stateHash: hash(state), members, invitations: pending, canInvite: await hostedWorkspaceAllowsMembers(manager, account), seats: { used: await hostedCustomerSeatCount(manager, account.id), reserved: invitations.length, limit: hostingCatalog.getPlan({ planId: account.planId }).users } }
 }
 function hash(value: unknown) {
     return createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex') 

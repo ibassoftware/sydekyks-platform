@@ -15,7 +15,7 @@ type AssignmentParams = { actor: HostingActor, platformId: string, identityId: s
 type RoleParams = { actor: HostingActor, identityId: string, role: HostingAccessRole['role'], active: boolean }
 type EntryParams = { actor: HostingActor, platformId: string }
 type OperationalTenant = { platformId: string, userId: string, projectId: string | null, tokenVersion: string | null }
-type WorkspaceList = { platformId: string, userId: string, role: HostingAccessRole['role'] | null, workspaces: { platformId: string, name: string }[] }
+type WorkspaceList = { platformId: string, userId: string, operational: boolean, role: HostingAccessRole['role'] | null, workspaces: { platformId: string, name: string, home: boolean }[] }
 type HostedAccessService = {
     setRole(params: RoleParams): Promise<void>
     assignPartner(params: AssignmentParams): Promise<HostingAccessMembership>
@@ -83,6 +83,8 @@ export function createHostedAccess({ dataSource, manager: existingManager }: { d
                 ? await materialize(manager, actor, platformId, role)
                 : await manager.getRepository(HostingAccessMembershipEntity).findOneBy({ platformId, identityId: actor.identityId, role: 'partner', active: true })
             if (!membership) hostingFail('HOSTING_OPERATIONAL_ACCESS_DENIED')
+            // Refresh older project-only memberships when entering an assigned client.
+            if (role.role === 'partner') await materialize(manager, actor, platformId, role)
             const user = await manager.getRepository(UserEntity).findOneByOrFail({ id: membership.userId })
             if (!await hasOperationalAccess({ manager, user })) hostingFail('HOSTING_OPERATIONAL_ACCESS_DENIED')
             await tx.event({ manager, platformId, event: 'operational.workspace.entered', payload: { actorIdentityId: actor.identityId, actorUserId: user.id, role: role.role } })
@@ -94,19 +96,19 @@ export function createHostedAccess({ dataSource, manager: existingManager }: { d
         return tx.run({ dataSource, manager: existingManager, fn: async manager => {
             const user = await tx.member({ manager, actor })
             const role = await manager.getRepository(HostingAccessRoleEntity).findOneBy({ id: actor.identityId, active: true })
-            if (!role) return { platformId: actor.platformId, userId: user.id, role: null, workspaces: [] }
+            if (!role) return { platformId: actor.platformId, userId: user.id, operational: isOperationalUser(user), role: null, workspaces: [] }
             // Bounded operator pilot: no unbounded client list in a tenant-facing response.
             const partnerCurrent = role.role !== 'partner' || await partnerSubscriptionAllowed(manager, actor.identityId)
             const rows = !partnerCurrent ? [] : role.role === 'team'
                 ? await manager.getRepository(HostingAccountEntity).find({ order: { created: 'DESC' }, take: 100 })
                 : await manager.getRepository(HostingAccessMembershipEntity).find({ where: { identityId: actor.identityId, role: 'partner', active: true }, order: { created: 'DESC' }, take: 100 })
-            const independent = role.role === 'partner' ? await manager.getRepository(UserEntity).find({ where: { identityId: actor.identityId, status: UserStatus.ACTIVE }, take: 100 }) : []
+            const independent = role.role === 'partner' ? await manager.getRepository(UserEntity).createQueryBuilder('member').where('member."identityId" = :identityId AND member.status = :status', { identityId: actor.identityId, status: UserStatus.ACTIVE }).andWhere('(member."externalId" IS NULL OR member."externalId" NOT LIKE :operational)', { operational: 'sydekyks-operational:%' }).orderBy('member.created', 'ASC').take(100).getMany() : []
             const platformIds = [...new Set([
+                ...independent.filter(member => member.platformId).map(member => member.platformId as string),
                 ...rows.map(row => 'platformId' in row ? row.platformId : row.id),
-                ...independent.filter(member => !isOperationalUser(member) && member.platformId).map(member => member.platformId as string),
             ])].slice(0, 100)
             const platforms = platformIds.length ? await manager.getRepository(PlatformEntity).findBy({ id: In(platformIds) }) : []
-            return { platformId: actor.platformId, userId: user.id, role: role.role, workspaces: platforms.map(platform => ({ platformId: platform.id, name: platform.name })) }
+            return { platformId: actor.platformId, userId: user.id, operational: isOperationalUser(user), role: role.role, workspaces: platforms.sort((a, b) => Number(independent.some(member => member.platformId === b.id)) - Number(independent.some(member => member.platformId === a.id)) || a.name.localeCompare(b.name)).map(platform => ({ platformId: platform.id, name: platform.name, home: independent.some(member => member.platformId === platform.id && !isOperationalUser(member)) })) }
         } })
     }
     return { setRole, assignPartner, unassignPartner, enter, list }
@@ -127,7 +129,7 @@ async function materialize(manager: EntityManager, actor: HostingActor, platform
     if (user && (!existing || existing.userId !== user.id || user.externalId !== operationalExternalId(role.id))) hostingFail('HOSTING_EXISTING_CLIENT_MEMBERSHIP')
     if (existing?.active && existing.role !== role.role) hostingFail('HOSTING_OPERATIONAL_ROLE_CONFLICT')
     const userId = existing?.userId ?? apId()
-    await users.save({ id: userId, identityId: role.id, platformId, platformRole: PlatformRole.OPERATOR, status: UserStatus.ACTIVE, externalId: operationalExternalId(role.id) })
+    await users.save({ id: userId, identityId: role.id, platformId, platformRole: role.role === 'partner' ? PlatformRole.ADMIN : PlatformRole.OPERATOR, status: UserStatus.ACTIVE, externalId: operationalExternalId(role.id) })
     const membership = await memberships.save({ id: existing?.id ?? apId(), platformId, identityId: role.id, userId, role: role.role, active: true })
     if (!existing?.active) await tx.event({ manager, platformId, event: 'operational.access.granted', payload: { actorIdentityId: actor.identityId, identityId: role.id, userId, role: role.role } })
     return membership

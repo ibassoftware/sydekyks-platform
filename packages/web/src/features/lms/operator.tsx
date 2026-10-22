@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,6 +36,14 @@ export function LmsOperator({
   globalOperator: boolean;
   trainer: boolean;
 }) {
+  const [params] = useSearchParams();
+  const clientPlatformId = params.get('client') ?? '';
+  const context = useQuery({
+    queryKey: ['lms', scope, 'client-context', clientPlatformId],
+    queryFn: () => lmsApi.clientContext(clientPlatformId),
+    enabled: !!clientPlatformId,
+    gcTime: 0,
+  });
   const client = useQueryClient();
   const courses = useQuery({
     queryKey: ['lms', scope, 'operator', 'courses'],
@@ -62,18 +70,45 @@ export function LmsOperator({
   const [kind, setKind] = useState<'partner' | 'global' | 'private'>(
     globalOperator ? 'global' : 'private',
   );
-  const [owner, setOwner] = useState('');
+  const [owner, setOwner] = useState(clientPlatformId);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const current =
-    courses.data?.find((item) => item.id === selected) ?? courses.data?.[0];
+    courses.data
+      ?.filter(
+        (item) =>
+          !clientPlatformId ||
+          (item.audience === 'end_user' &&
+            (!item.ownerPlatformId ||
+              item.ownerPlatformId === clientPlatformId)),
+      )
+      .find((item) => item.id === selected) ??
+    courses.data?.find(
+      (item) =>
+        !clientPlatformId ||
+        (item.audience === 'end_user' &&
+          (!item.ownerPlatformId || item.ownerPlatformId === clientPlatformId)),
+    );
+  if (clientPlatformId && context.isPending)
+    return <p role="status">Loading client learning…</p>;
+  if (clientPlatformId && context.isError)
+    return (
+      <p role="alert">
+        Client learning is unavailable. Check your assignment or administrator
+        access.
+      </p>
+    );
   if (courses.isPending) return <p role="status">Loading courses…</p>;
   if (courses.isError)
     return <p role="alert">Courses could not load. Refresh to try again.</p>;
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-semibold">Manage courses</h1>
+        <h1 className="text-2xl font-semibold">
+          {context.data
+            ? `Learning for ${context.data.name}`
+            : 'Manage courses'}
+        </h1>
         <p className="mt-2 text-gray-11">
           Choose a course to edit its draft, publish it and manage its own
           enrollments. Published lessons stay fixed. Create a new course for a
@@ -89,16 +124,24 @@ export function LmsOperator({
           onChange={(event) => setSelected(event.target.value)}
         >
           {!courses.data?.length && <option value="">No courses yet</option>}
-          {courses.data?.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.content.title} · {item.status} ·{' '}
-              {item.ownerPlatformId
-                ? item.ownerName || 'Private workspace'
-                : item.audience === 'partner'
-                ? 'Global partner training'
-                : 'Global end-user learning'}
-            </option>
-          ))}
+          {courses.data
+            ?.filter(
+              (item) =>
+                !clientPlatformId ||
+                (item.audience === 'end_user' &&
+                  (!item.ownerPlatformId ||
+                    item.ownerPlatformId === clientPlatformId)),
+            )
+            .map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.content.title} · {item.status} ·{' '}
+                {item.ownerPlatformId
+                  ? item.ownerName || 'Private workspace'
+                  : item.audience === 'partner'
+                  ? 'Global partner training'
+                  : 'Global end-user learning'}
+              </option>
+            ))}
         </select>
       </label>
       <details className="max-w-3xl border-y border-gray-6 py-4">
@@ -280,11 +323,20 @@ function CourseEditor({
   globalOperator: boolean;
   trainer: boolean;
 }) {
+  const [params] = useSearchParams();
+  const clientPlatformId = params.get('client') ?? '';
+  const context = useQuery({
+    queryKey: ['lms', scope, 'client-context', clientPlatformId],
+    queryFn: () => lmsApi.clientContext(clientPlatformId),
+    enabled: !!clientPlatformId,
+    gcTime: 0,
+  });
   const client = useQueryClient();
   const hosted = useHostedBillingEnabled();
   const course = { data: current, isPending: false, isError: false };
   const partnerTraining = current.audience === 'partner';
-  const globalLookup = globalOperator && current.ownerPlatformId === null;
+  const globalLookup =
+    globalOperator && current.ownerPlatformId === null && !clientPlatformId;
   const members = useQuery({
     queryKey: ['lms', scope, current.id, 'members'],
     queryFn: () => lmsApi.members(current.id),
@@ -302,7 +354,7 @@ function CourseEditor({
   const [reviewed, setReviewed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const [identityId, setIdentityId] = useState('');
+  const [identityId, setIdentityId] = useState(params.get('learner') ?? '');
   const [learnerEmail, setLearnerEmail] = useState('');
   const [learner, setLearner] = useState<LearnerCandidate | null>(null);
   const [lookupMessage, setLookupMessage] = useState('');
@@ -807,6 +859,34 @@ function CourseEditor({
           )
         )}
       </section>
+      {globalOperator &&
+        !partnerTraining &&
+        current.ownerPlatformId === null &&
+        current.status === 'published' && (
+          <section className="max-w-3xl space-y-3 border-y border-gray-6 py-4">
+            <h2 className="text-lg font-semibold">Default client learning</h2>
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={!!current.clientDefault}
+                disabled={busy}
+                onChange={(event) =>
+                  run(() =>
+                    lmsApi.setClientDefault(current.id, event.target.checked),
+                  )
+                }
+              />
+              <span>Automatically assign this course to client users</span>
+            </label>
+            <p className="text-sm leading-6 text-gray-11">
+              Applies to new client accounts and members. Existing eligible
+              client users receive it when they open Learning. Previous progress
+              and revoked access are preserved. No Partner certification or
+              Credits are granted.
+            </p>
+          </section>
+        )}
       {partnerTraining && globalOperator && (
         <section className="max-w-3xl space-y-3 border-y border-gray-6 py-4">
           <label
@@ -893,7 +973,10 @@ function CourseEditor({
                 onChange={(event) => setIdentityId(event.target.value)}
               >
                 <option value="">Choose an eligible workspace member</option>
-                {members.data?.map((member) => (
+                {(clientPlatformId
+                  ? context.data?.learners
+                  : members.data
+                )?.map((member) => (
                   <option key={member.identityId} value={member.identityId}>
                     {member.firstName} {member.lastName} · {member.email}
                   </option>
@@ -919,6 +1002,7 @@ function CourseEditor({
                   : lmsApi.enrollLearning)(
                   globalLookup ? learner!.identityId : identityId,
                   current.id,
+                  clientPlatformId || undefined,
                 ),
               )
             }
@@ -930,33 +1014,39 @@ function CourseEditor({
             Access to other courses is separate.
           </p>
           <ul className="space-y-3">
-            {enrollments.data?.map((item) => (
-              <li
-                key={item.id}
-                className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-6 py-3"
-              >
-                <span className="min-w-0 break-words">
-                  {item.learnerEmail || 'Learner'} · {item.status} · access
-                  until {new Date(item.accessUntil).toLocaleDateString()}
-                </span>
-                <Button
-                  variant="outline"
-                  disabled={
-                    busy ||
-                    item.status !== 'active' ||
-                    (trainer &&
-                      (item.certified ||
-                        item.accessType === 'partner_training'))
-                  }
-                  onClick={() => run(() => lmsApi.revoke(item.id))}
+            {enrollments.data
+              ?.filter(
+                (item) =>
+                  !clientPlatformId ||
+                  item.grantPlatformId === clientPlatformId,
+              )
+              .map((item) => (
+                <li
+                  key={item.id}
+                  className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-6 py-3"
                 >
-                  {trainer &&
-                  (item.certified || item.accessType === 'partner_training')
-                    ? 'Contact Sydekyks admin'
-                    : 'Revoke course access'}
-                </Button>
-              </li>
-            ))}
+                  <span className="min-w-0 break-words">
+                    {item.learnerEmail || 'Learner'} · {item.status} · access
+                    until {new Date(item.accessUntil).toLocaleDateString()}
+                  </span>
+                  <Button
+                    variant="outline"
+                    disabled={
+                      busy ||
+                      item.status !== 'active' ||
+                      (trainer &&
+                        (item.certified ||
+                          item.accessType === 'partner_training'))
+                    }
+                    onClick={() => run(() => lmsApi.revoke(item.id))}
+                  >
+                    {trainer &&
+                    (item.certified || item.accessType === 'partner_training')
+                      ? 'Contact Sydekyks admin'
+                      : 'Revoke course access'}
+                  </Button>
+                </li>
+              ))}
           </ul>
         </section>
       ) : (
@@ -1243,12 +1333,18 @@ function CourseEditor({
               }}
             >
               <option value="">Choose an enrollment</option>
-              {enrollments.data?.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.learnerEmail || 'Eligible learner'} · {item.package} ·{' '}
-                  {item.paymentReference} · {item.status}
-                </option>
-              ))}
+              {enrollments.data
+                ?.filter(
+                  (item) =>
+                    !clientPlatformId ||
+                    item.grantPlatformId === clientPlatformId,
+                )
+                .map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.learnerEmail || 'Eligible learner'} · {item.package} ·{' '}
+                    {item.paymentReference} · {item.status}
+                  </option>
+                ))}
             </select>
           </label>
           {delivery && (
@@ -1460,12 +1556,18 @@ function CourseEditor({
               }}
             >
               <option value="">Choose an enrollment</option>
-              {enrollments.data?.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.learnerEmail || 'Eligible learner'} · {item.package} ·{' '}
-                  {item.paymentReference} · {item.status}
-                </option>
-              ))}
+              {enrollments.data
+                ?.filter(
+                  (item) =>
+                    !clientPlatformId ||
+                    item.grantPlatformId === clientPlatformId,
+                )
+                .map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.learnerEmail || 'Eligible learner'} · {item.package} ·{' '}
+                    {item.paymentReference} · {item.status}
+                  </option>
+                ))}
             </select>
           </label>
           {enrollment && (

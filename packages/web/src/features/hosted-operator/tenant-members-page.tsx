@@ -30,6 +30,7 @@ const List = z.object({
   userId: z.string(),
   revision: z.number().int(),
   stateHash: z.string(),
+  canInvite: z.boolean(),
   seats: z.object({
     used: z.number(),
     reserved: z.number(),
@@ -211,7 +212,9 @@ function MemberSession({ session }: { session: Session }) {
       <h1 className="text-2xl font-semibold">{t('Workspace users')}</h1>
       <p className="mt-3 max-w-3xl text-sm leading-6 text-gray-11">
         {t(
-          'Invite people to this workspace with a private one-time link. Existing accounts use their current password; new accounts choose a password. Membership does not grant Partner status or start another trial.',
+          query.data?.canInvite === false
+            ? 'Your Partner workspace is for one user. Manage client users from their assigned client workspace.'
+            : 'Invite people to this workspace with a private one-time link. Existing accounts use their current password; new accounts choose a password.',
         )}
       </p>
       {query.isPending ? (
@@ -232,82 +235,84 @@ function MemberSession({ session }: { session: Session }) {
               query.data.seats,
             )}
           </p>
-          <form
-            onSubmit={invite}
-            className="mt-7 max-w-3xl space-y-4 rounded-lg border border-gray-6 p-4"
-          >
-            <h2 className="text-lg font-semibold">
-              {t('Add a workspace user')}
-            </h2>
-            <p className="text-sm leading-6 text-gray-11">
-              {t(
-                'Links work once and expire within 24 hours. A pending invitation reserves a seat and personal project. Creating a replacement for the same email revokes the earlier link.',
-              )}
-            </p>
-            <div className="flex flex-col gap-4 sm:flex-row">
-              <div className="flex-1">
-                <label
-                  htmlFor="tenant-member-email"
-                  className="text-sm font-medium"
-                >
-                  {t('Email')}
-                </label>
-                <Input
-                  className="mt-2"
-                  id="tenant-member-email"
-                  type="email"
-                  required
-                  maxLength={254}
-                  value={email}
-                  disabled={busy}
-                  onChange={(event) => {
-                    setEmail(event.target.value);
-                    setConfirmed(false);
-                  }}
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="tenant-member-role"
-                  className="block text-sm font-medium"
-                >
-                  {t('Workspace role')}
-                </label>
-                <select
-                  className={'mt-2 w-full ' + selectStyle}
-                  id="tenant-member-role"
-                  value={role}
-                  disabled={busy}
-                  onChange={(event) => {
-                    setRole(event.target.value as PlatformRole);
-                    setConfirmed(false);
-                  }}
-                >
-                  <RoleOptions />
-                </select>
-              </div>
-            </div>
-            <label className="flex items-start gap-3 text-sm leading-6">
-              <input
-                className="mt-1 size-4 accent-accent-9"
-                type="checkbox"
-                checked={confirmed}
-                disabled={busy}
-                onChange={(event) => setConfirmed(event.target.checked)}
-              />
-              <span>
-                {t(
-                  'I confirm this person should receive the selected workspace role, and I will share the link privately.',
-                )}
-              </span>
-            </label>
-            <Button
-              type="submit"
-              disabled={busy || !confirmed || query.isFetching}
+          {query.data.canInvite && (
+            <form
+              onSubmit={invite}
+              className="mt-7 max-w-3xl space-y-4 rounded-lg border border-gray-6 p-4"
             >
-              {t('Create workspace link')}
-            </Button>
-          </form>
+              <h2 className="text-lg font-semibold">
+                {t('Add a workspace user')}
+              </h2>
+              <p className="text-sm leading-6 text-gray-11">
+                {t(
+                  'Links work once and expire within 24 hours. A pending invitation reserves a seat and personal project. Creating a replacement for the same email revokes the earlier link.',
+                )}
+              </p>
+              <div className="flex flex-col gap-4 sm:flex-row">
+                <div className="flex-1">
+                  <label
+                    htmlFor="tenant-member-email"
+                    className="text-sm font-medium"
+                  >
+                    {t('Email')}
+                  </label>
+                  <Input
+                    className="mt-2"
+                    id="tenant-member-email"
+                    type="email"
+                    required
+                    maxLength={254}
+                    value={email}
+                    disabled={busy}
+                    onChange={(event) => {
+                      setEmail(event.target.value);
+                      setConfirmed(false);
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="tenant-member-role"
+                    className="block text-sm font-medium"
+                  >
+                    {t('Workspace role')}
+                  </label>
+                  <select
+                    className={'mt-2 w-full ' + selectStyle}
+                    id="tenant-member-role"
+                    value={role}
+                    disabled={busy}
+                    onChange={(event) => {
+                      setRole(event.target.value as PlatformRole);
+                      setConfirmed(false);
+                    }}
+                  >
+                    <RoleOptions />
+                  </select>
+                </div>
+              </div>
+              <label className="flex items-start gap-3 text-sm leading-6">
+                <input
+                  className="mt-1 size-4 accent-accent-9"
+                  type="checkbox"
+                  checked={confirmed}
+                  disabled={busy}
+                  onChange={(event) => setConfirmed(event.target.checked)}
+                />
+                <span>
+                  {t(
+                    'I confirm this person should receive the selected workspace role, and I will share the link privately.',
+                  )}
+                </span>
+              </label>
+              <Button
+                type="submit"
+                disabled={busy || !confirmed || query.isFetching}
+              >
+                {t('Create workspace link')}
+              </Button>
+            </form>
+          )}
           {url && (
             <section
               className="mt-5 max-w-3xl"

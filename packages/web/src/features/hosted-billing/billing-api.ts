@@ -28,7 +28,9 @@ async function safeRequest<T>(
       ? (error.response?.data as { code?: unknown })?.code
       : undefined;
     const authorizationDenied =
-      code === 'HOSTING_ACCESS_DENIED' || code === 'AUTHORIZATION';
+      code === 'HOSTING_ACCESS_DENIED' ||
+      code === 'HOSTING_CUSTOMER_BILLING_REQUIRED' ||
+      code === 'AUTHORIZATION';
     throw new BillingError(
       status === 401
         ? 'session'
@@ -51,6 +53,32 @@ export const hostedBillingApi = {
     )
       throw new BillingError('denied');
     return parsed.data;
+  },
+  async changePlan(session: Session, planId: 'starter' | 'team' | 'scale') {
+    const result = await safeRequest(
+      session,
+      () =>
+        api.post<{
+          platformId: string;
+          userId: string;
+          planId: string;
+          effectiveAt: string;
+          timing: string;
+        }>('/v1/hosting/billing/change-plan', { planId }),
+      true,
+    );
+    if (
+      result.platformId !== session?.platformId ||
+      result.userId !== session?.userId
+    )
+      throw new BillingError('denied');
+    if (
+      result.planId !== planId ||
+      result.timing !== 'next_renewal' ||
+      !Number.isFinite(Date.parse(result.effectiveAt))
+    )
+      throw new BillingError('action');
+    return result;
   },
   async open(
     session: Session,

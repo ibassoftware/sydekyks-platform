@@ -148,6 +148,29 @@ function SessionBillingPage({
       if (mounted.current) setPending(null);
     }
   }
+  async function changePlan(planId: 'starter' | 'team' | 'scale') {
+    if (actionLock.current || query.isError || query.isFetching) return;
+    actionLock.current = true;
+    setPending(`change:${planId}`);
+    setActionError(false);
+    try {
+      await hostedBillingApi.changePlan(session, planId);
+      if (mounted.current) await refetch();
+    } catch (error) {
+      if (
+        error instanceof BillingError &&
+        ['session', 'denied'].includes(error.kind)
+      ) {
+        if (mounted.current) setAccessRevoked(true);
+      } else if (mounted.current) {
+        setActionError(true);
+        void refetch();
+      }
+    } finally {
+      actionLock.current = false;
+      if (mounted.current) setPending(null);
+    }
+  }
   if (denied)
     return (
       <BillingFailure
@@ -191,6 +214,7 @@ function SessionBillingPage({
       onRefresh={() => void refetch()}
       onCheckout={(id) => void open('checkout', id)}
       onPortal={() => void open('portal')}
+      onPlanChange={(id) => void changePlan(id)}
     />
   );
 }

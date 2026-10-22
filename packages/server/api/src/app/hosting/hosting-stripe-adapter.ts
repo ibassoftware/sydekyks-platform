@@ -34,6 +34,30 @@ export async function createStripeAdapter(policy: Policy) {
             return { objectId: result.id, url: null, expiresAt: null }
         }
         const customer = z.string().regex(/^cus_[a-zA-Z0-9]+$/).parse(command.payload.customerId)
+        if (command.kind === 'plan_change') {
+            const plan = z.enum(['starter', 'team', 'scale']).parse(command.payload.planId)
+            const subscriptionId = z.string().regex(/^sub_[a-zA-Z0-9]+$/).parse(command.payload.subscriptionId)
+            const effectiveAt = z.iso.datetime().parse(command.payload.effectiveAt)
+            const expected = policy.catalog.plans[plan]
+            await price(expected)
+            const sub = await client.subscriptions.retrieve(subscriptionId)
+            test(sub)
+            if (stripeId(sub.customer) !== customer || sub.metadata.hostingPlatformId !== command.platformId || sub.items.has_more || sub.items.data.length !== 1 || sub.status !== 'active' || sub.pause_collection || sub.pending_update || sub.schedule || sub.trial_start || sub.trial_end || sub.discounts.length || sub.cancel_at_period_end || sub.cancel_at || sub.collection_method !== 'charge_automatically') hostingFail('HOSTING_STRIPE_PLAN_CHANGE_UNSUPPORTED')
+            const item = sub.items.data[0]
+            if (item.quantity !== 1 || item.current_period_end * 1000 !== Date.parse(effectiveAt) || !Object.values(policy.catalog.plans).some(value => value.priceId === item.price.id)) hostingFail('HOSTING_STRIPE_PLAN_CHANGE_STALE')
+            // A price update without proration leaves the existing paid invoice,
+            // cycle and local entitlement intact. Only the next verified paid
+            // renewal supplies the new plan and its allowance.
+            const result = await client.subscriptions.update(sub.id, {
+                items: [{ id: item.id, price: expected.priceId, quantity: 1 }],
+                proration_behavior: 'none', billing_cycle_anchor: 'unchanged',
+                metadata: { hostingNextPlan: plan, hostingPlanChangeCommandId: command.id },
+            }, options)
+            test(result)
+            const updated = result.items.data[0]
+            if (result.id !== sub.id || stripeId(result.customer) !== customer || result.items.data.length !== 1 || result.items.has_more || !updated || updated.id !== item.id || updated.price.id !== expected.priceId || updated.quantity !== 1 || updated.current_period_end !== item.current_period_end || updated.current_period_start !== item.current_period_start || result.metadata.hostingPlanChangeCommandId !== command.id) hostingFail('HOSTING_STRIPE_PLAN_CHANGE_STALE')
+            return { objectId: result.id, url: null, expiresAt: new Date(effectiveAt) }
+        }
         if (command.kind === 'checkout') {
             const plan = z.enum(['starter', 'team', 'scale']).parse(command.payload.planId)
             const expected = policy.catalog.plans[plan]
@@ -76,17 +100,26 @@ export async function createStripeAdapter(policy: Policy) {
             if (live.length > 1) hostingFail('HOSTING_STRIPE_DUPLICATE_SUBSCRIPTIONS')
             const sub = live[0] ?? (previousSubscriptionId ? await client.subscriptions.retrieve(previousSubscriptionId) : null)
             let period: PaidPeriodEvidence | null = null
+            let selectedPlanId: 'starter' | 'team' | 'scale' | null = null
+            let pendingPlan: { planId: 'starter' | 'team' | 'scale', effectiveAt: number, commandId: string } | null = null
             if (sub) {
                 test(sub)
                 if (stripeId(sub.customer) !== customerId || sub.items.has_more || sub.items.data.length !== 1 || sub.pause_collection || sub.pending_update || sub.schedule || sub.trial_start || sub.trial_end || sub.discounts.length || sub.collection_method !== 'charge_automatically') hostingFail('HOSTING_STRIPE_SUBSCRIPTION_UNSUPPORTED')
                 if (!['active', 'canceled', 'incomplete_expired'].includes(sub.status)) hostingFail('HOSTING_STRIPE_PAYMENT_REQUIRED')
                 const item = sub.items.data[0]
                 const selected = (['starter', 'team', 'scale'] as const).find(plan => policy.catalog.plans[plan].priceId === item.price.id)
+                selectedPlanId = selected ?? null
                 if (!selected || item.quantity !== 1) hostingFail('HOSTING_STRIPE_PRICE_DENIED')
                 await price(policy.catalog.plans[selected])
                 if (sub.latest_invoice) {
                     const invoice = await client.invoices.retrieve(requiredId(sub.latest_invoice))
-                    if (invoice.status === 'paid') period = await paid(invoice, sub, item, selected)
+                    if (invoice.status === 'paid') {
+                        period = await paid(invoice, sub, item, selected)
+                        if (period.planId !== selected) {
+                            if (sub.metadata.hostingNextPlan !== selected || !sub.metadata.hostingPlanChangeCommandId) hostingFail('HOSTING_STRIPE_PLAN_CHANGE_UNVERIFIED')
+                            pendingPlan = { planId: selected, effectiveAt: item.current_period_end, commandId: sub.metadata.hostingPlanChangeCommandId }
+                        }
+                    }
                     else if (sub.status !== 'canceled' && sub.status !== 'incomplete_expired') hostingFail('HOSTING_STRIPE_PAYMENT_REQUIRED')
                 }
             }
@@ -94,7 +127,7 @@ export async function createStripeAdapter(policy: Policy) {
                 if (charges.length >= 128) hostingFail('HOSTING_STRIPE_RECONCILIATION_LIMIT')
                 charges.push(await charge(period.chargeId, customerId))
             }
-            return { customerPlatformId: customer.metadata.hostingPlatformId, subscriptionId: sub?.id ?? null, subscriptionStatus: sub?.status ?? null, commandId: sub?.metadata.hostingCommandId ?? null, subscriptionPlatformId: sub?.metadata.hostingPlatformId ?? null, period, charges, issues: [] as string[] }
+            return { customerPlatformId: customer.metadata.hostingPlatformId, subscriptionId: sub?.id ?? null, subscriptionStatus: sub?.status ?? null, planChangeCommandId: sub?.metadata.hostingPlanChangeCommandId ?? null, commandId: sub?.metadata.hostingCommandId ?? null, subscriptionPlatformId: sub?.metadata.hostingPlatformId ?? null, period, pendingPlan, selectedPlanId, cancelAtPeriodEnd: sub?.cancel_at_period_end ?? false, charges, issues: [] as string[] }
         }
         catch (error) {
             return { customerPlatformId: customer.metadata.hostingPlatformId, subscriptionId: previousSubscriptionId, subscriptionStatus: null, commandId: null, subscriptionPlatformId: null, period: null, charges, issues: [error instanceof HostingError ? error.message : 'HOSTING_STRIPE_READ_FAILED'] }
@@ -108,7 +141,11 @@ export async function createStripeAdapter(policy: Policy) {
         complete(lines)
         if (lines.data.length !== 1) hostingFail('HOSTING_STRIPE_INVOICE_UNSUPPORTED')
         const line = lines.data[0]
+        const invoicePlan = (['starter', 'team', 'scale'] as const).find(plan => policy.catalog.plans[plan].priceId === stripeId(line.pricing?.price_details?.price))
+        if (!invoicePlan || (invoicePlan !== planId && (sub.metadata.hostingNextPlan !== planId || !sub.metadata.hostingPlanChangeCommandId))) hostingFail('HOSTING_STRIPE_PLAN_CHANGE_UNVERIFIED')
+        planId = invoicePlan
         const expected = policy.catalog.plans[planId]
+        await price(expected)
         const details = line.parent?.subscription_item_details
         if (stripeId(invoice.customer) !== stripeId(sub.customer) || stripeId(invoice.parent?.subscription_details?.subscription) !== sub.id || !['subscription_create', 'subscription_cycle'].includes(invoice.billing_reason ?? '') || invoice.amount_remaining !== 0 || invoice.amount_paid <= 0 || invoice.amount_paid !== invoice.total || invoice.amount_due !== invoice.total || invoice.starting_balance !== 0 || invoice.pre_payment_credit_notes_amount || invoice.post_payment_credit_notes_amount || invoice.currency !== expected.currency || invoice.discounts.length || line.livemode || line.invoice !== invoice.id || line.quantity !== 1 || line.amount !== expected.amountMinor || line.currency !== expected.currency || (line.discount_amounts?.length ?? 0) || (line.pretax_credit_amounts?.length ?? 0) || details?.proration !== false || details.subscription_item !== item.id || details.subscription !== sub.id || stripeId(line.pricing?.price_details?.price) !== expected.priceId || line.period.start !== item.current_period_start || line.period.end !== item.current_period_end || line.period.end <= line.period.start || line.period.end - line.period.start > 32 * 86400 || line.period.end - line.period.start < 27 * 86400) hostingFail('HOSTING_STRIPE_INVOICE_UNSUPPORTED')
         const payments = await client.invoicePayments.list({ invoice: invoiceId, status: 'paid', limit: 100 })
@@ -171,6 +208,11 @@ export async function createStripeAdapter(policy: Policy) {
                 continue
             }
             if (command.state !== 'ready' || !command.firstSentAt || !command.objectId || !customerId || command.payload.customerId !== customerId) hostingFail('HOSTING_STRIPE_CATALOG_OPEN_COMMANDS')
+            if (command.kind === 'plan_change') {
+                if (command.objectId !== subscriptionId) hostingFail('HOSTING_STRIPE_CATALOG_OPEN_COMMANDS')
+                observations.push({ commandId: command.id, objectId: command.objectId, reason: 'plan_change_delivery_retired' })
+                continue
+            }
             if (command.kind === 'portal') {
                 // This retires only our delivery of the old URL. Stripe has no
                 // portal-session retrieve/revoke API. Its existing customer

@@ -18,6 +18,7 @@ export const hostingStripeController: FastifyPluginAsyncZod = async app => {
     })
     app.get('/', { config: user }, async request => (await hostingServices.billing()).status(await actor(request)))
     app.post('/checkout', { config: user, schema: { body: z.strictObject({ planId: z.enum(['starter', 'team', 'scale']) }) } }, async request => (await hostingServices.billing()).checkout(await actor(request), request.body.planId))
+    app.post('/change-plan', { config: user, schema: { body: z.strictObject({ planId: z.enum(['starter', 'team', 'scale']) }) } }, async request => (await hostingServices.billing()).changePlan(await actor(request), request.body.planId))
     app.post('/portal', { config: user, schema: { body: z.strictObject({}) } }, async request => (await hostingServices.billing()).portal(await actor(request)))
     app.post('/stripe-webhook', { bodyLimit: 262144, config: { security: securityAccess.public(), rawBody: true }, schema: { headers: z.object({ 'stripe-signature': z.string().min(1).max(4096) }) } }, async (request, reply) => {
         if (typeof request.rawBody !== 'string') hostingFail('HOSTING_STRIPE_RAW_BODY_REQUIRED')

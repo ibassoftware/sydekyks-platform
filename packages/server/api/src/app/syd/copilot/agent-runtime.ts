@@ -18,6 +18,7 @@ import { mcpToolInput } from '../../mcp/mcp-tool-input'
 import { assertCreditsAndAppSumoNotExceeded } from '../../platform/billing-provider'
 import { jobQueue, JobType } from '../../workers/job-queue/job-queue'
 import { sydApprovalGate } from './approval-gate'
+import { conversationTitle } from './conversation-title'
 import { ActorScope, sydCopilotContext } from './copilot-context'
 import { SydAgentConversationEntity } from './models/agent-conversation.entity'
 import { nativeFilesForTurn } from './native-features'
@@ -110,7 +111,7 @@ async function start({ conversation, config, content, files, nativeFileIds: adde
         const scoped = { id: conversation.id, platformId, userId, projectId }
         const row = await manager.getRepository(SydAgentConversationEntity).findOne({ where: scoped, lock: { mode: 'pessimistic_write' } })
         if (!row || (row.status === AgentConversationStatus.STREAMING && !(hosted && flowStep && row.activeRunId === runId))) throw new ActivepiecesError({ code: ErrorCode.VALIDATION, params: { message: 'This agent is already running' } })
-        await manager.getRepository(SydAgentConversationEntity).update(scoped, { activeRunId: runId, status: AgentConversationStatus.STREAMING })
+        await manager.getRepository(SydAgentConversationEntity).update(scoped, { activeRunId: runId, status: AgentConversationStatus.STREAMING, ...(row.title === null && !flowStep ? { title: conversationTitle(content) } : {}) })
     })
     const snapshot = { conversationId: conversation.id, runId, platformId, userId, projectId, source: conversation.source, config, flowTools, waitpointId }
     const queued = await tryCatch(async () => {

@@ -454,13 +454,13 @@ export const platformRoutes = [
   {
     path: '/partners/workspaces',
     element: (
-      <AllowOnlyLoggedInUserOnlyGuard>
+      <PlatformLayout>
         <PageTitle titleKey="Client workspaces">
           <SuspenseWrapper>
             <PartnerWorkspacesPage />
           </SuspenseWrapper>
         </PageTitle>
-      </AllowOnlyLoggedInUserOnlyGuard>
+      </PlatformLayout>
     ),
   },
   {

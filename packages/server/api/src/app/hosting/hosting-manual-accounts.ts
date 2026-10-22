@@ -1,3 +1,4 @@
+import { enrollClientDefaultCourses } from '../lms/lms-client-defaults'
 import { createHmac } from 'node:crypto'
 import { apId } from '@activepieces/core-utils'
 import { hostingCatalog, UserIdentityProvider } from '@activepieces/shared'
@@ -69,6 +70,7 @@ export function createHostedManualAccounts({ dataSource, subjectSecret }: { data
                 }
                 await manager.getRepository(HostingManualAccountEntity).save({ id: account.id, identityId, kind: value.kind, package: value.kind === 'partner' ? value.partner.package : null, enrollmentId, termId: term.id, revision: 1 })
                 await manager.getRepository(HostingAccountEntity).update({ id: account.id }, { planId: value.planId, status: 'active', validUntil: term.expiresAt, catalogVersion: hostingCatalog.version })
+                if (value.kind === 'client') await enrollClientDefaultCourses(manager, { platformId: account.id, identityId, enrolledBy: actor.identityId, now: startsAt })
                 if (value.kind === 'partner' && value.partner.approve) await createHostedAccess({ dataSource, manager }).setRole({ actor, identityId, role: 'partner', active: true })
                 const result = await view(manager, await tx.account({ manager, platformId: account.id }))
                 await manager.getRepository(HostingManualCommandEntity).save({ id: apId(), operatorIdentityId: actor.identityId, requestKey: value.requestKey, payloadHash, action: 'create', platformId: account.id, termId: term.id, snapshot: { ...result, method: 'operator', emailOwnershipVerified: false, partnerApproved: value.kind === 'partner' && value.partner.approve } })

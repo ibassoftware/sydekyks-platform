@@ -24,6 +24,7 @@ const Clients = z.object({
     z.object({
       platformId: id,
       name: z.string(),
+      accountKind: z.enum(['client', 'partner', 'trial']).optional(),
       planId: z.string(),
       status: z.string(),
       validUntil: z.string(),
@@ -103,6 +104,7 @@ export const operatorClientsQuery = (
   session: Session,
   after: string | null,
   allowed: boolean,
+  kind: 'all' | 'client' | 'partner' | 'trial' = 'all',
 ) => ({
   queryKey: [
     'hosted-operator-clients',
@@ -110,6 +112,7 @@ export const operatorClientsQuery = (
     session.platformId,
     session.id,
     after,
+    kind,
   ],
   queryFn: ({ signal }: { signal: AbortSignal }) =>
     read(
@@ -117,7 +120,7 @@ export const operatorClientsQuery = (
       '/v1/hosting/operator/clients',
       Clients,
       signal,
-      after ? { after } : undefined,
+      { ...(after ? { after } : {}), kind },
     ),
   enabled: allowed,
   retry: false as const,

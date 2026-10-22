@@ -87,6 +87,7 @@ export type Course = {
   audience: 'partner' | 'end_user';
   certificationMode: 'partner' | 'none';
   canEdit: boolean;
+  clientDefault?: boolean;
   revision: number;
   status: 'draft' | 'published';
   content: CourseContent;
@@ -168,6 +169,9 @@ const requests = {
         courseId: string;
         title: string;
         certificationMode: 'partner' | 'none';
+        description: string;
+        completedLessons: number;
+        totalLessons: number;
       }[];
     }>(`${base}/me`),
   learning: (id: string) => api.get<LearningState>(`${base}/enrollments/${id}`),
@@ -197,6 +201,21 @@ const requests = {
     ),
   trainerClients: () =>
     api.get<{ platformId: string; name: string }[]>(`${base}/operator/clients`),
+  clientContext: (platformId: string) =>
+    api.get<{
+      platformId: string;
+      name: string;
+      learners: {
+        identityId: string;
+        email: string;
+        firstName: string;
+        lastName: string;
+      }[];
+    }>(`${base}/operator/client/${platformId}`),
+  setClientDefault: (courseId: string, enabled: boolean) =>
+    api.post<Course>(`${base}/operator/course/${courseId}/client-default`, {
+      enabled,
+    }),
   courses: () => api.get<Course[]>(`${base}/operator/courses`),
   createCourse: (body: {
     title: string;
@@ -259,9 +278,14 @@ const requests = {
       identityId,
       courseId,
     }),
-  enrollLearning: (identityId: string, courseId: string) =>
+  enrollLearning: (
+    identityId: string,
+    courseId: string,
+    clientPlatformId?: string,
+  ) =>
     api.post<Enrollment>(`${base}/operator/enroll`, {
       accessType: 'learning',
+      ...(clientPlatformId ? { clientPlatformId } : {}),
       identityId,
       courseId,
     }),

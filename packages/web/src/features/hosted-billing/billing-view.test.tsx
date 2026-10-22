@@ -108,7 +108,8 @@ let element: HTMLDivElement, root: Root;
 const pageText = () => element.textContent ?? '';
 const checkout = vi.fn(),
   refresh = vi.fn(),
-  portal = vi.fn();
+  portal = vi.fn(),
+  changePlan = vi.fn();
 beforeEach(() => {
   element = document.createElement('div');
   document.body.appendChild(element);
@@ -117,6 +118,7 @@ beforeEach(() => {
   checkout.mockReset();
   refresh.mockReset();
   portal.mockReset();
+  changePlan.mockReset();
 });
 afterEach(async () => {
   await act(async () => root.unmount());
@@ -136,6 +138,7 @@ async function render(info = overview(), stale = false) {
         onCheckout={checkout}
         onRefresh={refresh}
         onPortal={portal}
+        onPlanChange={changePlan}
       />,
     ),
   );
@@ -230,9 +233,61 @@ describe('role-appropriate hosted billing', () => {
     expect(
       buttons.some((button) => button.textContent?.includes('Choose Starter')),
     ).toBe(false);
-    expect(pageText()).not.toContain('$1,299.00');
+    const purchasable = element.querySelector(
+      '[aria-labelledby="hosted-plans"]',
+    );
+    expect(purchasable?.textContent ?? '').not.toContain('$1,299.00');
+    expect(
+      buttons.some((button) => button.textContent?.includes('Review Scale')),
+    ).toBe(false);
     await act(async () => growth.click());
     expect(checkout).toHaveBeenCalledWith('team');
+  });
+
+  it('reviews a renewal change with the exact date, price and limits before confirming', async () => {
+    const info = overview();
+    info.billingMode = 'stripe_test';
+    info.environment = 'test';
+    info.planChangesEnabled = true;
+    await render(info);
+    const review = Array.from(element.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Review Growth',
+    )!;
+    expect(changePlan).not.toHaveBeenCalled();
+    await act(async () => review.click());
+    const region = element.querySelector('[aria-label="Review plan change"]')!;
+    const reviewText = () => region.textContent ?? '';
+    expect(reviewText()).toContain('$399.00');
+    expect(reviewText()).toContain('30 users');
+    expect(reviewText()).toContain('100,000 monthly Credits');
+    expect(reviewText()).toContain(
+      new Date(info.hostingEndsAt!).toLocaleDateString(),
+    );
+    expect(reviewText()).toContain('No charge today');
+    expect(changePlan).not.toHaveBeenCalled();
+    const confirm = Array.from(region.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Confirm plan for renewal',
+    )!;
+    await act(async () => confirm.click());
+    expect(changePlan).toHaveBeenCalledExactlyOnceWith('team');
+  });
+
+  it('keeps a manually funded client explicit when the server has Stripe enabled', async () => {
+    const info = overview();
+    info.billingMode = 'stripe_test';
+    info.environment = 'test';
+    info.manualFunding = true;
+    await render(info);
+    expect(pageText()).toContain('has no Stripe subscription');
+    expect(pageText()).not.toContain(
+      'Choose a plan at any time for your next renewal',
+    );
+    expect(
+      Array.from(element.querySelectorAll('button')).some((button) =>
+        button.textContent?.includes('Manage payments or cancel in Stripe'),
+      ),
+    ).toBe(false);
+    expect(changePlan).not.toHaveBeenCalled();
   });
 
   it('keeps explicit incoming Partner purchase review available for an unenrolled trial', async () => {

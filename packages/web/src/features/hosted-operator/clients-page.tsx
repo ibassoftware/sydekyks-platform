@@ -1,6 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { t } from 'i18next';
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+
+import { ManagedClientPanel } from './managed-client-panel';
+import { clientPlanName } from './client-admin-api';
 
 import { Button } from '@/components/ui/button';
 import { formatHostedCredits } from '@/features/hosted-chat/hosted-chat-api';
@@ -33,10 +37,18 @@ function SessionClients({
 }: {
   access: ReturnType<typeof useHostedOperatorAccess>;
 }) {
+  const [params, setParams] = useSearchParams();
+  const kind =
+    params.get('kind') === 'partner'
+      ? 'partner'
+      : params.get('kind') === 'trial'
+      ? 'trial'
+      : 'client';
+  const target = params.get('client') ?? '';
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const after = cursors[cursors.length - 1];
   const query = useQuery(
-    operatorClientsQuery(access.session, after, access.allowed),
+    operatorClientsQuery(access.session, after, access.allowed, kind),
   );
   const denied = !access.isPending && !access.allowed;
   return (
@@ -46,7 +58,7 @@ function SessionClients({
           <h1 className="text-xl font-semibold">{t('Clients')}</h1>
           <p className="mt-1 max-w-prose text-sm text-gray-11">
             {t(
-              'Credit consumption across your hosted clients. Access is restricted to your service operators.',
+              'Manage client accounts, assigned Partners, learning and Credits.',
             )}
           </p>
         </div>
@@ -61,10 +73,39 @@ function SessionClients({
         )}
       </div>
       {access.allowed && (
+        <nav aria-label="Account type" className="flex flex-wrap gap-2">
+          {(['client', 'partner', 'trial'] as const).map((value) => (
+            <Button
+              key={value}
+              variant={kind === value ? 'default' : 'outline'}
+              aria-pressed={kind === value}
+              onClick={() => {
+                setCursors([null]);
+                setParams({ kind: value });
+              }}
+            >
+              {value === 'client'
+                ? 'Clients'
+                : value === 'partner'
+                ? 'Partner hosting'
+                : 'Trials'}
+            </Button>
+          ))}
+        </nav>
+      )}
+      {access.allowed && kind === 'client' && (
         <ManualAccountForm
           session={access.session}
           kind="client"
           onCreated={() => void query.refetch()}
+        />
+      )}
+      {access.allowed && target && kind === 'client' && (
+        <ManagedClientPanel
+          key={`${access.session.epoch}:${target}`}
+          access={access}
+          platformId={target}
+          onClose={() => setParams({ kind })}
         />
       )}
       {access.isPending ? (
@@ -88,7 +129,14 @@ function SessionClients({
           )}
         </p>
       ) : query.data ? (
-        <ClientUsageTable data={query.data} />
+        <ClientUsageTable
+          data={query.data}
+          onManage={
+            kind === 'client'
+              ? (platformId) => setParams({ kind, client: platformId })
+              : undefined
+          }
+        />
       ) : null}
       {access.allowed && !query.error && query.data && (
         <div className="flex items-center justify-between gap-3">
@@ -111,7 +159,13 @@ function SessionClients({
     </main>
   );
 }
-function ClientUsageTable({ data }: { data: HostedClients }) {
+function ClientUsageTable({
+  data,
+  onManage,
+}: {
+  data: HostedClients;
+  onManage?: (platformId: string) => void;
+}) {
   const number = (value: string) => formatHostedCredits(value);
   if (!data.clients.length)
     return (
@@ -151,13 +205,24 @@ function ClientUsageTable({ data }: { data: HostedClients }) {
                 <th scope="row" className="max-w-64 px-4 py-4 font-medium">
                   <span className="block break-words">{client.name}</span>
                   <span className="mt-1 block text-xs font-normal text-gray-11">
-                    {client.planId} · {client.status}
+                    {clientPlanName(client.planId)} · {client.status}
                   </span>
                   <span className="mt-1 block text-xs font-normal text-gray-11">
                     {t('Access through {date}', {
                       date: new Date(client.validUntil).toLocaleDateString(),
                     })}
                   </span>
+                  {onManage && (
+                    <Button
+                      className="mt-3"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onManage(client.platformId)}
+                      aria-label={`Manage client ${client.name}`}
+                    >
+                      Manage client
+                    </Button>
+                  )}
                 </th>
                 {[client.credits.execution].map((meter, index) => (
                   <td key={index} className="px-4 py-4 tabular-nums">

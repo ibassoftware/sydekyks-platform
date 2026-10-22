@@ -15,8 +15,11 @@ const id = z.string().length(21);
 const Workspaces = z.object({
   platformId: id,
   userId: id,
+  operational: z.boolean(),
   role: z.enum(['partner', 'team']).nullable(),
-  workspaces: z.array(z.object({ platformId: id, name: z.string() })).max(100),
+  workspaces: z
+    .array(z.object({ platformId: id, name: z.string(), home: z.boolean() }))
+    .max(100),
 });
 
 async function request(

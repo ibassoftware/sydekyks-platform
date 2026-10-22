@@ -1,14 +1,13 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { t } from 'i18next';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import {
   acceptHostedResponse,
   assertAuthSession,
 } from '@/features/hosted-onboarding/auth-session';
-import { checkoutIntent } from '@/lib/checkout-intent';
 
 import {
   enterOperationalWorkspace,
@@ -49,7 +48,7 @@ function SessionWorkspaces({
       if (attempt.signal.aborted) return;
       // Verify the origin session before replacing storage and stale tenant caches.
       acceptHostedResponse(response, access.session, () => cache.clear());
-      navigate(checkoutIntent.billingPath() ?? '/', { replace: true });
+      navigate('/', { replace: true });
     } catch {
       if (attempt.signal.aborted) return;
       try {
@@ -67,12 +66,7 @@ function SessionWorkspaces({
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4 sm:p-8">
       <div>
-        <Button variant="ghost" asChild>
-          <Link to="/">{t('Back to workspace')}</Link>
-        </Button>
-        <h1 className="mt-6 text-2xl font-semibold">
-          {t('Client workspaces')}
-        </h1>
+        <h1 className="text-2xl font-semibold">{t('Client workspaces')}</h1>
         <p className="mt-2 max-w-prose text-sm text-gray-11">
           {t(
             'Open a client workspace to build and support their workflows. Each workspace keeps its own data, connections and credits.',
@@ -137,20 +131,26 @@ function SessionWorkspaces({
                   </h2>
                   <p className="mt-1 text-sm text-gray-11">
                     {current
-                      ? t('Current workspace')
-                      : t('Separate client workspace')}
+                      ? workspace.home
+                        ? t('Your workspace · current')
+                        : t('Client workspace · current')
+                      : workspace.home
+                      ? t('Your Partner workspace')
+                      : t('Assigned client workspace')}
                   </p>
                 </div>
                 <Button
                   variant="outline"
-                  disabled={current || opening !== null}
+                  disabled={opening !== null}
                   onClick={() => void enter(workspace.platformId)}
                   aria-label={t('Open {name}', { name: workspace.name })}
                 >
                   {opening === workspace.platformId
                     ? t('Opening…')
                     : current
-                    ? t('Current')
+                    ? t('Go to workspace')
+                    : workspace.home
+                    ? t('Return to your workspace')
                     : t('Open workspace')}
                 </Button>
               </li>

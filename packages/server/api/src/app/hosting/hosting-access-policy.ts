@@ -6,6 +6,7 @@ import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { UserEntity } from '../user/user-entity'
 import { HostingAccessMembershipEntity, HostingAccessRoleEntity } from './hosting-access-entities'
+import { HostingEligibilityEntity } from './hosting-entities'
 import { partnerSubscriptionAllowed, subscriptionOperationalAllowed } from './hosting-subscription-policy'
 import { hasTrainerOperationalAccess, trainerExternalId } from './hosting-trainer-policy'
 import { HostingActor, hostingFail } from './hosting-transactions'
@@ -22,9 +23,9 @@ export function isOperationalUser(user: Pick<User, 'externalId'>): boolean {
 export async function hasOperationalAccess({ manager, user }: { manager: EntityManager, user: User }): Promise<boolean> {
     if (!user.platformId || !await subscriptionOperationalAllowed(manager, user.platformId)) return false
     if (user.externalId === trainerExternalId(user.identityId)) return hasTrainerOperationalAccess({ manager, user })
-    if (!isOperationalUser(user) || !user.platformId || user.externalId !== operationalExternalId(user.identityId) || user.status !== UserStatus.ACTIVE || user.platformRole !== PlatformRole.OPERATOR) return false
+    if (!isOperationalUser(user) || !user.platformId || user.externalId !== operationalExternalId(user.identityId) || user.status !== UserStatus.ACTIVE || ![PlatformRole.ADMIN, PlatformRole.OPERATOR].includes(user.platformRole)) return false
     const membership = await manager.getRepository(HostingAccessMembershipEntity).findOneBy({ userId: user.id, identityId: user.identityId, platformId: user.platformId, active: true })
-    if (!membership || (membership.role === 'partner' && !await partnerSubscriptionAllowed(manager, user.identityId))) return false
+    if (!membership || (user.platformRole === PlatformRole.ADMIN && membership.role !== 'partner') || (membership.role === 'partner' && !await partnerSubscriptionAllowed(manager, user.identityId))) return false
     return manager.getRepository(HostingAccessRoleEntity).existsBy({ id: user.identityId, role: membership.role, active: true })
 }
 
@@ -49,4 +50,11 @@ export async function hostedCustomerSeatCount(manager: EntityManager, platformId
         .where('member."platformId" = :platformId AND member.status = :status', { platformId, status: UserStatus.ACTIVE })
         .andWhere('(member."externalId" IS NULL OR member."externalId" NOT LIKE :prefix)', { prefix: `${OPERATIONAL_PREFIX}%` })
         .getCount()
+}
+
+/** Partner home membership stays single-user even before its package is funded. */
+export async function hostedWorkspaceAllowsMembers(manager: EntityManager, account: { id: string, ownerIdentityId: string, planId: string }): Promise<boolean> {
+    if (account.planId === 'training' || account.planId === 'assessment') return false
+    const home = await manager.getRepository(HostingEligibilityEntity).existsBy({ identityId: account.ownerIdentityId, platformId: account.id })
+    return !home || !await manager.getRepository(HostingAccessRoleEntity).existsBy({ id: account.ownerIdentityId, role: 'partner', active: true })
 }

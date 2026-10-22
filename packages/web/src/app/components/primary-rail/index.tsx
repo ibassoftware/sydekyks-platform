@@ -104,6 +104,7 @@ export function PrimaryRail() {
     : railIsCollapsed({ preference, pathname, openedOn });
   const showAgents = useAgentsNavVisible();
   const hostedBilling = useHostedBillingEnabled();
+  const operationalWorkspaces = useOperationalWorkspaces();
   const isRailHidden = embedState.isEmbedded || embedState.hideSideNav;
   const { reachesMcp } = mcpHooks.useMcpReach({
     enabled: !isRailHidden && !hostedBilling,
@@ -168,6 +169,26 @@ export function PrimaryRail() {
                 isActive={({ pathname }) => pathname.startsWith('/chat')}
                 onClick={() =>
                   window.dispatchEvent(new Event(chatUtils.newChatEvent))
+                }
+              />
+            )}
+            {hostedBilling && (
+              <RailNavButton
+                collapsed={collapsed}
+                to="/learn"
+                icon={GraduationCap}
+                label={t('Learning')}
+                isActive={({ pathname }) => pathname.startsWith('/learn')}
+              />
+            )}
+            {operationalWorkspaces.allowed && (
+              <RailNavButton
+                collapsed={collapsed}
+                to="/partners/workspaces"
+                icon={BriefcaseBusiness}
+                label={t('Client workspaces')}
+                isActive={({ pathname }) =>
+                  pathname.startsWith('/partners/workspaces')
                 }
               />
             )}

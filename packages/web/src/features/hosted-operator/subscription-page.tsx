@@ -1,5 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+
+import { clientPlanName, managedClientQuery } from './client-admin-api';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,15 +33,26 @@ function SubscriptionScope({
 }: {
   access: ReturnType<typeof useHostedOperatorAccess>;
 }) {
+  const [params] = useSearchParams();
+  const initialClient = params.get('client') ?? '';
   const [after, setAfter] = useState<string | null>(null),
-    [target, setTarget] = useState(''),
+    [target, setTarget] = useState(
+      /^[a-zA-Z0-9_-]{21}$/.test(initialClient) ? initialClient : '',
+    ),
     [savedNotice, setSavedNotice] = useState('');
   const clients = useQuery(
     operatorClientsQuery(access.session, after, access.allowed),
   );
-  const selected = clients.data?.clients.find(
-    (client) => client.platformId === target,
+  const direct = useQuery(
+    managedClientQuery(
+      access.session,
+      initialClient,
+      access.allowed && target === initialClient,
+    ),
   );
+  const selected =
+    clients.data?.clients.find((client) => client.platformId === target) ??
+    (direct.data?.platformId === target ? direct.data : undefined);
   const state = useOperatorSubscription(
     access.session,
     target,
@@ -95,6 +109,12 @@ function SubscriptionScope({
           }}
         >
           <option value="">Select a workspace</option>
+          {direct.data &&
+            !clients.data?.clients.some(
+              (client) => client.platformId === direct.data.platformId,
+            ) && (
+              <option value={direct.data.platformId}>{direct.data.name}</option>
+            )}
           {clients.data?.clients.map((client) => (
             <option key={client.platformId} value={client.platformId}>
               {client.name}
@@ -332,7 +352,7 @@ export function SubscriptionForm({
           {state.name}
         </h2>
         <p className="mt-1 text-sm text-gray-11">
-          Plan: {state.planId} · {statuses[state.state]}
+          Plan: {clientPlanName(state.planId)} · {statuses[state.state]}
         </p>
         <p className="mt-1 text-sm text-gray-11">
           Date rule:{' '}
