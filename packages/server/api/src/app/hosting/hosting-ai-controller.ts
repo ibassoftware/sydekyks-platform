@@ -1,12 +1,14 @@
 import { createHash } from 'node:crypto'
 import { AIProviderName } from '@activepieces/core-utils'
 import { AiRouterMatchMode, AiStepAction, ChooseAiRouteResponse } from '@activepieces/shared'
+import { RateLimitOptions } from '@fastify/rate-limit'
+import { FastifyError } from 'fastify'
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { securityAccess } from '../core/security/authorization/fastify-security'
-import { authnRateLimit } from '../core/security/rate-limit'
+import { errorHandler } from '../helper/error-handler'
 import { hostedExtractionSchema } from './hosting-ai-extraction'
-import { HOSTED_AI_TIMEOUT_MS, HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL, HostedAiRequest } from './hosting-ai-policy'
+import { HOSTED_AI_REQUEST_MAX_BYTES, HOSTED_AI_TIMEOUT_MS, HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL, HostedAiRequest } from './hosting-ai-policy'
 import { hostingConfiguration } from './hosting-configuration'
 import { assertHostedCopilotModel } from './hosting-copilot'
 import { NativeToolRequest } from './hosting-native-provider'
@@ -23,10 +25,30 @@ const stepSchema = z.strictObject({
     maxOutputTokens: z.number().int().min(1).max(4096).optional(), temperature: z.number().min(0).max(2).optional(),
     webSearch: z.strictObject({ enabled: z.boolean(), options: z.record(z.string(), z.unknown()).optional() }).optional(),
 })
+// Internal AI calls have already passed execution admission. A single chat can
+// make 32 calls; the login/IP bucket would reject normal multi-step building and
+// let one tenant starve all other tenants sharing the worker's network address.
+export const hostedAiRateLimit: RateLimitOptions = {
+    max: 240, timeWindow: '1 minute', hook: 'preHandler',
+    keyGenerator: request => `hosted-ai:${request.principal.platform.id}:${request.principal.projectId}`,
+    errorResponseBuilder: () => ({ statusCode: 429, code: 'HOSTING_AI_RATE_LIMITED', receipt: { version: 1, phase: 'pre_dispatch' } }),
+}
+
 export const hostingAiController: FastifyPluginAsyncZod = async app => {
     if (hostingConfiguration.getServiceMode() !== 'hosted') return
-    const config = { security: securityAccess.engine(), rateLimit: authnRateLimit }
-    app.post('/copilot/completions', { config, bodyLimit: 65536, schema: { body: HostedAiRequest.extend({ stream: z.boolean().default(false) }).strict() } }, async (request, reply) => {
+    const config = { security: securityAccess.engine(), rateLimit: hostedAiRateLimit }
+    // Keep parser/rate refusals machine-readable. Fastify's default Error
+    // serialization can omit its code; without a receipt the worker must keep an
+    // uncertain hold. Never attach this receipt to a supplier failure.
+    app.setErrorHandler<FastifyError>(async (error, request, reply) => {
+        const bodyLimit = error.code === 'FST_ERR_CTP_BODY_TOO_LARGE' && error.statusCode === 413
+        const rateLimit = error.code === 'HOSTING_AI_RATE_LIMITED' && error.statusCode === 429
+        if (bodyLimit || rateLimit) {
+            return reply.status(bodyLimit ? 413 : 429).send({ code: bodyLimit ? 'HOSTING_AI_REQUEST_LIMIT' : 'HOSTING_AI_RATE_LIMITED', receipt: { version: 1, phase: 'pre_dispatch' } })
+        }
+        return errorHandler(error, request, reply)
+    })
+    app.post('/copilot/completions', { config, bodyLimit: HOSTED_AI_REQUEST_MAX_BYTES, schema: { body: HostedAiRequest.extend({ stream: z.boolean().default(false) }).strict() } }, async (request, reply) => {
         const { stream, ...body } = request.body
         const input = HostedAiRequest.parse(body)
         await assertHostedCopilotModel({ admissionId: request.principal.id, request: input })
@@ -54,8 +76,8 @@ export const hostingAiController: FastifyPluginAsyncZod = async app => {
         return reply.type('text/event-stream').send(output)
     })
     app.post('/tools', { config, logLevel: 'silent', bodyLimit: 16384, schema: { body: NativeToolRequest } }, async request => hostingServices.nativeTools().execute({ scope: { admissionId: request.principal.id, platformId: request.principal.platform.id, projectId: request.principal.projectId }, request: request.body }))
-    app.post('/chat/completions', { config, bodyLimit: 65536, schema: { body: HostedAiRequest } }, async request => hostingServices.gateway().execute({ scope: { admissionId: request.principal.id, platformId: request.principal.platform.id, projectId: request.principal.projectId }, request: request.body }))
-    app.post('/step', { config, bodyLimit: 65536, schema: { body: stepSchema } }, async request => {
+    app.post('/chat/completions', { config, bodyLimit: HOSTED_AI_REQUEST_MAX_BYTES, schema: { body: HostedAiRequest } }, async request => hostingServices.gateway().execute({ scope: { admissionId: request.principal.id, platformId: request.principal.platform.id, projectId: request.principal.projectId }, request: request.body }))
+    app.post('/step', { config, bodyLimit: HOSTED_AI_REQUEST_MAX_BYTES, schema: { body: stepSchema } }, async request => {
         const input = request.body
         if (input.provider === AIProviderName.DEEPSEEK && !input.providerConfigId) hostingFail('HOSTING_EXACT_BYOK_KEY_REQUIRED')
         if (input.provider === AIProviderName.ACTIVEPIECES && input.providerConfigId) hostingFail('HOSTING_AI_PAYER_CONFLICT')

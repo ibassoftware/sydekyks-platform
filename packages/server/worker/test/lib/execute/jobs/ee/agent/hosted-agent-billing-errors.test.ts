@@ -35,6 +35,15 @@ describe('trusted hosted gateway refusal classification', () => {
         const retry = new RetryError({ message: 'Failed', reason: 'errorNotRetryable', errors: [failure(413, 'FST_ERR_CTP_BODY_TOO_LARGE')] })
         expect(hostedAgentRefusalOf(retry, base)?.code).toBe('HOSTING_AI_REQUEST_LIMIT')
     })
+    it.each([[413, 'HOSTING_AI_REQUEST_LIMIT'], [429, 'HOSTING_AI_RATE_LIMITED']])('accepts only a pinned pre-dispatch %s receipt', (statusCode, code) => {
+        const responseBody = JSON.stringify({ code, receipt: { version: 1, phase: 'pre_dispatch' } })
+        const error = new APICallError({ message: 'Request rejected', url: `${base}v1/engine/hosting-ai/copilot/completions`, requestBodyValues: {}, statusCode, responseBody, isRetryable: false })
+        expect(hostedAgentRefusalOf(error, base)?.code).toBe(code)
+        for (const receipt of [undefined, { version: 2, phase: 'pre_dispatch' }, { version: 1, phase: 'supplier' }, null]) {
+            expect(hostedAgentRefusalOf(new APICallError({ message: 'Rejected', url, requestBodyValues: {}, statusCode, responseBody: JSON.stringify({ code, receipt }), isRetryable: false }), base)).toBeNull()
+        }
+        expect(hostedAgentRefusalOf(new APICallError({ message: 'Rejected', url: 'https://supplier.test/chat/completions', requestBodyValues: {}, statusCode, responseBody, isRetryable: false }), base)).toBeNull()
+    })
     it('never trusts supplier 413s, arbitrary 413 messages, wrong codes or malformed bodies', () => {
         expect(hostedAgentRefusalOf(failure(413, 'FST_ERR_CTP_BODY_TOO_LARGE', 'https://supplier.test/chat/completions'), base)).toBeNull()
         expect(hostedAgentRefusalOf(failure(413, 'HOSTING_AI_REQUEST_LIMIT'), base)).toBeNull()

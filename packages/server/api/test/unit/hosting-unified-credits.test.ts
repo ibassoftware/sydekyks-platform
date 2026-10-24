@@ -9,10 +9,10 @@ import * as agentTurnRuntime from '../../../worker/src/lib/execute/jobs/ee/agent
 import type { JobContext } from '../../../worker/src/lib/execute/types'
 import { AIProviderEntity } from '../../src/app/ai/ai-provider-entity'
 import { UserIdentityEntity } from '../../src/app/authentication/user-identity/user-identity-entity'
-import { SydekyksInclusiveCredits1914000000000 } from '../../src/app/database/migration/postgres/1914000000000-SydekyksInclusiveCredits'
 import { SydekyksUnifiedCredits1903000000000 } from '../../src/app/database/migration/postgres/1903000000000-SydekyksUnifiedCredits'
-import { SydekyksCreditRateV31913000000000 } from '../../src/app/database/migration/postgres/1913000000000-SydekyksCreditRateV3'
 import { SydekyksCreditRateV21905000000000 } from '../../src/app/database/migration/postgres/1905000000000-SydekyksCreditRateV2'
+import { SydekyksCreditRateV31913000000000 } from '../../src/app/database/migration/postgres/1913000000000-SydekyksCreditRateV3'
+import { SydekyksInclusiveCredits1914000000000 } from '../../src/app/database/migration/postgres/1914000000000-SydekyksInclusiveCredits'
 import { FlagEntity } from '../../src/app/flags/flag.entity'
 import { encryptUtils } from '../../src/app/helper/encryption'
 import { createHostedAiGateway } from '../../src/app/hosting/hosting-ai-gateway'
@@ -175,8 +175,12 @@ describe('historical additive V1–V3 Credits accounting', () => {
             expect(hold).toMatchObject({ accountingVersion: 'single-credits-1500-microusd-v3', amount: 2n, microUsdPerCredit: 1500n })
         }
         const before = await ds.getRepository(HostingReservationEntity).find({ order: { id: 'ASC' } }), runner = ds.createQueryRunner()
-        try { await expect(new SydekyksCreditRateV31913000000000().down(runner)).rejects.toThrow('CREDIT_RATE_ROLLBACK_REQUIRES_BACKUP_RESTORE') }
-        finally { await runner.release() }
+        try {
+            await expect(new SydekyksCreditRateV31913000000000().down(runner)).rejects.toThrow('CREDIT_RATE_ROLLBACK_REQUIRES_BACKUP_RESTORE')
+        }
+        finally {
+            await runner.release()
+        }
         expect(await ds.getRepository(HostingReservationEntity).find({ order: { id: 'ASC' } })).toEqual(before)
     })
     it.each([
@@ -339,7 +343,7 @@ describe('full gateway Credit journey', () => {
         const tools = [{ type: 'function' as const, function: { name: 'demo', description: 'x'.repeat(1000), parameters: { type: 'object', properties: { content: { type: 'string' } } } } }]
         expect(small).toBeLessThan(10000)
         expect(hostedAiInputBound({ ...request, tools })).toBeGreaterThan(small + 4000)
-        expect(() => hostedAiInputBound({ ...request, messages: [{ role: 'user', content: 'x'.repeat(65536) }] })).toThrow('REQUEST_LIMIT')
+        expect(() => hostedAiInputBound({ ...request, messages: [{ role: 'user', content: 'x'.repeat(192 * 1024) }] })).toThrow('REQUEST_LIMIT')
     })
     it('charges one shared balance, replays settled calls once and denies calls after exhaustion before provider send', async () => {
         await configureManaged()

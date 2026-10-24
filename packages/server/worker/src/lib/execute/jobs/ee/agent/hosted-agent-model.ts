@@ -8,6 +8,7 @@ import { JobContext } from '../../../types'
 export const HOSTED_AGENT_MAX_OUTPUT = 4096
 
 export function hostedAgentFailureMessage(message: string): string {
+    if (/HOSTING_AI_RATE_LIMITED/.test(message)) return 'This workspace has made too many AI requests in a short time. Wait a minute before sending again.'
     if (/HOSTING_CREDITS_EXHAUSTED/.test(message)) return 'Not enough Credits are available for this reply. Check billing or contact your workspace administrator.'
     if (/HOSTING_(AI|NATIVE)_FILE_(EXPIRED|DELETED|UNAVAILABLE|INVALID|CHANGED|SCOPE_DENIED)/.test(message)) return 'An attachment is no longer available. Upload it again or start a new chat.'
     if (/HOSTING_NATIVE_(TOOL|CREDIT|OUTPUT)_LIMIT|HOSTING_RUN_CREDIT_LIMIT|HOSTING_AI_CALL_LIMIT/.test(message)) return 'This reply reached its safety limit. Start a shorter request or contact your workspace administrator.'
@@ -27,7 +28,7 @@ export function hostedAgentFailureMessage(message: string): string {
 // into a definitive user refusal. Upstream statuses/bodies remain untrusted.
 export function hostedAgentRefusalOf(error: unknown, internalApiUrl: string): { code: string, message: string } | null {
     const cause = RetryError.isInstance(error) ? error.lastError : error
-    if (!APICallError.isInstance(cause) || ![403, 413].includes(cause.statusCode ?? 0)) return null
+    if (!APICallError.isInstance(cause) || ![403, 413, 429].includes(cause.statusCode ?? 0)) return null
     const base = `${internalApiUrl.replace(/\/$/, '')}/v1/engine/hosting-ai/copilot`
     if (![`${base}/completions`, `${base}/chat/completions`].includes(cause.url)) return null
     let body: unknown
@@ -37,12 +38,17 @@ export function hostedAgentRefusalOf(error: unknown, internalApiUrl: string): { 
     catch {
         return null
     }
-    // Fastify rejects oversized internal HTTP bodies before the gateway can
-    // dispatch a supplier call. Recognize only that exact transport receipt at
-    // our pinned internal completion endpoint; upstream/unknown 413s stay uncertain.
-    if (cause.statusCode === 413) {
-        if (!body || typeof body !== 'object' || Array.isArray(body) || !('code' in body) || body.code !== 'FST_ERR_CTP_BODY_TOO_LARGE') return null
-        return { code: 'HOSTING_AI_REQUEST_LIMIT', message: hostedAgentFailureMessage('HOSTING_AI_REQUEST_LIMIT') }
+    // Only our pinned gateway may attest that parsing/rate admission rejected
+    // this HTTP call before any supplier dispatch. Unknown upstream 413/429s
+    // and transport failures remain uncertain; no retries or refunds are inferred.
+    if (cause.statusCode === 413 || cause.statusCode === 429) {
+        if (!body || typeof body !== 'object' || Array.isArray(body) || !('code' in body)) return null
+        const expected = cause.statusCode === 413 ? 'HOSTING_AI_REQUEST_LIMIT' : 'HOSTING_AI_RATE_LIMITED'
+        const receipt = 'receipt' in body ? body.receipt : null
+        const attested = receipt && typeof receipt === 'object' && 'version' in receipt && receipt.version === 1 && 'phase' in receipt && receipt.phase === 'pre_dispatch'
+        const legacyParserReceipt = cause.statusCode === 413 && body.code === 'FST_ERR_CTP_BODY_TOO_LARGE'
+        if (!(body.code === expected && attested) && !legacyParserReceipt) return null
+        return { code: expected, message: hostedAgentFailureMessage(expected) }
     }
     if (!body || typeof body !== 'object' || !('code' in body) || typeof body.code !== 'string' || !['HOSTING_CREDITS_EXHAUSTED', 'HOSTING_RUN_CREDIT_LIMIT', 'HOSTING_AI_CALL_LIMIT', 'HOSTING_NATIVE_CREDIT_LIMIT', 'HOSTING_NATIVE_TOOL_LIMIT', 'HOSTING_AI_FILE_UNAVAILABLE', 'HOSTING_AI_CAPABILITY_DENIED', 'HOSTING_NATIVE_OUTPUT_LIMIT', 'HOSTING_AI_REQUEST_LIMIT', 'HOSTING_NATIVE_FEATURE_DENIED', 'HOSTING_NATIVE_URL_DENIED', 'HOSTING_NATIVE_PRICING_APPROVAL_REQUIRED', 'HOSTING_AI_STEP_DENIED', 'HOSTING_AI_FILE_CHANGED', 'HOSTING_AI_FILE_INVALID', 'HOSTING_AI_FILE_SCOPE_DENIED', 'HOSTING_OPERATOR_BUDGET_EXHAUSTED', 'HOSTING_BYOK_SCOPE_DENIED', 'HOSTING_EXACT_BYOK_KEY_REQUIRED'].includes(body.code)) return null
     return { code: body.code, message: hostedAgentFailureMessage(body.code) }

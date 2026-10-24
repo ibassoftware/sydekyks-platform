@@ -12,6 +12,9 @@ export const HOSTED_AI_CONTEXT_TOKENS = 1_048_576
 export const HOSTED_AI_MAX_OUTPUT = 4096
 export const HOSTED_AI_TIMEOUT_MS = 60_000
 export const HOSTED_AI_MAX_CALLS = 32
+// Enough room for catalogue schemas plus multi-step history, while the 4x UTF-8
+// token bound still stays below the supplier context and all quotes stay funded.
+export const HOSTED_AI_REQUEST_MAX_BYTES = 192 * 1024
 
 const toolCall = z.strictObject({ id: z.string().max(256), type: z.literal('function'), function: z.strictObject({ name: z.string().max(128), arguments: z.string().max(16384) }) })
 const message = z.discriminatedUnion('role', [
@@ -74,7 +77,7 @@ export function hostedAiCost({ hit, miss, output, prices }: { hit: number, miss:
 export function hostedAiInputBound(input: HostedAiInput): number {
     const serialized = JSON.stringify({ messages: input.messages, tools: input.tools, tool_choice: input.tool_choice, response_format: input.response_format })
     const bytes = Buffer.byteLength(serialized, 'utf8')
-    if (Buffer.byteLength(JSON.stringify(input), 'utf8') > 65536) hostingFail('HOSTING_AI_REQUEST_LIMIT')
+    if (Buffer.byteLength(JSON.stringify(input), 'utf8') > HOSTED_AI_REQUEST_MAX_BYTES) hostingFail('HOSTING_AI_REQUEST_LIMIT')
     const bound = bytes * 4 + 4096 + (input.messages.length + (input.tools?.length ?? 0)) * 256
     if (bound + input.max_tokens > HOSTED_AI_CONTEXT_TOKENS) hostingFail('HOSTING_AI_REQUEST_LIMIT')
     return bound
