@@ -4,6 +4,7 @@ import fastify, { FastifyInstance } from 'fastify'
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { hostedAgentRefusalOf } from '../../../worker/src/lib/execute/jobs/ee/agent/hosted-agent-model'
+import { entitiesMustBeOwnedByCurrentProject } from '../../src/app/authentication/authorization'
 import { hostedAiRateLimit, hostingAiController } from '../../src/app/hosting/hosting-ai-controller'
 import { HOSTED_AI_CONTEXT_TOKENS, HOSTED_AI_REQUEST_MAX_BYTES, hostedAiInputBound, HostedAiRequest } from '../../src/app/hosting/hosting-ai-policy'
 
@@ -19,6 +20,10 @@ beforeAll(async () => {
     vi.stubEnv('AP_SERVICE_MODE', 'hosted')
     app = fastify()
     app.setValidatorCompiler(validatorCompiler); app.setSerializerCompiler(serializerCompiler)
+    // The real engine parent hook runs even for parser errors, before auth has
+    // populated a principal. Fixed transport receipts must not traverse entity
+    // ownership serialization; normal gateway objects must still traverse it.
+    app.addHook('preSerialization', entitiesMustBeOwnedByCurrentProject)
     // Production authentication runs in a parent preHandler before route-level
     // rate limiting. Supply the same trusted principal shape, never body/IP keys.
     app.addHook('preHandler', async request => {
@@ -43,6 +48,12 @@ describe('real hosted AI HTTP parser, serializer and rate admission', () => {
         const response = await app.inject({ method: 'POST', url: path, headers: headers(), payload: encoded })
         expect(response.statusCode).toBe(200)
         expect(execute.mock.lastCall?.[0]).toMatchObject({ request: { tools, messages: payload.messages } })
+    })
+    it('keeps normal gateway objects subject to the real engine ownership hook', async () => {
+        execute.mockImplementationOnce(async () => ({ accepted: true, projectId: 'f'.repeat(21) }))
+        const response = await app.inject({ method: 'POST', url: path, headers: headers(), payload: input })
+        expect(response.statusCode).toBe(403)
+        expect(response.json().code).toBe('AUTHORIZATION')
     })
     it('serializes an exact pre-dispatch receipt for oversized bytes and never invokes the gateway', async () => {
         const calls = execute.mock.calls.length

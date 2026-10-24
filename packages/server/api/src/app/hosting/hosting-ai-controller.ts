@@ -44,7 +44,11 @@ export const hostingAiController: FastifyPluginAsyncZod = async app => {
         const bodyLimit = error.code === 'FST_ERR_CTP_BODY_TOO_LARGE' && error.statusCode === 413
         const rateLimit = error.code === 'HOSTING_AI_RATE_LIMITED' && error.statusCode === 429
         if (bodyLimit || rateLimit) {
-            return reply.status(bodyLimit ? 413 : 429).send({ code: bodyLimit ? 'HOSTING_AI_REQUEST_LIMIT' : 'HOSTING_AI_RATE_LIMITED', receipt: { version: 1, phase: 'pre_dispatch' } })
+            // Parser failures occur before authentication's preHandler. Send only
+            // this fixed, non-entity receipt as serialized JSON: the engine's
+            // ownership preSerialization hook requires an authenticated principal.
+            // Normal gateway objects still pass through that ownership hook.
+            return reply.status(bodyLimit ? 413 : 429).type('application/json').send(JSON.stringify({ code: bodyLimit ? 'HOSTING_AI_REQUEST_LIMIT' : 'HOSTING_AI_RATE_LIMITED', receipt: { version: 1, phase: 'pre_dispatch' } }))
         }
         return errorHandler(error, request, reply)
     })
