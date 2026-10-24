@@ -1,6 +1,6 @@
 import { apId, assertNotNullOrUndefined, FlowVersionId, isNil, PlatformId, ProjectId } from '@activepieces/core-utils'
 import { wideEvent } from '@activepieces/server-utils'
-import { EngineHttpResponse, EventPayload, ExecutionType, Flow, FlowRun, FlowStatus, LATEST_JOB_DATA_SCHEMA_VERSION, RunEnvironment, StreamStepProgress, TriggerPayload, WorkerJobType } from '@activepieces/shared'
+import { EngineHttpResponse, EventPayload, ExecutionType, Flow, FlowRun, FlowRunStatus, FlowStatus, LATEST_JOB_DATA_SCHEMA_VERSION, RunEnvironment, StreamStepProgress, TriggerPayload, WorkerJobType } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { StatusCodes } from 'http-status-codes'
 import { flowExecutionCache } from '../flows/flow/flow-execution-cache'
@@ -57,8 +57,13 @@ export const webhookService = {
         parentRunId,
         failParentOnFailure,
         timeoutMs,
+        hostedDraftActor,
     }: HandleWebhookParams): Promise<EngineHttpResponse> {
-        if (hostingConfiguration.getServiceMode() === 'hosted' && parentRunId) hostingFail('HOSTING_AUTHENTICATED_NESTED_CALL_REQUIRED')
+        const hosted = hostingConfiguration.getServiceMode() === 'hosted'
+        if (hosted && parentRunId) hostingFail('HOSTING_AUTHENTICATED_NESTED_CALL_REQUIRED')
+        const hostedDraft = hosted && execute && flowVersionToRun === WebhookFlowVersionToRun.LATEST
+        if (hostedDraft && (!hostedDraftActor || hostedDraftActor.tokenVersion === undefined || failParentOnFailure)) hostingFail('HOSTING_AUTHENTICATED_DRAFT_REQUIRED')
+        if (hosted && hostedDraftActor && !hostedDraft) hostingFail('HOSTING_TRIGGER_SCOPE_MISMATCH')
         const webhookHeader = 'x-webhook-id'
         const webhookRequestId = apId()
         wideEvent.set({
@@ -88,6 +93,7 @@ export const webhookService = {
             }
         }
         const { flow } = flowExecutionResult
+        if (hostedDraft && hostedDraftActor && (hostedDraftActor.projectId !== flow.projectId || hostedDraftActor.platformId !== flowExecutionResult.platformId)) hostingFail('HOSTING_PROJECT_ACCESS_DENIED')
 
         // data() consumes the request body stream (streaming any file straight to storage), which
         // can only be read once. The handshake check and the payload resolution below both need it,
@@ -108,7 +114,7 @@ export const webhookService = {
         // Handshake pings can arrive both during the publish window (when flow.status is still
         // DISABLED before the transaction completes) and after the flow is ENABLED (third-party
         // re-verification). Checking before the DISABLED guard handles both cases.
-        if (!isNil(flowExecutionResult.handshakeConfiguration)) {
+        if (!hostedDraft && !isNil(flowExecutionResult.handshakeConfiguration)) {
             const response = await webhookHandshake.handleHandshakeRequest({
                 payload: (payload ?? await resolveData()) as TriggerPayload,
                 handshakeConfiguration: flowExecutionResult.handshakeConfiguration,
@@ -162,7 +168,7 @@ export const webhookService = {
             }
         }
 
-        if (async) {
+        if (async && !hostedDraft) {
             wideEvent.set({ webhook: { mode: 'async' } })
             return handleAsync({
                 flow,
@@ -189,9 +195,11 @@ export const webhookService = {
             runEnvironment: flowVersionToRun === WebhookFlowVersionToRun.LOCKED_FALL_BACK_TO_LATEST ? RunEnvironment.PRODUCTION : RunEnvironment.TESTING,
             logger: pinoLogger,
             webhookRequestId,
-            workerHandlerId: engineResponseWatcher(pinoLogger).getServerId(),
+            workerHandlerId: hostedDraft && async ? undefined : engineResponseWatcher(pinoLogger).getServerId(),
             flowVersionIdToRun,
-            saveSampleData,
+            saveSampleData: hostedDraft ? false : saveSampleData,
+            hostedDraftActor: hostedDraft ? hostedDraftActor : undefined,
+            draftAsync: hostedDraft && async,
             flowVersionToRun,
             onRunCreated,
             parentRunId,
@@ -249,7 +257,7 @@ async function handleAsync(params: AsyncWebhookParams): Promise<EngineHttpRespon
 }
 
 async function handleSync(params: SyncWebhookParams): Promise<EngineHttpResponse> {
-    const { payload, projectId, flow, logger, webhookRequestId, workerHandlerId, flowVersionIdToRun, runEnvironment, saveSampleData, flowVersionToRun, parentRunId, failParentOnFailure, platformId, timeoutMs } = params
+    const { payload, projectId, flow, logger, webhookRequestId, workerHandlerId, flowVersionIdToRun, runEnvironment, saveSampleData, flowVersionToRun, parentRunId, failParentOnFailure, platformId, timeoutMs, hostedDraftActor } = params
 
     if (saveSampleData) {
         rejectedPromiseHandler(savePayload({
@@ -293,6 +301,7 @@ async function handleSync(params: SyncWebhookParams): Promise<EngineHttpResponse
             parentRunId,
             failParentOnFailure,
             shouldExecuteTriggerOnRetry: true,
+            ...(hostedDraftActor ? { triggeredBy: hostedDraftActor.userId } : {}),
         })
         wideEvent.set({ flowRun: { id: quotaExceededRun.id }, webhook: { quotaExceeded: true } })
         return {
@@ -303,7 +312,7 @@ async function handleSync(params: SyncWebhookParams): Promise<EngineHttpResponse
     }
 
     const createdRun = await flowRunService(logger).start({
-        hostedOrigin: { type: 'scheduled' },
+        hostedOrigin: hostedDraftActor ? { type: 'user', userId: hostedDraftActor.userId, tokenVersion: hostedDraftActor.tokenVersion } : { type: 'scheduled' },
         platformId,
         environment: runEnvironment,
         flowId: flow.id,
@@ -312,15 +321,17 @@ async function handleSync(params: SyncWebhookParams): Promise<EngineHttpResponse
         workerHandlerId,
         projectId,
         executeTrigger: true,
-        httpRequestId: webhookRequestId,
+        httpRequestId: params.draftAsync ? undefined : webhookRequestId,
         executionType: ExecutionType.BEGIN,
-        streamStepProgress: StreamStepProgress.NONE,
+        streamStepProgress: hostedDraftActor ? StreamStepProgress.WEBSOCKET : StreamStepProgress.NONE,
         parentRunId,
         failParentOnFailure,
     })
 
     wideEvent.set({ flowRun: { id: createdRun.id } })
     params.onRunCreated?.(createdRun)
+    if (hostedDraftActor && createdRun.status === FlowRunStatus.FAILED) return { status: StatusCodes.PAYMENT_REQUIRED, body: { runId: createdRun.id, message: 'This test could not start. Check Credits and workspace access before trying again.' }, headers: {} }
+    if (params.draftAsync) return { status: StatusCodes.OK, body: { runId: createdRun.id, environment: RunEnvironment.TESTING }, headers: {} }
 
     const listenerResult = await engineResponseWatcher(logger).oneTimeListener<EngineHttpResponse>(webhookRequestId, true, timeoutMs ?? WEBHOOK_TIMEOUT_MS, {
         status: StatusCodes.REQUEST_TIMEOUT,
@@ -349,7 +360,10 @@ async function savePayload(params: Omit<AsyncWebhookParams, 'saveSampleData' | '
     await triggerSourceService(logger).disable({ flowId: flow.id, projectId: flow.projectId, simulate: true, ignoreError: true })
 }
 
+export type HostedDraftActor = { userId: string, tokenVersion: string | null, projectId: ProjectId, platformId: PlatformId }
+
 type HandleWebhookParams = {
+    hostedDraftActor?: HostedDraftActor
     flowId: string
     async: boolean
     saveSampleData: boolean
@@ -380,6 +394,8 @@ type AsyncWebhookParams = {
 }
 
 type SyncWebhookParams = {
+    hostedDraftActor?: HostedDraftActor
+    draftAsync?: boolean
     payload: unknown
     saveSampleData: boolean
     projectId: ProjectId
@@ -389,7 +405,7 @@ type SyncWebhookParams = {
     flow: Flow
     logger: FastifyBaseLogger
     webhookRequestId: string
-    workerHandlerId: string
+    workerHandlerId: string | undefined
     flowVersionIdToRun: FlowVersionId
     onRunCreated?: (run: FlowRun) => void
     parentRunId?: string

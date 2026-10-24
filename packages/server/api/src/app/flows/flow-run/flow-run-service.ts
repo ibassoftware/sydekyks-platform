@@ -337,6 +337,7 @@ export const flowRunService = (log: FastifyBaseLogger) => ({
             failParentOnFailure,
             stepNameToTest,
             environment,
+            triggeredBy: hostedOrigin?.type === 'user' ? hostedOrigin.userId : undefined,
         }, log)
 
         wideEvent.set({
@@ -348,7 +349,7 @@ export const flowRunService = (log: FastifyBaseLogger) => ({
             flow: { id: flowId },
         })
 
-        await addToQueue({
+        const startedRun = await addToQueue({
             flowRun: newFlowRun,
             hostedOrigin,
             platformId,
@@ -360,9 +361,10 @@ export const flowRunService = (log: FastifyBaseLogger) => ({
             streamStepProgress,
         }, log)
 
-        await flowRunSideEffects(log).onStart({ flowRun: newFlowRun, platformId })
+        if (startedRun.status === FlowRunStatus.FAILED) return startedRun
+        await flowRunSideEffects(log).onStart({ flowRun: startedRun, platformId })
         log.info({ flowRun: { id: newFlowRun.id }, flow: { id: flowId }, project: { id: projectId }, executionType }, 'Flow run started')
-        return newFlowRun
+        return startedRun
     },
 
     async createQuotaExceededRun({ flowVersion, payload, projectId, environment, parentRunId, failParentOnFailure, triggeredBy, shouldExecuteTriggerOnRetry }: CreateQuotaExceededRunParams): Promise<FlowRun> {

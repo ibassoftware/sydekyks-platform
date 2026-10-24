@@ -178,10 +178,17 @@ async function runTieredAgentTurn({ hosted = false, models, fastModel, systemPro
             const stepModel = isFirstStep && !isNil(fast) ? fast : current()
             const usesFastModel = stepModel !== current()
             const stepBudget = stepModel.budget
-            const visibleTools = skillSurface?.attachedToolNames() ?? agentToolPhases.activeToolsForPhase({ phase: phaseState.phase, allToolNames })
+            // Hosted tools have already passed the server's scoped allowlist and
+            // permission checks. Keep admitted draft editors visible from the
+            // first step of every turn: a new/follow-up chat starts in discovery,
+            // and hiding those tools can make the model conclude editing is absent.
+            // Visibility does not bypass execution admission or approval gates.
+            const visibleTools = skillSurface?.attachedToolNames() ?? (hosted ? allToolNames : agentToolPhases.activeToolsForPhase({ phase: phaseState.phase, allToolNames }))
             const phaseTools = isNil(skillSurface) ? visibleTools.filter((name) => paidToolsAffordable || !chatBilling.isPaidTool(name)) : visibleTools
             const activeTools = forcesCompletion ? [TASK_COMPLETION_TOOL_NAME] : phaseTools
-            const boundedContext = boundContextForStep({ baseMessages: attemptMessages, steps, systemPrompt: turnSystemPrompt, provider: stepModel.provider })
+            // Hosted requests preserve all messages; the metered gateway owns exact
+            // transport/context admission and funded full-context ceilings.
+            const boundedContext = hosted ? {} : boundContextForStep({ baseMessages: attemptMessages, steps, systemPrompt: turnSystemPrompt, provider: stepModel.provider })
             const stepContext = isLastAllowedStep
                 ? { messages: [...(boundedContext.messages ?? currentMessages), FINAL_STEP_MESSAGE] }
                 : boundedContext

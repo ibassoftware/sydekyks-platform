@@ -180,13 +180,16 @@ export function createBuildPlanTools({ eventEmitter, getProjectId }: {
     }
 }
 
-export function createPhaseTools({ onPhaseChange }: {
+export function createPhaseTools({ onPhaseChange, toolsAlreadyVisible = false }: {
+    toolsAlreadyVisible?: boolean
     onPhaseChange: (phase: AgentPhase) => void
 }): ToolSet {
     let lastPhase: AgentPhase | null = null
     return {
         ap_set_phase: tool({
-            description: 'Switch your working phase (silent, internal — no thinking status). Start in "discovery" (understanding the goal, reading data). Call this with "build" the moment you begin constructing, editing, testing, or running an automation — e.g. right after you load the build_flow or one_time_task guide. This unlocks the build/execution tools.',
+            description: toolsAlreadyVisible
+                ? 'Record your working phase silently: discovery while understanding the goal, build while constructing or editing. All supplied tools are already available in every phase. This does not change permissions or bypass approval.'
+                : 'Switch your working phase (silent, internal — no thinking status). Start in "discovery" (understanding the goal, reading data). Call this with "build" the moment you begin constructing, editing, testing, or running an automation — e.g. right after you load the build_flow or one_time_task guide. This unlocks the build/execution tools.',
             inputSchema: z.object({
                 phase: z.enum(['discovery', 'build']).describe('"discovery" while scoping/reading; "build" once you start building or executing'),
             }),

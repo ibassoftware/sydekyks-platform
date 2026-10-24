@@ -55,6 +55,22 @@ beforeEach(async () => {
 })
 
 describe('hosted provider metadata for live PROPERTY admissions', () => {
+    it('shows only Sydekyks when no workspace BYOK key is configured', async () => {
+        const response = await app.inject({ method: 'GET', url: '/ai-providers/' })
+        expect(response.statusCode).toBe(200)
+        expect(response.json()).toEqual([{ provider: 'activepieces', name: 'Sydekyks', enabledForChat: false, keys: [] }])
+        expect((await app.inject({ method: 'GET', url: '/ai-providers/deepseek/models' })).statusCode).toBe(403)
+    })
+    it('does not advertise disabled, foreign-project or excluded-model BYOK keys', async () => {
+        for (const key of [
+            { status: 'disabled', projectScope: 'all', projectIds: [], modelScope: 'all', modelIds: [] },
+            { status: 'active', projectScope: 'selected', projectIds: [apId()], modelScope: 'all', modelIds: [] },
+            { status: 'active', projectScope: 'all', projectIds: [], modelScope: 'selected', modelIds: ['other-model'] },
+        ]) await ds.getRepository(AIProviderEntity).save({ id: apId(), platformId: value.platformId, provider: AIProviderName.DEEPSEEK, displayName: 'Unavailable key', auth: { iv: 'synthetic-iv', data: 'synthetic-key' }, config: {}, enabledForChat: false, statusVersion: 0, ...key })
+        const response = await app.inject({ method: 'GET', url: '/ai-providers/' })
+        expect(response.statusCode).toBe(200)
+        expect(response.json().map((provider: { provider: string }) => provider.provider)).toEqual(['activepieces'])
+    })
     it('returns only filtered key names and virtual model metadata on the three read-only routes', async () => {
         const keyId = apId(), otherKeyId = apId()
         for (const [id, projectIds] of [[keyId, [value.projectId]], [otherKeyId, [apId()]]] as const) await ds.getRepository(AIProviderEntity).save({ id, platformId: value.platformId, provider: AIProviderName.DEEPSEEK, displayName: id === keyId ? 'Client key' : 'Other workspace key', auth: { iv: 'synthetic-iv', data: 'never-expose-this-synthetic-key' }, config: {}, status: 'active', projectScope: 'selected', projectIds: [...projectIds], modelScope: 'all', modelIds: [], enabledForChat: false, statusVersion: 0 })

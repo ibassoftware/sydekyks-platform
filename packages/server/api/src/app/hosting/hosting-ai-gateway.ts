@@ -34,7 +34,7 @@ export function createHostedAiGateway({ dataSource, provider = deepseekHostedPro
     async function dispatch({ scope, request, stream = false, signal }: { scope: Scope, request: HostedAiInput, stream?: boolean, signal?: AbortSignal }): Promise<Record<string, unknown> | Readable> {
         const submitted = HostedAiRequest.parse(request)
         if (submitted.model !== (submitted.payer.type === 'managed' ? HOSTED_MANAGED_MODEL : HOSTED_DEEPSEEK_MODEL)) hostingFail('HOSTING_AI_MODEL_DENIED')
-        const baseInputTokenBound = hostedAiInputBound(submitted)
+        hostedAiInputBound(submitted) // Validate transport before opening any ledger transaction.
         let preparedFiles: Awaited<ReturnType<typeof materializeHostedAiFiles>> | undefined
 
         const prepared = await tx.run({ dataSource, fn: async manager => {
@@ -47,7 +47,7 @@ export function createHostedAiGateway({ dataSource, provider = deepseekHostedPro
             const credential = await hostedAiCredential({ manager, ...scope, payer: input.payer, model: input.model })
             const files = submitted.fileIds?.length ? await materializeFiles({ manager, scope, fileIds: submitted.fileIds, identityId: segment.identityId }) : undefined
             preparedFiles = files
-            const inputTokenBound = baseInputTokenBound + (files?.inputTokenBound ?? 0)
+            const inputTokenBound = hostedAiInputBound(submitted, files?.inputTokenBound ?? 0)
             if (inputTokenBound + submitted.max_tokens > HOSTED_AI_CONTEXT_TOKENS) hostingFail('HOSTING_AI_REQUEST_LIMIT')
             const nativeFeature = !!files || await nativeFeaturesEnabled(manager, segment)
             if (nativeFeature && submitted.max_tokens > HOSTED_NATIVE_MAX_OUTPUT) hostingFail('HOSTING_NATIVE_OUTPUT_LIMIT')

@@ -1,18 +1,34 @@
 
+import { Permission } from '@activepieces/core-utils'
 import { wideEvent } from '@activepieces/server-utils'
 import {
+    PrincipalType,
     RAW_PAYLOAD_HEADER,
     WebhookUrlParams,
     WebsocketClientEvent,
 } from '@activepieces/shared'
 import { FastifyRequest } from 'fastify'
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { ProjectResourceType } from '../core/security/authorization/common'
 import { securityAccess } from '../core/security/authorization/fastify-security'
+import { FlowEntity } from '../flows/flow/flow.entity'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { hostingFail } from '../hosting/hosting-transactions'
 import { triggerSourceService } from '../trigger/trigger-source/trigger-source-service'
 import { convertRequest, extractHeaderFromRequest } from './webhook-request-converter'
-import { WebhookFlowVersionToRun, webhookService } from './webhook.service'
+import { HostedDraftActor, WebhookFlowVersionToRun, webhookService } from './webhook.service'
 
 export const webhookController: FastifyPluginAsyncZod = async (app) => {
+    const hosted = hostingConfiguration.getServiceMode() === 'hosted'
+    const draftParams = {
+        ...WEBHOOK_PARAMS,
+        config: {
+            security: hosted
+                ? securityAccess.project([PrincipalType.USER], Permission.WRITE_RUN, { type: ProjectResourceType.TABLE, tableName: FlowEntity, lookup: { paramKey: 'flowId', entityField: 'id' } })
+                : securityAccess.public(),
+        },
+    }
+
 
     app.all(
         '/:flowId/sync',
@@ -31,7 +47,7 @@ export const webhookController: FastifyPluginAsyncZod = async (app) => {
                 flowId: request.params.flowId,
                 async: false,
                 flowVersionToRun: WebhookFlowVersionToRun.LOCKED_FALL_BACK_TO_LATEST,
-                saveSampleData: await triggerSourceService(request.log).existsByFlowId({
+                saveSampleData: hosted ? false : await triggerSourceService(request.log).existsByFlowId({
                     flowId: request.params.flowId,
                     simulate: true,
                 }),
@@ -63,7 +79,7 @@ export const webhookController: FastifyPluginAsyncZod = async (app) => {
                 logger: request.log,
                 flowId: request.params.flowId,
                 async: true,
-                saveSampleData: await triggerSourceService(request.log).existsByFlowId({
+                saveSampleData: hosted ? false : await triggerSourceService(request.log).existsByFlowId({
                     flowId: request.params.flowId,
                     simulate: true,
                 }),
@@ -80,8 +96,9 @@ export const webhookController: FastifyPluginAsyncZod = async (app) => {
         },
     )
 
-    app.all('/:flowId/draft/sync', WEBHOOK_PARAMS, async (request, reply) => {
+    app.all('/:flowId/draft/sync', draftParams, async (request, reply) => {
         const response = await webhookService.handleWebhook({
+            hostedDraftActor: hostedDraftActor(request),
             data: (projectId: string) => convertRequest(request, projectId, request.params.flowId),
             logger: request.log,
             flowId: request.params.flowId,
@@ -100,8 +117,12 @@ export const webhookController: FastifyPluginAsyncZod = async (app) => {
             .send(response.body)
     })
 
-    app.all('/:flowId/draft', WEBHOOK_PARAMS, async (request, reply) => {
+    app.all('/:flowId/draft', draftParams, async (request, reply) => {
         const response = await webhookService.handleWebhook({
+            hostedDraftActor: hostedDraftActor(request),
+            onRunCreated: (run) => {
+                app.io.to(run.projectId).emit(WebsocketClientEvent.TEST_FLOW_RUN_STARTED, run)
+            },
             data: (projectId: string) => convertRequest(request, projectId, request.params.flowId),
             logger: request.log,
             flowId: request.params.flowId,
@@ -146,6 +167,12 @@ const WEBHOOK_PARAMS = {
     },
 }
 
+
+function hostedDraftActor(request: FastifyRequest): HostedDraftActor | undefined {
+    if (hostingConfiguration.getServiceMode() !== 'hosted') return undefined
+    if (request.principal?.type !== PrincipalType.USER || !request.projectId) hostingFail('HOSTING_AUTHENTICATED_DRAFT_REQUIRED')
+    return { userId: request.principal.id, tokenVersion: request.principal.tokenVersion ?? null, projectId: request.projectId, platformId: request.principal.platform.id }
+}
 
 function extractRawPayload(request: FastifyRequest): { payload?: Record<string, unknown> } {
     const isRawPayload = request.headers[RAW_PAYLOAD_HEADER] === 'true'

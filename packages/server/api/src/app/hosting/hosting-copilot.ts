@@ -6,17 +6,23 @@ import { databaseConnection } from '../database/database-connection'
 import { sydApprovalGate } from '../syd/copilot/approval-gate'
 import { SydAgentConversationEntity } from '../syd/copilot/models/agent-conversation.entity'
 import { SydConversationEntity } from '../syd/copilot/models/conversation.entity'
-import { HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL, HostedAiInput } from './hosting-ai-policy'
-import { hostingConfiguration } from './hosting-configuration'
+import { HOSTED_AI_MAX_CALLS, HOSTED_AI_MAX_MESSAGES, HOSTED_AI_REQUEST_MAX_BYTES, HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL, HostedAiInput } from './hosting-ai-policy'
 import { executeHostedBuilderTool, hostedBuilderToolNames } from './hosting-builder-tools'
+import { hostingConfiguration } from './hosting-configuration'
 import { HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
+// Reserve half the 1 MiB transport envelope for the system prompt, complete
+// tool schemas and this run's tool results, plus system/continuation positions.
+// Stored and model-visible hosted history stays intact. Every supplier call
+// still needs its own funded small-input or full-context quote.
+export const HOSTED_CHAT_HISTORY_MAX_BYTES = HOSTED_AI_REQUEST_MAX_BYTES / 2
+export const HOSTED_CHAT_HISTORY_MAX_MESSAGES = HOSTED_AI_MAX_MESSAGES - 1 - 2 * HOSTED_AI_MAX_CALLS
+
 export function assertHostedChatContext({ messages, content }: { messages: unknown[], content: string }): void {
-    // Leave room for the bounded system prompt, schemas and local tool results.
     // Refuse before claiming the conversation or reserving an execution.
-    if (content.length > 32768 || messages.length >= 32 || Buffer.byteLength(JSON.stringify([...messages, { role: 'user', content }])) > 40 * 1024) hostingFail('HOSTING_CHAT_CONTEXT_LIMIT')
+    if (content.length > 32768 || messages.length + 1 > HOSTED_CHAT_HISTORY_MAX_MESSAGES || Buffer.byteLength(JSON.stringify([...messages, { role: 'user', content }])) > HOSTED_CHAT_HISTORY_MAX_BYTES) hostingFail('HOSTING_CHAT_CONTEXT_LIMIT')
 }
 
 export async function hostedCopilotPayer({ platformId, projectId, provider, configId }: { platformId: string, projectId: string, provider?: string, configId?: string }): Promise<HostedAiInput['payer']> {

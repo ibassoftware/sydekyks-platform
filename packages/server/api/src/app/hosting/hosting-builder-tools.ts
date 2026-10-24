@@ -25,12 +25,13 @@ import { apUpdateRecordTool } from '../mcp/tools/ap-update-record'
 import { apUpdateStepTool } from '../mcp/tools/ap-update-step'
 import { apUpdateTriggerTool } from '../mcp/tools/ap-update-trigger'
 import { apValidateFlowTool } from '../mcp/tools/ap-validate-flow'
+import { mcpUtils } from '../mcp/tools/mcp-utils'
 import { staticMcpSchemaScope } from '../mcp/tools/static-schema-scope'
 import { projectService } from '../project/project-service'
 import { sydApprovalGate } from '../syd/copilot/approval-gate'
 import { sydRunOperations } from '../syd/copilot/rpc/run-operations'
-import { hostingFail } from './hosting-transactions'
 import { hostedBuilderMetadata } from './hosting-builder-metadata'
+import { hostingFail } from './hosting-transactions'
 
 // Internal configuration/metadata tools, NOT an authenticated remote MCP client.
 // No execution, dynamic property callbacks, publication/hook activation, retries,
@@ -84,16 +85,35 @@ async function available(scope: Scope): Promise<McpToolDefinition[]> {
     return definitions({ ...mcp, projectId }, userId, log).filter(tool => !disabled.has(tool.title) && !checker.check(tool.permission, tool.title))
 }
 
+// Keep repeated catalogue annotations out of the wire envelope, while retaining
+// the small amount of wiring guidance needed to construct executable CODE steps.
+// These are fixed strings on exactly two fields of three admitted tools.
+export function hostedBuilderInputSchema(tool: Pick<McpToolDefinition, 'title' | 'inputSchema'>): Record<string, unknown> {
+    const schema = z.toJSONSchema(z.object(tool.inputSchema), { unrepresentable: 'any', override: ({ jsonSchema }) => {
+        // Delete schema annotations only, never a property named description or
+        // executable required/type/enum/default/validation constraints.
+        delete jsonSchema.description
+    } }) as Record<string, unknown>
+    if (!['ap_build_flow', 'ap_add_step', 'ap_update_step'].includes(tool.title)) return schema
+    const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+    const properties = record(schema.properties)
+    const fields = tool.title === 'ap_build_flow' ? record(record(record(properties.steps).items).properties) : properties
+    const guidance = {
+        input: `PIECE keys match the action schema. CODE input keys are the only fields passed to code(inputs): explicitly bind every key the function reads; prior-step values are not inherited. ${mcpUtils.STEP_REFERENCE_HINT}`,
+        sourceCode: 'CODE only. Export code(inputs). Every property read from inputs needs a matching explicit input-map binding; trigger, previous-step and AI results are not automatic variables.',
+    }
+    for (const [name, description] of Object.entries(guidance)) {
+        const field = fields[name]
+        if (field && typeof field === 'object' && !Array.isArray(field)) (field as Record<string, unknown>).description = description
+    }
+    return schema
+}
+
 export async function hostedBuilderConfiguration(scope: Scope): Promise<NonNullable<AgentConfigResponse['hostedBuilderTools']>> {
     return (await available(scope)).map(tool => ({
         name: tool.title,
         description: tool.description.replace(/\bActivepieces\b/gi, 'Sydekyks').slice(0, 420),
-        inputSchema: z.toJSONSchema(z.object(tool.inputSchema), { unrepresentable: 'any', override: ({ jsonSchema }) => {
-            // Field descriptions duplicate catalogue guidance on every model step.
-            // Remove annotations only: keep required/type/enum/default/constraints
-            // and property names (including a property named description) intact.
-            delete jsonSchema.description
-        } }) as Record<string, unknown>,
+        inputSchema: hostedBuilderInputSchema(tool),
         readOnly: tool.annotations?.readOnlyHint === true,
     }))
 }
@@ -107,7 +127,7 @@ export async function executeHostedBuilderTool({ source, toolName, toolInput, co
     // Explicit project substitutions are denied before Zod strips unknown keys.
     for (const [field, expected] of Object.entries({ projectId: scope.projectId, platformId: scope.platformId, userId: scope.userId, conversationId, runId })) {
         if (field in requested && requested[field] !== expected) hostingFail('HOSTING_AI_SEGMENT_DENIED')
-        delete requested[field]
+        Reflect.deleteProperty(requested, field)
     }
     if (!tool.annotations?.readOnlyHint && await sydRunOperations.turnHasRead({ conversationId, runId })) {
         if (typeof approvedGateId !== 'string') hostingFail('HOSTING_TOOL_APPROVAL_REQUIRED')

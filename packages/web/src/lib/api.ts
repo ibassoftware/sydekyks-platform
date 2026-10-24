@@ -52,6 +52,39 @@ function isUrlRelative(url: string) {
   return !url.startsWith('http') && !url.startsWith('https');
 }
 
+function isConfiguredApiUrl(url: string): boolean {
+  try {
+    const target = new URL(url);
+    const configuredApi = new URL(API_URL);
+    return (
+      target.origin === configuredApi.origin &&
+      (target.pathname === configuredApi.pathname ||
+        target.pathname.startsWith(`${configuredApi.pathname}/`))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isDraftWebhookExecution(url: string, method?: string): boolean {
+  if (method?.toUpperCase() !== 'POST') return false;
+  try {
+    const target = new URL(url);
+    const configuredApi = new URL(API_URL);
+    return (
+      target.origin === configuredApi.origin &&
+      target.search === '' &&
+      target.hash === '' &&
+      url.startsWith(API_URL) &&
+      /^\/v1\/webhooks\/[A-Za-z0-9_-]{21}\/draft(?:\/sync)?$/.test(
+        url.slice(API_URL.length),
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
 function globalErrorHandler(error: AxiosError) {
   if (error.response?.status === 402)
     window.dispatchEvent(new Event('sydekyks:license-required'));
@@ -78,10 +111,14 @@ function request<TResponse>(
   scope?: { anonymous: boolean },
 ): Promise<TResponse> {
   const resolvedUrl = !isUrlRelative(url) ? url : `${API_URL}${url}`;
-  const isApWebsite = resolvedUrl.startsWith(API_URL);
-  const unAuthenticated = disallowedRoutes.some((route) =>
-    resolvedUrl.replace(API_URL, '').startsWith(route),
-  );
+  const isApWebsite = isConfiguredApiUrl(resolvedUrl);
+  // Public webhooks never receive credentials. Draft execution is a separate,
+  // authenticated action authorized by the server against the exact flow.
+  const unAuthenticated =
+    !isDraftWebhookExecution(resolvedUrl, config.method) &&
+    disallowedRoutes.some((route) =>
+      resolvedUrl.replace(API_URL, '').startsWith(route),
+    );
 
   const originToken = authenticationSession.getToken();
   const originProject = projectPointer();

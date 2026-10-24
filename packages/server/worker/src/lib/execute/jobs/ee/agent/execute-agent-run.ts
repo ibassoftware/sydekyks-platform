@@ -10,9 +10,9 @@ import { stepResultFrom } from './agent-step-result'
 import { agentToolPolicy } from './agent-tool-policy'
 import { agentWorkerTools, GateDecision, TaintState } from './agent-worker-tools'
 import { createHostedAgentModel, createHostedNativeWebTools, hostedAgentFailureMessage, hostedAgentRefusalOf } from './hosted-agent-model'
+import { createHostedBuilderTools } from './hosted-builder-tools'
 import { classifyAgentRunError, delayWithJitter, drainOf, firstStepUsesFastModel, isTransientFailureText, NO_STEP_CONTENT, runAgentTurn, StreamDrain, trackStepContent } from './run-agent-turn'
 import { unwrapLazyToolChunk } from './tools/skill-tools'
-import { createHostedBuilderTools } from './hosted-builder-tools'
 
 const BATCH_SIZE = 10
 const BATCH_FLUSH_MS = 50
@@ -728,7 +728,7 @@ function buildToolSet({ hosted = false, hostedBuilderTools, ctx, eventEmitter, l
         ? agentWorkerTools.createAgentSurfaceTools({ executeTool: executeCrossProjectTool, taintState, eventEmitter, waitForApproval, onGateOpened: storePendingGate })
         : {}
     const thinkingTools = agentWorkerTools.createThinkingTools()
-    const phaseTools = agentWorkerTools.createPhaseTools({ onPhaseChange: (phase) => {
+    const phaseTools = agentWorkerTools.createPhaseTools({ toolsAlreadyVisible: hosted, onPhaseChange: (phase) => {
         phaseState.phase = phase
     } })
     const buildPlanTools = agentWorkerTools.createBuildPlanTools({

@@ -8,10 +8,10 @@ import { appConnectionService } from '../../../app-connection/app-connection-ser
 import { system } from '../../../helper/system/system'
 import { AppSystemProp } from '../../../helper/system/system-props'
 import { HOSTED_AI_MAX_OUTPUT, HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL } from '../../../hosting/hosting-ai-policy'
+import { hostedBuilderConfiguration } from '../../../hosting/hosting-builder-tools'
 import { hostingConfiguration } from '../../../hosting/hosting-configuration'
 import { hostedCopilotPayer } from '../../../hosting/hosting-copilot'
 import { hostedCopilotPrompt } from '../../../hosting/hosting-copilot-prompt'
-import { hostedBuilderConfiguration } from '../../../hosting/hosting-builder-tools'
 import { platformService } from '../../../platform/platform.service'
 import { userService } from '../../../user/user-service'
 import { sydApprovalGate } from '../approval-gate'
@@ -86,7 +86,7 @@ export const sydCopilotConfigRpc = (log: FastifyBaseLogger) => ({
         if (!persisted) throw new ActivepiecesError({ code: ErrorCode.AGENT_RUN_SUPERSEDED, params: { message: 'The active run changed during preparation' } })
         if (!hosted) await sydApprovalGate.clearCancel({ conversationId })
         else if (await sydApprovalGate.isCancelled({ conversationId, runId })) throw new Error('HOSTING_AI_SEGMENT_DENIED')
-        const history = agentAiUtils.collapseStaleToolOutputs({ messages: allMessages })
+        const history = hosted ? allMessages : agentAiUtils.collapseStaleToolOutputs({ messages: allMessages })
         const outputTokens = hosted ? (input.nativeWebSearch || input.nativeFileIds?.length ? 2048 : HOSTED_AI_MAX_OUTPUT) : await agentAiUtils.affordableOutputTokens({ provider: credentials.provider, modelIds: [modelId, fastModelId], thinkingBudget: tier.thinkingBudget })
         const reservedTokens = outputTokens + 12_000
         const payloadReserve = reservedTokens + agentAiUtils.estimateTokenCount({ messages: [], systemPromptLength: systemPrompt.length })
@@ -98,7 +98,7 @@ export const sydCopilotConfigRpc = (log: FastifyBaseLogger) => ({
         }
         return { ...(hosted ? { hostedBuilderTools: await hostedBuilderConfiguration({ projectId: selectedProjectId!, platformId, userId, log }) } : {}), ...(hosted && payer ? { hosted: { protocol: 1 as const, model: hostedModel, payer, nativeFileIds: input.nativeFileIds, nativeWebSearch: input.nativeWebSearch } } : {}), credentials, providerConfigId: credentials.configId, modelId, fastModelId, resolvedModelName: hosted && payer?.type === 'managed' ? HOSTED_MANAGED_MODEL : sydChatModelSelection.conversationModelName({ provider: credentials.provider, modelId, surface: 'chat' }),
             ...(imageModelId ? { imageModelId } : {}), ...(chosen.search ? { searchCredentials: chosen.search.credentials, searchModelId: chosen.search.modelId } : {}), ...(chosen.image ? { imageCredentials: chosen.image.credentials } : {}),
-            systemPrompt, messages: sydConversationCompaction.buildCompactedPayload({ messages: history, ...state, provider: credentials.provider, reservedTokens: payloadReserve }), allMessages, previousUiMessages,
+            systemPrompt, messages: hosted ? history : sydConversationCompaction.buildCompactedPayload({ messages: history, ...state, provider: credentials.provider, reservedTokens: payloadReserve }), allMessages, previousUiMessages,
             tier: { id: hosted ? 'sydekyks' : tier.id, modelId: hosted ? hostedModel : tier.modelId, thinkingBudget: hosted ? 0 : tier.thinkingBudget }, mcpCredentials: mcp.mcpServerUrl && mcp.mcpToken ? { mcpServerUrl: mcp.mcpServerUrl, mcpToken: mcp.mcpToken } : null,
             projects: (hosted ? projects.filter(project => project.id === selectedProjectId) : projects).map(({ id, displayName, type }) => ({ id, displayName, type })), guides: hosted ? {} : { ...sydCopilotPrompt.guides, ...input.promptOverride?.guides }, aiTools, emailEnabled, agentsAvailable, userEmail: user.email, source: AgentRunSource.CHAT,
         }

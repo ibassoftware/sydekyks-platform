@@ -1,5 +1,7 @@
 # Inactive hosted onboarding and accounting backend
 
+> Historical implementation log. Statements below describe their dated development stages, including startup blocks, dual balances and older chat limits. For current SaaS operation, manual billing, deployment and context policy, read [the deployment guide](../deploy/saas/README.md). Release receipts establish what is live.
+
 This branch adds backend services, authenticated hosted routes and a first worker-broker integration. Hosted API and worker startup still fail with `HOSTED_IMPLEMENTATION_INCOMPLETE`; workers still advertise accounting protocol zero. Integration tests exercise the routes and broker in isolated test harnesses. No deployed signup, outbox consumer, managed provider traffic, Stripe client or payment grant issuer is enabled. Self-hosted signup, authorization, provider billing and free access keep their existing behavior.
 
 ## Tenant lifecycle

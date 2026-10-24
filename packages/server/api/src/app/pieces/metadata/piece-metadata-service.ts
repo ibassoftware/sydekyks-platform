@@ -9,6 +9,8 @@ import { EntityManager, FindOptionsSelect, In, IsNull } from 'typeorm'
 import { repoFactory } from '../../core/db/repo-factory'
 import { transaction } from '../../core/db/transaction'
 import { flowVersionRepo } from '../../flows/flow-version/flow-version.service'
+import { hostedAiStepDefaults } from '../../hosting/hosting-ai-step-defaults'
+import { hostingConfiguration } from '../../hosting/hosting-configuration'
 import { projectService } from '../../project/project-service'
 import { resolveVisibility } from '../../sydekyks-community/piece-visibility'
 import { pieceCache, PieceRegistryEntry } from './piece-cache'
@@ -70,7 +72,8 @@ export const pieceMetadataService = (log: FastifyBaseLogger) => {
             if (isNil(piece)) {
                 return undefined
             }
-            const [translatedPiece] = await translatePieces({ pieces: [piece], locale: locale ?? LocalesEnum.ENGLISH })
+            const [translated] = await translatePieces({ pieces: [piece], locale: locale ?? LocalesEnum.ENGLISH })
+            const translatedPiece = hostedAiStepDefaults(translated, hostingConfiguration.getServiceMode() === 'hosted')
 
             const policy = await resolveVisibility({ platformId, projectId, log })
             if (isNil(policy)) {

@@ -16,7 +16,7 @@ import { SydekyksInclusiveCredits1914000000000 } from '../../src/app/database/mi
 import { FlagEntity } from '../../src/app/flags/flag.entity'
 import { encryptUtils } from '../../src/app/helper/encryption'
 import { createHostedAiGateway } from '../../src/app/hosting/hosting-ai-gateway'
-import { hostedAiInputBound } from '../../src/app/hosting/hosting-ai-policy'
+import { HOSTED_AI_CONTEXT_TOKENS, HOSTED_AI_REQUEST_MAX_BYTES, hostedAiCost, hostedAiInputBound, HostedAiQuote } from '../../src/app/hosting/hosting-ai-policy'
 import { HOSTED_MAX_ROOT_CREDITS, hostedAiCredits, hostedCreditLiability, hostedUsesCreditAccounting } from '../../src/app/hosting/hosting-credit-policy'
 import { HostingDispatchEntity } from '../../src/app/hosting/hosting-dispatch-entity'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrantEntity, HostingLedgerEntity, HostingReservationEntity } from '../../src/app/hosting/hosting-entities'
@@ -343,7 +343,50 @@ describe('full gateway Credit journey', () => {
         const tools = [{ type: 'function' as const, function: { name: 'demo', description: 'x'.repeat(1000), parameters: { type: 'object', properties: { content: { type: 'string' } } } } }]
         expect(small).toBeLessThan(10000)
         expect(hostedAiInputBound({ ...request, tools })).toBeGreaterThan(small + 4000)
-        expect(() => hostedAiInputBound({ ...request, messages: [{ role: 'user', content: 'x'.repeat(192 * 1024) }] })).toThrow('REQUEST_LIMIT')
+        expect(() => hostedAiInputBound({ ...request, messages: [{ role: 'user', content: 'x'.repeat(HOSTED_AI_REQUEST_MAX_BYTES) }] })).toThrow('REQUEST_LIMIT')
+    })
+    it('fully funds large requests, settles actual usage once and preserves uncertain provider size refusals', async () => {
+        await configureManaged()
+        const admitted = await root()
+        const large = { ...request, messages: Array.from({ length: 12 }, () => ({ role: 'user' as const, content: 'large preserved context '.repeat(1000) })) }
+        expect(hostedAiInputBound(large)).toBe(HOSTED_AI_CONTEXT_TOKENS - large.max_tokens)
+        let maxQuoted = 0n
+        const complete = vi.fn(async ({ request: sent }: { request: { model: string } }) => {
+            const call = await ds.getRepository(HostingModelCallEntity).findOneByOrFail({ admissionId: admitted.scope.admissionId })
+            const quote = HostedAiQuote.parse(call.quote)
+            maxQuoted = hostedAiCost({ hit: 0, miss: HOSTED_AI_CONTEXT_TOKENS - large.max_tokens, output: large.max_tokens, prices: quote.ceiling })
+            const held = await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: call.reservationId! })
+            expect(call.inputTokenBound).toBe(HOSTED_AI_CONTEXT_TOKENS - large.max_tokens)
+            expect(held.supplierMaxMicroUsd).toBe(maxQuoted)
+            expect((await balance()).reserved).toBeGreaterThan(0n)
+            return completion(sent.model, 100000, 100)
+        })
+        const gateway = createHostedAiGateway({ dataSource: ds, provider: { id: 'synthetic', endpoint: 'diagnostic://no-network', complete } })
+        await gateway.execute({ scope: admitted.scope, request: large })
+        await gateway.execute({ scope: admitted.scope, request: large })
+        const call = await ds.getRepository(HostingModelCallEntity).findOneByOrFail({ admissionId: admitted.scope.admissionId })
+        expect(BigInt(call.actualMicroUsd!)).toBeLessThan(maxQuoted)
+        expect(Number(call.usage?.prompt_tokens)).toBeLessThanOrEqual(call.inputTokenBound!)
+        expect(Number(call.usage?.prompt_tokens) + Number(call.usage?.completion_tokens)).toBeLessThanOrEqual(HOSTED_AI_CONTEXT_TOKENS)
+        expect((await balance()).reserved).toBe(0n)
+        expect(complete).toHaveBeenCalledTimes(1)
+        const refused = createHostedAiGateway({ dataSource: ds, provider: { id: 'synthetic', endpoint: 'diagnostic://no-network', complete: vi.fn(async () => ({ status: 400, data: { error: { message: 'Maximum context length exceeded' } } })) } })
+        await expect(refused.execute({ scope: admitted.scope, request: { ...large, callKey: 'context:rejected' } })).rejects.toThrow('OUTCOME_UNCERTAIN')
+        const held = (await balance()).reserved
+        expect(held).toBeGreaterThan(0n)
+        await expect(refused.execute({ scope: admitted.scope, request: { ...large, callKey: 'context:blind-retry' } })).rejects.toThrow('OUTCOME_UNCERTAIN')
+        expect((await balance()).reserved).toBe(held)
+    })
+    it('requires funding for the full large-request ceiling before any supplier send', async () => {
+        await configureManaged()
+        const admitted = await root(), grant = await currentGrant()
+        await ds.getRepository(HostingGrantEntity).update({ id: grant.id }, { amount: grant.consumed + 1n })
+        const complete = vi.fn(async () => completion('deepseek-flash'))
+        const gateway = createHostedAiGateway({ dataSource: ds, provider: { id: 'synthetic', endpoint: 'diagnostic://no-network', complete } })
+        await expect(gateway.execute({ scope: admitted.scope, request: { ...request, messages: Array.from({ length: 12 }, () => ({ role: 'user' as const, content: 'large full preserved context '.repeat(1000) })) } })).rejects.toThrow('CREDITS_EXHAUSTED')
+        expect(complete).not.toHaveBeenCalled()
+        expect(await ds.getRepository(HostingModelCallEntity).count()).toBe(0)
+        expect((await balance()).reserved).toBe(0n)
     })
     it('charges one shared balance, replays settled calls once and denies calls after exhaustion before provider send', async () => {
         await configureManaged()

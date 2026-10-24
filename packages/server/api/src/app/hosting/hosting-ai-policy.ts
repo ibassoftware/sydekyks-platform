@@ -12,9 +12,10 @@ export const HOSTED_AI_CONTEXT_TOKENS = 1_048_576
 export const HOSTED_AI_MAX_OUTPUT = 4096
 export const HOSTED_AI_TIMEOUT_MS = 60_000
 export const HOSTED_AI_MAX_CALLS = 32
-// Enough room for catalogue schemas plus multi-step history, while the 4x UTF-8
-// token bound still stays below the supplier context and all quotes stay funded.
-export const HOSTED_AI_REQUEST_MAX_BYTES = 192 * 1024
+// Transport/storage protection is separate from supplier context. Larger full
+// conversations reserve the approved entire model context before supplier send.
+export const HOSTED_AI_REQUEST_MAX_BYTES = 1024 * 1024
+export const HOSTED_AI_MAX_MESSAGES = 512
 
 const toolCall = z.strictObject({ id: z.string().max(256), type: z.literal('function'), function: z.strictObject({ name: z.string().max(128), arguments: z.string().max(16384) }) })
 const message = z.discriminatedUnion('role', [
@@ -25,7 +26,7 @@ const message = z.discriminatedUnion('role', [
 export const HostedAiRequest = z.strictObject({
     callKey: z.string().regex(/^[a-zA-Z0-9_.:-]{1,100}$/), attempt: z.number().int().min(0).max(2).default(0),
     payer: z.discriminatedUnion('type', [z.strictObject({ type: z.literal('managed') }), z.strictObject({ type: z.literal('byok'), configId: z.string().length(21) })]),
-    model: z.enum([HOSTED_MANAGED_MODEL, HOSTED_DEEPSEEK_MODEL, HOSTED_DEEPSEEK_PRO_MODEL]), messages: z.array(message).min(1).max(64),
+    model: z.enum([HOSTED_MANAGED_MODEL, HOSTED_DEEPSEEK_MODEL, HOSTED_DEEPSEEK_PRO_MODEL]), messages: z.array(message).min(1).max(HOSTED_AI_MAX_MESSAGES),
     stepName: z.string().min(1).max(256).optional(),
     fileIds: z.array(z.string().length(21)).max(20).optional(),
     max_tokens: z.number().int().min(1).max(HOSTED_AI_MAX_OUTPUT).default(1024), temperature: z.number().min(0).max(2).optional(),
@@ -67,18 +68,17 @@ export function hostedAiCost({ hit, miss, output, prices }: { hit: number, miss:
     return (BigInt(hit) * BigInt(prices.cacheHit) + BigInt(miss) * BigInt(prices.cacheMiss) + BigInt(output) * BigInt(prices.output) + 999_999n) / 1_000_000n
 }
 
-/** Conservative UTF-8 byte envelope, not a guessed words-per-token estimate.
- * Every serialized input field (including tools/schema) is counted; 4x bytes plus
- * bounded per-message/tool framing leaves headroom for the approved supplier's
- * chat template. New supplier adapters must review this bound before admission.
- * Supplier usage beyond it is a pricing-contract violation and quarantines the
- * tenant instead of silently allowing unbounded subsequent spend.
+/** Small requests retain the conservative UTF-8 estimate (4x bytes plus
+ * framing). For larger preserved transcripts, reserve the approved full input
+ * window instead of rejecting on that coarse estimate. The approved 1M context
+ * includes output, so requested output is always deducted from the input ceiling.
+ * Provider usage is still checked against the recorded bound; unexpected usage
+ * quarantines the tenant. This does not promise the supplier accepts every body.
  */
-export function hostedAiInputBound(input: HostedAiInput): number {
+export function hostedAiInputBound(input: HostedAiInput, additionalInputTokens = 0): number {
     const serialized = JSON.stringify({ messages: input.messages, tools: input.tools, tool_choice: input.tool_choice, response_format: input.response_format })
     const bytes = Buffer.byteLength(serialized, 'utf8')
-    if (Buffer.byteLength(JSON.stringify(input), 'utf8') > HOSTED_AI_REQUEST_MAX_BYTES) hostingFail('HOSTING_AI_REQUEST_LIMIT')
-    const bound = bytes * 4 + 4096 + (input.messages.length + (input.tools?.length ?? 0)) * 256
-    if (bound + input.max_tokens > HOSTED_AI_CONTEXT_TOKENS) hostingFail('HOSTING_AI_REQUEST_LIMIT')
-    return bound
+    if (Buffer.byteLength(JSON.stringify(input), 'utf8') > HOSTED_AI_REQUEST_MAX_BYTES || !Number.isSafeInteger(additionalInputTokens) || additionalInputTokens < 0) hostingFail('HOSTING_AI_REQUEST_LIMIT')
+    const estimate = bytes * 4 + 4096 + (input.messages.length + (input.tools?.length ?? 0)) * 256 + additionalInputTokens
+    return Math.min(estimate, HOSTED_AI_CONTEXT_TOKENS - input.max_tokens)
 }
