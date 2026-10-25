@@ -1,4 +1,4 @@
-import { isNil, isObject, spreadIfDefined } from '@activepieces/core-utils'
+import { internalGadgetName, isNil, isObject, spreadIfDefined } from '@activepieces/core-utils'
 import { largeResultUtils, MAX_TOOL_RESULT_BYTES } from '@activepieces/server-utils'
 import { ActionPreviewEvent, ActionReceiptEvent, agentToolClassification, agentToolPhases, BuildPlanEvent, FileProducedEvent, ImageGeneratedEvent, PersistedAgentMessageSchema, PersistedAgentRole, ToolProgressEvent } from '@activepieces/shared'
 import { Schema, ToolExecutionOptions, ToolSet } from 'ai'
@@ -79,7 +79,7 @@ function buildOversizeEnvelope({ result, text }: { result: unknown, text: string
 }
 
 export function normalizePieceName(piece: string): string {
-    if (piece.startsWith('@')) return piece
+    if (piece.startsWith('@')) return internalGadgetName(piece)
     const stripped = piece.startsWith('piece-') ? piece.slice('piece-'.length) : piece
     return `@activepieces/piece-${stripped.replace(/_/g, '-')}`
 }
