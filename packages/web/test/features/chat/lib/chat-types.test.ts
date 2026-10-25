@@ -27,3 +27,16 @@ describe('chatPartUtils.getPendingCardKind', () => {
     expect(chatPartUtils.getPendingCardKind('mcp__whatever')).toBeNull();
   });
 });
+
+describe('chatPartUtils.extractPieceNames', () => {
+  it('resolves public Gadget names to the existing catalogue entries', () => {
+    expect(
+      chatPartUtils.extractPieceNames({ pieceName: '@sydekyks/piece-forms' }),
+    ).toEqual(['@activepieces/piece-forms']);
+    expect(
+      chatPartUtils.extractPieceNames({
+        pieceNames: ['@activepieces/piece-forms', '@customer/piece-custom'],
+      }),
+    ).toEqual(['@activepieces/piece-forms', '@customer/piece-custom']);
+  });
+});

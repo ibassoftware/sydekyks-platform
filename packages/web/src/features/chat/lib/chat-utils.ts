@@ -25,7 +25,7 @@ import {
 } from './chat-types';
 
 function stripPiecePrefix(name: string): string {
-  return name.replace(/^@activepieces\/piece-/, '');
+  return name.replace(/^@(activepieces|sydekyks)\/piece-/, '');
 }
 
 function humanizePieceName(raw: string): string {

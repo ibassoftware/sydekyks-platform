@@ -1,4 +1,8 @@
-import { isObject, parseToJsonIfPossible } from '@activepieces/core-utils';
+import {
+  internalGadgetName,
+  isObject,
+  parseToJsonIfPossible,
+} from '@activepieces/core-utils';
 import {
   BatchProgressData,
   AgentMessageFeedback,
@@ -149,7 +153,7 @@ function extractToolOutputText(part: AnyToolPart): string | undefined {
 }
 
 function normalizePieceName(name: string): string {
-  if (name.startsWith('@')) return name;
+  if (name.startsWith('@')) return internalGadgetName(name);
   const stripped = name.startsWith('piece-')
     ? name.slice('piece-'.length)
     : name;

@@ -666,3 +666,14 @@ describe('mcpUtils.normalizeAuth', () => {
         expect(mcpUtils.validateAuth(garbage)).not.toBeNull()
     })
 })
+
+
+describe('mcpUtils.normalizePieceName — public Gadget aliases', () => {
+    it('accepts branded, legacy, short and third-party package names', () => {
+        expect(mcpUtils.normalizePieceName('@sydekyks/piece-forms')).toBe('@activepieces/piece-forms')
+        expect(mcpUtils.normalizePieceName('@activepieces/piece-forms')).toBe('@activepieces/piece-forms')
+        expect(mcpUtils.normalizePieceName('google_sheets')).toBe('@activepieces/piece-google-sheets')
+        expect(mcpUtils.normalizePieceName('@customer/piece-forms')).toBe('@customer/piece-forms')
+        expect(mcpUtils.normalizePieceName(undefined)).toBeUndefined()
+    })
+})
