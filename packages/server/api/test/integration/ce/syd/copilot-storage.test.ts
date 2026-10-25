@@ -1,23 +1,30 @@
 import { apId } from '@activepieces/core-utils'
-import { AgentConversation, AgentConversationStatus, AgentRunSource, PersistedAgentMessage, PersistedAgentPartType, PersistedAgentRole } from '@activepieces/shared'
+import { AgentConversationStatus, AgentEventType, AgentRunSource, PersistedAgentMessage, PersistedAgentPartType, PersistedAgentRole, WebsocketClientEvent } from '@activepieces/shared'
 import Fastify from 'fastify'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { websocketService } from '../../../../src/app/core/websockets.service'
 import { initializeDatabase } from '../../../../src/app/database'
 import { backgroundMigrationRunner } from '../../../../src/app/database/background-migration-runner'
 import { databaseConnection } from '../../../../src/app/database/database-connection'
 import { getMigrations } from '../../../../src/app/database/postgres-connection'
 import { sydApprovalGate } from '../../../../src/app/syd/copilot/approval-gate'
-import { sydCopilotContext } from '../../../../src/app/syd/copilot/copilot-context'
 import { sydConversationService } from '../../../../src/app/syd/copilot/conversation-service'
 import { sydConversationUsage } from '../../../../src/app/syd/copilot/conversation-usage'
+import { sydCopilotContext } from '../../../../src/app/syd/copilot/copilot-context'
 import { SydConversationEntity } from '../../../../src/app/syd/copilot/models/conversation.entity'
+import { sydConversationRpc } from '../../../../src/app/syd/copilot/rpc/conversation-rpc'
+import { createHandlers } from '../../../../src/app/workers/rpc/worker-rpc-service'
 import { mockAndSaveBasicSetup } from '../../../helpers/mocks'
 
 const log = Fastify().log
 const service = sydConversationService(log)
 
-beforeAll(async () => { await initializeDatabase({ runMigrations: false }) })
-afterAll(async () => { await databaseConnection().destroy() })
+beforeAll(async () => {
+    await initializeDatabase({ runMigrations: false })
+})
+afterAll(async () => {
+    await databaseConnection().destroy()
+})
 
 async function context() {
     const fixture = await mockAndSaveBasicSetup()
@@ -75,6 +82,47 @@ describe('Syd CHAT persistence', () => {
         const row = await service.createConversation({ ...actor, request: { title: 'Old' } })
         await service.updateConversation({ ...actor, id: row.id, request: { title: null, modelName: 'smart' } })
         expect(await service.getConversationOrThrow({ ...actor, id: row.id })).toMatchObject({ title: null, modelName: 'smart', messages: [] })
+    })
+
+    it.each([false, true])('ignores a late legacy worker title and preserves local or renamed titles (rename=%s)', async (renameDuringRun) => {
+        const actor = await context()
+        const title = 'Local first-message title'
+        const row = await service.createConversation({ ...actor, request: { title } })
+        // The worker prepared this response before the user could rename it.
+        const pendingResponse = {
+            conversationId: row.id,
+            messages: [{ role: 'user', content: 'Hello' }, { role: 'assistant', content: 'Welcome' }],
+            uiMessages: [{ role: PersistedAgentRole.ASSISTANT, parts: [{ type: PersistedAgentPartType.TEXT, text: 'Welcome' }] }],
+            title: 'Stale model-generated title',
+        }
+        const expectedTitle = renameDuringRun ? 'A name chosen while the worker was running' : title
+        if (renameDuringRun) await service.updateConversation({ ...actor, id: row.id, request: { title: expectedTitle } })
+        await sydConversationRpc(log).saveAgentMessages(pendingResponse)
+        const saved = await service.getConversationOrThrow({ ...actor, id: row.id })
+        expect(saved.title).toBe(expectedTitle)
+        expect(saved.messages).toEqual(pendingResponse.messages)
+        expect(saved.status).toBe(AgentConversationStatus.IDLE)
+    })
+
+    it('drops legacy worker title events while forwarding transcript and completion events with their run scope', async () => {
+        const emit = vi.fn()
+        const to = vi.spyOn(websocketService, 'to').mockReturnValue({ emit } as unknown as ReturnType<typeof websocketService.to>)
+        try {
+            const handler = createHandlers(log)
+            const scope = { userId: apId(), conversationId: apId(), runId: apId() }
+            await handler.sendAgentEvent({ ...scope, event: { type: AgentEventType.TITLE_UPDATE, data: { title: 'A stale worker title' } } })
+            expect(to).not.toHaveBeenCalled()
+            const chunk = { type: AgentEventType.CHUNK as const, data: [] }
+            const finished = { type: AgentEventType.FINISHED as const, data: { conversationId: scope.conversationId } }
+            for (const event of [chunk, finished]) await handler.sendAgentEvent({ ...scope, event })
+            expect(to.mock.calls).toEqual([[scope.userId], [scope.userId]])
+            expect(emit.mock.calls).toEqual([chunk, finished].map(event => [WebsocketClientEvent.CHAT_MESSAGE_CHUNK, {
+                conversationId: scope.conversationId, runId: scope.runId, ...event,
+            }]))
+        }
+        finally {
+            to.mockRestore()
+        }
     })
 
     it('recovers only stale STREAMING rows', async () => {

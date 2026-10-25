@@ -40,7 +40,9 @@ export const sydConversationRpc = (log: FastifyBaseLogger) => ({
             if (successful && noShrink) {
                 updates.messages = input.messages
                 updates.uiMessages = sanitizeObjectForPostgresql(input.uiMessages)
-                if (input.title) updates.title = input.title
+                // Admission owns the local first-message title; explicit rename is
+                // a separate authorized update. Ignore legacy worker title fields
+                // so a late response cannot overwrite a newer user-selected title.
                 if (input.modelName) updates.modelName = input.modelName
             }
             if (input.failure) {
