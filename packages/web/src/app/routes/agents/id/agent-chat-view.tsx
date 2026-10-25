@@ -90,17 +90,26 @@ export const AgentChatView = ({
         <aside
           className={cn(
             SLIDING_ASIDE,
-            'border-r',
-            conversationsOpen ? 'w-[220px]' : 'w-[46px]',
+            'border-r bg-panel',
+            conversationsOpen
+              ? 'absolute inset-y-0 left-0 z-20 w-full md:relative md:inset-auto md:z-auto md:w-[220px]'
+              : 'hidden md:block md:w-[46px]',
           )}
         >
           {conversationsOpen ? (
-            <div className="flex h-full w-[220px] flex-col">
+            <div className="flex h-full min-w-0 w-full flex-col">
               <ConversationList
                 agentId={agent.id}
+                className="w-full"
                 selectedId={openedConversationId ?? null}
-                onSelect={onSelectConversation}
-                onNewChat={onNewConversation}
+                onSelect={(id) => {
+                  onSelectConversation(id);
+                  if (window.innerWidth < 768) onCollapseConversations();
+                }}
+                onNewChat={() => {
+                  onNewConversation();
+                  if (window.innerWidth < 768) onCollapseConversations();
+                }}
                 onCollapse={onCollapseConversations}
               />
             </div>
@@ -114,10 +123,24 @@ export const AgentChatView = ({
           )}
         </aside>
       )}
-      <div className="flex min-h-0 min-w-0 grow flex-col">
-        <div className="flex flex-wrap gap-1 border-b px-4 py-2">
+      <div
+        className={cn(
+          'min-h-0 min-w-0 flex-1 flex-col',
+          !designing && conversationsOpen ? 'hidden md:flex' : 'flex',
+        )}
+      >
+        <div className="flex shrink-0 min-w-0 flex-wrap items-center gap-1 border-b px-2 py-2 sm:px-4">
+          {!designing && (
+            <div className="md:hidden">
+              <ConversationsToggle
+                open={false}
+                onClick={onExpandConversations}
+              />
+            </div>
+          )}
           <Button
             size="sm"
+            className="min-w-0 px-2 text-xs sm:text-sm"
             variant={designing ? 'ghost' : 'secondary'}
             aria-pressed={!designing}
             disabled={designRunning}
@@ -128,6 +151,7 @@ export const AgentChatView = ({
           {mayDesign && (
             <Button
               size="sm"
+              className="min-w-0 px-2 text-xs sm:text-sm"
               variant={designing ? 'secondary' : 'ghost'}
               aria-pressed={designing}
               disabled={designRunning}

@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
+/* eslint-disable jest-dom/prefer-in-document, jest-dom/prefer-to-have-value -- This isolated Vitest suite does not install jest-dom matchers. */
 import { AIProviderName } from '@activepieces/core-utils';
-import { ModelChoice } from '@activepieces/shared';
+import { Agent, ModelChoice } from '@activepieces/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const pendingSaves: { onSuccess?: () => void }[] = [];
 
@@ -21,6 +22,14 @@ vi.mock('@/hooks/flags-hooks', () => ({
 }));
 vi.mock('@/hooks/authorization-hooks', () => ({
   useAuthorization: () => ({ checkAccess: () => true }),
+}));
+vi.mock('@/features/projects', () => ({
+  projectCollectionUtils: { useAll: () => ({ data: [] }) },
+  getProjectName: () => '',
+  ApProjectDisplay: () => null,
+}));
+vi.mock('@/lib/authentication-session', () => ({
+  authenticationSession: { getCurrentUserId: () => 'owner' },
 }));
 vi.mock('@/features/agents', () => ({
   ModelPicker: ({ onChange }: { onChange: (value: ModelChoice) => void }) => (
@@ -51,8 +60,14 @@ vi.mock('@/features/agents/hooks/agents-hooks', () => ({
   agentsMutations: {
     useUpdateAgent: () => ({
       isPending: false,
-      mutate: (_request: unknown, options?: { onSuccess?: () => void }) => {
-        pendingSaves.push({ onSuccess: options?.onSuccess });
+      mutate: (
+        request: Partial<Agent>,
+        options?: { onSuccess?: (saved: Agent) => void },
+      ) => {
+        pendingSaves.push({
+          onSuccess: () =>
+            options?.onSuccess?.({ ...agentWithoutModel, ...request } as Agent),
+        });
       },
     }),
   },
@@ -80,7 +95,7 @@ const agentWithoutModel = {
     tools: [],
     structuredOutput: [],
   },
-} as never;
+} as unknown as Agent;
 
 const renderScreen = ({ onExit }: { onExit: () => void }) => {
   const router = createMemoryRouter(
@@ -88,10 +103,7 @@ const renderScreen = ({ onExit }: { onExit: () => void }) => {
       {
         path: '/',
         element: (
-          <AgentConfigurePanel
-            agent={agentWithoutModel}
-            onExit={onExit}
-          />
+          <AgentConfigurePanel agent={agentWithoutModel} onExit={onExit} />
         ),
       },
     ],
@@ -105,37 +117,33 @@ const renderScreen = ({ onExit }: { onExit: () => void }) => {
 };
 
 const clickBack = () => {
-  const back = screen.getByLabelText('Close');
-  back.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  const back = screen.getByRole('button', { name: 'Chat with Sydekyk' });
+  fireEvent.click(back);
 };
 
 const typeInInstructions = (value: string) => {
-  const box = document.querySelector('textarea');
-  if (!box) throw new Error('instructions textarea not rendered');
-  const setter = Object.getOwnPropertyDescriptor(
-    HTMLTextAreaElement.prototype,
-    'value',
-  )?.set;
-  setter?.call(box, value);
-  box.dispatchEvent(new Event('input', { bubbles: true }));
+  const box = screen.getByRole('textbox', { name: /^Instructions/ });
+  fireEvent.change(box, { target: { value } });
 };
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
+const settle = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 60));
+  });
 
 beforeEach(() => {
   pendingSaves.length = 0;
 });
-afterEach(cleanup);
 
 describe('the leave guard only speaks for edits a person made', () => {
   it('asks for a model on a blank agent until a tier is picked', async () => {
     renderScreen({ onExit: vi.fn() });
     await settle();
     expect(
-      screen.queryByText('Pick a model so this agent can answer.'),
+      screen.getByText('Pick a model so this agent can answer.'),
     ).toBeTruthy();
 
-    screen.getByTestId('tier').click();
+    fireEvent.click(screen.getByTestId('tier'));
     await settle();
 
     expect(
@@ -148,7 +156,7 @@ describe('the leave guard only speaks for edits a person made', () => {
     renderScreen({ onExit });
     await settle();
 
-    screen.getByTestId('model').click();
+    fireEvent.click(screen.getByTestId('model'));
     await settle();
     clickBack();
     await settle();
@@ -163,18 +171,24 @@ describe('the leave guard only speaks for edits a person made', () => {
     typeInInstructions('First edit.');
     await settle();
 
-    document.querySelector('form')?.requestSubmit();
+    fireEvent.click(screen.getByRole('button', { name: 'Publish & test' }));
     await settle();
     expect(pendingSaves).toHaveLength(1);
 
     typeInInstructions('Second edit, typed while saving.');
     await settle();
-    pendingSaves[0]?.onSuccess?.();
+    act(() => {
+      pendingSaves[0]?.onSuccess?.();
+    });
     await settle();
 
-    expect(document.querySelector('textarea')?.value).toBe(
-      'Second edit, typed while saving.',
-    );
+    expect(
+      (
+        screen.getByRole('textbox', {
+          name: /^Instructions/,
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toBe('Second edit, typed while saving.');
     clickBack();
     await settle();
     expect(screen.getByText('Leave without saving?')).toBeTruthy();

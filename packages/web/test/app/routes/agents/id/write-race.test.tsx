@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mutateCalls: { goLive?: boolean }[] = [];
 
@@ -19,6 +19,14 @@ vi.mock('@/hooks/flags-hooks', () => ({
 }));
 vi.mock('@/hooks/authorization-hooks', () => ({
   useAuthorization: () => ({ checkAccess: () => true }),
+}));
+vi.mock('@/features/projects', () => ({
+  projectCollectionUtils: { useAll: () => ({ data: [] }) },
+  getProjectName: () => '',
+  ApProjectDisplay: () => null,
+}));
+vi.mock('@/lib/authentication-session', () => ({
+  authenticationSession: { getCurrentUserId: () => 'owner' },
 }));
 vi.mock('@/features/agents', () => ({
   ModelPicker: () => <div data-testid="model" />,
@@ -67,9 +75,7 @@ const renderScreen = () => {
     [
       {
         path: '/',
-        element: (
-          <AgentConfigurePanel agent={agent} onExit={vi.fn()} />
-        ),
+        element: <AgentConfigurePanel agent={agent} onExit={vi.fn()} />,
       },
     ],
     { initialEntries: ['/'] },
@@ -81,32 +87,28 @@ const renderScreen = () => {
   );
 };
 
-
 const typeInInstructions = (value: string) => {
-  const box = document.querySelector('textarea');
-  if (!box) throw new Error('instructions textarea not rendered');
-  const setter = Object.getOwnPropertyDescriptor(
-    HTMLTextAreaElement.prototype,
-    'value',
-  )?.set;
-  setter?.call(box, value);
-  box.dispatchEvent(new Event('input', { bubbles: true }));
+  const box = screen.getByRole('textbox', { name: /^Instructions/ });
+  fireEvent.change(box, { target: { value } });
 };
 
 beforeEach(() => {
   mutateCalls.length = 0;
 });
-afterEach(cleanup);
 
 describe('the configure panel never lets two writes race', () => {
   it('issues one write when the form is submitted twice before the first settles', async () => {
     renderScreen();
     typeInInstructions('Sort the inbox differently.');
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
 
-    document.querySelector('form')?.requestSubmit();
-    document.querySelector('form')?.requestSubmit();
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish & test' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish & test' }));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    });
 
     expect(mutateCalls).toHaveLength(1);
   });
@@ -114,10 +116,14 @@ describe('the configure panel never lets two writes race', () => {
   it('a lone save still goes live, so the lock does not block ordinary use', async () => {
     renderScreen();
     typeInInstructions('Sort the inbox differently.');
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
 
-    document.querySelector('form')?.requestSubmit();
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish & test' }));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    });
 
     expect(mutateCalls).toHaveLength(1);
     expect(mutateCalls[0]?.goLive).toBe(true);

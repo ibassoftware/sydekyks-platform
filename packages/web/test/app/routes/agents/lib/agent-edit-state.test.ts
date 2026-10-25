@@ -292,3 +292,129 @@ describe('agentEditState model choice', () => {
     ).toBe(false);
   });
 });
+
+describe('JSONB config round trips', () => {
+  it('ignores reordered keys inside tool definitions and predefined values', () => {
+    const before = {
+      draft: {
+        instructions: 'Add.',
+        tools: [
+          {
+            type: 'PIECE',
+            pieceMetadata: {
+              actionName: 'addition_math',
+              predefinedInput: { second_number: 40, first_number: 25 },
+            },
+          },
+        ],
+      },
+      displayName: 'Adder',
+    };
+    const after = {
+      displayName: 'Adder',
+      draft: {
+        tools: [
+          {
+            pieceMetadata: {
+              predefinedInput: { first_number: 25, second_number: 40 },
+              actionName: 'addition_math',
+            },
+            type: 'PIECE',
+          },
+        ],
+        instructions: 'Add.',
+      },
+    };
+    expect(agentEditState.sameConfig({ left: before, right: after })).toBe(
+      true,
+    );
+    expect(
+      agentEditState.serverMovedWhileTyping({
+        fromServer: after,
+        lastSeen: before,
+        unsavedTyping: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('continues to distinguish a real change from JSONB key normalization', () => {
+    expect(
+      agentEditState.sameConfig({
+        left: { input: { first: 25, second: 40 } },
+        right: { input: { second: 41, first: 25 } },
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('serverSyncDecision', () => {
+  const original = { displayName: 'Adder', draft: { instructions: 'Old.' } };
+  const submitted = {
+    displayName: 'Adder',
+    draft: { instructions: 'Published.' },
+  };
+  const response = {
+    draft: { instructions: 'Published.' },
+    displayName: 'Adder',
+  };
+
+  it('acknowledges this form’s published response while the mutation callback is still pending', () => {
+    expect(
+      agentEditState.serverSyncDecision({
+        fromServer: response,
+        lastSeen: original,
+        currentValues: submitted,
+        pendingWrite: submitted,
+        unsavedTyping: true,
+      }),
+    ).toBe('acknowledged');
+  });
+
+  it('acknowledges the saved baseline without treating newer local edits as a competing editor', () => {
+    expect(
+      agentEditState.serverSyncDecision({
+        fromServer: response,
+        lastSeen: original,
+        currentValues: { ...submitted, displayName: 'New local name' },
+        pendingWrite: submitted,
+        unsavedTyping: true,
+      }),
+    ).toBe('acknowledged');
+  });
+
+  it('blocks genuinely different external edits while this form has unsaved changes', () => {
+    expect(
+      agentEditState.serverSyncDecision({
+        fromServer: { ...response, displayName: 'Other editor' },
+        lastSeen: original,
+        currentValues: submitted,
+        pendingWrite: submitted,
+        unsavedTyping: true,
+      }),
+    ).toBe('conflict');
+  });
+
+  it('does not conflict when another editor saved the same current values', () => {
+    expect(
+      agentEditState.serverSyncDecision({
+        fromServer: response,
+        lastSeen: original,
+        currentValues: submitted,
+        pendingWrite: null,
+        unsavedTyping: true,
+      }),
+    ).toBe('acknowledged');
+  });
+
+  it('takes a changed server baseline when there are no local edits', () => {
+    expect(
+      agentEditState.serverSyncDecision({
+        fromServer: response,
+        lastSeen: original,
+        currentValues: original,
+        pendingWrite: null,
+        unsavedTyping: false,
+      }),
+    ).toBe('replace');
+  });
+});
