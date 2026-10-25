@@ -1,4 +1,4 @@
-import { applyFunctionToValuesSync, connectionTemplate, extractMustacheTokens, isNil, isObject, spreadIfDefined, tryCatch } from '@activepieces/core-utils'
+import { applyFunctionToValuesSync, connectionTemplate, extractMustacheTokens, internalGadgetName, isNil, isObject, spreadIfDefined, tryCatch } from '@activepieces/core-utils'
 import { AiMetadata, OutputSchema, OutputSchemaField, PieceMetadataModel, PiecePropertyMap, PropertyType } from '@activepieces/pieces-framework'
 import { BranchOperator, EngineResponse, EngineResponseStatus, flowStructureUtil, McpServerType, McpToolResult, ProjectScopedMcpServer, PropertyExecutionType, PropertySettings, singleValueConditions, WorkerJobType } from '@activepieces/shared'
 import type { BranchedAction, Step } from '@activepieces/shared'
@@ -401,7 +401,7 @@ function normalizePieceName(pieceName: string | undefined): string | undefined {
         return undefined
     }
     if (pieceName.startsWith('@')) {
-        return pieceName
+        return internalGadgetName(pieceName)
     }
     const stripped = pieceName.startsWith('piece-') ? pieceName.slice('piece-'.length) : pieceName
     const normalized = stripped.replace(/_/g, '-')

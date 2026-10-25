@@ -1,8 +1,9 @@
-import { AiProviderKeyStatus, AIProviderName, ErrorCode, formatPieceError, isFallbackWorthy, isNil, isObject, isProviderBillingError, isTransientProviderError, ProviderOutcomeSignal, spreadIfDefined, tryCatch, tryCatchSync, unique } from '@activepieces/core-utils'
+import { AiProviderKeyStatus, AIProviderName, ErrorCode, formatPieceError, isFallbackWorthy, isNil, isObject, isProviderBillingError, isTransientProviderError, ProviderOutcomeSignal, publicGadgetText, spreadIfDefined, tryCatch, tryCatchSync, unique } from '@activepieces/core-utils'
 import { agentAiUtils, aiProviderSignal, ContentPartLike } from '@activepieces/server-utils'
 import { AgentPhase, AgentRunSource, agentToolClassification, agentToolPhases, agentToolSkills, AI_PROVIDER_ENTITY_TYPES, aiProviderUtils, apErrorOf, CHAT_CREDITS_PER_TOOL_CALL, chatBilling, ChatToolCall, LAZY_TOOL_NAME, PersistedAgentPart, SkillSurface, TASK_COMPLETION_TOOL_NAME } from '@activepieces/shared'
 import { APICallError, generateText, isLoopFinished, isStepCount, LanguageModel, LanguageModelUsage, ModelMessage, NoSuchToolError, RetryError, StepResultPerformance, StopCondition, streamText, ToolChoice, ToolExecutionOptions, ToolSet } from 'ai'
 import { HOSTED_AGENT_MAX_OUTPUT } from './hosted-agent-model'
+import { publicGadgetHistory, withGadgetIdentifiers } from './tools/gadget-identifiers'
 import { buildSkillSurface } from './tools/skill-tools'
 
 const MAX_AUTO_CONTINUATIONS = 3
@@ -70,6 +71,10 @@ export function drainOf({ state }: { state: StepContentState }): StreamDrain {
 }
 
 async function runTieredAgentTurn({ hosted = false, models, fastModel, systemPrompt, messages, tools, allToolNames, tier, phaseState, abortSignal, log, sinks, stopWhen, stepCeiling, creditsLeft, priorToolCalls, onModelOutcome, onStepModel, skills }: TieredRunAgentTurnParams): Promise<AgentTurnResult> {
+    tools = await withGadgetIdentifiers(tools)
+    messages = publicGadgetHistory(messages)
+    systemPrompt = publicGadgetText(systemPrompt)
+    if (skills) skills = { ...skills, guides: Object.fromEntries(Object.entries(skills.guides).map(([name, guide]) => [name, publicGadgetText(guide)])) }
     const drainStream = sinks?.drainStream ?? ((result: ReturnType<typeof streamText>) => result.consumeStream())
     const onProgress = sinks?.onProgress ?? (() => {})
     const baseStopCondition = stopWhen ?? isLoopFinished()
