@@ -189,7 +189,7 @@ describe('stepResultFrom — a partial transcript is not a finished one', () => 
 
 describe('UNATTENDED_WEB_TOOLS — the unattended set is listed, not subtracted', () => {
     it('names only tools that need nobody present', () => {
-        expect(UNATTENDED_WEB_TOOLS).toEqual(['ap_fetch_url', 'ap_web_search', 'ap_scrape_url'])
+        expect(UNATTENDED_WEB_TOOLS).toEqual(['ap_fetch_url', 'ap_web_search', 'ap_scrape_url', 'ap_search_web', 'ap_read_web_page'])
     })
 
     it('excludes every tool that asks the user something', () => {
