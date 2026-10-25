@@ -5,6 +5,7 @@ import { FastifyBaseLogger } from 'fastify'
 import { z } from 'zod'
 import { resolvePermissionChecker } from '../mcp/mcp-permissions'
 import { mcpServerService } from '../mcp/mcp-service'
+import { apAddBranchTool } from '../mcp/tools/ap-add-branch'
 import { apAddStepTool } from '../mcp/tools/ap-add-step'
 import { apBuildFlowTool } from '../mcp/tools/ap-build-flow'
 import { apCreateFlowTool } from '../mcp/tools/ap-create-flow'
@@ -22,6 +23,7 @@ import { apReadStepSettingsTool } from '../mcp/tools/ap-read-step-settings'
 import { apRenameFlowTool } from '../mcp/tools/ap-rename-flow'
 import { apResearchPiecesTool } from '../mcp/tools/ap-research-pieces'
 import { apUpdateRecordTool } from '../mcp/tools/ap-update-record'
+import { apUpdateBranchTool } from '../mcp/tools/ap-update-branch'
 import { apUpdateStepTool } from '../mcp/tools/ap-update-step'
 import { apUpdateTriggerTool } from '../mcp/tools/ap-update-trigger'
 import { apValidateFlowTool } from '../mcp/tools/ap-validate-flow'
@@ -39,7 +41,7 @@ import { hostingFail } from './hosting-transactions'
 const NAMES = [
     'ap_build_flow', 'ap_create_flow', 'ap_create_folder', 'ap_list_flows', 'ap_list_folders',
     'ap_flow_structure', 'ap_read_step_settings', 'ap_rename_flow', 'ap_update_trigger',
-    'ap_add_step', 'ap_update_step', 'ap_validate_flow', 'ap_research_pieces', 'ap_get_piece_props',
+    'ap_add_step', 'ap_update_step', 'ap_add_branch', 'ap_update_branch', 'ap_validate_flow', 'ap_research_pieces', 'ap_get_piece_props',
     'ap_list_connections', 'ap_create_table', 'ap_list_tables', 'ap_find_records',
     'ap_insert_records', 'ap_update_record',
 ] as const
@@ -64,7 +66,7 @@ function definitions(mcp: ProjectScopedMcpServer, userId: string, log: FastifyBa
         apBuildFlowTool(context, log), apCreateFlowTool(context, log), apCreateFolderTool(mcp, log),
         apListFlowsTool(mcp, log), apListFoldersTool(mcp, log), apFlowStructureTool(mcp, log),
         apReadStepSettingsTool(mcp, log), apRenameFlowTool(context, log), apUpdateTriggerTool(context, log),
-        apAddStepTool(context, log), apUpdateStepTool(context, log), apValidateFlowTool(context, log),
+        apAddStepTool(context, log), apUpdateStepTool(context, log), apAddBranchTool(context, log), apUpdateBranchTool(context, log), apValidateFlowTool(context, log),
         apResearchPiecesTool(mcp, log), staticSchema, apListConnectionsTool(mcp, log),
         apCreateTableTool(mcp, log), apListTablesTool(mcp, log), apFindRecordsTool(mcp, log),
         apInsertRecordsTool(mcp, log), apUpdateRecordTool(mcp, log),
@@ -99,7 +101,7 @@ export function hostedBuilderInputSchema(tool: Pick<McpToolDefinition, 'title' |
     const properties = record(schema.properties)
     const fields = tool.title === 'ap_build_flow' ? record(record(record(properties.steps).items).properties) : properties
     const guidance = {
-        input: `PIECE keys match the action schema. CODE input keys are the only fields passed to code(inputs): explicitly bind every key the function reads; prior-step values are not inherited. ${mcpUtils.STEP_REFERENCE_HINT}`,
+        input: `PIECE/CODE only; router branches use ap_add_branch/ap_update_branch. PIECE keys match the action schema. CODE input keys are the only fields passed to code(inputs): explicitly bind every key the function reads; prior-step values are not inherited. ${mcpUtils.STEP_REFERENCE_HINT}`,
         sourceCode: 'CODE only. Export code(inputs). Every property read from inputs needs a matching explicit input-map binding; trigger, previous-step and AI results are not automatic variables.',
     }
     for (const [name, description] of Object.entries(guidance)) {

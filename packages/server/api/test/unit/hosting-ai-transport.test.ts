@@ -1,16 +1,18 @@
 import RateLimit from '@fastify/rate-limit'
-import { APICallError } from 'ai'
+import { APICallError, generateText, streamText } from 'ai'
 import fastify, { FastifyInstance } from 'fastify'
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { hostedAgentRefusalOf } from '../../../worker/src/lib/execute/jobs/ee/agent/hosted-agent-model'
+import { createHostedAgentModel, hostedAgentRefusalOf } from '../../../worker/src/lib/execute/jobs/ee/agent/hosted-agent-model'
 import { entitiesMustBeOwnedByCurrentProject } from '../../src/app/authentication/authorization'
+import type { JobContext } from '../../../worker/src/lib/execute/types'
+import { HostingError } from '../../src/app/hosting/hosting-transactions'
 import { hostedAiRateLimit, hostingAiController } from '../../src/app/hosting/hosting-ai-controller'
 import { HOSTED_AI_CONTEXT_TOKENS, HOSTED_AI_REQUEST_MAX_BYTES, hostedAiInputBound, HostedAiRequest } from '../../src/app/hosting/hosting-ai-policy'
 
-const { execute, assertModel } = vi.hoisted(() => ({ execute: vi.fn(async (_input: unknown) => ({ accepted: true })), assertModel: vi.fn(async () => undefined) }))
+const { execute, stream, assertModel } = vi.hoisted(() => ({ execute: vi.fn(async (_input: unknown) => ({ accepted: true })), stream: vi.fn(), assertModel: vi.fn(async () => undefined) }))
 vi.mock('../../src/app/hosting/hosting-copilot', () => ({ assertHostedCopilotModel: assertModel }))
-vi.mock('../../src/app/hosting/hosting-services', () => ({ hostingServices: { gateway: () => ({ execute }) } }))
+vi.mock('../../src/app/hosting/hosting-services', () => ({ hostingServices: { gateway: () => ({ execute, stream }) } }))
 
 let app: FastifyInstance
 const path = '/api/v1/engine/hosting-ai/copilot/completions'
@@ -54,6 +56,33 @@ describe('real hosted AI HTTP parser, serializer and rate admission', () => {
         const response = await app.inject({ method: 'POST', url: path, headers: headers(), payload: input })
         expect(response.statusCode).toBe(403)
         expect(response.json().code).toBe('AUTHORIZATION')
+    })
+    it.each([false, true])('preserves a call-limit refusal through Fastify and the AI SDK (stream=%s)', async streaming => {
+        const gatewayCall = streaming ? stream : execute
+        gatewayCall.mockRejectedValueOnce(new HostingError('HOSTING_AI_CALL_LIMIT'))
+        const response = await app.inject({ method: 'POST', url: path, headers: headers(), payload: { ...input, stream: streaming } })
+        expect(response.statusCode).toBe(403)
+        expect(response.json()).toEqual({ code: 'HOSTING_AI_CALL_LIMIT' })
+        const originalFetch = globalThis.fetch
+        vi.stubGlobal('fetch', async () => new Response(response.body, { status: response.statusCode, statusText: response.statusMessage, headers: response.headers as HeadersInit }))
+        try {
+            const internalApiUrl = 'http://127.0.0.1:80/api/'
+            const model = createHostedAgentModel({ ctx: { admissionId: 'synthetic-admission', engineToken: 'synthetic-engine-token', internalApiUrl } as JobContext, config: { protocol: 1, payer: { type: 'managed' }, model: 'sydekyks' } })
+            let failure: unknown
+            if (streaming) {
+                const result = streamText({ model, prompt: 'Continue', maxRetries: 0, onError: ({ error }) => { failure = error } })
+                await result.consumeStream()
+            }
+            else failure = await generateText({ model, prompt: 'Continue', maxRetries: 0 }).then(() => null, error => error)
+            expect(APICallError.isInstance(failure)).toBe(true)
+            expect((failure as APICallError).statusCode).toBe(403)
+            expect((failure as APICallError).responseBody).toBe(response.body)
+            expect((failure as APICallError).url).toBe('http://127.0.0.1/api/v1/engine/hosting-ai/copilot/chat/completions')
+            expect(hostedAgentRefusalOf(failure, internalApiUrl)?.code).toBe('HOSTING_AI_CALL_LIMIT')
+        }
+        finally {
+            vi.stubGlobal('fetch', originalFetch)
+        }
     })
     it('serializes an exact pre-dispatch receipt for oversized bytes and never invokes the gateway', async () => {
         const calls = execute.mock.calls.length

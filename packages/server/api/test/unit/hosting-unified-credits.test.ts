@@ -1,12 +1,19 @@
 import { readFileSync } from 'node:fs'
 import { AIProviderName, apId } from '@activepieces/core-utils'
 import { AgentConversationStatus, AgentEvent, AgentEventType, AgentRunSource, EngineResponseStatus, ExecuteAgentRunJobData, hostingCatalog, LATEST_JOB_DATA_SCHEMA_VERSION, WorkerJobType } from '@activepieces/shared'
-import { APICallError } from 'ai'
+import { APICallError, streamText } from 'ai'
+import fastify from 'fastify'
+import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
 import { DataSource } from 'typeorm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createHostedAgentModel } from '../../../worker/src/lib/execute/jobs/ee/agent/hosted-agent-model'
 import { executeAgentRunJob } from '../../../worker/src/lib/execute/jobs/ee/agent/execute-agent-run'
 import * as agentTurnRuntime from '../../../worker/src/lib/execute/jobs/ee/agent/run-agent-turn'
 import type { JobContext } from '../../../worker/src/lib/execute/types'
+import { entitiesMustBeOwnedByCurrentProject } from '../../src/app/authentication/authorization'
+import * as databaseRuntime from '../../src/app/database/database-connection'
+import { hostingAiController } from '../../src/app/hosting/hosting-ai-controller'
+import { hostingServices } from '../../src/app/hosting/hosting-services'
 import { AIProviderEntity } from '../../src/app/ai/ai-provider-entity'
 import { UserIdentityEntity } from '../../src/app/authentication/user-identity/user-identity-entity'
 import { SydekyksUnifiedCredits1903000000000 } from '../../src/app/database/migration/postgres/1903000000000-SydekyksUnifiedCredits'
@@ -528,6 +535,79 @@ describe('full gateway Credit journey', () => {
         expect(await balance()).toMatchObject({ consumed: 1n, reserved: 0n })
         expect(await ds.getRepository(HostingModelCallEntity).countBy({ platformId: actor.platformId })).toBe(0)
         expect(await ds.getRepository(HostingDailyBudgetEntity).count()).toBe(0)
+    })
+
+    it('settles a real 32-call refusal through HTTP, streaming SDK and worker without charging execution twice', async () => {
+        vi.stubEnv('AP_SERVICE_MODE', 'hosted')
+        await configureManaged()
+        const value = await chatByok('managed'), admissionId = await value.execution.admit(value.delivery)
+        const fence = { ...value.delivery, admissionId, connectionId: 'synthetic-call-budget-worker' }
+        expect(await value.execution.start(fence)).toBe(true)
+        await ds.getRepository(SydConversationEntity).update({ id: value.conversationId }, { status: AgentConversationStatus.STREAMING })
+        const complete = vi.fn(async () => completion('deepseek-flash'))
+        const gateway = createHostedAiGateway({ dataSource: ds, provider: { id: 'synthetic', endpoint: 'diagnostic://no-network', complete } })
+        const scope = { admissionId, platformId: actor.platformId, projectId }
+        for (let index = 0; index < 32; index++) await gateway.execute({ scope, request: { ...request, callKey: `copilot:${index + 1}` } })
+        const dispatch = await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ admissionId })
+        const usageBefore = await ds.getRepository(HostingRootCreditUsageEntity).findOneByOrFail({ id: dispatch.reservationId! })
+        expect(usageBefore.settledSupplierMicroUsd).toBeGreaterThan(1500n)
+        const expectedCredits = (usageBefore.settledSupplierMicroUsd + 1499n) / 1500n
+        expect(usageBefore).toMatchObject({ consumedCredits: expectedCredits, reservedCredits: 0n, heldSupplierMicroUsd: 0n })
+
+        // Real controller/error handler and ownership hook; the only substituted
+        // transport is local inject instead of a network request to production.
+        vi.spyOn(databaseRuntime, 'databaseConnection').mockReturnValue(ds)
+        vi.spyOn(hostingServices, 'gateway').mockReturnValue(gateway)
+        const app = fastify()
+        app.setValidatorCompiler(validatorCompiler); app.setSerializerCompiler(serializerCompiler)
+        app.addHook('preSerialization', entitiesMustBeOwnedByCurrentProject)
+        app.addHook('preHandler', async incoming => {
+            incoming.principal = { type: 'ENGINE', id: admissionId, platform: { id: actor.platformId }, projectId } as typeof incoming.principal
+        })
+        await app.register(hostingAiController, { prefix: '/api/v1/engine/hosting-ai' })
+        const originalFetch = globalThis.fetch
+        let failure: unknown
+        try {
+            vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+                const response = await app.inject({ method: 'POST', url: new URL(url).pathname, headers: init.headers as Record<string, string>, payload: init.body as string })
+                expect(response.statusCode).toBe(403)
+                expect(response.json()).toEqual({ code: 'HOSTING_AI_CALL_LIMIT' })
+                return new Response(response.body, { status: response.statusCode, statusText: response.statusMessage, headers: response.headers as HeadersInit })
+            })
+            const model = createHostedAgentModel({ ctx: { admissionId, engineToken: 'synthetic-engine-token', internalApiUrl: 'http://127.0.0.1:80/api/' } as JobContext, config: { protocol: 1, payer: { type: 'managed' }, model: 'sydekyks' } })
+            await streamText({ model, prompt: 'Continue', maxRetries: 0, onError: ({ error }) => { failure = error } }).consumeStream()
+        }
+        finally {
+            vi.stubGlobal('fetch', originalFetch)
+            await app.close()
+        }
+        expect(APICallError.isInstance(failure)).toBe(true)
+        expect((failure as APICallError).url).toBe('http://127.0.0.1/api/v1/engine/hosting-ai/copilot/chat/completions')
+        const turn = vi.spyOn(agentTurnRuntime, 'runAgentTurn').mockRejectedValue(failure)
+        const events: AgentEvent[] = []
+        const logger = { child: () => logger, info: () => {}, warn: () => {}, error: () => {}, debug: () => {}, trace: () => {}, fatal: () => {} }
+        const ctx = { admissionId, internalApiUrl: 'http://127.0.0.1:80/api/', engineToken: 'synthetic-engine-token', log: logger, apiClient: {
+            getAgentConfig: async () => ({ hosted: { protocol: 1, payer: { type: 'managed' }, model: 'sydekyks' }, credentials: { provider: AIProviderName.ACTIVEPIECES }, modelId: 'sydekyks', source: AgentRunSource.CHAT, aiTools: {}, tier: { id: 'synthetic' }, previousUiMessages: [], messages: [], projects: [], systemPrompt: 'Synthetic no-supplier test' }),
+            saveAgentMessages: async () => {
+                await ds.getRepository(SydConversationEntity).update({ id: value.conversationId, activeRunId: value.delivery.data.runId }, { status: AgentConversationStatus.ERROR })
+            },
+            sendAgentEvent: async ({ event }: { event: AgentEvent }) => { events.push(event) },
+            executeAgentTool: async () => ({ result: false }), heartbeatAgentConversation: async () => {},
+        } } as unknown as JobContext
+        const result = await executeAgentRunJob.execute(ctx, value.delivery.data)
+        expect(result.status).toBe(EngineResponseStatus.USER_FAILURE)
+        expect(turn).toHaveBeenCalledTimes(1)
+        expect(events).toMatchObject([{ type: AgentEventType.ERROR, data: { message: 'This request reached the limit on AI calls. Start a new request with a smaller task.' } }, { type: AgentEventType.FINISHED }])
+        await value.execution.complete({ ...fence, status: result.status })
+        expect(await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: dispatch.reservationId! })).toMatchObject({ state: 'settled' })
+        expect(await ds.getRepository(HostingRootCreditUsageEntity).findOneByOrFail({ id: dispatch.reservationId! })).toEqual(usageBefore)
+        expect(await balance()).toMatchObject({ consumed: expectedCredits, reserved: 0n })
+        const ledgerAfter = await ds.getRepository(HostingLedgerEntity).findBy({ platformId: actor.platformId })
+        await value.execution.complete({ ...fence, status: result.status })
+        expect(await ds.getRepository(HostingLedgerEntity).findBy({ platformId: actor.platformId })).toEqual(ledgerAfter)
+        expect(complete).toHaveBeenCalledTimes(32)
+        expect(await ds.getRepository(HostingModelCallEntity).countBy({ rootReservationId: dispatch.reservationId!, state: 'settled' })).toBe(32)
+        expect(await ds.getRepository(HostingModelCallEntity).countBy({ rootReservationId: dispatch.reservationId!, state: 'uncertain' })).toBe(0)
     })
 
     it('retains an uncertain supplier hold and refuses both explicit retry and another call key', async () => {

@@ -11,7 +11,8 @@ export function hostedAgentFailureMessage(message: string): string {
     if (/HOSTING_AI_RATE_LIMITED/.test(message)) return 'This workspace has made too many AI requests in a short time. Wait a minute before sending again.'
     if (/HOSTING_CREDITS_EXHAUSTED/.test(message)) return 'Not enough Credits are available for this reply. Check billing or contact your workspace administrator.'
     if (/HOSTING_(AI|NATIVE)_FILE_(EXPIRED|DELETED|UNAVAILABLE|INVALID|CHANGED|SCOPE_DENIED)/.test(message)) return 'An attachment is no longer available. Upload it again or start a new chat.'
-    if (/HOSTING_NATIVE_(TOOL|CREDIT|OUTPUT)_LIMIT|HOSTING_RUN_CREDIT_LIMIT|HOSTING_AI_CALL_LIMIT/.test(message)) return 'This reply reached its safety limit. Start a shorter request or contact your workspace administrator.'
+    if (/HOSTING_AI_CALL_LIMIT/.test(message)) return 'This request reached the limit on AI calls. Start a new request with a smaller task.'
+    if (/HOSTING_NATIVE_(TOOL|CREDIT|OUTPUT)_LIMIT|HOSTING_RUN_CREDIT_LIMIT/.test(message)) return 'This reply reached its safety limit. Start a shorter request or contact your workspace administrator.'
     if (/HOSTING_AI_CAPABILITY_DENIED|HOSTING_NATIVE_FEATURE_DENIED/.test(message)) return 'This feature is not available for the selected AI connection. Ask your workspace administrator to review its settings.'
     if (/HOSTING_NATIVE_URL_DENIED/.test(message)) return 'This page cannot be opened. Choose a public HTTPS page.'
     if (/HOSTING_NATIVE_PRICING_APPROVAL_REQUIRED/.test(message)) return 'Web search is awaiting administrator approval. Ask your workspace administrator to review its settings.'
@@ -29,8 +30,19 @@ export function hostedAgentFailureMessage(message: string): string {
 export function hostedAgentRefusalOf(error: unknown, internalApiUrl: string): { code: string, message: string } | null {
     const cause = RetryError.isInstance(error) ? error.lastError : error
     if (!APICallError.isInstance(cause) || ![403, 413, 429].includes(cause.statusCode ?? 0)) return null
-    const base = `${internalApiUrl.replace(/\/$/, '')}/v1/engine/hosting-ai/copilot`
-    if (![`${base}/completions`, `${base}/chat/completions`].includes(cause.url)) return null
+    // The SDK constructs a URL, which removes explicit default ports (80/443).
+    // Pin the canonical endpoint, retaining origin, effective port and full path.
+    // Query strings, fragments and userinfo never identify our gateway receipt.
+    try {
+        const internal = new URL(internalApiUrl)
+        const target = new URL(cause.url)
+        if (![internal, target].every(url => ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash)) return null
+        const base = `${internal.href.replace(/\/$/, '')}/v1/engine/hosting-ai/copilot`
+        if (![`${base}/completions`, `${base}/chat/completions`].includes(target.href)) return null
+    }
+    catch {
+        return null
+    }
     let body: unknown
     try {
         body = JSON.parse(cause.responseBody ?? '')

@@ -39,7 +39,7 @@ beforeEach(() => {
 describe('admitted hosted builder surface', () => {
     it('includes actual Mission and Tables tools, with bounded static schemas and no execution/remote tools', async () => {
         const tools = await hostedBuilderConfiguration(scope)
-        expect(tools.map(t => t.name)).toEqual(expect.arrayContaining(['ap_build_flow', 'ap_create_flow', 'ap_update_trigger', 'ap_add_step', 'ap_create_table', 'ap_insert_records', 'ap_get_piece_props']))
+        expect(tools.map(t => t.name)).toEqual(expect.arrayContaining(['ap_build_flow', 'ap_create_flow', 'ap_update_trigger', 'ap_add_step', 'ap_add_branch', 'ap_update_branch', 'ap_create_table', 'ap_insert_records', 'ap_get_piece_props']))
         for (const name of ['ap_run_action', 'ap_test_flow', 'ap_test_step', 'ap_retry_run', 'ap_lock_and_publish', 'ap_resolve_property_options', 'ap_execute_action', 'ap_run_code']) expect(hostedBuilderToolNames.has(name)).toBe(false)
         const build = tools.find(t => t.name === 'ap_build_flow')!.inputSchema as { required: string[], properties: { steps: { items: { properties: { type: { enum: string[] }, stepLocationRelativeToParent: { default: string } } } } } }
         expect(build.required).toEqual(expect.arrayContaining(['flowName', 'trigger', 'steps']))

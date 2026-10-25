@@ -261,7 +261,9 @@ export const RouterBranchesSchema = (addMinLength: boolean) =>
     z.array(
         z.union([
             z.object({
-                conditions: z.array(z.array(buildBranchConditionValid(addMinLength))),
+                conditions: addMinLength
+                    ? z.array(z.array(buildBranchConditionValid(true)).min(1)).min(1)
+                    : z.array(z.array(buildBranchConditionValid(false))),
                 branchType: z.literal(BranchExecutionType.CONDITION),
                 branchName: z.string(),
             }),
