@@ -58,6 +58,16 @@ describe('Copilot Gadget namespace boundary', () => {
         expect(publicGadgetResult('customer_tool', { pieceName: original })).toEqual({ pieceName: original })
     })
 
+    it('brands platform execution errors while preserving the request data quoted in them', () => {
+        const result = publicGadgetResult('ap_execute_action', {
+            isError: true, content: [{ type: 'text', text: `Failed to load ${original}` }], input: { pieceName: original },
+        })
+        expect(result.content[0].text).toBe(`Failed to load ${branded}`)
+        expect(result.input.pieceName).toBe(original)
+        const messages: ModelMessage[] = [{ role: 'tool', content: [{ type: 'tool-result', toolCallId: 'error', toolName: 'ap_execute_action', output: { type: 'error-text', value: `Failed to load ${original}` } }] }]
+        expect(publicGadgetHistory(messages)).toMatchObject([{ content: [{ output: { value: `Failed to load ${branded}` } }] }])
+    })
+
     it('exposes branded schemas while execution and approval comparisons receive canonical inputs', async () => {
         const execute = vi.fn(async input => ({ content: [{ type: 'text', text: `Selected ${input.pieceName}` }], pieceName: input.pieceName }))
         const wrapped = await withGadgetIdentifiers({ ap_update_trigger: tool({
