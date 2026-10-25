@@ -6,6 +6,7 @@ import {
   ChevronDown,
   MessageSquare,
   Plus,
+  Pencil,
   Search,
   Settings,
   Trash2,
@@ -13,17 +14,21 @@ import {
 import { useMemo, useState, useRef, useCallback, useEffect } from 'react';
 
 import { SettingsHubDialog } from '@/app/components/settings-hub/settings-hub-dialog';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { chatApi } from '@/features/chat/lib/chat-api';
 import { chatUtils } from '@/features/chat/lib/chat-utils';
+import {
+  assertConversationSession,
+  ConversationSession,
+  useConversationSession,
+} from '@/features/chat/lib/conversation-session';
 import { useConversationIndicators } from '@/features/chat/lib/use-conversation-indicators';
 import { cn } from '@/lib/utils';
 
 import { ConversationStatusDot } from './components/conversation-status-dot';
 import { ConversationsToggle } from './components/conversations-toggle';
-import { DelayedTooltip } from './components/delayed-tooltip';
 
 export function ConversationList({
   onSelect,
@@ -33,6 +38,7 @@ export function ConversationList({
   mobile = false,
   agentId,
   onCollapse,
+  onTitleChanged,
 }: {
   onSelect?: (id: string) => void;
   onNewChat?: () => void;
@@ -41,8 +47,66 @@ export function ConversationList({
   mobile?: boolean;
   agentId?: string;
   onCollapse?: () => void;
+  onTitleChanged?: (id: string, title: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const session = useConversationSession();
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [renaming, setRenaming] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  const [renameError, setRenameError] = useState(false);
+  const rename = useMutation({
+    mutationFn: async ({
+      id,
+      title,
+      session: requestSession,
+    }: {
+      id: string;
+      title: string;
+      session: ConversationSession;
+    }) => {
+      assertConversationSession(requestSession);
+      const result = await chatApi.updateConversation(id, {
+        title: title.trim(),
+      });
+      assertConversationSession(requestSession);
+      return result;
+    },
+    onSuccess: (conversation, { session: requestSession }) => {
+      if (!mounted.current) return;
+      try {
+        assertConversationSession(requestSession);
+      } catch {
+        return;
+      }
+      onTitleChanged?.(conversation.id, conversation.title ?? '');
+      setRenaming(null);
+      void queryClient.invalidateQueries({
+        queryKey: ['chat-conversations', agentId ?? 'chat', session.epoch],
+      });
+    },
+    onError: (_error, { session: requestSession }) => {
+      if (!mounted.current) return;
+      try {
+        assertConversationSession(requestSession);
+      } catch {
+        return;
+      }
+      setRenameError(true);
+    },
+  });
+  useEffect(() => {
+    setRenaming(null);
+    setRenameError(false);
+  }, [session.epoch]);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [showTopFade, setShowTopFade] = useState(false);
   const [showBottomFade, setShowBottomFade] = useState(false);
@@ -52,22 +116,44 @@ export function ConversationList({
 
   const { data: conversationsPage, isLoading: isLoadingConversations } =
     useQuery({
-      queryKey: ['chat-conversations', agentId ?? 'chat'],
-      queryFn: () =>
-        chatApi.listConversations({
+      queryKey: ['chat-conversations', agentId ?? 'chat', session.epoch],
+      enabled: session.authenticated,
+      queryFn: async () => {
+        assertConversationSession(session);
+        const result = await chatApi.listConversations({
           limit: 100,
           ...(agentId === undefined ? {} : { agentId }),
-        }),
+        });
+        assertConversationSession(session);
+        return result;
+      },
     });
 
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
 
   const { mutate: deleteConv } = useMutation({
-    mutationFn: (id: string) => chatApi.deleteConversation(id),
-    onSuccess: (_data, deletedId) => {
+    mutationFn: async ({
+      id,
+      session: requestSession,
+    }: {
+      id: string;
+      session: ConversationSession;
+    }) => {
+      assertConversationSession(requestSession);
+      const result = await chatApi.deleteConversation(id);
+      assertConversationSession(requestSession);
+      return result;
+    },
+    onSuccess: (_data, { id: deletedId, session: requestSession }) => {
+      if (!mounted.current) return;
+      try {
+        assertConversationSession(requestSession);
+      } catch {
+        return;
+      }
       void queryClient.invalidateQueries({
-        queryKey: ['chat-conversations', agentId ?? 'chat'],
+        queryKey: ['chat-conversations', agentId ?? 'chat', session.epoch],
       });
       if (selectedIdRef.current === deletedId) {
         onNewChat?.();
@@ -75,7 +161,10 @@ export function ConversationList({
     },
   });
 
-  const allConversations = conversationsPage?.data ?? [];
+  const allConversations = useMemo(
+    () => conversationsPage?.data ?? [],
+    [conversationsPage],
+  );
 
   const { getIndicator, markRead } = useConversationIndicators({
     conversations: allConversations,
@@ -132,7 +221,7 @@ export function ConversationList({
 
   const handleDelete = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    deleteConv(id);
+    deleteConv({ id, session });
   };
 
   const toggleGroup = (label: string) => {
@@ -162,56 +251,103 @@ export function ConversationList({
           items.map((conv) => {
             const indicator = getIndicator(conv);
             return (
-              <button
-                type="button"
+              <div
                 key={conv.id}
                 className={cn(
-                  'group flex items-center w-full px-2 py-1.5 rounded-md bg-transparent border-none cursor-pointer text-left text-xs transition-colors hover:bg-gray-3 relative',
-                  mobile && 'px-3 py-2.5 text-sm',
-                  selectedId === conv.id &&
-                    'bg-gray-3 font-semibold border-l-2 border-l-accent-9',
+                  'group flex items-center gap-1 rounded-md px-1',
+                  selectedId === conv.id && 'bg-gray-3',
                 )}
-                onClick={() => handleClick(conv)}
               >
-                <span className="overflow-hidden text-ellipsis whitespace-nowrap pr-5 flex-1">
-                  {conv.title
-                    ? chatUtils.sanitizeTitle(conv.title)
-                    : t('New conversation')}
-                </span>
-                {indicator && (
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 transition-opacity group-hover:opacity-0">
-                    <ConversationStatusDot state={indicator} />
-                  </span>
-                )}
-                <DelayedTooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      role="button"
-                      tabIndex={0}
+                {renaming?.id === conv.id ? (
+                  <form
+                    className="flex min-w-0 flex-1 flex-wrap gap-1 py-1"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (renaming.title.trim() && !rename.isPending) {
+                        setRenameError(false);
+                        rename.mutate({ ...renaming, session });
+                      }
+                    }}
+                  >
+                    <Input
+                      autoFocus
+                      aria-label={t('Conversation title')}
+                      maxLength={200}
+                      className="h-8 min-w-0 text-sm"
+                      value={renaming.title}
+                      disabled={rename.isPending}
+                      onChange={(event) =>
+                        setRenaming({ id: conv.id, title: event.target.value })
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape' && !rename.isPending)
+                          setRenaming(null);
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      type="submit"
+                      disabled={!renaming.title.trim() || rename.isPending}
+                    >
+                      {t('Save')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      type="button"
+                      disabled={rename.isPending}
+                      onClick={() => setRenaming(null)}
+                    >
+                      {t('Cancel')}
+                    </Button>
+                    {renameError && (
+                      <p role="alert" className="w-full text-xs text-danger-11">
+                        {t('Title could not be saved. Try again.')}
+                      </p>
+                    )}
+                  </form>
+                ) : (
+                  <>
+                    <button
+                      type="button"
                       className={cn(
-                        'absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 rounded-md text-gray-11 hover:text-danger-11 hover:bg-danger-3 transition-all',
-                        mobile && 'opacity-100 p-1.5',
+                        'flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 py-2 text-left text-xs hover:bg-gray-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-9',
+                        mobile && 'py-3 text-sm',
                       )}
-                      onClick={(e) => handleDelete(e, conv.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.stopPropagation();
-                          deleteConv(conv.id);
-                        }
+                      onClick={() => handleClick(conv)}
+                    >
+                      <span className="truncate flex-1">
+                        {conv.title
+                          ? chatUtils.sanitizeTitle(conv.title)
+                          : t('New conversation')}
+                      </span>
+                      {indicator && <ConversationStatusDot state={indicator} />}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={t('Rename conversation')}
+                      title={t('Rename conversation')}
+                      disabled={rename.isPending}
+                      className="rounded-md p-1.5 text-gray-11 hover:bg-gray-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-9"
+                      onClick={() => {
+                        setRenameError(false);
+                        setRenaming({ id: conv.id, title: conv.title ?? '' });
                       }}
                     >
-                      <Trash2 size={12} />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent
-                    side="right"
-                    align="center"
-                    className="pointer-events-none"
-                  >
-                    {t('Delete')}
-                  </TooltipContent>
-                </DelayedTooltip>
-              </button>
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={t('Delete conversation')}
+                      title={t('Delete conversation')}
+                      className="rounded-md p-1.5 text-gray-11 hover:text-danger-11 hover:bg-danger-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-9"
+                      onClick={(event) => handleDelete(event, conv.id)}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </>
+                )}
+              </div>
             );
           })}
       </div>

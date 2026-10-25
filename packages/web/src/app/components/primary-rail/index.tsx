@@ -55,6 +55,7 @@ import { chatUtils } from '@/features/chat/lib/chat-utils';
 import {
   CreateProjectButton,
   getProjectName,
+  projectReference,
   PlatformSwitcher,
   projectCollectionUtils,
 } from '@/features/projects';
@@ -533,6 +534,13 @@ function RailPinnedProjects({ collapsed }: { collapsed: boolean }) {
           <ProjectRow
             key={project.id}
             project={project}
+            workspaceName={platform.name}
+            ownershipLabel={
+              project.ownerId === currentUser?.id
+                ? t('Your project')
+                : t('Shared project')
+            }
+            reference={projectReference(project, ordered)}
             collapsed={collapsed}
             active={location.pathname.includes(`/projects/${project.id}`)}
             onOpen={openProject}
@@ -545,17 +553,30 @@ function RailPinnedProjects({ collapsed }: { collapsed: boolean }) {
 
 function ProjectRow({
   project,
+  workspaceName,
+  ownershipLabel,
+  reference,
   collapsed,
   active,
   onOpen,
 }: {
   project: ProjectWithLimits;
+  workspaceName: string;
+  ownershipLabel: string;
+  reference: string | null;
   collapsed: boolean;
   active: boolean;
   onOpen: (params: { projectId: string; name: string }) => void;
 }) {
   const prefersReducedMotion = useReducedMotion();
   const name = getProjectName(project);
+  const context = [
+    reference && `${t('Reference')} ${reference}`,
+    ownershipLabel,
+    workspaceName,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const isTeam = project.type === ProjectType.TEAM;
   const palette =
     isTeam && project.icon ? PROJECT_COLOR_PALETTE[project.icon.color] : null;
@@ -586,20 +607,28 @@ function ProjectRow({
         e.stopPropagation();
         onOpen({ projectId: project.id, name });
       }}
-      aria-label={name}
+      aria-label={`${name}, ${context}`}
       className={cn(
         'flex shrink-0 items-center gap-3 rounded-full text-sm text-gray-12 hover:bg-gray-4 hover:text-gray-12',
-        collapsed ? 'size-9 cursor-pointer justify-center' : 'h-9 w-full px-3',
+        collapsed
+          ? 'size-9 cursor-pointer justify-center'
+          : 'min-h-12 w-full min-w-0 px-3 py-1.5',
         active && 'bg-gray-4 font-medium text-gray-12',
       )}
     >
       {badge}
       {!collapsed && (
-        <TextWithTooltip tooltipMessage={name}>
-          <span className="block min-w-0 flex-1 truncate text-left">
-            {name}
+        <span className="block min-w-0 flex-1 text-left">
+          <TextWithTooltip tooltipMessage={name}>
+            <span className="block truncate">{name}</span>
+          </TextWithTooltip>
+          <span
+            className="block truncate text-xs font-normal text-gray-11"
+            title={context}
+          >
+            {context}
           </span>
-        </TextWithTooltip>
+        </span>
       )}
     </motion.button>
   );
@@ -611,7 +640,11 @@ function ProjectRow({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{row}</TooltipTrigger>
-      <TooltipContent side="right">{name}</TooltipContent>
+      <TooltipContent side="right">
+        {name}
+        <br />
+        {context}
+      </TooltipContent>
     </Tooltip>
   );
 }

@@ -3,6 +3,7 @@ export { CreateProjectButton } from './components/create-project-button';
 export { EditProjectDialog } from './components/edit-project-dialog';
 export { NewProjectDialog } from './components/new-project-dialog';
 export { PlatformSwitcher } from './components/platform-switcher';
+export { projectReference, projectSelectionLabel } from './lib/project-label';
 export {
   getProjectName,
   projectCollectionUtils,
