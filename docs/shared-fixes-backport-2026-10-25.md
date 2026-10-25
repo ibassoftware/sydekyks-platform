@@ -16,6 +16,7 @@ This branch selectively extracts shared fixes from the SaaS development branch. 
 | B06 | Unified Agent configuration, name/sharing controls, Publish & test and mobile history | `f9c98b84e52`, `9be635bb435` |
 | B07 | Local first-message chat titles and visible manual rename, with generic session guards | `9944fb3b379` |
 | B08 | Mobile sidebar trigger/focus behavior and distinguishable project names | `f92be6db01b`, plus the missing production trigger identified during review |
+| B09 | Reject unsupported router edits without writing; validate conditions and verify branch-editor persistence | New shared regression fix |
 
 The webhook body memoization fix is already on main. Hosted transport, provider masking, Credit accounting and draft-webhook admission changes were deliberately excluded. The public password-reset and form-upload-to-private-AI adapter gaps are not completed by this backport.
 
@@ -32,7 +33,13 @@ The verification uses the backport checkout's source. Existing installed depende
 - Worker first-turn/tool execution and failure regressions: 38 tests passed, including no title-generation model call or title event. Worker TypeScript checks passed.
 - Distribution boundary audit passed; its 5 fixture tests passed.
 - Web application and engine library TypeScript checks passed; frontend production build and engine build passed.
-- Focused lint has no errors; existing unrelated return-type/hook warnings remain. The full frontend spec typecheck still fails on two unchanged main fixtures: `test/app/components/sidebar/platform/index.test.tsx` imports the removed `PlatformNav` export, and `test/app/routes/platform/security/sso/sso-page.test.tsx` imports the missing `saml-setup-page`. Neither fixture nor its import target differs from main; this backport does not claim full CI is green.
+- The full frontend suite passed: 183 files, 1,602 tests. Obsolete fixtures now target the actual sidebar, SSO dialogs and current main behavior. No tests were skipped. The SSO replacement verifies current supported behavior; it does not establish last-working-auth-method or Google-credential safety guards absent from inherited main source.
+- Full frontend application and spec TypeScript checks passed. SSO mocks use the redacted public configuration shape rather than exposing supplier/identity-provider secrets.
+- Full lint passed all 36 tasks, with existing warnings and no errors.
+- The release API gate passed all 24 files / 194 tests against an isolated migrated PostgreSQL database and Redis, with no failed, pending or todo tests. Schema validation reported no drift.
+- Worker regressions passed 315 tests; provider utility regressions passed 92; engine regressions passed 84. Shared request and skill contracts, free access and piece compatibility also passed.
+- Router draft/validation regressions passed 27 tests. Empty router conditions fail validation, incomplete drafts remain editable, unsupported generic edits fail before a write, and the dedicated branch editor persists real conditions.
+- The pinned Node 24 / Bun 1.4 release build covers web, API, worker and engine. GitHub validation on the final PR head is required before merging.
 
 Reproducible focused commands from repository root:
 
@@ -51,7 +58,7 @@ The integration suite needs an isolated PostgreSQL database initialized with the
 
 ## Self-hosted runtime and review
 
-A fresh Community Edition/prod-mode source runtime passed real PostgreSQL migrations, queue migration/startup, sign-in and API authorization checks. It uses a new database and a previously empty Redis database in existing local test containers, with unique config/cache directories and disposable credentials. No new Docker containers or volumes were needed.
+A fresh Community Edition/prod-mode source runtime passed real PostgreSQL migrations, queue migration/startup, sign-in and API authorization checks. It uses a new database and a previously empty Redis database in existing local test containers, with unique config/cache directories and disposable credentials. That initial runtime reused isolated local services. The later complete CI gate used two dedicated, labelled PostgreSQL/Redis containers with tmpfs storage; unrelated services and volumes were preserved.
 
 Agent create → edit → publish and chat rename/readback passed against actual API endpoints. Browser review uses a local deterministic CUSTOM provider; this tests application behavior without using real supplier credentials or representing a live-provider certification.
 
@@ -65,8 +72,10 @@ The mobile navigation issue found during browser QA is fixed and verified. The e
 
 A published native Agent also completed cold MCP discovery → tool call → answer, with both response and local title preserved after reload. It used two normal model steps around the tool call, with no title request. The MCP client separately discovered 45 schemas and successfully listed workflows. Duplicate Command Center labels were also verified in the browser.
 
-No remaining blocking finding was reported at `84a0259f531`. Production, main, the SaaS source branch and rehearsal data were untouched. No new Docker containers/volumes were created. The temporary source API/worker/provider services are stopped after QA; private test data and evidence are preserved.
+No remaining blocking finding was reported at `84a0259f531`. Production, main, the SaaS source branch and rehearsal data were untouched. The later full CI gate used disposable, owned tmpfs services, without changing rehearsal or unrelated databases. The temporary source API/worker/provider services are stopped after QA; private test data and evidence are preserved.
 
 During the initial worker replacement, an existing stale long-poll connection briefly delayed the original CHAT job. Normal recovery completed the same job/run without replay or duplicate provider dispatch. The relevant runtime files were verified identical to main; that broader worker-disconnect race is not changed here.
 
-This is a locally verified, unmerged branch. No deployment, remote publication or release version bump was performed.
+The final fixture, router and error-handling review reported no blocking findings. Router core contracts are included in the PR workflow and the API gate manifest. GitHub PR status is the source of truth for publication and merge; merge requires successful validation on the reviewed final head. This PR does not deploy, publish a release image, bump a version or modify SaaS billing/provider controls.
+
+The separately investigated hosted chat failure and hosted branch-tool allowlist fixes live on `codex/saas-router-budget-fixes-20261025`, outside this main PR. Production runs, pending work, supplier holds and balances remain unchanged.

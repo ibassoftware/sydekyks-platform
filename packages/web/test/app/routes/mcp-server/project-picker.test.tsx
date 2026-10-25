@@ -18,9 +18,9 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
     <div data-project-item="true">{children}</div>
   ),
 }));
-vi.mock('@/features/projects', () => ({
+vi.mock('@/features/projects', async () => ({
+  ...(await import('@/features/projects/lib/project-label')),
   ApProjectDisplay: ({ title }: { title: string }) => <span>{title}</span>,
-  getProjectName: ({ displayName }: { displayName: string }) => displayName,
   projectCollectionUtils: {
     useAll: () => ({
       data: [
@@ -42,7 +42,9 @@ declare global {
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function offeredProjects(allowedProjectIds: string[] | null): Array<string | null> {
+function offeredProjects(
+  allowedProjectIds: string[] | null,
+): Array<string | null> {
   const container = document.createElement('div');
   const root = createRoot(container);
   act(() => {
@@ -54,9 +56,11 @@ function offeredProjects(allowedProjectIds: string[] | null): Array<string | nul
       />,
     );
   });
-  return Array.from(
+  const offered = Array.from(
     container.querySelectorAll('[data-project-item="true"]'),
   ).map((item) => item.textContent);
+  act(() => root.unmount());
+  return offered;
 }
 
 describe('ProjectPicker', () => {

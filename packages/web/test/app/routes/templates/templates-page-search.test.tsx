@@ -143,23 +143,23 @@ afterEach(() => {
 });
 
 describe('TemplatesPage search on the official gallery', () => {
-  it('shows every official template under All when nothing is searched', async () => {
+  it('passes gallery categories and grouped templates to All when nothing is searched', async () => {
     await renderPage('/templates');
     expect(shownByCategory()).toEqual({
+      All: '',
       Sales: 'Slack alerts,Gmail digest',
       Marketing: 'Gmail digest,Slack standup',
+      Legal: '',
     });
   });
 
-  it('shows only matching templates under All when a search term is typed', async () => {
+  it('shows matching templates once in a flat list when searching All', async () => {
     await renderPage('/templates?search=slack');
     expect(list).toHaveBeenCalledWith(
       expect.objectContaining({ type: TemplateType.OFFICIAL, search: 'slack' }),
     );
-    expect(shownByCategory()).toEqual({
-      Sales: 'Slack alerts',
-      Marketing: 'Slack standup',
-    });
+    expect(shownByCategory()).toEqual({});
+    expect(shownInSelectedCategory()).toBe('Slack alerts,Slack standup');
   });
 
   it('shows only matching templates inside a selected category', async () => {
@@ -172,9 +172,17 @@ describe('TemplatesPage search on the official gallery', () => {
     expect(shownInSelectedCategory()).toBe('Slack alerts,Gmail digest');
   });
 
-  it('shows the empty state when the search only matches templates outside every category', async () => {
+  it('includes matching uncategorized templates in the flat search results', async () => {
     await renderPage('/templates?search=uncategorized');
     expect(shownByCategory()).toEqual({});
+    expect(shownInSelectedCategory()).toBe('Uncategorized helper');
+    expect(emptyStateTitle()).toBeUndefined();
+  });
+
+  it('shows the empty state when no official template matches', async () => {
+    await renderPage('/templates?search=no-such-template');
+    expect(shownByCategory()).toEqual({});
+    expect(shownInSelectedCategory()).toBeUndefined();
     expect(emptyStateTitle()).toBe('No templates found');
   });
 });

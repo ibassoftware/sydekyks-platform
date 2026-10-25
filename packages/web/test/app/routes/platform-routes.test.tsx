@@ -53,17 +53,21 @@ function renderAiCenterRoute() {
 }
 
 describe('/platform/ai route', () => {
-  it('leaves the plan lock to the providers tab when the plan lacks aiProvidersEnabled', async () => {
+  it('locks the providers route when the plan lacks aiProvidersEnabled', async () => {
     plan.aiProvidersEnabled = false;
 
     renderAiCenterRoute();
 
+    const preview = await screen.findByText('AI Center providers');
+    expect(preview.closest('[inert]')?.getAttribute('aria-hidden')).toBe(
+      'true',
+    );
     expect(
-      await screen.findAllByRole('heading', { name: 'AI Center providers' }),
-    ).toEqual([expect.any(HTMLHeadingElement)]);
-    expect(
-      screen.queryAllByRole('heading', { name: 'Unlock AI Center' }),
+      screen.queryAllByRole('heading', { name: 'AI Center providers' }),
     ).toEqual([]);
+    expect(
+      screen.getAllByRole('heading', { name: 'Unlock AI Center' }),
+    ).toEqual([expect.any(HTMLHeadingElement)]);
   });
 
   it('opens the providers page when aiProvidersEnabled is on', async () => {

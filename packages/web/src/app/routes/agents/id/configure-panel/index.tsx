@@ -467,7 +467,7 @@ const ConfigureIdentity = ({
         )}
       />
       <details className="text-sm">
-        <summary className="w-fit cursor-pointer text-gray-11 outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">
+        <summary className="w-fit cursor-pointer text-gray-11 outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-9">
           {t('Appearance')}
         </summary>
         <FormField
@@ -488,7 +488,7 @@ const ConfigureIdentity = ({
                     }
                     onClick={() => field.onChange(colorName)}
                     className={cn(
-                      'flex size-9 items-center justify-center rounded-lg border border-gray-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                      'flex size-9 items-center justify-center rounded-lg border border-gray-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-9',
                       PROJECT_COLOR_SWATCH[field.value] ===
                         PROJECT_COLOR_SWATCH[colorName] &&
                         'ring-2 ring-gray-12',
@@ -828,7 +828,7 @@ const AgentConfigurePanel = forwardRef<
                 projectId={agent.projectId}
               />
               <details className="border-t border-gray-6 pt-5 text-sm">
-                <summary className="w-fit cursor-pointer text-gray-11 outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">
+                <summary className="w-fit cursor-pointer text-gray-11 outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-9">
                   {t('Manage this Sydekyk')}
                 </summary>
                 <div className="flex flex-col gap-6 pt-5">
