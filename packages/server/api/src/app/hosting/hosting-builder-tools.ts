@@ -137,6 +137,6 @@ export async function executeHostedBuilderTool({ source, toolName, toolInput, co
     const parsed = z.object(tool.inputSchema).strict().parse(requested)
     const result = await staticMcpSchemaScope.run(true, () => tool.execute(parsed))
     if ((tool.annotations?.readOnlyHint || toolName === 'ap_update_record') && !['ap_research_pieces', 'ap_get_piece_props'].includes(toolName)) await sydRunOperations.markTurnAsHavingRead({ conversationId, runId })
-    // Retain machine compatibility identifiers; the prompt controls user prose.
+    // Keep internal IDs here; the worker translates Copilot metadata and inputs at the model boundary.
     return hostedBuilderMetadata(toolName, result)
 }

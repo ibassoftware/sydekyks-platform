@@ -2,6 +2,7 @@ import { AgentRunSource, agentToolPhases } from '@activepieces/shared'
 import { ToolExecutionOptions } from 'ai'
 import { describe, expect, it, vi } from 'vitest'
 import { createHostedBuilderTools } from '../../../../../../src/lib/execute/jobs/ee/agent/hosted-builder-tools'
+import { withGadgetIdentifiers } from '../../../../../../src/lib/execute/jobs/ee/agent/tools/gadget-identifiers'
 import { agentToolPolicy } from '../../../../../../src/lib/execute/jobs/ee/agent/agent-tool-policy'
 
 const definitions = [
@@ -60,5 +61,37 @@ describe('hosted builder worker bridge', () => {
         execute.mockRejectedValueOnce(new Error('connection lost'))
         await expect(tools.ap_build_flow.execute!({ flowName: 'Uncertain' }, options)).rejects.toThrow('connection lost')
         expect(execute).toHaveBeenCalledTimes(1)
+    })
+})
+
+
+describe('hosted builder Gadget aliases', () => {
+    it('brands discovery and binds approval to the exact canonical request', async () => {
+        const original = '@activepieces/piece-forms'
+        const branded = '@sydekyks/piece-forms'
+        const execute = vi.fn(async (name: string) => name === 'ap_research_pieces'
+            ? { content: [{ type: 'text', text: JSON.stringify({ pieces: [{ name: original }] }) }] }
+            : { content: [{ type: 'text', text: 'saved' }] })
+        const storePendingGate = vi.fn(async () => undefined)
+        const taintState = { tainted: true }
+        const tools = await withGadgetIdentifiers(createHostedBuilderTools({
+            definitions: [
+                { name: 'ap_research_pieces', description: `Find ${original}`, inputSchema: { type: 'object', properties: { pieceNames: { type: 'array', items: { type: 'string' } } } }, readOnly: true },
+                { name: 'ap_update_trigger', description: `Configure ${original}`, inputSchema: { type: 'object', properties: { pieceName: { type: 'string' }, input: { type: 'object' } } }, readOnly: false },
+            ],
+            execute, taintState, storePendingGate,
+            eventEmitter: { emitActionPreview: vi.fn() } as never,
+            waitForApproval: async () => ({ outcome: 'approved' }),
+        }))
+        const discovery = await tools.ap_research_pieces.execute!({ pieceNames: [branded] }, options)
+        expect(JSON.stringify(discovery)).toContain(branded)
+        expect(JSON.stringify(discovery)).not.toContain(original)
+        expect(execute).toHaveBeenCalledWith('ap_research_pieces', { pieceNames: [original] })
+        const data = { literal: branded }
+        await tools.ap_update_trigger.execute!({ pieceName: branded, input: data }, options)
+        expect(storePendingGate).toHaveBeenCalledWith(expect.objectContaining({
+            toolName: 'ap_update_trigger', toolInput: { pieceName: original, input: data },
+        }))
+        expect(execute).toHaveBeenLastCalledWith('ap_update_trigger', { pieceName: original, input: data, approvedGateId: options.toolCallId })
     })
 })
