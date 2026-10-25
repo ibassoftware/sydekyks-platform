@@ -42,6 +42,20 @@ function isUrlRelative(url: string) {
   return !url.startsWith('http') && !url.startsWith('https');
 }
 
+function isConfiguredApiUrl(url: string): boolean {
+  try {
+    const target = new URL(url);
+    const configuredApi = new URL(API_URL);
+    return (
+      target.origin === configuredApi.origin &&
+      (target.pathname === configuredApi.pathname ||
+        target.pathname.startsWith(`${configuredApi.pathname}/`))
+    );
+  } catch {
+    return false;
+  }
+}
+
 function globalErrorHandler(error: AxiosError) {
   if (error.response?.status === 402)
     window.dispatchEvent(new Event('sydekyks:license-required'));
@@ -65,7 +79,7 @@ function request<TResponse>(
   config: AxiosRequestConfig = {},
 ): Promise<TResponse> {
   const resolvedUrl = !isUrlRelative(url) ? url : `${API_URL}${url}`;
-  const isApWebsite = resolvedUrl.startsWith(API_URL);
+  const isApWebsite = isConfiguredApiUrl(resolvedUrl);
   const unAuthenticated = disallowedRoutes.some((route) =>
     resolvedUrl.replace(API_URL, '').startsWith(route),
   );

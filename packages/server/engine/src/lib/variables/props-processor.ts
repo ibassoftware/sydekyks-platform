@@ -124,7 +124,7 @@ export const propsProcessor = {
 }
 
 function destroyOpenStreams(value: unknown): void {
-    if (isNil(value) || typeof value !== 'object' || Buffer.isBuffer(value)) {
+    if (value === null || typeof value !== 'object' || Buffer.isBuffer(value)) {
         return
     }
     if (value instanceof Readable) {

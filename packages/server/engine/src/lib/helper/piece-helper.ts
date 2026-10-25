@@ -19,13 +19,14 @@ import {
 import { AppConnectionType, AppConnectionValue, EngineGenericError, ExecuteExtractPieceMetadata, ExecutePropsOptions, ExecuteRefreshTokenAuthOperation, ExecuteRefreshTokenAuthResponse, ExecuteResolveConnectionIdentifierOperation, ExecuteResolveConnectionIdentifierResponse, ExecuteValidateAuthOperation, ExecuteValidateAuthResponse } from '@activepieces/shared'
 import { EngineConstants } from '../handler/context/engine-constants'
 
-const DEFAULT_REFRESH_EXPIRES_IN_SECONDS = 3300
 import { testExecutionContext } from '../handler/context/test-execution-context'
 import { createFlowsContext } from '../piece-context/flows'
 import { utils } from '../utils'
 import { createPropsResolver } from '../variables/props-resolver'
 import { dynamicPropKeys } from './dynamic-prop-keys'
 import { pieceLoader } from './piece-loader'
+
+const DEFAULT_REFRESH_EXPIRES_IN_SECONDS = 3300
 
 export const pieceHelper = {
     async executeProps( operation: ExecutePropsParams): Promise<ExecutePropsResult<PropertyType.DROPDOWN | PropertyType.MULTI_SELECT_DROPDOWN | PropertyType.DYNAMIC>> {
@@ -325,26 +326,26 @@ const resolveConnectionIdentifier = async ({
     }
     switch (usedPieceAuth.type) {
         case PropertyType.OAUTH2: {
-            if (!('access_token' in authValue)) {
+            if (authValue.type !== AppConnectionType.OAUTH2 && authValue.type !== AppConnectionType.CLOUD_OAUTH2 && authValue.type !== AppConnectionType.PLATFORM_OAUTH2) {
                 return { identifier: undefined }
             }
             return { identifier: await usedPieceAuth.getConnectionIdentifier?.({ auth: authValue, server }) }
         }
         case PropertyType.BASIC_AUTH: {
-            if (!('username' in authValue)) {
+            if (authValue.type !== AppConnectionType.BASIC_AUTH) {
                 return { identifier: undefined }
             }
             return { identifier: await usedPieceAuth.getConnectionIdentifier?.({ auth: authValue, server }) }
         }
         case PropertyType.SECRET_TEXT: {
-            if (!('secret_text' in authValue)) {
+            if (authValue.type !== AppConnectionType.SECRET_TEXT) {
                 return { identifier: undefined }
             }
             return { identifier: await usedPieceAuth.getConnectionIdentifier?.({ auth: authValue.secret_text, server }) }
         }
         case PropertyType.CUSTOM_AUTH:
         case PropertyType.OIDC: {
-            if (!('props' in authValue)) {
+            if (authValue.type !== AppConnectionType.CUSTOM_AUTH && authValue.type !== AppConnectionType.OIDC) {
                 return { identifier: undefined }
             }
             return { identifier: await usedPieceAuth.getConnectionIdentifier?.({ auth: authValue.props, server }) }

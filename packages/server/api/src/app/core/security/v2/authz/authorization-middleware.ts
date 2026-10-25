@@ -12,7 +12,10 @@ export const authorizationMiddleware = async (request: FastifyRequest): Promise<
     const securityAccessRequest = await convertToSecurityAccessRequest(request)
     await authorizeOrThrow(request.principal, securityAccessRequest, request.log)
 
-    const requestPath = request.routeOptions.config.url
+    const requestPath = request.routeOptions.config?.url
+    // Unmatched requests have no registered route URL. Authorization above still
+    // runs; let Fastify return its normal 404 instead of calling startsWith on undefined.
+    if (typeof requestPath !== 'string') return
     const bullmqRoute = requestPath.startsWith('/ui') || requestPath.startsWith('/api/ui')
     if (bullmqRoute) {
         return

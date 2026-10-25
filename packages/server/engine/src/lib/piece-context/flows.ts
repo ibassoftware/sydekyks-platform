@@ -1,11 +1,11 @@
 import { SeekPage } from '@activepieces/core-utils'
-import { FlowsContext, ListFlowsContextParams } from '@activepieces/pieces-framework'
+import { FlowsContext, ListFlowsContextParams, PopulatedFlowSummary } from '@activepieces/pieces-framework'
 import { FetchError, PopulatedFlow } from '@activepieces/shared'
 import { retryFetch } from '../api/retry-fetch'
 
 export const createFlowsContext = ({ engineToken, internalApiUrl, flowId, flowVersionId }: CreateFlowsServiceParams): FlowsContext => {
     return {
-        async list(params: ListFlowsContextParams): Promise<SeekPage<PopulatedFlow>> {
+        async list(params: ListFlowsContextParams = {}): Promise<SeekPage<PopulatedFlowSummary>> {
             const queryParams = new URLSearchParams()
             if (params?.externalIds) {
                 queryParams.set('externalIds', params.externalIds.join(','))
@@ -20,7 +20,11 @@ export const createFlowsContext = ({ engineToken, internalApiUrl, flowId, flowVe
             if (!response.ok) {
                 throw new FetchError(url, `status=${response.status}`)
             }
-            return response.json()
+            const page: SeekPage<PopulatedFlow> = await response.json()
+            return {
+                ...page,
+                data: page.data.map(flow => ({ ...flow, displayName: flow.version.displayName })),
+            }
         },
         current: {
             id: flowId,
