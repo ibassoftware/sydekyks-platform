@@ -106,6 +106,7 @@ export function publicGadgetResult<T>(toolName: string, result: T): T {
         }
     }
     if (!METADATA_TOOLS.has(toolName)) {
+        if (record(result) && (result['isError'] === true || (record(result['_meta']) && typeof result['_meta']['errorSummary'] === 'string'))) return publicGadgetMetadata(result)
         if (!record(result) || !('_meta' in result)) return result
         return { ...result, _meta: publicGadgetMetadata(result['_meta']) }
     }
@@ -168,7 +169,12 @@ export function publicGadgetHistory(messages: ModelMessage[]): ModelMessage[] {
             }
             if (part.type === 'tool-result') {
                 const output = part.output
-                if ('value' in output) return { ...part, output: { ...output, value: publicGadgetResult(effectiveTools.get(part.toolCallId) ?? part.toolName, output.value) } }
+                if ('value' in output) {
+                    const toolName = effectiveTools.get(part.toolCallId) ?? part.toolName
+                    const failed = toolName.startsWith('ap_') && (output.type === 'error-text' || output.type === 'error-json')
+                    const value = failed ? (typeof output.value === 'string' ? publicGadgetText(output.value) : publicGadgetMetadata(output.value)) : publicGadgetResult(toolName, output.value)
+                    return { ...part, output: { ...output, value } }
+                }
             }
             return part
         }) } as ModelMessage
