@@ -97,6 +97,23 @@ describe('ssrf-guard', () => {
             const result = await dns.promises.lookup('localhost', { family: 4 })
             expect(result.address).toBe('127.0.0.1')
         })
+
+        it('preserves numeric family overloads for callback and promise lookups', async () => {
+            ssrfGuard.install({ enabled: true, allowList: ['127.0.0.1'] })
+            const result = await dns.promises.lookup('localhost', 4)
+            expect(result).toEqual({ address: '127.0.0.1', family: 4 })
+            const callbackResult = await new Promise<{ address: string, family: number }>((resolve, reject) => {
+                dns.lookup('localhost', 4, (error, address, family) => error ? reject(error) : resolve({ address, family }))
+            })
+            expect(callbackResult).toEqual(result)
+        })
+
+        it('numeric family overloads still block private addresses', async () => {
+            ssrfGuard.install({ enabled: true, allowList: [] })
+            await expect(dns.promises.lookup('localhost', 4)).rejects.toBeInstanceOf(SSRFBlockedError)
+            const error = await new Promise<unknown>((resolve) => dns.lookup('localhost', 4, (failure) => resolve(failure)))
+            expect(error).toBeInstanceOf(SSRFBlockedError)
+        })
     })
 
     describe('dns.lookup hook — multi-A-record coverage', () => {

@@ -1,101 +1,136 @@
-/**
- * @vitest-environment jsdom
- */
+/** @vitest-environment jsdom */
+/* eslint-disable jest-dom/prefer-in-document, jest-dom/prefer-to-have-attribute -- No jest-dom runtime is installed. */
+import { ApEdition } from '@activepieces/shared';
 import { render, screen } from '@testing-library/react';
 import * as React from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { PlatformNav } from '@/app/components/sidebar/platform';
+import { PlatformSidebar } from '@/app/components/sidebar/platform';
+import { SidebarProvider } from '@/components/ui/sidebar-shadcn';
 
-const plan = vi.hoisted(() => ({ aiProvidersEnabled: false }));
-
+const state = vi.hoisted(() => ({
+  plan: { aiProvidersEnabled: false, chatEnabled: true },
+  edition: 'ce',
+  unavailable: [] as string[],
+}));
 vi.mock('i18next', () => ({ t: (key: string) => key }));
-
+vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }));
 vi.mock('@/hooks/platform-hooks', () => ({
   platformHooks: {
-    useCurrentPlatform: () => ({ platform: { plan } }),
+    useCurrentPlatform: () => ({ platform: { plan: state.plan } }),
   },
 }));
-
 vi.mock('@/hooks/flags-hooks', () => ({
-  flagsHooks: {
-    useFlag: () => ({ data: 'cloud' }),
-  },
+  flagsHooks: { useFlag: () => ({ data: state.edition }) },
 }));
-
 vi.mock('@/hooks/authorization-hooks', () => ({
   useAuthorization: () => ({ checkAccess: () => true }),
 }));
-
-vi.mock('@/lib/route-utils', () => ({
-  determineDefaultRoute: () => '/',
+vi.mock('@/components/providers/telemetry-provider', () => ({
+  useTelemetry: () => ({ capture: vi.fn() }),
 }));
-
+vi.mock('@/lib/route-utils', () => ({ determineDefaultRoute: () => '/chat' }));
+vi.mock('@/lib/release-availability', () => ({
+  releaseAvailability: {
+    isRouteAvailable: ({ pathname }: { pathname: string }) =>
+      !state.unavailable.includes(pathname),
+  },
+}));
 vi.mock('@/components/ui/scroll-area', () => ({
   ScrollArea: ({ children }: React.PropsWithChildren) => <>{children}</>,
 }));
-
-vi.mock('@/components/ui/sidebar-shadcn', () => {
-  const Passthrough = ({ children }: React.PropsWithChildren) => (
-    <>{children}</>
-  );
-  return {
-    Sidebar: Passthrough,
-    SidebarContent: Passthrough,
-    SidebarFooter: Passthrough,
-    SidebarMenu: Passthrough,
-    SidebarHeader: Passthrough,
-    SidebarGroup: Passthrough,
-    SidebarGroupContent: Passthrough,
-    SidebarGroupLabel: Passthrough,
-  };
-});
-
 vi.mock('@/app/components/sidebar/sidebar-user', () => ({
   SidebarUser: () => null,
 }));
-
-vi.mock('@/app/components/sidebar/ap-sidebar-item', () => ({
-  ApSidebarItem: ({
-    label,
-    subItems,
-  }: {
-    label: string;
-    subItems?: { label: string; locked?: boolean }[];
-  }) => (
-    <ul aria-label={label}>
-      {(subItems ?? []).map((subItem) => (
-        <li
-          key={subItem.label}
-          aria-label={
-            subItem.locked ? `${subItem.label} locked` : subItem.label
-          }
-        />
-      ))}
-    </ul>
+// Billing services are unrelated to rendering this self-hosted navigation. Keep
+// only the existing feature tier labels used by the real sidebar item component.
+vi.mock('@/features/billing', () => ({
+  PLATFORM_FEATURES: Object.fromEntries(
+    [
+      'projectRoles',
+      'globalConnections',
+      'pieces',
+      'templates',
+      'aiProviders',
+      'sso',
+      'secretManagers',
+      'auditLogs',
+      'eventStreaming',
+      'apiKeys',
+      'embedding',
+    ].map((key) => [key, { tier: 'enterprise' }]),
   ),
+  TIER_LABELS: { enterprise: 'Enterprise' },
 }));
-
 function renderSidebar() {
   render(
-    <MemoryRouter>
-      <PlatformNav />
+    <MemoryRouter initialEntries={['/platform/ai']}>
+      <SidebarProvider open>
+        <PlatformSidebar />
+      </SidebarProvider>
     </MemoryRouter>,
   );
 }
-
-describe('platform sidebar AI Center', () => {
-  it('leaves Providers unlocked when aiProvidersEnabled is on', () => {
-    plan.aiProvidersEnabled = true;
-
+beforeEach(() => {
+  state.plan.aiProvidersEnabled = false;
+  state.edition = ApEdition.COMMUNITY;
+  state.unavailable = [];
+});
+describe('current self-hosted PlatformSidebar', () => {
+  it('leaves AI navigation unmarked when the existing capability is enabled', () => {
+    state.plan.aiProvidersEnabled = true;
     renderSidebar();
-
-    expect(screen.queryAllByRole('listitem', { name: 'Providers' })).toEqual([
-      expect.any(HTMLLIElement),
-    ]);
     expect(
-      screen.queryAllByRole('listitem', { name: 'Providers locked' }),
-    ).toEqual([]);
+      screen
+        .getByRole('link', { name: 'AI Center' })
+        .getAttribute('href'),
+    ).toBe('/platform/ai');
+    expect(
+      screen
+        .getByRole('link', { name: 'Providers' })
+        .getAttribute('href'),
+    ).toBe('/platform/ai');
+    expect(
+      screen
+        .getByRole('link', { name: 'Capabilities' })
+        .getAttribute('href'),
+    ).toBe('/platform/ai/capabilities');
+  });
+  it('presents the inherited plan restriction without pretending a link is server authorization', () => {
+    renderSidebar();
+    expect(
+      screen.getByRole('link', { name: 'AI Center Requires a plan upgrade' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('link', { name: 'Providers' }).getAttribute('href'),
+    ).toBe('/platform/ai');
+  });
+  it('omits unavailable routes and their children from the actual menu', () => {
+    state.unavailable = ['/platform/ai'];
+    renderSidebar();
+    expect(screen.queryByRole('link', { name: /AI Center/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Providers' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Projects' })).toBeTruthy();
+  });
+  it('keeps Community billing marked and the authorized return route reachable', () => {
+    renderSidebar();
+    expect(
+      screen.getByRole('link', {
+        name: 'Billing & subscription Requires a plan upgrade',
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('link', { name: 'Back to app' }).getAttribute('href'),
+    ).toBe('/chat');
+    expect(screen.getByRole('link', { name: 'Configurations' })).toBeTruthy();
+  });
+  it('does not add the self-hosted configuration entry to cloud edition', () => {
+    state.edition = ApEdition.CLOUD;
+    renderSidebar();
+    expect(screen.queryByRole('link', { name: 'Configurations' })).toBeNull();
+    expect(
+      screen.getByRole('link', { name: 'Billing & subscription' }),
+    ).toBeTruthy();
   });
 });

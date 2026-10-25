@@ -9,6 +9,7 @@
   "packages/server/api/test/unit/sydekyks-community-session.test.ts",
   "packages/server/api/test/unit/sydekyks-community-socket.test.ts",
   "packages/server/api/test/integration/ce/mcp/mcp-access-ce.test.ts",
+  "packages/server/api/test/integration/ce/mcp/mcp-router-updates.test.ts",
   "packages/server/api/test/integration/ce/mcp/mcp-activity-recording.test.ts",
   "packages/server/api/test/integration/ce/mcp/mcp-oauth-revocation.test.ts",
   "packages/server/api/test/integration/ce/mcp/mcp-platform-project-selection.test.ts",

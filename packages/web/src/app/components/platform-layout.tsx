@@ -1,8 +1,14 @@
 import { ApEdition, ApFlagId } from '@activepieces/shared';
-import React from 'react';
+import { t } from 'i18next';
+import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar-shadcn';
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from '@/components/ui/sidebar-shadcn';
 import { ManagePlanDialog } from '@/features/billing';
 import { useIsPlatformAdmin } from '@/hooks/authorization-hooks';
 import { flagsHooks } from '@/hooks/flags-hooks';
@@ -24,6 +30,7 @@ export function PlatformLayout({ children }: { children: React.ReactNode }) {
           <SidebarProvider open={true} style={PLATFORM_SIDEBAR_STYLE}>
             <PlatformSidebar />
             <SidebarInset className="flex flex-col h-full overflow-hidden bg-gray-2">
+              <PlatformMobileNavigation />
               <div className="flex-1 flex flex-col pr-2 pt-3 pb-3 overflow-hidden">
                 <div
                   id="dashboard-content-container"
@@ -46,6 +53,25 @@ export function PlatformLayout({ children }: { children: React.ReactNode }) {
         {edition !== ApEdition.COMMUNITY && <ManagePlanDialog />}
       </GlobalSearchProvider>
     </AllowOnlyLoggedInUserOnlyGuard>
+  );
+}
+
+function PlatformMobileNavigation() {
+  const location = useLocation();
+  const { isMobile, setOpenMobile } = useSidebar();
+  useEffect(() => {
+    setOpenMobile(false);
+  }, [location, isMobile, setOpenMobile]);
+
+  if (!isMobile) return null;
+  return (
+    <header className="flex min-h-12 shrink-0 items-center gap-2 border-b px-2">
+      <SidebarTrigger
+        className="size-10"
+        aria-label={t('Open platform navigation')}
+      />
+      <span className="text-sm font-medium">{t('Platform settings')}</span>
+    </header>
   );
 }
 

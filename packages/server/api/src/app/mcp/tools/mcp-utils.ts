@@ -5,10 +5,7 @@ import type { BranchedAction, Step } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { z } from 'zod'
 import { expressionRewriter } from '../../flows/flow-version/migrations/expression-rewriter'
-import { flowFolderService } from '../../flows/folder/folder.service'
-import { getPiecePackageWithoutArchive, pieceMetadataService } from '../../pieces/metadata/piece-metadata-service'
 import { projectService } from '../../project/project-service'
-import { userInteractionWatcher } from '../../workers/user-interaction-watcher'
 
 const NON_INPUT_PROP_TYPES = new Set<PropertyType>([
     PropertyType.OAUTH2,
@@ -219,6 +216,7 @@ async function detectUnknownInputProps({ pieceName, pieceVersion, componentName,
         return { unknownKeys: [], message: '' }
     }
     try {
+        const { pieceMetadataService } = await import('../../pieces/metadata/piece-metadata-service')
         const piece = await pieceMetadataService(log).getOrThrow({ platformId, name: pieceName, version: pieceVersion })
         const component = componentType === 'action' ? piece.actions[componentName] : piece.triggers[componentName]
         if (isNil(component)) {
@@ -424,6 +422,7 @@ async function lookupPieceComponent({ pieceName, componentName, componentType, p
     else {
         return { error: mcpToolError('Validation failed', new Error('Either platformId or projectId is required to look up a piece')) }
     }
+    const { pieceMetadataService } = await import('../../pieces/metadata/piece-metadata-service')
     const piece = await pieceMetadataService(log).get({ name: normalized, projectId, platformId: resolvedPlatformId })
     if (isNil(piece)) {
         return { error: { content: [{ type: 'text', text: `❌ Piece "${normalized}" not found. Use ap_research_pieces to get valid piece names.` }], isError: true } }
@@ -538,6 +537,7 @@ async function resolveFolder({ projectId, folderName, log }: { projectId: string
     if (isNil(folderName)) {
         return { folderId: undefined, folderName: undefined }
     }
+    const { flowFolderService } = await import('../../flows/folder/folder.service')
     const folder = await flowFolderService(log).getOneByDisplayNameCaseInsensitive({ projectId, displayName: folderName })
     if (isNil(folder)) {
         return { error: { content: [{ type: 'text', text: `❌ Folder "${folderName}" does not exist. Create it with ap_create_folder first, then retry.` }], isError: true } }
@@ -572,6 +572,7 @@ async function fillDefaultsForMissingOptionalProps({ settings, platformId, log }
         return
     }
     try {
+        const { pieceMetadataService } = await import('../../pieces/metadata/piece-metadata-service')
         const piece = await pieceMetadataService(log).getOrThrow({ platformId, name: pieceName, version: pieceVersion })
         const action = piece.actions[actionName]
         if (isNil(action)) {
@@ -616,6 +617,7 @@ async function resolveLatestPieceVersion({ pieceName, projectId, platformId, log
     if (isNil(normalized)) {
         return { error: mcpToolError('Validation failed', new Error('pieceName is required')) }
     }
+    const { pieceMetadataService } = await import('../../pieces/metadata/piece-metadata-service')
     const piece = await pieceMetadataService(log).get({ name: normalized, projectId, platformId })
     if (isNil(piece)) {
         return { error: { content: [{ type: 'text', text: `❌ Piece "${normalized}" not found. Use ap_research_pieces to get valid piece names.` }], isError: true } }
@@ -697,6 +699,10 @@ async function executePropertyResolution({ pieceName, pieceVersion, actionOrTrig
     platformId: string
     log: FastifyBaseLogger
 }): Promise<PropertyResolutionResult> {
+    // Queue recovery reaches MCP registration; load it only when executing a
+    // request so tool schemas can finish initializing before that graph loads.
+    const { userInteractionWatcher } = await import('../../workers/user-interaction-watcher')
+    const { getPiecePackageWithoutArchive } = await import('../../pieces/metadata/piece-metadata-service')
     const piecePackage = await getPiecePackageWithoutArchive(log, platformId, { pieceName, pieceVersion })
     const resolvedInput: Record<string, unknown> = {
         ...(input ?? {}),
@@ -753,6 +759,7 @@ async function resolveDynamicPropertySettings({ pieceName, pieceVersion, compone
     log: FastifyBaseLogger
 }): Promise<Record<string, PropertySettings>> {
     const current = z.record(z.string(), PropertySettings).safeParse(propertySettings).data ?? {}
+    const { pieceMetadataService } = await import('../../pieces/metadata/piece-metadata-service')
     const { data: piece } = await tryCatch(() => pieceMetadataService(log).getOrThrow({ platformId, name: pieceName, version: pieceVersion }))
     const component = isNil(piece) ? undefined : (componentType === 'action' ? piece.actions[componentName] : piece.triggers[componentName])
     if (isNil(component)) {

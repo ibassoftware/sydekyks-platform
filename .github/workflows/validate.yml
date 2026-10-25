@@ -79,6 +79,13 @@ jobs:
         run: |
           (cd packages/core/shared && bun x vitest run test/ee/agent-tool-skills.test.ts)
           bun x vitest run --config packages/server/utils/vitest.config.ts packages/server/utils/test/agent-ai-utils.test.ts packages/server/utils/test/agent-openai-retention.test.ts packages/server/utils/test/ai-provider-signal.test.ts
+      - name: Check router draft and validation contracts
+        run: >-
+          bun x vitest run --config packages/core/execution/vitest.config.ts
+          packages/core/execution/test/flow/router-validation.test.ts
+          packages/core/execution/test/flow/ai-router-branches.test.ts
+          packages/core/execution/test/flow/cof-branches.test.ts
+          --maxWorkers=2
       - name: Check agent creation and editor regressions
         run: >-
           bun x vitest run --config packages/web/vitest.config.ts

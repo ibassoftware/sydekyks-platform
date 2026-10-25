@@ -17,7 +17,6 @@ import {
   useLiveSuspenseQuery,
 } from '@tanstack/react-db';
 import { QueryClient, useMutation, useQuery } from '@tanstack/react-query';
-import { t } from 'i18next';
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
@@ -256,9 +255,7 @@ export const projectCollectionUtils = {
 export const getProjectName = (
   project: Pick<ProjectWithLimits, 'type' | 'displayName'>,
 ): string => {
-  return project.type === ProjectType.PERSONAL
-    ? t('Personal Project')
-    : project.displayName;
+  return project.displayName;
 };
 export const projectHooks = {
   useProjectsForPlatforms: () => {

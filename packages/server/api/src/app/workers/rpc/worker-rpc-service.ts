@@ -1,6 +1,6 @@
 import { assertNotNullOrUndefined, isNil, spreadIfDefined } from '@activepieces/core-utils'
 import { apVersionUtil, onCallService, UNKNOWN_VERSION } from '@activepieces/server-utils'
-import { AgentRunSource, ExecutionType, FileCompression, FileLocation, FileType, FlowOperationType, FlowStatus, WebsocketClientEvent, WorkerGroupScope, WorkerToApiContract } from '@activepieces/shared'
+import { AgentEventType, AgentRunSource, ExecutionType, FileCompression, FileLocation, FileType, FlowOperationType, FlowStatus, WebsocketClientEvent, WorkerGroupScope, WorkerToApiContract } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
 import { aiRpcHandlers } from '../../ai/ai-rpc-handlers'
 import { websocketService } from '../../core/websockets.service'
@@ -349,6 +349,10 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
 
         async sendAgentEvent(input) {
             const { userId, conversationId, runId, event } = input
+            // Admission and authorized rename own titles, including while older
+            // workers finish requests during an update. Do not rewind clients
+            // with their late model-generated title events.
+            if (event.type === AgentEventType.TITLE_UPDATE) return
             websocketService.to(userId).emit(WebsocketClientEvent.CHAT_MESSAGE_CHUNK, {
                 conversationId,
                 runId,

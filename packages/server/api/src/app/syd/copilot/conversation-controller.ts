@@ -11,6 +11,7 @@ import { jobQueue, JobType } from '../../workers/job-queue/job-queue'
 import { sydApprovalGate } from './approval-gate'
 import { sydChatModelCatalog } from './chat-model-catalog'
 import { sydConversationService } from './conversation-service'
+import { conversationTitle } from './conversation-title'
 import { ActorScope, sydCopilotContext } from './copilot-context'
 import { sydEditorContext } from './editor-context'
 import { sydMemoryEditor } from './memory-editor'
@@ -27,6 +28,8 @@ async function sendMessage({ platformId, userId, id, body, log }: ActorScope & {
     await assertCreditsAndAppSumoNotExceeded({ platformId, log })
     const runId = body.runId ?? apId()
     const claim = await sydCopilotContext.claimConversationForRun({ platformId, userId, conversationId: id, runId })
+    const title = conversationTitle(body.content)
+    if (title) await sydCopilotContext.conversationRepo().update({ id, platformId, userId, title: IsNull() }, { title })
     if (editor && editor.projectId !== conversation.projectId) {
         const changed = await sydCopilotContext.conversationRepo().update({ id, platformId, userId, activeRunId: runId, source: AgentRunSource.CHAT }, { projectId: editor.projectId })
         if (!changed.affected) throw new ActivepiecesError({ code: ErrorCode.AGENT_RUN_SUPERSEDED, params: { message: 'This message was replaced by a newer one' } })

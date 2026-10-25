@@ -241,6 +241,10 @@ export function ChatWithAIPage() {
       {effectivePinned && (
         <div className="shrink-0 overflow-hidden border-r animate-in slide-in-from-left-2 duration-200">
           <ConversationList
+            onTitleChanged={(id, title) => {
+              if (id === (selectedConversationId ?? pendingConversationId))
+                handleTitleUpdate(title);
+            }}
             onNewChat={handleNewChat}
             onSelect={handleSelectConversation}
             selectedId={pendingConversationId ?? selectedConversationId}

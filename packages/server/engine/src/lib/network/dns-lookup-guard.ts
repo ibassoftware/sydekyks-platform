@@ -28,13 +28,11 @@ export function installDnsLookupGuard(policy: GuardPolicy): UninstallFn {
 function buildGuardedCallbackLookup({ policy, boundLookup }: BuildCallbackLookupParams): GuardedCallbackLookup {
     return function lookup(
         hostname: string,
-        optionsOrCallback: dns.LookupOptions | DnsLookupCallback,
+        optionsOrCallback: number | dns.LookupOptions | DnsLookupCallback,
         maybeCallback?: DnsLookupCallback,
     ): void {
         const callback = typeof optionsOrCallback === 'function' ? optionsOrCallback : maybeCallback
-        const callerOptions = typeof optionsOrCallback === 'object' && optionsOrCallback !== null
-            ? optionsOrCallback
-            : undefined
+        const callerOptions = normalizeLookupOptions(typeof optionsOrCallback === 'function' ? undefined : optionsOrCallback)
 
         const onResolved: DnsLookupCallback = (err, address, family) => {
             if (err || !callback) {
@@ -64,14 +62,28 @@ function buildGuardedCallbackLookup({ policy, boundLookup }: BuildCallbackLookup
 }
 
 function buildGuardedPromiseLookup({ policy, boundPromisesLookup }: BuildPromiseLookupParams): GuardedPromiseLookup {
-    return async function promiseLookup(hostname, options) {
-        const allEntries = await boundPromisesLookup(hostname, { ...options, all: true })
+    function promiseLookup(hostname: string, family: number): Promise<dns.LookupAddress>
+    function promiseLookup(hostname: string, options: dns.LookupOneOptions): Promise<dns.LookupAddress>
+    function promiseLookup(hostname: string, options: dns.LookupAllOptions): Promise<dns.LookupAddress[]>
+    function promiseLookup(hostname: string, options: dns.LookupOptions): Promise<dns.LookupAddress | dns.LookupAddress[]>
+    function promiseLookup(hostname: string): Promise<dns.LookupAddress>
+    async function promiseLookup(hostname: string, options?: number | dns.LookupOptions): Promise<dns.LookupAddress | dns.LookupAddress[]> {
+        const callerOptions = normalizeLookupOptions(options)
+        const allEntries = await boundPromisesLookup(hostname, { ...callerOptions, all: true })
         const blocked = findBlockedEntry({ entries: allEntries, allowList: policy.allowList })
         if (blocked) {
             throw buildBlockedError({ host: hostname, ip: blocked.address })
         }
-        return options?.all ? allEntries : allEntries[0]
+        if (callerOptions.all) return allEntries
+        const first = allEntries[0]
+        if (!first) throw Object.assign(new Error('DNS lookup returned no addresses'), { code: 'ENOTFOUND', hostname })
+        return first
     }
+    return promiseLookup
+}
+
+function normalizeLookupOptions(options?: number | dns.LookupOptions): dns.LookupOptions {
+    return typeof options === 'number' ? { family: options } : options ?? {}
 }
 
 function toAddressList({ address, family }: ToAddressListParams): dns.LookupAddress[] {

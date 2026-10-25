@@ -8,7 +8,43 @@ function sameConfig({
   left: unknown;
   right: unknown;
 }): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  // PostgreSQL JSONB can reorder object keys on every round trip. Tool order
+  // still matters, but serialization order inside a config does not.
+  const stableJson = (value: unknown) =>
+    JSON.stringify(value, (_key, item) =>
+      item !== null && typeof item === 'object' && !Array.isArray(item)
+        ? Object.fromEntries(
+            Object.keys(item)
+              .sort()
+              .map((key) => [key, item[key]]),
+          )
+        : item,
+    );
+  return stableJson(left) === stableJson(right);
+}
+
+function serverSyncDecision({
+  fromServer,
+  lastSeen,
+  currentValues,
+  pendingWrite,
+  unsavedTyping,
+}: {
+  fromServer: unknown;
+  lastSeen: unknown;
+  currentValues: unknown;
+  pendingWrite: unknown | null;
+  unsavedTyping: boolean;
+}): 'unchanged' | 'acknowledged' | 'conflict' | 'replace' {
+  if (sameConfig({ left: fromServer, right: lastSeen })) return 'unchanged';
+  if (
+    (pendingWrite !== null &&
+      sameConfig({ left: fromServer, right: pendingWrite })) ||
+    sameConfig({ left: fromServer, right: currentValues })
+  ) {
+    return 'acknowledged';
+  }
+  return unsavedTyping ? 'conflict' : 'replace';
 }
 
 function modelPickChanged({
@@ -114,6 +150,7 @@ function createWriteLock(): WriteLock {
 
 export const agentEditState = {
   sameConfig,
+  serverSyncDecision,
   serverMovedWhileTyping,
   modelPickChanged,
   hasModel,

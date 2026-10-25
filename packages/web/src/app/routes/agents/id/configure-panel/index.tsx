@@ -2,23 +2,20 @@ import { isNil, Permission } from '@activepieces/core-utils';
 import {
   Agent,
   AgentConfig,
-  AgentIcon,
   AgentToolType,
-  ColorName,
+  AgentVisibility,
   PICKABLE_COLOR_NAMES,
   DEFAULT_AGENT_MAX_STEPS,
   MAX_AGENT_STEP_BUDGET,
   PROJECT_COLOR_PALETTE,
   PROJECT_COLOR_SWATCH,
-  UpdateAgentRequest,
-  formErrors,
 } from '@activepieces/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { t } from 'i18next';
-import { ChevronRight, Trash2, X } from 'lucide-react';
+import { ChevronRight, MessageSquare, Trash2 } from 'lucide-react';
 import {
   forwardRef,
-  useEffect,
+  useLayoutEffect,
   useImperativeHandle,
   useRef,
   useState,
@@ -26,7 +23,6 @@ import {
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { z } from 'zod';
 
 import { AgentTools } from '@/app/builder/step-settings/agent-settings/agent-tools';
 import { Dot } from '@/components/custom/dot';
@@ -36,6 +32,14 @@ import {
 } from '@/components/custom/leave-without-saving';
 import { Button } from '@/components/ui/button';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Form,
   FormControl,
   FormField,
@@ -44,7 +48,13 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import {
   AgentStructuredOutput,
@@ -63,29 +73,18 @@ import {
 } from '@/features/projects';
 import { useAuthorization } from '@/hooks/authorization-hooks';
 import { api } from '@/lib/api';
+import { authenticationSession } from '@/lib/authentication-session';
 import { cn } from '@/lib/utils';
 
+import {
+  ConfigureAgentSchema,
+  ConfigureAgentInput,
+  ConfigureAgentValues,
+  formValuesOf,
+  liveValuesOf,
+  toUpdateRequest,
+} from '../../lib/agent-configure-state';
 import { agentEditState } from '../../lib/agent-edit-state';
-
-const ConfigureAgentSchema = z.object({
-  displayName: z.string().min(1, formErrors.required),
-  description: z.string(),
-  icon: z.enum(AgentIcon),
-  color: z.enum(ColorName),
-  draft: AgentConfig,
-});
-
-type ConfigureAgentInput = z.input<typeof ConfigureAgentSchema>;
-type ConfigureAgentValues = z.output<typeof ConfigureAgentSchema>;
-
-const toUpdateRequest = (values: ConfigureAgentValues): UpdateAgentRequest => ({
-  goLive: true,
-  displayName: values.displayName,
-  description: values.description.length > 0 ? values.description : null,
-  icon: values.icon,
-  color: values.color,
-  draft: values.draft,
-});
 
 const parseProvider = (provider?: string) => {
   const parsed = AgentConfig.shape.provider.safeParse(provider ?? null);
@@ -356,110 +355,162 @@ const ConfigureBehaviorTab = ({
   );
 };
 
-const ConfigureSettingsTab = ({
+const ConfigureIdentity = ({
   agent,
   form,
-  onDeleted,
 }: {
   agent: Agent;
   form: ReturnType<
     typeof useForm<ConfigureAgentInput, unknown, ConfigureAgentValues>
   >;
-  onDeleted: () => void;
-}) => (
-  <>
-    <FormField
-      control={form.control}
-      name="displayName"
-      render={({ field }) => (
-        <FormItem className="flex flex-col gap-2">
-          <PanelSectionLabel label={t('Name')} required />
-          <FormControl>
-            <Input {...field} />
-          </FormControl>
-          <FormMessage />
-        </FormItem>
-      )}
-    />
-    <FormField
-      control={form.control}
-      name="description"
-      render={({ field }) => (
-        <FormItem className="flex flex-col gap-2">
-          <PanelSectionLabel label={t('Description')} />
-          <FormControl>
-            <Textarea {...field} minRows={2} maxRows={4} />
-          </FormControl>
-          <FormMessage />
-        </FormItem>
-      )}
-    />
-    <FormField
-      control={form.control}
-      name="icon"
-      render={({ field }) => (
-        <FormItem className="flex flex-col gap-2">
-          <PanelSectionLabel label={t('Shape')} />
-          <div className="grid grid-cols-6 gap-2.5 rounded-lg border border-gray-6 p-3">
-            {Object.values(AgentIcon).map((iconName) => (
-              <button
-                key={iconName}
-                type="button"
-                aria-label={iconName}
-                onClick={() => field.onChange(iconName)}
-                className={cn(
-                  'flex items-center justify-center rounded-lg p-[3px]',
-                  field.value === iconName && 'ring-2 ring-gray-12',
+}) => {
+  const { checkAccess, isFetchingProjectRole } = useAuthorization(
+    agent.projectId,
+  );
+  const canShare =
+    agent.ownerId === authenticationSession.getCurrentUserId() ||
+    (!isFetchingProjectRole && checkAccess(Permission.WRITE_PROJECT));
+  const sharedWith = form.watch('sharedWithUserIds');
+  return (
+    <div className="flex flex-col gap-5 border-b border-gray-6 pb-6">
+      <div className="flex items-start gap-3">
+        <div className="pt-6">
+          <AgentMark
+            icon={form.watch('icon')}
+            color={form.watch('color')}
+            size="sm"
+          />
+        </div>
+        <FormField
+          control={form.control}
+          name="displayName"
+          render={({ field }) => (
+            <FormItem className="flex min-w-0 grow flex-col gap-2">
+              <PanelSectionLabel label={t('Name')} required />
+              <FormControl>
+                <Input {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+      <FormField
+        control={form.control}
+        name="visibility"
+        render={({ field }) => (
+          <FormItem className="flex flex-col gap-2">
+            <PanelSectionLabel label={t('Sharing')} />
+            <Select
+              disabled={!canShare}
+              value={
+                field.value === AgentVisibility.PROJECT
+                  ? 'project'
+                  : sharedWith.length > 0
+                  ? 'selected'
+                  : 'private'
+              }
+              onValueChange={(value) => {
+                if (value === 'selected') return;
+                field.onChange(
+                  value === 'project'
+                    ? AgentVisibility.PROJECT
+                    : AgentVisibility.RESTRICTED,
+                );
+                form.setValue('sharedWithUserIds', [], { shouldDirty: true });
+              }}
+            >
+              <FormControl>
+                <SelectTrigger aria-label={t('Sharing')}>
+                  <SelectValue />
+                </SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                <SelectItem value="private">{t('Private')}</SelectItem>
+                <SelectItem value="project">
+                  {t('Everyone in this Command Center')}
+                </SelectItem>
+                {sharedWith.length > 0 && (
+                  <SelectItem value="selected">
+                    {t('Selected people ({count})', {
+                      count: sharedWith.length,
+                    })}
+                  </SelectItem>
                 )}
-              >
-                <AgentMark
-                  icon={iconName}
-                  color={form.watch('color')}
-                  size="sm"
-                />
-              </button>
-            ))}
-          </div>
-          <FormMessage />
-        </FormItem>
-      )}
-    />
-    <FormField
-      control={form.control}
-      name="color"
-      render={({ field }) => (
-        <FormItem className="flex flex-col gap-2">
-          <PanelSectionLabel label={t('Color')} />
-          <div className="grid grid-cols-6 gap-2.5 rounded-lg border border-gray-6 p-3">
-            {PICKABLE_COLOR_NAMES.map((colorName) => (
-              <button
-                key={colorName}
-                type="button"
-                aria-label={colorName}
-                onClick={() => field.onChange(colorName)}
-                className={cn(
-                  'flex items-center justify-center rounded-full p-[3px]',
-                  PROJECT_COLOR_SWATCH[field.value] ===
-                    PROJECT_COLOR_SWATCH[colorName] && 'ring-2 ring-gray-12',
+              </SelectContent>
+            </Select>
+            {!canShare && (
+              <p className="text-xs leading-5 text-gray-11">
+                {t(
+                  'Only the creator or a Command Center administrator can change sharing.',
                 )}
-              >
-                <span
-                  className="size-6 rounded-full"
-                  style={{
-                    backgroundColor: PROJECT_COLOR_PALETTE[colorName].color,
-                  }}
-                />
-              </button>
-            ))}
-          </div>
-          <FormMessage />
-        </FormItem>
-      )}
-    />
-    <AgentProjectRow agent={agent} />
-    <AgentDangerZone agent={agent} onDeleted={onDeleted} />
-  </>
-);
+              </p>
+            )}
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+      <FormField
+        control={form.control}
+        name="description"
+        render={({ field }) => (
+          <FormItem className="flex flex-col gap-2">
+            <PanelSectionLabel label={t('Description')} />
+            <FormControl>
+              <Input
+                {...field}
+                placeholder={t('A short description of its job')}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+      <details className="text-sm">
+        <summary className="w-fit cursor-pointer text-gray-11 outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-9">
+          {t('Appearance')}
+        </summary>
+        <FormField
+          control={form.control}
+          name="color"
+          render={({ field }) => (
+            <FormItem className="mt-3 flex flex-col gap-2">
+              <PanelSectionLabel label={t('Accent color')} />
+              <div className="flex flex-wrap gap-2">
+                {PICKABLE_COLOR_NAMES.map((colorName) => (
+                  <button
+                    key={colorName}
+                    type="button"
+                    aria-label={colorName}
+                    aria-pressed={
+                      PROJECT_COLOR_SWATCH[field.value] ===
+                      PROJECT_COLOR_SWATCH[colorName]
+                    }
+                    onClick={() => field.onChange(colorName)}
+                    className={cn(
+                      'flex size-9 items-center justify-center rounded-lg border border-gray-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-9',
+                      PROJECT_COLOR_SWATCH[field.value] ===
+                        PROJECT_COLOR_SWATCH[colorName] &&
+                        'ring-2 ring-gray-12',
+                    )}
+                  >
+                    <span
+                      className="size-5 rounded-full"
+                      style={{
+                        backgroundColor: PROJECT_COLOR_PALETTE[colorName].color,
+                      }}
+                    />
+                  </button>
+                ))}
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </details>
+    </div>
+  );
+};
 
 const PanelSectionLabel = ({
   label,
@@ -472,19 +523,6 @@ const PanelSectionLabel = ({
     {label}
   </FormLabel>
 );
-
-const formValuesOf = (agent: Agent): ConfigureAgentInput => ({
-  displayName: agent.displayName,
-  description: agent.description ?? '',
-  icon: agent.icon,
-  color: agent.color,
-  draft: agent.draft,
-});
-
-const liveValuesOf = (agent: Agent): ConfigureAgentInput | null =>
-  isNil(agent.published)
-    ? null
-    : { ...formValuesOf(agent), draft: agent.published };
 
 const ScrollFade = ({
   className,
@@ -537,38 +575,54 @@ const AgentConfigurePanel = forwardRef<
     standDown: deletedRef,
   });
   const [exitRequested, setExitRequested] = useState(false);
+  const [reloadRequested, setReloadRequested] = useState(false);
   const leaveDecision = agentEditState.leaveGuard({
     blockerState: leaveBlocker.state,
     exitRequested,
   });
   const writeLock = useRef(agentEditState.createWriteLock());
+  const pendingWrite = useRef<ConfigureAgentInput | null>(null);
+  const pendingBaseline = useRef<ConfigureAgentInput | null>(null);
 
   const lastFromServer = useRef(formValuesOf(agent));
+  const latestFromServer = useRef(formValuesOf(agent));
   const [movedUnderneath, setMovedUnderneath] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const fromServer = formValuesOf(agent);
-    if (
-      agentEditState.serverMovedWhileTyping({
-        fromServer,
-        lastSeen: lastFromServer.current,
-        unsavedTyping,
-      })
-    ) {
+    // Unlike the accepted baseline, this also records conflicting updates.
+    // A delayed mutation callback must never acknowledge an older save over it.
+    latestFromServer.current = fromServer;
+    const decision = agentEditState.serverSyncDecision({
+      fromServer,
+      lastSeen: lastFromServer.current,
+      currentValues: form.getValues(),
+      pendingWrite: pendingWrite.current,
+      unsavedTyping,
+    });
+    if (decision === 'conflict') {
       setMovedUnderneath(true);
       return;
     }
-    if (
-      agentEditState.sameConfig({
-        left: fromServer,
-        right: lastFromServer.current,
-      })
-    ) {
-      return;
-    }
+    if (decision === 'unchanged') return;
     lastFromServer.current = fromServer;
     setMovedUnderneath(false);
-    form.reset(fromServer);
+    // A response to this form's write may arrive while a newer edit is being
+    // typed. Acknowledge that saved baseline without discarding the newer edit.
+    form.reset(fromServer, {
+      keepValues:
+        unsavedTyping &&
+        !agentEditState.sameConfig({
+          left: form.getValues(),
+          right: fromServer,
+        }),
+      keepDirty:
+        unsavedTyping &&
+        !agentEditState.sameConfig({
+          left: form.getValues(),
+          right: fromServer,
+        }),
+    });
   }, [agent, unsavedTyping, form]);
 
   const takeTheirVersion = () => {
@@ -584,24 +638,61 @@ const AgentConfigurePanel = forwardRef<
       message: api.extractServerErrorMessage(error, fallback),
     });
 
-  const markSavedUnlessEditedSince = (written: ConfigureAgentInput) => {
+  const markSavedUnlessEditedSince = (
+    written: ConfigureAgentInput,
+    saved: Agent,
+  ) => {
+    const fromServer = formValuesOf(saved);
     if (
-      !agentEditState.sameConfig({ left: form.getValues(), right: written })
+      pendingBaseline.current !== null &&
+      !agentEditState.sameConfig({
+        left: latestFromServer.current,
+        right: pendingBaseline.current,
+      }) &&
+      !agentEditState.sameConfig({
+        left: latestFromServer.current,
+        right: fromServer,
+      })
     ) {
-      return;
+      // Another server version was observed after this write began. Preserve
+      // that version and any newer local typing rather than clearing its
+      // conflict merely because this older request finally completed.
+      if (
+        !agentEditState.sameConfig({
+          left: form.getValues(),
+          right: latestFromServer.current,
+        })
+      ) {
+        setMovedUnderneath(true);
+      }
+      return false;
     }
-    form.reset(written);
+    const editedSince = !agentEditState.sameConfig({
+      left: form.getValues(),
+      right: written,
+    });
+    lastFromServer.current = fromServer;
+    setMovedUnderneath(false);
+    form.reset(fromServer, { keepValues: editedSince, keepDirty: editedSince });
+    return !editedSince;
   };
 
-  const releaseWrite = () => writeLock.current.release();
+  const releaseWrite = () => {
+    pendingWrite.current = null;
+    pendingBaseline.current = null;
+    writeLock.current.release();
+  };
   const claimWrite = () => writeLock.current.claim();
 
   const handleSubmit = (values: ConfigureAgentValues) => {
     form.clearErrors('root.serverError');
-    updateAgent.mutate(toUpdateRequest(values), {
-      onSuccess: () => {
-        markSavedUnlessEditedSince(values);
-        toast(t('Live — every flow using this agent just got the update'));
+    pendingBaseline.current = latestFromServer.current;
+    pendingWrite.current = values;
+    updateAgent.mutate(toUpdateRequest(values, agent), {
+      onSuccess: (saved) => {
+        const readyToTest = markSavedUnlessEditedSince(values, saved);
+        toast(t('Published. Your Sydekyk is ready to chat.'));
+        if (readyToTest) onExit();
       },
       onError: (error) =>
         setServerError(error, t("Your changes weren't saved. Try again.")),
@@ -626,6 +717,36 @@ const AgentConfigurePanel = forwardRef<
 
   return (
     <Form {...form}>
+      <Dialog open={reloadRequested} onOpenChange={setReloadRequested}>
+        <DialogContent className="max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>{t('Replace your unsaved edits?')}</DialogTitle>
+            <DialogDescription>
+              {t(
+                'Your edits will be replaced with the latest saved version of this Sydekyk.',
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setReloadRequested(false)}
+            >
+              {t('Keep editing')}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                takeTheirVersion();
+                setReloadRequested(false);
+              }}
+            >
+              {t('Load saved version')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <LeaveWithoutSavingDialog
         open={leaveDecision.open}
         onKeepEditing={() => {
@@ -647,104 +768,87 @@ const AgentConfigurePanel = forwardRef<
         onSubmit={submitIfIdle}
         className="flex h-full min-h-0 w-full shrink-0 flex-col"
       >
-        <Tabs
-          defaultValue="behavior"
-          className="flex min-h-0 grow flex-col gap-0"
-        >
-          <div className="flex h-[60px] shrink-0 items-center justify-between gap-3 border-b border-gray-6 px-[18px]">
+        <div className="flex min-h-0 grow flex-col">
+          <div className="flex min-h-[60px] shrink-0 flex-wrap items-center justify-between gap-3 border-b border-gray-6 px-[18px] py-3">
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate text-base font-semibold leading-5 tracking-tight">
                 {t('Configure')}
               </span>
               {unsavedTyping && (
-                <span className="flex shrink-0 items-center gap-1.5 text-xs leading-4 text-gray-11 animate-in fade-in duration-200">
+                <span className="flex shrink-0 items-center gap-1.5 text-xs leading-4 text-gray-11">
                   <Dot variant="primary" className="size-1.5" />
                   {t('Unsaved')}
                 </span>
               )}
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {movedUnderneath ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={takeTheirVersion}
-                >
-                  {t('Changed in chat — reload')}
+            <div className="flex flex-wrap items-center gap-2">
+              {hasChanges && !movedUnderneath && (
+                <Button type="submit" loading={updateAgent.isPending}>
+                  {t('Publish & test')}
                 </Button>
-              ) : (
-                hasChanges && (
-                  <Button
-                    type="submit"
-                    loading={updateAgent.isPending}
-                    className="animate-in fade-in duration-200"
-                  >
-                    {t('Publish')}
-                  </Button>
-                )
               )}
               <Button
                 type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={t('Close')}
+                variant="outline"
                 onClick={requestExit}
-                className="text-gray-11"
+                className="gap-2"
+                disabled={updateAgent.isPending}
               >
-                <X size={16} />
+                <MessageSquare className="size-4" />
+                {t('Chat with Sydekyk')}
               </Button>
             </div>
           </div>
-          <div className="flex h-[44px] shrink-0 items-stretch border-b border-gray-6 px-[18px]">
-            <TabsList variant="outline" className="h-full items-stretch gap-5">
-              <TabsTrigger
-                value="behavior"
+          {movedUnderneath && (
+            <div
+              role="alert"
+              className="flex flex-col gap-3 border-b border-gray-6 bg-gray-2 px-[18px] py-4 text-sm"
+            >
+              <p>
+                {t(
+                  'This Sydekyk changed in another editor. Your edits are still here. Load the saved version before publishing.',
+                )}
+              </p>
+              <Button
+                type="button"
                 variant="outline"
-                className="h-full items-center text-sm"
+                className="w-fit"
+                onClick={() => setReloadRequested(true)}
               >
-                {t('Behavior')}
-              </TabsTrigger>
-              <TabsTrigger
-                value="settings"
-                variant="outline"
-                className="h-full items-center text-sm"
-              >
-                {t('Settings')}
-              </TabsTrigger>
-            </TabsList>
-          </div>
+                {t('Load saved version')}
+              </Button>
+            </div>
+          )}
           <ScrollFade className="min-h-0 grow">
-            <div className="p-[18px]">
-              <TabsContent
-                value="behavior"
-                className="mt-0 flex flex-col gap-6"
-              >
-                <ConfigureBehaviorTab
-                  form={form}
-                  needsModel={formNeedsModel}
-                  projectId={agent.projectId}
-                />
-              </TabsContent>
-              <TabsContent
-                value="settings"
-                className="mt-0 flex flex-col gap-6"
-              >
-                <ConfigureSettingsTab
-                  agent={agent}
-                  form={form}
-                  onDeleted={() => {
-                    deletedRef.current = true;
-                  }}
-                />
-              </TabsContent>
+            <div className="flex flex-col gap-6 p-[18px]">
+              <ConfigureIdentity agent={agent} form={form} />
+              <ConfigureBehaviorTab
+                form={form}
+                needsModel={formNeedsModel}
+                projectId={agent.projectId}
+              />
+              <details className="border-t border-gray-6 pt-5 text-sm">
+                <summary className="w-fit cursor-pointer text-gray-11 outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-9">
+                  {t('Manage this Sydekyk')}
+                </summary>
+                <div className="flex flex-col gap-6 pt-5">
+                  <AgentProjectRow agent={agent} />
+                  <AgentDangerZone
+                    agent={agent}
+                    onDeleted={() => {
+                      deletedRef.current = true;
+                    }}
+                  />
+                </div>
+              </details>
               {form.formState.errors.root?.serverError && (
-                <p className="mt-5 text-sm leading-4 text-danger-11">
+                <p role="alert" className="text-sm leading-5 text-danger-11">
                   {form.formState.errors.root.serverError.message}
                 </p>
               )}
             </div>
           </ScrollFade>
-        </Tabs>
+        </div>
       </form>
     </Form>
   );

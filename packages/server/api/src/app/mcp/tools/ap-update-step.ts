@@ -31,7 +31,7 @@ export const apUpdateStepTool = ({ mcp, userId }: McpToolContext, log: FastifyBa
             flowId: z.string().describe('The id of the flow'),
             stepName: z.string().describe('The name of the step to update (e.g. "step_1"). Use ap_flow_structure to get valid values.'),
             displayName: z.string().optional().describe('New display name for the step'),
-            input: z.record(z.string(), z.unknown()).optional().describe(`Input settings for the step (key-value pairs matching the action schema). ${mcpUtils.STEP_REFERENCE_HINT}`),
+            input: z.record(z.string(), z.unknown()).optional().describe(`For PIECE/CODE steps only: input settings (key-value pairs matching the action schema). For router conditions, use ap_update_branch or ap_add_branch. ${mcpUtils.STEP_REFERENCE_HINT}`),
             auth: z.string().optional().describe('Connection `externalId` from `ap_list_connections`. Pass the plain id, not a template.'),
             actionName: z.string().optional().describe('For PIECE steps: the action to perform. Use ap_research_pieces to get valid values.'),
             loopItems: z.string().optional().describe('For LOOP steps: expression for the items to iterate over'),
@@ -65,6 +65,18 @@ export const apUpdateStepTool = ({ mcp, userId }: McpToolContext, log: FastifyBa
             if (flowStructureUtil.isTrigger(step.type)) {
                 return {
                     content: [{ type: 'text', text: `❌ "${stepName}" is a trigger step. Use ap_update_trigger to configure triggers.` }],
+                }
+            }
+
+            // Router settings have no input/auth map. UpdateActionRequest would
+            // strip it and leave the branches unchanged while reporting success.
+            if (flowStructureUtil.isBranchedAction(step) && (input !== undefined || rawAuth !== undefined)) {
+                const hint = step.type === FlowActionType.ROUTER
+                    ? 'Use ap_update_branch to change existing branch conditions or ap_add_branch to add a branch.'
+                    : 'Configure AI Router routes in the Mission editor.'
+                return {
+                    isError: true,
+                    content: [{ type: 'text', text: `❌ input/auth cannot be set on ${step.type} steps. ${hint} No changes were saved.` }],
                 }
             }
 

@@ -71,7 +71,7 @@ const needsAModel = (agent: Agent): boolean => {
 };
 
 const AgentEditorSkeleton = () => (
-  <div className="flex h-full w-full flex-col">
+  <div className="flex h-full min-w-0 w-full flex-col overflow-hidden">
     <div className="flex h-[60px] shrink-0 items-center gap-[14px] border-b border-gray-6 px-6">
       <Skeleton className="size-12 rounded-[14px]" />
       <Skeleton className="h-5 w-[220px]" />
@@ -87,7 +87,9 @@ const AgentEditorContent = () => {
   const { pathname, state: locationState } = useLocation();
   const [backTo] = useState(() => backDestination(locationState));
   const agentsAvailable = useAgentsAvailable();
-  const [conversationsOpen, setConversationsOpen] = useState(true);
+  const [conversationsOpen, setConversationsOpen] = useState(
+    () => window.innerWidth >= 768,
+  );
   const [expandedBesidePanel, setExpandedBesidePanel] = useState(false);
   const roomForBoth = useSyncExternalStore(
     subscribeToWindowWidth,
@@ -231,7 +233,7 @@ const AgentEditorContent = () => {
   }
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex h-full min-w-0 w-full flex-col overflow-hidden">
       <div className="flex h-[60px] shrink-0 items-center gap-2 border-b border-gray-6 px-3 sm:gap-3 sm:px-5">
         <button
           type="button"
@@ -275,8 +277,12 @@ const AgentEditorContent = () => {
           </Button>
         </div>
       </div>
-      <div className="relative flex min-h-0 grow">
-        <div className="flex min-w-0 grow">
+      <div className="relative flex min-h-0 min-w-0 grow overflow-hidden">
+        <div
+          className="flex min-h-0 min-w-0 flex-1"
+          inert={activePanel !== null && !roomForBoth}
+          aria-hidden={activePanel !== null && !roomForBoth}
+        >
           <AgentChatView
             key={agent.id}
             onOpenConfigure={() => {

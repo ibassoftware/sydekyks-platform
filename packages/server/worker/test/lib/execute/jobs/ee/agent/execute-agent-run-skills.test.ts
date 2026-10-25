@@ -50,7 +50,7 @@ describe('skills through the production chat job', () => {
                 systemPrompt: 'Validate the specified draft. Do not publish.', guides: { build_flow: 'Validate the draft before finishing.' },
                 aiTools: {}, projects: [{ id: 'project-1' }],
                 messages: [{ role: 'user', content: 'Validate flow-1.' }], allMessages: [{ role: 'user', content: 'Validate flow-1.' }],
-                previousUiMessages: [{ role: 'user', parts: [] }, { role: 'user', parts: [] }],
+                previousUiMessages: [{ role: 'user', parts: [] }],
             }),
             agentCreditsLeft: async () => 100,
             sendAgentEvent, saveAgentMessages,
@@ -61,6 +61,11 @@ describe('skills through the production chat job', () => {
         const result = await executeAgentRunJob.execute(ctx, data)
 
         expect(result.status).toBe(EngineResponseStatus.OK)
+        // Even a first turn must only run its requested assistant/tool work:
+        // titles are chosen locally during API admission, never by another model call.
+        expect(model.doGenerateCalls).toHaveLength(0)
+        expect(saveAgentMessages.mock.calls.every(([payload]) => !Object.hasOwn(payload as object, 'title'))).toBe(true)
+        expect(sendAgentEvent.mock.calls.some(([input]) => input.event.type === AgentEventType.TITLE_UPDATE)).toBe(false)
         expect(validate).toHaveBeenCalledTimes(1)
         expect(validate.mock.calls[0]?.[0]).toEqual({ flowId: 'flow-1' })
         expect(model.doStreamCalls.every(call => (call.tools?.length ?? 0) <= MAX_CORE_TOOLS)).toBe(true)

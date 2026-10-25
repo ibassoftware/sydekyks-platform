@@ -34,9 +34,34 @@ const folder = new EntitySchema<{ id: string }>({ name: 'folder', columns: { id:
 const flow = new EntitySchema<{ id: string, projectId: string, publishedVersionId: string }>({ name: 'flow', columns: { id: idColumn, projectId: ApIdSchema, publishedVersionId: ApIdSchema } })
 const version = new EntitySchema<{ id: string, flowId: string, displayName: string, agentIds: string[] }>({ name: 'flow_version', columns: { id: idColumn, flowId: ApIdSchema, displayName: { type: String }, agentIds: { type: 'varchar', array: true } } })
 
+async function raceDatabaseOptions() {
+    const names = ['HOST', 'PORT', 'USERNAME', 'PASSWORD', 'DATABASE'] as const
+    const values = Object.fromEntries(names.map(name => [name, process.env[`SYD_TEST_RACE_POSTGRES_${name}`]]))
+    if (!names.some(name => values[name] !== undefined)) return { host: '127.0.0.1', port: 55432, username: 'syd', password: 'syd-test', database: 'syd' }
+    if (names.some(name => !values[name])) throw new Error('Dedicated race database overrides must include every connection field')
+    const port = Number(values.PORT)
+    const database = values.DATABASE!
+    if (!['127.0.0.1', 'localhost'].includes(values.HOST!) || !Number.isInteger(port) || port < 1 || port > 65535
+        || !/^sydekyks_backport_races_[a-z0-9]+$/.test(database)) throw new Error('Race overrides require a loopback disposable sydekyks_backport_races_* database')
+    const options = { host: values.HOST!, port, username: values.USERNAME!, password: values.PASSWORD!, database }
+    // The suite uses dropSchema. Never apply it to a reused database, an app's
+    // main test database, or a database owned by another role.
+    const probe = new DataSource({ type: 'postgres', ...options })
+    await probe.initialize()
+    try {
+        const [identity] = await probe.query('SELECT current_database() = $1 AS expected, pg_get_userbyid(datdba) = current_user AS owned FROM pg_database WHERE datname = current_database()', [database])
+        const [tables] = await probe.query("SELECT count(*)::int AS count FROM information_schema.tables WHERE table_schema = 'public'")
+        if (!identity?.expected || !identity?.owned || tables.count !== 0) throw new Error('Refusing dropSchema: dedicated race database must be empty and owned by the test role')
+    }
+    finally {
+        await probe.destroy()
+    }
+    return options
+}
+
 describe.skipIf(process.env.SYD_TEST_POSTGRES !== 'true')('Syd concurrency on isolated PostgreSQL', () => {
     beforeAll(async () => {
-        state.connection = new DataSource({ type: 'postgres', host: '127.0.0.1', port: 55432, username: 'syd', password: 'syd-test', database: 'syd', synchronize: true, dropSchema: true, entities: [platform, user, project, folder, flow, version, SydChatManagedAgentEntity, SydConversationEntity, SydUserMemoryEntity, SydPersonalizationEntity] })
+        state.connection = new DataSource({ type: 'postgres', ...await raceDatabaseOptions(), synchronize: true, dropSchema: true, entities: [platform, user, project, folder, flow, version, SydChatManagedAgentEntity, SydConversationEntity, SydUserMemoryEntity, SydPersonalizationEntity] })
         await state.connection.initialize()
     })
     afterAll(async () => { await state.connection?.destroy(); state.connection = null })
