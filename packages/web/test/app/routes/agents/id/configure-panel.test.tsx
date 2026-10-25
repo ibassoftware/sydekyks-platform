@@ -60,7 +60,7 @@ vi.mock('@/features/agents', () => ({
         onChange({
           type: 'model',
           provider: AIProviderName.OPENAI,
-          providerConfigId: 'selfhostConnection0001',
+          providerConfigId: '012345678901234567890',
           modelId: 'gpt-4o',
         })
       }
@@ -140,7 +140,7 @@ describe('agent configuration publishing', () => {
     expect(save.mutate.mock.calls[0][0]).toMatchObject({
       draft: {
         provider: AIProviderName.OPENAI,
-        providerConfigId: 'selfhostConnection0001',
+        providerConfigId: '012345678901234567890',
         modelName: 'gpt-4o',
         modelTierId: null,
       },
