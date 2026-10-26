@@ -505,7 +505,7 @@ export const RunsTable = () => {
                     </PermissionNeededTooltip>
 
                     {hostedPilot && (
-                      <p className="max-w-64 px-2 py-1.5 text-xs text-muted-foreground">
+                      <p className="max-w-64 px-2 py-1.5 text-xs text-gray-11">
                         {t(
                           'Starts from the beginning and uses Credits. Earlier actions may happen again.'
                         )}

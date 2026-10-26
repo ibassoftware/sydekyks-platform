@@ -176,7 +176,7 @@ function PartnerPurchaseSession({
             <div
               key={selected}
               className={`flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between ${
-                selectedPackage === selected ? 'bg-accent/30' : ''
+                selectedPackage === selected ? 'bg-accent-3' : ''
               }`}
             >
               <div className="space-y-1">

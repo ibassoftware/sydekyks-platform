@@ -311,7 +311,7 @@ export function ManualAccountForm({
                 <p className="text-sm text-gray-11">
                   {t('No published Partner courses yet.')}{' '}
                   <Link
-                    className="text-primary underline underline-offset-4"
+                    className="text-accent-11 underline underline-offset-4"
                     to="/learn"
                   >
                     {t('Manage courses in Learning')}
@@ -438,14 +438,14 @@ export function ManualAccountForm({
           </p>
           <p>
             <Link
-              className="text-primary underline underline-offset-4"
+              className="text-accent-11 underline underline-offset-4"
               to="/learn"
             >
               {t('Manage learning')}
             </Link>{' '}
             ·{' '}
             <Link
-              className="text-primary underline underline-offset-4"
+              className="text-accent-11 underline underline-offset-4"
               to="/platform/billing/subscriptions"
             >
               {t('Assign training and manage renewal dates')}

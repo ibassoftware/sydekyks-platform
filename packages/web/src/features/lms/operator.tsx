@@ -917,7 +917,7 @@ function CourseEditor({
             status. For a Partner already funded through Add Partner manually,
             attach their primary package course under{' '}
             <Link
-              className="text-primary underline underline-offset-4"
+              className="text-accent-11 underline underline-offset-4"
               to="/platform/billing/subscriptions"
             >
               Renewal dates → Manual hosting funding

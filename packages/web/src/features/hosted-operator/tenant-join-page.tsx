@@ -134,7 +134,7 @@ export function TenantJoinPage() {
               )}
             </p>
             <Link
-              className="text-primary underline underline-offset-4"
+              className="text-accent-11 underline underline-offset-4"
               to="/sign-in"
             >
               {t('Go to sign in')}
@@ -148,7 +148,7 @@ export function TenantJoinPage() {
                 'Your workspace membership is ready. This invitation does not grant Partner status or a new trial.',
               )}
             </p>
-            <Link className="text-primary underline underline-offset-4" to="/">
+            <Link className="text-accent-11 underline underline-offset-4" to="/">
               {t('Open workspace')}
             </Link>
           </div>
@@ -242,7 +242,7 @@ export function TenantJoinPage() {
                 </div>
               )}
               {error && (
-                <p role="alert" className="text-sm text-destructive">
+                <p role="alert" className="text-sm text-danger-11">
                   {error}
                 </p>
               )}

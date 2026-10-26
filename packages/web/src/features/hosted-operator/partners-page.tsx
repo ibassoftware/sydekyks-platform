@@ -303,7 +303,7 @@ function PartnerSession({ access }: { access: Access }) {
           )}
           <div aria-live="polite" className="space-y-2">
             {error && (
-              <p role="alert" className="text-sm text-destructive">
+              <p role="alert" className="text-sm text-danger-11">
                 {error}
               </p>
             )}
@@ -653,7 +653,7 @@ function PartnerSession({ access }: { access: Access }) {
                 <p className="mt-5 text-sm text-gray-11">
                   {t('Partners open assigned clients from')}{' '}
                   <Link
-                    className="text-primary underline underline-offset-4"
+                    className="text-accent-11 underline underline-offset-4"
                     to="/partners/workspaces"
                   >
                     {t('Partner workspaces')}

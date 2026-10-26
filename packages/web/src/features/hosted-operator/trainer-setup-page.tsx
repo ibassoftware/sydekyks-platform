@@ -148,7 +148,7 @@ export function TrainerSetupPage() {
                   )}
             </p>
             <Link
-              className="text-primary underline underline-offset-4"
+              className="text-accent-11 underline underline-offset-4"
               to="/sign-in"
             >
               {t('Go to sign in')}
@@ -163,7 +163,7 @@ export function TrainerSetupPage() {
               )}
             </p>
             <Link
-              className="text-primary underline underline-offset-4"
+              className="text-accent-11 underline underline-offset-4"
               to="/sign-in"
             >
               {t('Open your workspace')}
@@ -231,7 +231,7 @@ export function TrainerSetupPage() {
                 />
               </div>
               {error && (
-                <p role="alert" className="text-sm text-destructive">
+                <p role="alert" className="text-sm text-danger-11">
                   {error}
                 </p>
               )}

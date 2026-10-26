@@ -140,7 +140,7 @@ export function AccountRecoveryPage() {
                   )}
             </p>
             <Link
-              className="text-primary underline underline-offset-4"
+              className="text-accent-11 underline underline-offset-4"
               to="/sign-in"
             >
               {t('Go to sign in')}
@@ -155,7 +155,7 @@ export function AccountRecoveryPage() {
               )}
             </p>
             <Link
-              className="text-primary underline underline-offset-4"
+              className="text-accent-11 underline underline-offset-4"
               to="/sign-in"
             >
               {t('Sign in')}
@@ -214,7 +214,7 @@ export function AccountRecoveryPage() {
                 />
               </div>
               {error && (
-                <p role="alert" className="text-sm text-destructive">
+                <p role="alert" className="text-sm text-danger-11">
                   {error}
                 </p>
               )}

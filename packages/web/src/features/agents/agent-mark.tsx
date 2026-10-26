@@ -46,7 +46,7 @@ export const AgentTrioMark = ({ className }: { className?: string }) => (
     aria-hidden
   >
     <Bot className="size-12 text-gray-11" strokeWidth={1.5} />
-    <Bot className="size-16 text-primary" strokeWidth={1.5} />
+    <Bot className="size-16 text-accent-11" strokeWidth={1.5} />
     <Bot className="size-12 text-gray-11" strokeWidth={1.5} />
   </div>
 );

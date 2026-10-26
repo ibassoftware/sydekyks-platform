@@ -247,7 +247,7 @@ export function PartnerSetupControls({
             {t('Hide link')}
           </Button>
           <a
-            className="w-fit text-primary underline underline-offset-4"
+            className="w-fit text-accent-11 underline underline-offset-4"
             href={url}
             target="_blank"
             rel="noreferrer"

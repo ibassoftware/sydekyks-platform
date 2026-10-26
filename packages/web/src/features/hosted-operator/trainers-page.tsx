@@ -25,7 +25,7 @@ import {
 } from './trainers-api';
 
 const selectStyle =
-  'h-10 w-full rounded-md border border-input bg-background px-3 text-sm';
+  'h-10 w-full rounded-md border border-gray-6 bg-gray-1 px-3 text-sm';
 export function TrainersAdminPage() {
   const access = useHostedOperatorAccess();
   return <Admin key={access.session.epoch} access={access} />;
@@ -386,7 +386,7 @@ function Admin({
             </section>
           )}
           {error && (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-danger-11">
               {error}
             </p>
           )}
@@ -679,7 +679,7 @@ function Workspace({
             </section>
           )}
           {error && (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-danger-11">
               {error}
             </p>
           )}

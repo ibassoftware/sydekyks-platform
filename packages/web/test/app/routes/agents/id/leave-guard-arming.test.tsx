@@ -1,31 +1,70 @@
 // @vitest-environment jsdom
+/* eslint-disable jest-dom/prefer-in-document -- This isolated Vitest suite does not install jest-dom matchers. */
 import { AIProviderName } from '@activepieces/core-utils';
-import { ModelChoice } from '@activepieces/shared';
+import {
+  Agent,
+  AgentConfig,
+  AgentIcon,
+  AgentVisibility,
+  ColorName,
+  ModelChoice,
+  UpdateAgentRequest,
+} from '@activepieces/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import { createContext, useContext } from 'react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const pendingSaves: { onSuccess?: () => void }[] = [];
+const fixture = vi.hoisted(() => ({ hosted: false }));
+const pendingSaves: {
+  request: UpdateAgentRequest;
+  onSuccess?: (agent: Agent) => void;
+  onSettled?: () => void;
+}[] = [];
 
 vi.mock('i18next', () => ({ t: (key: string) => key }));
 vi.mock('sonner', () => ({ toast: vi.fn() }));
-vi.mock('@/app/routes/chat-with-ai/ai-chat-box', () => ({
-  AIChatBox: () => <div data-testid="chat" />,
+vi.mock('@/features/hosted-billing/service-mode', () => ({
+  useHostedBillingEnabled: () => fixture.hosted,
+}));
+vi.mock('@/lib/authentication-session', () => ({
+  authenticationSession: { getCurrentUserId: () => 'owner' },
+}));
+vi.mock('@/features/projects', () => ({
+  projectCollectionUtils: { useAll: () => ({ data: [] }) },
+  getProjectName: () => '',
+  ApProjectDisplay: () => null,
+}));
+vi.mock('@/features/agents/move-agent-dialog', () => ({
+  MoveAgentDialog: () => null,
+}));
+vi.mock('@/features/agents/delete-agent-dialog', () => ({
+  DeleteAgentDialog: () => null,
+}));
+vi.mock('@/features/agents/hosted-agent-provider-field', () => ({
+  HostedAgentProviderField: () => <span>Sydekyks</span>,
 }));
 vi.mock('@/app/builder/step-settings/agent-settings/agent-tools', () => ({
   AgentTools: () => <div data-testid="tools" />,
 }));
-vi.mock('@/hooks/flags-hooks', () => ({
-  flagsHooks: { useFlag: () => ({ data: true }) },
-}));
 vi.mock('@/hooks/authorization-hooks', () => ({
-  useAuthorization: () => ({ checkAccess: () => true }),
+  useAuthorization: () => ({
+    checkAccess: () => true,
+    isFetchingProjectRole: false,
+  }),
 }));
 vi.mock('@/features/agents', () => ({
   ModelPicker: ({ onChange }: { onChange: (value: ModelChoice) => void }) => (
     <>
       <button
+        type="button"
         data-testid="model"
         onClick={() =>
           onChange({
@@ -37,6 +76,7 @@ vi.mock('@/features/agents', () => ({
         }
       />
       <button
+        type="button"
         data-testid="tier"
         onClick={() => onChange({ type: 'tier', tierId: 'tier-1' })}
       />
@@ -44,139 +84,153 @@ vi.mock('@/features/agents', () => ({
   ),
   useKnowledgeBaseEmbeddingSource: () => ({ data: undefined }),
   AgentStructuredOutput: () => <div data-testid="structured" />,
-  KnowledgeBaseSection: () => <div data-testid="knowledge" />,
-  useAgentsAvailable: () => true,
+  NoEmbeddingSourceNote: () => null,
 }));
 vi.mock('@/features/agents/hooks/agents-hooks', () => ({
   agentsMutations: {
     useUpdateAgent: () => ({
       isPending: false,
-      mutate: (_request: unknown, options?: { onSuccess?: () => void }) => {
-        pendingSaves.push({ onSuccess: options?.onSuccess });
+      mutate: (
+        request: UpdateAgentRequest,
+        options?: {
+          onSuccess?: (agent: Agent) => void;
+          onSettled?: () => void;
+        },
+      ) => {
+        pendingSaves.push({ request, ...options });
       },
     }),
   },
-  agentsQueries: { useAgent: () => ({ data: undefined, isLoading: false }) },
 }));
 
 import { AgentConfigurePanel } from '@/app/routes/agents/id/configure-panel';
 
-const agentWithoutModel = {
+const agentWithoutModel: Agent = {
   id: 'agent_1',
+  externalId: 'inbox-agent',
+  created: '2026-10-26T00:00:00.000Z',
+  updated: '2026-10-26T00:00:00.000Z',
   displayName: 'Inbox agent',
   description: null,
-  icon: 'bot',
-  color: 'PURPLE',
+  icon: AgentIcon.BOT,
+  color: ColorName.PURPLE,
   projectId: 'proj_1',
-  visibility: 'PROJECT',
+  ownerId: 'owner',
+  visibility: AgentVisibility.PROJECT,
   sharedWithUserIds: [],
   published: null,
-  draft: {
-    instructions: 'Sort the inbox.',
-    provider: null,
-    providerConfigId: null,
-    modelName: null,
-    maxSteps: 10,
-    tools: [],
-    structuredOutput: [],
-  },
-} as never;
+  draft: AgentConfig.parse({ instructions: 'Sort the inbox.' }),
+};
+
+const AgentContext = createContext(agentWithoutModel);
+const CurrentAgentPanel = ({ onExit }: { onExit: () => void }) => (
+  <AgentConfigurePanel agent={useContext(AgentContext)} onExit={onExit} />
+);
 
 const renderScreen = ({ onExit }: { onExit: () => void }) => {
   const router = createMemoryRouter(
-    [
-      {
-        path: '/',
-        element: (
-          <AgentConfigurePanel
-            agent={agentWithoutModel}
-            onExit={onExit}
-          />
-        ),
-      },
-    ],
+    [{ path: '/', element: <CurrentAgentPanel onExit={onExit} /> }],
     { initialEntries: ['/'] },
   );
-  return render(
-    <QueryClientProvider client={new QueryClient()}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
+  const client = new QueryClient();
+  const element = (agent: Agent) => (
+    <AgentContext.Provider value={agent}>
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </AgentContext.Provider>
   );
+  const view = render(element(agentWithoutModel));
+  return {
+    refetchAgent: (agent: Agent) => view.rerender(element(agent)),
+  };
 };
 
-const clickBack = () => {
-  const back = screen.getByLabelText('Close');
-  back.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-};
+const clickBack = () =>
+  fireEvent.click(screen.getByRole('button', { name: 'Chat with Sydekyk' }));
 
-const typeInInstructions = (value: string) => {
-  const box = document.querySelector('textarea');
-  if (!box) throw new Error('instructions textarea not rendered');
-  const setter = Object.getOwnPropertyDescriptor(
-    HTMLTextAreaElement.prototype,
-    'value',
-  )?.set;
-  setter?.call(box, value);
-  box.dispatchEvent(new Event('input', { bubbles: true }));
-};
-
-const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
+const typeInInstructions = (value: string) =>
+  fireEvent.change(screen.getByRole('textbox', { name: /Instructions/ }), {
+    target: { value },
+  });
 
 beforeEach(() => {
+  fixture.hosted = false;
   pendingSaves.length = 0;
 });
-afterEach(cleanup);
 
 describe('the leave guard only speaks for edits a person made', () => {
-  it('asks for a model on a blank agent until a tier is picked', async () => {
-    renderScreen({ onExit: vi.fn() });
-    await settle();
-    expect(
-      screen.queryByText('Pick a model so this agent can answer.'),
-    ).toBeTruthy();
+  it('allows an untouched hosted agent to exit without asking for a model', () => {
+    fixture.hosted = true;
+    const onExit = vi.fn();
+    renderScreen({ onExit });
 
-    screen.getByTestId('tier').click();
-    await settle();
-
+    expect(screen.getByText('Sydekyks')).toBeTruthy();
     expect(
       screen.queryByText('Pick a model so this agent can answer.'),
     ).toBeNull();
+    clickBack();
+    expect(screen.queryByText('Leave without saving?')).toBeNull();
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks for a model on a self-hosted blank agent until a tier is picked', async () => {
+    renderScreen({ onExit: vi.fn() });
+    expect(
+      screen.getByText('Pick a model so this agent can answer.'),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('tier'));
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Pick a model so this agent can answer.'),
+      ).toBeNull(),
+    );
+    clickBack();
+    expect(await screen.findByText('Leave without saving?')).toBeTruthy();
   });
 
   it('still stops you when the model was picked by hand', async () => {
     const onExit = vi.fn();
     renderScreen({ onExit });
-    await settle();
 
-    screen.getByTestId('model').click();
-    await settle();
+    fireEvent.click(screen.getByTestId('model'));
+    await screen.findByText('Unsaved');
     clickBack();
-    await settle();
 
-    expect(screen.getByText('Leave without saving?')).toBeTruthy();
+    expect(await screen.findByText('Leave without saving?')).toBeTruthy();
     expect(onExit).not.toHaveBeenCalled();
   });
 
-  it('keeps an edit typed while a save was in flight', async () => {
+  it('keeps an edit typed while a save and its refetch were in flight', async () => {
+    fixture.hosted = true;
     const onExit = vi.fn();
-    renderScreen({ onExit });
+    const view = renderScreen({ onExit });
     typeInInstructions('First edit.');
-    await settle();
-
-    document.querySelector('form')?.requestSubmit();
-    await settle();
-    expect(pendingSaves).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Publish & test' }));
+    await waitFor(() => expect(pendingSaves).toHaveLength(1));
+    expect(pendingSaves[0].request.draft?.instructions).toBe('First edit.');
 
     typeInInstructions('Second edit, typed while saving.');
-    await settle();
-    pendingSaves[0]?.onSuccess?.();
-    await settle();
+    const saved = {
+      ...agentWithoutModel,
+      draft: AgentConfig.parse(pendingSaves[0].request.draft),
+      published: AgentConfig.parse(pendingSaves[0].request.draft),
+    };
+    view.refetchAgent(saved);
+    await act(async () => {
+      pendingSaves[0].onSuccess?.(saved);
+      pendingSaves[0].onSettled?.();
+    });
 
-    expect(document.querySelector('textarea')?.value).toBe(
-      'Second edit, typed while saving.',
+    expect(screen.getByRole('textbox', { name: /Instructions/ })).toMatchObject(
+      {
+        value: 'Second edit, typed while saving.',
+      },
     );
+    expect(screen.getByText('Unsaved')).toBeTruthy();
     clickBack();
-    await settle();
-    expect(screen.getByText('Leave without saving?')).toBeTruthy();
+    expect(await screen.findByText('Leave without saving?')).toBeTruthy();
+    expect(onExit).not.toHaveBeenCalled();
   });
 });
