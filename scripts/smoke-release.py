@@ -14,7 +14,8 @@ import urllib.request
 
 POSTGRES = 'pgvector/pgvector:0.8.1-pg16-trixie@sha256:1e4956185a7fd9306a41ee759a7b4329c4faf9a2bb91a1d01437310c97002433'
 REDIS = 'redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499'
-PREVIOUS = 'ibassoftware/sydekyks:1.0.9@sha256:eef2518a02acd5c87d8a6eec3d50ae49a71aee92db6815f4efb5546a2baa8aa1'
+PREVIOUS_VERSION = '1.0.10'
+PREVIOUS = f'ibassoftware/sydekyks:{PREVIOUS_VERSION}@sha256:5be614577d1a7749716f85143f13bd234a862978addb5657fc4006e7aff0dd6d'
 
 
 def docker(*args, check=True):
@@ -91,7 +92,7 @@ def exercise(image, upgrade=False):
                 base = 'http://127.0.0.1:' + port
                 return base, wait_for_app(base)
 
-            print('Testing ' + ('upgrade from 1.0.9' if upgrade else 'fresh installation'), flush=True)
+            print('Testing ' + (f'upgrade from {PREVIOUS_VERSION}' if upgrade else 'fresh installation'), flush=True)
             base, flags = start(PREVIOUS if upgrade else image)
             email = 'release-smoke@example.com'
             status, owner = request(base, '/api/v1/authentication/sign-up', {
@@ -159,7 +160,7 @@ def exercise(image, upgrade=False):
                               'ownerLogin': True, 'savedMission': True, 'savedAgent': True,
                               'missionVersionsPreserved': True, 'redisStatePreserved': True,
                               'applicationFilesPreserved': True, 'releaseMigrationApplied': True,
-                              'upgradeFrom': '1.0.9' if upgrade else None, 'closedRegistration': True}), flush=True)
+                              'upgradeFrom': PREVIOUS_VERSION if upgrade else None, 'closedRegistration': True}), flush=True)
         finally:
             for name in (app, pg, redis):
                 docker('rm', '-f', '-v', name, check=False)
