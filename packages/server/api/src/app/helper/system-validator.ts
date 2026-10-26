@@ -106,7 +106,9 @@ const systemPropValidators: {
             if (!limits || typeof limits !== 'object' || Array.isArray(limits)) return 'Storage limits must be an object'
             return Object.entries(limits).every(([key, bytes]) => ['trial', 'training', 'assessment', 'starter', 'team', 'global'].includes(key) && Number.isSafeInteger(bytes) && Number(bytes) >= 1048576 && Number(bytes) <= 1024 ** 4) || 'Storage limits must contain valid byte limits'
         }
-        catch { return 'Storage limits must be JSON' }
+        catch {
+            return 'Storage limits must be JSON'
+        }
     },
     [AppSystemProp.HOSTED_OPERATOR_IDENTITY_IDS]: (value) => !value || value.split(',').every(id => id.trim().length === 21) ? true : 'Operator identity IDs must be 21 characters',
     [AppSystemProp.HOSTED_DEEPSEEK_API_KEY]: () => true,

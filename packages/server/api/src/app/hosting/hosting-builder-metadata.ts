@@ -17,7 +17,9 @@ function compactProp(value: unknown): Record<string, unknown> {
     }
     if (Array.isArray(prop.options)) {
         // Retain actual option values; labels are explanatory metadata only.
-        result.options = prop.options.slice(0, 30).map(value => { const option = record(value); return { label: text(option.label, 80), value: option.value } })
+        result.options = prop.options.slice(0, 30).map(value => {
+            const option = record(value); return { label: text(option.label, 80), value: option.value }
+        })
         if (prop.options.length > 30) result.optionsTruncated = true
     }
     if (Array.isArray(prop.items)) result.items = prop.items.map(compactProp)

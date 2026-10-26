@@ -7,9 +7,9 @@ import { StatusCodes } from 'http-status-codes'
 import { z } from 'zod'
 import { ProjectResourceType } from '../core/security/authorization/common'
 import { securityAccess } from '../core/security/authorization/fastify-security'
-import { aiModelOptionsService } from './ai-model-options-service'
 import { hostingConfiguration } from '../hosting/hosting-configuration'
 import { hostingProviderController } from '../hosting/hosting-provider-controller'
+import { aiModelOptionsService } from './ai-model-options-service'
 import { aiProviderService } from './ai-provider-service'
 
 export const aiProviderController: FastifyPluginAsyncZod = async (app) => {

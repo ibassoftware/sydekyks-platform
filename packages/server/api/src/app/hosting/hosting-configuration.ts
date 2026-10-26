@@ -1,7 +1,7 @@
 import { ServiceMode, serviceModePolicy } from '@activepieces/shared'
 import { system } from '../helper/system/system'
-import { hostedStorageLimits } from './hosting-storage'
 import { AppSystemProp } from '../helper/system/system-props'
+import { hostedStorageLimits } from './hosting-storage'
 
 function getServiceMode(): ServiceMode {
     return serviceModePolicy.resolve({ value: system.get(AppSystemProp.SERVICE_MODE) })

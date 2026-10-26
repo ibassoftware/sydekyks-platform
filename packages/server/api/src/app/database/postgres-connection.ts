@@ -1,5 +1,3 @@
-import { SydekyksClientPlanChanges1916000000000 } from './migration/postgres/1916000000000-SydekyksClientPlanChanges'
-import { SydekyksDefaultLearning1915000000000 } from './migration/postgres/1915000000000-SydekyksDefaultLearning'
 import { isNil, spreadIfDefined } from '@activepieces/core-utils'
 import { DataSource } from 'typeorm'
 import { system } from '../helper/system/system'
@@ -53,6 +51,8 @@ import { SydekyksNativeTools1911000000000 } from './migration/postgres/191100000
 import { SydekyksAiFiles1912000000000 } from './migration/postgres/1912000000000-SydekyksAiFiles'
 import { SydekyksCreditRateV31913000000000 } from './migration/postgres/1913000000000-SydekyksCreditRateV3'
 import { SydekyksInclusiveCredits1914000000000 } from './migration/postgres/1914000000000-SydekyksInclusiveCredits'
+import { SydekyksDefaultLearning1915000000000 } from './migration/postgres/1915000000000-SydekyksDefaultLearning'
+import { SydekyksClientPlanChanges1916000000000 } from './migration/postgres/1916000000000-SydekyksClientPlanChanges'
 import { ReshapeFlowRunListIndexesForBarrierChildren1871000000000 } from './migration/postgres/background/1871000000000-ReshapeFlowRunListIndexesForBarrierChildren'
 import { BackfillPieceTranslation1874000000000 } from './migration/postgres/background/1874000000000-BackfillPieceTranslation'
 
