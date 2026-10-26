@@ -6,7 +6,7 @@ import { databaseConnection } from '../database/database-connection'
 import { sydApprovalGate } from '../syd/copilot/approval-gate'
 import { SydAgentConversationEntity } from '../syd/copilot/models/agent-conversation.entity'
 import { SydConversationEntity } from '../syd/copilot/models/conversation.entity'
-import { HOSTED_AI_MAX_CALLS, HOSTED_AI_MAX_MESSAGES, HOSTED_AI_REQUEST_MAX_BYTES, HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL, HostedAiInput } from './hosting-ai-policy'
+import { HOSTED_AI_MAX_MESSAGES, HOSTED_AI_REQUEST_MAX_BYTES, HOSTED_DEEPSEEK_MODEL, HOSTED_MANAGED_MODEL, HostedAiInput } from './hosting-ai-policy'
 import { executeHostedBuilderTool, hostedBuilderToolNames } from './hosting-builder-tools'
 import { hostingConfiguration } from './hosting-configuration'
 import { HostingDispatchEntity } from './hosting-dispatch-entity'
@@ -18,7 +18,9 @@ import { hostingFail, hostingTransactions as tx } from './hosting-transactions'
 // Stored and model-visible hosted history stays intact. Every supplier call
 // still needs its own funded small-input or full-context quote.
 export const HOSTED_CHAT_HISTORY_MAX_BYTES = HOSTED_AI_REQUEST_MAX_BYTES / 2
-export const HOSTED_CHAT_HISTORY_MAX_MESSAGES = HOSTED_AI_MAX_MESSAGES - 1 - 2 * HOSTED_AI_MAX_CALLS
+// Leave one system message and one assistant/tool continuation pair. Each
+// subsequent request still checks the full, untrimmed wire transcript.
+export const HOSTED_CHAT_HISTORY_MAX_MESSAGES = HOSTED_AI_MAX_MESSAGES - 3
 
 export function assertHostedChatContext({ messages, content }: { messages: unknown[], content: string }): void {
     // Refuse before claiming the conversation or reserving an execution.

@@ -41,7 +41,6 @@ export function createHostedNativeTools({ dataSource, provider = deepseekNativeT
             if (siblings.some(call => call.state === 'uncertain')) hostingFail('HOSTING_AI_OUTCOME_UNCERTAIN')
             if (siblings.some(call => ['prepared', 'running'].includes(call.state))) hostingFail('HOSTING_AI_CONCURRENCY_LIMIT')
             if (siblings.filter(call => call.nativeTool === input.kind).length >= (input.kind === 'search' ? 2 : 3)) hostingFail('HOSTING_NATIVE_TOOL_LIMIT')
-            if (siblings.length >= 32) hostingFail('HOSTING_AI_CALL_LIMIT')
             await assertNativeRootBudget({ manager, platformId: scope.platformId, rootId: root.id, maxCostMicroUsd: input.payer.type === 'managed' ? pricing.unitPriceMicroUsd : 0n, native: true })
             const id = apId(), reservation = input.payer.type === 'managed' ? await createHostedLedger({ dataSource, manager }).reserveManagedCall({ actor: actor(segment), rootReservationId: root.id, key: `native:${id}`, maxCostMicroUsd: pricing.unitPriceMicroUsd, expectedDay: day }) : null
             const now = await tx.now(manager)

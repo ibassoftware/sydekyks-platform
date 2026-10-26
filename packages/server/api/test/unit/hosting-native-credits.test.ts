@@ -73,6 +73,24 @@ const modelRequest = { callKey: 'model:0', attempt: 0, payer: { type: 'managed' 
 const modelProvider = () => ({ id: 'synthetic', endpoint: 'https://api.deepseek.com/chat/completions', complete: vi.fn(async () => ({ status: 200, data: { id: 'synthetic', model: 'deepseek-flash', created: Math.floor(Date.now() / 1000), object: 'chat.completion', choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'Answer' } }], usage: { prompt_tokens: 100, completion_tokens: 5, total_tokens: 105, prompt_cache_hit_tokens: 0, prompt_cache_miss_tokens: 100 } } })) })
 
 describe('historical V3 native tools use the additive Credits ledger', () => {
+    it.each(['managed', 'byok'] as const)('admits a native search after 40 %s model calls while preserving native tool limits', async payer => {
+        await configure()
+        const configId = payer === 'byok' ? await byok() : undefined
+        const admitted = await root(payer, configId), provider = modelProvider()
+        const gateway = createHostedAiGateway({ dataSource: ds, provider })
+        const selectedPayer = payer === 'managed' ? { type: 'managed' as const } : { type: 'byok' as const, configId: configId! }
+        for (let index = 0; index < 40; index++) await gateway.execute({ scope: admitted.scope, request: { ...modelRequest, callKey: `model:${index}`, payer: selectedPayer, model: payer === 'managed' ? 'sydekyks' : 'deepseek-flash' } })
+        const execute = vi.fn(successful), tools = createHostedNativeTools({ dataSource: ds, provider: { execute } })
+        const request = nativeRequest('search', selectedPayer)
+        const first = await tools.execute({ scope: admitted.scope, request })
+        expect(await tools.execute({ scope: admitted.scope, request })).toEqual(first)
+        await tools.execute({ scope: admitted.scope, request: nativeRequest('search', selectedPayer) })
+        await expect(tools.execute({ scope: admitted.scope, request: nativeRequest('search', selectedPayer) })).rejects.toThrow('NATIVE_TOOL_LIMIT')
+        expect(provider.complete).toHaveBeenCalledTimes(40)
+        expect(execute).toHaveBeenCalledTimes(2)
+        expect(await ds.getRepository(HostingModelCallEntity).countBy({ rootReservationId: admitted.reservation.id, state: 'settled' })).toBe(42)
+        expect(await balance()).toMatchObject({ consumed: payer === 'managed' ? 43n : 1n, reserved: 0n })
+    })
     it('charges one Credit per successful750microUSD search plus model usage and one execution; replay never resends or charges twice', async () => {
         await configure(); const admitted = await root(), execute = vi.fn(successful), tools = createHostedNativeTools({ dataSource: ds, provider: { execute } }), request = nativeRequest()
         const first = await tools.execute({ scope: admitted.scope, request }), replay = await tools.execute({ scope: admitted.scope, request })

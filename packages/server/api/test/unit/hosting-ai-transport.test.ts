@@ -57,7 +57,7 @@ describe('real hosted AI HTTP parser, serializer and rate admission', () => {
         expect(response.statusCode).toBe(403)
         expect(response.json().code).toBe('AUTHORIZATION')
     })
-    it.each([false, true])('preserves a call-limit refusal through Fastify and the AI SDK (stream=%s)', async streaming => {
+    it.each([false, true])('preserves a legacy call-limit refusal through Fastify and the AI SDK (stream=%s)', async streaming => {
         const gatewayCall = streaming ? stream : execute
         gatewayCall.mockRejectedValueOnce(new HostingError('HOSTING_AI_CALL_LIMIT'))
         const response = await app.inject({ method: 'POST', url: path, headers: headers(), payload: { ...input, stream: streaming } })
@@ -92,7 +92,7 @@ describe('real hosted AI HTTP parser, serializer and rate admission', () => {
         expect(execute).toHaveBeenCalledTimes(calls)
         expect(hostedAgentRefusalOf(new APICallError({ message: response.statusMessage, url: `http://internal${path}`, requestBodyValues: {}, statusCode: response.statusCode, responseBody: response.body, isRetryable: false }), 'http://internal/api')?.code).toBe('HOSTING_AI_REQUEST_LIMIT')
     })
-    it('admits a full 32-call builder root, bounds a tenant burst, and isolates tenants sharing one worker IP', async () => {
+    it('admits funded builder requests, bounds a tenant burst, and isolates tenants sharing one worker IP', async () => {
         const project = 'd'.repeat(21)
         for (let index = 0; index < Number(hostedAiRateLimit.max); index++) {
             const response = await app.inject({ method: 'POST', url: path, headers: headers(project), payload: { ...input, callKey: `copilot:${index}` } })

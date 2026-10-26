@@ -96,7 +96,15 @@ describe('coherent hosted chat continuation envelope', () => {
     })
     it('reserves schema/result headroom and refuses before admission instead of discarding saved history', () => {
         expect(HOSTED_CHAT_HISTORY_MAX_BYTES).toBe(HOSTED_AI_REQUEST_MAX_BYTES / 2)
-        expect(HOSTED_CHAT_HISTORY_MAX_MESSAGES).toBeLessThan(HOSTED_AI_MAX_MESSAGES)
+        expect(HOSTED_CHAT_HISTORY_MAX_MESSAGES).toBe(HOSTED_AI_MAX_MESSAGES - 3)
+        const admitted = Array.from({ length: HOSTED_CHAT_HISTORY_MAX_MESSAGES - 1 }, () => ({ role: 'user' as const, content: 'short' }))
+        expect(() => assertHostedChatContext({ messages: admitted, content: 'Continue' })).not.toThrow()
+        const continuation = HostedAiRequest.parse({ callKey: 'copilot:40', payer: { type: 'managed' }, model: 'sydekyks', max_tokens: 100, messages: [
+            { role: 'system', content: 'Preserve full history' }, ...admitted, { role: 'user', content: 'Continue' },
+            { role: 'assistant', content: null, tool_calls: [{ id: 'next', type: 'function', function: { name: 'read', arguments: '{}' } }] },
+            { role: 'tool', tool_call_id: 'next', content: 'Saved result' },
+        ] })
+        expect(continuation.messages).toHaveLength(HOSTED_AI_MAX_MESSAGES)
         const bytes = [{ role: 'user', content: 'x'.repeat(HOSTED_CHAT_HISTORY_MAX_BYTES) }]
         const saved = JSON.stringify(bytes)
         expect(() => assertHostedChatContext({ messages: bytes, content: 'Continue' })).toThrow('HOSTING_CHAT_CONTEXT_LIMIT')

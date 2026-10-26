@@ -20,7 +20,8 @@ describe('hosted agent billing safeguards', () => {
     })
 })
 
-describe('trusted hosted gateway refusal classification', () => {
+// Includes historical call-limit receipts from older gateway releases.
+describe('trusted hosted gateway refusal classification including legacy receipts', () => {
     const base = 'http://127.0.0.1:1234/api/'
     const url = `${base}v1/engine/hosting-ai/copilot/chat/completions`
     const failure = (statusCode = 403, code = 'HOSTING_CREDITS_EXHAUSTED', target = url) => new APICallError({ message: 'Forbidden', url: target, requestBodyValues: {}, statusCode, responseBody: JSON.stringify({ code }), isRetryable: false })

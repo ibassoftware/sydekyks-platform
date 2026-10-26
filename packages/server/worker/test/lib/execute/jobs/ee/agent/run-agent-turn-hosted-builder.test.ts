@@ -115,6 +115,22 @@ describe('hosted builder tools at the model boundary', () => {
         expect(execute.mock.calls.some(([name]) => /publish|test_flow|execute_action/.test(name))).toBe(false)
     })
 
+    it('completes 40 model steps without an implicit supplier-call ceiling', async () => {
+        const execute = vi.fn(async (_name: string, input: Record<string, unknown>) => ({ pieces: [], query: input.query }))
+        let step = 0
+        const model = new MockLanguageModelV4({ doStream: async () => ({ stream: convertArrayToReadableStream([
+            { type: 'stream-start', warnings: [] },
+            ...(step++ < 39 ? call('ap_research_pieces', { query: `Synthetic research ${step}` }, `funded-${step}`) : reply),
+        ]) }) })
+        const result = await turn(model, surface(execute).tools, [{ role: 'user', content: 'Research the supplied 39 distinct requests, then finish.' }])
+        expect(result.streamError).toBeNull()
+        expect(result.truncatedAfterRetries).toBe(false)
+        expect(result.budgetExceeded).toBe(false)
+        expect(result.creditsExhausted).toBe(false)
+        expect(model.doStreamCalls).toHaveLength(40)
+        expect(execute).toHaveBeenCalledTimes(39)
+    })
+
     it('sends all earlier hosted tool results intact instead of applying self-hosted heuristic compaction', async () => {
         const history: ModelMessage[] = [{ role: 'user', content: 'Preserve all original customer instructions and tool details.' }]
         const values = Array.from({ length: 12 }, (_, index) => `unique-result-${index}:` + 'exact previous saved data '.repeat(1200))

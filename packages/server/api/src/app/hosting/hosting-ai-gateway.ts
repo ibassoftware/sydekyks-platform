@@ -12,7 +12,7 @@ import { SydConversationEntity } from '../syd/copilot/models/conversation.entity
 import { hostedAiCredential } from './hosting-ai-credentials'
 import { HostedAiFileError } from './hosting-ai-file-parser'
 import { materializeHostedAiFiles } from './hosting-ai-files'
-import { HOSTED_AI_CONTEXT_TOKENS, HOSTED_AI_MAX_CALLS, HOSTED_AI_TIMEOUT_MS, HOSTED_DEEPSEEK_MODEL, HOSTED_DEEPSEEK_PRO_MODEL, HOSTED_MANAGED_MODEL, hostedAiCost, HostedAiInput, hostedAiInputBound, HostedAiQuote, HostedAiRequest } from './hosting-ai-policy'
+import { HOSTED_AI_CONTEXT_TOKENS, HOSTED_AI_TIMEOUT_MS, HOSTED_DEEPSEEK_MODEL, HOSTED_DEEPSEEK_PRO_MODEL, HOSTED_MANAGED_MODEL, hostedAiCost, HostedAiInput, hostedAiInputBound, HostedAiQuote, HostedAiRequest } from './hosting-ai-policy'
 import { deepseekHostedProvider, HostedAiProvider, hostedModelCatalog, hostedProviderBody, HostedProviderInput } from './hosting-ai-provider'
 import { hostedPublicChunk, hostedPublicResponse } from './hosting-ai-public'
 import { createHostedStreamParser, settledCompletionStream } from './hosting-ai-stream'
@@ -64,7 +64,6 @@ export function createHostedAiGateway({ dataSource, provider = deepseekHostedPro
             const previous = await manager.getRepository(HostingModelCallEntity).findOne({ where: { segmentId: segment.id, callKey: input.callKey }, order: { attempt: 'DESC' } })
             if ((input.attempt === 0 && previous) || (input.attempt > 0 && (!previous || previous.attempt + 1 !== input.attempt || previous.requestHash !== hash || previous.credentialFingerprint !== credential.fingerprint || previous.state !== 'cancelled'))) hostingFail('HOSTING_AI_RETRY_DENIED')
             if (await manager.getRepository(HostingModelCallEntity).existsBy({ platformId: scope.platformId, rootReservationId: root.id, state: 'uncertain' })) hostingFail('HOSTING_AI_OUTCOME_UNCERTAIN')
-            if (await manager.getRepository(HostingModelCallEntity).countBy({ platformId: scope.platformId, rootReservationId: root.id }) >= HOSTED_AI_MAX_CALLS) hostingFail('HOSTING_AI_CALL_LIMIT')
             if (await manager.getRepository(HostingModelCallEntity).existsBy({ platformId: scope.platformId, rootReservationId: root.id, state: In(['prepared', 'running']) })) hostingFail('HOSTING_AI_CONCURRENCY_LIMIT')
             const now = await tx.now(manager)
             const quote = input.payer.type === 'managed' ? await readApprovedPricing(manager, now, resolvedModel) : null

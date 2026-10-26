@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { Readable } from 'node:stream'
 import { AIProviderName, apId } from '@activepieces/core-utils'
 import { AgentConversationStatus, AgentEvent, AgentEventType, AgentRunSource, EngineResponseStatus, ExecuteAgentRunJobData, hostingCatalog, LATEST_JOB_DATA_SCHEMA_VERSION, WorkerJobType } from '@activepieces/shared'
 import { APICallError, streamText } from 'ai'
@@ -23,6 +24,7 @@ import { SydekyksInclusiveCredits1914000000000 } from '../../src/app/database/mi
 import { FlagEntity } from '../../src/app/flags/flag.entity'
 import { encryptUtils } from '../../src/app/helper/encryption'
 import { createHostedAiGateway } from '../../src/app/hosting/hosting-ai-gateway'
+import { settledCompletionStream } from '../../src/app/hosting/hosting-ai-stream'
 import { HOSTED_AI_CONTEXT_TOKENS, HOSTED_AI_REQUEST_MAX_BYTES, hostedAiCost, hostedAiInputBound, HostedAiQuote } from '../../src/app/hosting/hosting-ai-policy'
 import { HOSTED_MAX_ROOT_CREDITS, hostedAiCredits, hostedCreditLiability, hostedUsesCreditAccounting } from '../../src/app/hosting/hosting-credit-policy'
 import { HostingDispatchEntity } from '../../src/app/hosting/hosting-dispatch-entity'
@@ -537,7 +539,94 @@ describe('full gateway Credit journey', () => {
         expect(await ds.getRepository(HostingDailyBudgetEntity).count()).toBe(0)
     })
 
-    it('settles a real 32-call refusal through HTTP, streaming SDK and worker without charging execution twice', async () => {
+    it.each(['managed', 'byok'] as const)('settles 40 %s calls through HTTP, streaming SDK and the worker without duplicate charges', async payer => {
+        vi.stubEnv('AP_SERVICE_MODE', 'hosted')
+        if (payer === 'managed') await configureManaged()
+        const value = await chatByok(payer), admissionId = await value.execution.admit(value.delivery)
+        const fence = { ...value.delivery, admissionId, connectionId: 'synthetic-forty-call-worker' }
+        expect(await value.execution.start(fence)).toBe(true)
+        await ds.getRepository(SydConversationEntity).update({ id: value.conversationId }, { status: AgentConversationStatus.STREAMING })
+        const complete = vi.fn(async () => ({ status: 200, data: Readable.from(settledCompletionStream(completion('deepseek-flash').data)) }))
+        const gateway = createHostedAiGateway({ dataSource: ds, provider: { id: 'synthetic', endpoint: 'diagnostic://no-network', complete } })
+        vi.spyOn(databaseRuntime, 'databaseConnection').mockReturnValue(ds)
+        vi.spyOn(hostingServices, 'gateway').mockReturnValue(gateway)
+        const app = fastify()
+        app.setValidatorCompiler(validatorCompiler); app.setSerializerCompiler(serializerCompiler)
+        app.addHook('preSerialization', entitiesMustBeOwnedByCurrentProject)
+        app.addHook('preHandler', async incoming => {
+            incoming.principal = { type: 'ENGINE', id: admissionId, platform: { id: actor.platformId }, projectId } as typeof incoming.principal
+        })
+        await app.register(hostingAiController, { prefix: '/api/v1/engine/hosting-ai' })
+        const events: AgentEvent[] = [], payloads: string[] = []
+        const logger = { child: () => logger, info: () => {}, warn: () => {}, error: () => {}, debug: () => {}, trace: () => {}, fatal: () => {} }
+        const modelId = payer === 'managed' ? 'sydekyks' : 'deepseek-flash'
+        const ctx = { admissionId, internalApiUrl: 'http://127.0.0.1:80/api/', engineToken: 'synthetic-engine-token', log: logger, apiClient: {
+            getAgentConfig: async () => ({ hosted: { protocol: 1, payer: payer === 'managed' ? { type: 'managed' } : { type: 'byok', configId: value.configId }, model: modelId }, credentials: { provider: payer === 'managed' ? AIProviderName.ACTIVEPIECES : AIProviderName.DEEPSEEK }, modelId, source: AgentRunSource.CHAT, aiTools: {}, tier: { id: 'synthetic' }, previousUiMessages: [], allMessages: [], messages: [], projects: [], systemPrompt: 'Synthetic funded calls' }),
+            saveAgentMessages: async () => {
+                await ds.getRepository(SydConversationEntity).update({ id: value.conversationId, activeRunId: value.delivery.data.runId }, { status: AgentConversationStatus.IDLE })
+            },
+            sendAgentEvent: async ({ event }: { event: AgentEvent }) => { events.push(event) },
+            executeAgentTool: async () => ({ result: false }), heartbeatAgentConversation: async () => {},
+        } } as unknown as JobContext
+        // Exercise the worker's actual hosted model, controller and ledger. The
+        // separate worker-loop regression proves its tool loop also exceeds 32.
+        const turn = vi.spyOn(agentTurnRuntime, 'runAgentTurn').mockImplementation(async ({ model }) => {
+            for (let index = 0; index < 40; index++) {
+                const response = streamText({ model, prompt: `Synthetic funded step ${index}`, maxRetries: 0 })
+                await response.consumeStream()
+                expect(await response.text).toBe('Synthetic response')
+            }
+            const beforeReplay = await ds.getRepository(HostingLedgerEntity).findBy({ platformId: actor.platformId })
+            const replay = await app.inject({ method: 'POST', url: '/api/v1/engine/hosting-ai/copilot/completions', headers: { 'content-type': 'application/json' }, payload: payloads[0] })
+            expect(replay.statusCode).toBe(200)
+            expect(await ds.getRepository(HostingLedgerEntity).findBy({ platformId: actor.platformId })).toEqual(beforeReplay)
+            return { uiParts: [], accumulatedResponseMessages: [], streamError: null, truncatedAfterRetries: false, budgetExceeded: false, creditsExhausted: false, continuations: 0, totalInputTokens: 160000, totalOutputTokens: 40000, finishReason: 'stop' } as Awaited<ReturnType<typeof agentTurnRuntime.runAgentTurn>>
+        })
+        try {
+            vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+                payloads.push(init.body as string)
+                const response = await app.inject({ method: 'POST', url: new URL(url).pathname, headers: init.headers as Record<string, string>, payload: init.body as string })
+                expect(response.statusCode).toBe(200)
+                return new Response(response.body, { status: response.statusCode, headers: response.headers as HeadersInit })
+            })
+            const result = await executeAgentRunJob.execute(ctx, value.delivery.data)
+            expect(result.status).toBe(EngineResponseStatus.OK)
+            expect(turn).toHaveBeenCalledOnce()
+            expect(events.filter(event => event.type === AgentEventType.ERROR)).toEqual([])
+            expect(events.at(-1)?.type).toBe(AgentEventType.FINISHED)
+            expect(payloads).toHaveLength(40)
+            await value.execution.complete({ ...fence, status: result.status })
+            const settledLedger = await ds.getRepository(HostingLedgerEntity).findBy({ platformId: actor.platformId })
+            await value.execution.complete({ ...fence, status: result.status })
+            expect(await ds.getRepository(HostingLedgerEntity).findBy({ platformId: actor.platformId })).toEqual(settledLedger)
+        }
+        finally {
+            vi.unstubAllGlobals()
+            await app.close()
+        }
+        expect(complete).toHaveBeenCalledTimes(40)
+        const dispatch = await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ admissionId })
+        const calls = await ds.getRepository(HostingModelCallEntity).findBy({ rootReservationId: dispatch.reservationId! })
+        expect(calls).toHaveLength(40)
+        expect(calls.every(call => call.state === 'settled' && call.payer === payer)).toBe(true)
+        const usage = await ds.getRepository(HostingRootCreditUsageEntity).findOneByOrFail({ id: dispatch.reservationId! })
+        expect(usage).toMatchObject({ reservedCredits: 0n, heldSupplierMicroUsd: 0n })
+        if (payer === 'byok') {
+            expect(await balance()).toMatchObject({ consumed: 1n, reserved: 0n })
+            expect(calls.every(call => call.reservationId === null && call.actualMicroUsd === null)).toBe(true)
+            expect(await ds.getRepository(HostingDailyBudgetEntity).count()).toBe(0)
+            expect(usage.settledSupplierMicroUsd).toBe(0n)
+        }
+        else {
+            const expected = (usage.settledSupplierMicroUsd + 1499n) / 1500n
+            expect(expected).toBeGreaterThan(1n)
+            expect(await balance()).toMatchObject({ consumed: expected, reserved: 0n })
+            expect(calls.every(call => call.reservationId !== null)).toBe(true)
+        }
+        expect((await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: dispatch.reservationId! })).state).toBe('settled')
+    })
+
+    it('settles real Credit exhaustion before a 33rd dispatch through HTTP, SDK and worker', async () => {
         vi.stubEnv('AP_SERVICE_MODE', 'hosted')
         await configureManaged()
         const value = await chatByok('managed'), admissionId = await value.execution.admit(value.delivery)
@@ -553,6 +642,11 @@ describe('full gateway Credit journey', () => {
         expect(usageBefore.settledSupplierMicroUsd).toBeGreaterThan(1500n)
         const expectedCredits = (usageBefore.settledSupplierMicroUsd + 1499n) / 1500n
         expect(usageBefore).toMatchObject({ consumedCredits: expectedCredits, reservedCredits: 0n, heldSupplierMicroUsd: 0n })
+
+        // Exhaust the actual funded balance after 32 verified supplier calls.
+        // The next dispatch fails for funding, never an arbitrary call count.
+        const grant = await currentGrant()
+        await ds.getRepository(HostingGrantEntity).update({ id: grant.id }, { amount: grant.consumed })
 
         // Real controller/error handler and ownership hook; the only substituted
         // transport is local inject instead of a network request to production.
@@ -571,7 +665,7 @@ describe('full gateway Credit journey', () => {
             vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
                 const response = await app.inject({ method: 'POST', url: new URL(url).pathname, headers: init.headers as Record<string, string>, payload: init.body as string })
                 expect(response.statusCode).toBe(403)
-                expect(response.json()).toEqual({ code: 'HOSTING_AI_CALL_LIMIT' })
+                expect(response.json()).toEqual({ code: 'HOSTING_CREDITS_EXHAUSTED' })
                 return new Response(response.body, { status: response.statusCode, statusText: response.statusMessage, headers: response.headers as HeadersInit })
             })
             const model = createHostedAgentModel({ ctx: { admissionId, engineToken: 'synthetic-engine-token', internalApiUrl: 'http://127.0.0.1:80/api/' } as JobContext, config: { protocol: 1, payer: { type: 'managed' }, model: 'sydekyks' } })
@@ -597,7 +691,7 @@ describe('full gateway Credit journey', () => {
         const result = await executeAgentRunJob.execute(ctx, value.delivery.data)
         expect(result.status).toBe(EngineResponseStatus.USER_FAILURE)
         expect(turn).toHaveBeenCalledTimes(1)
-        expect(events).toMatchObject([{ type: AgentEventType.ERROR, data: { message: 'This request reached the limit on AI calls. Start a new request with a smaller task.' } }, { type: AgentEventType.FINISHED }])
+        expect(events).toMatchObject([{ type: AgentEventType.ERROR, data: { message: expect.stringContaining('Not enough Credits') } }, { type: AgentEventType.FINISHED }])
         await value.execution.complete({ ...fence, status: result.status })
         expect(await ds.getRepository(HostingReservationEntity).findOneByOrFail({ id: dispatch.reservationId! })).toMatchObject({ state: 'settled' })
         expect(await ds.getRepository(HostingRootCreditUsageEntity).findOneByOrFail({ id: dispatch.reservationId! })).toEqual(usageBefore)

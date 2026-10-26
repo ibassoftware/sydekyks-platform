@@ -11,7 +11,6 @@ export const HOSTED_DEEPSEEK_ENDPOINT = 'https://api.deepseek.com/chat/completio
 export const HOSTED_AI_CONTEXT_TOKENS = 1_048_576
 export const HOSTED_AI_MAX_OUTPUT = 4096
 export const HOSTED_AI_TIMEOUT_MS = 60_000
-export const HOSTED_AI_MAX_CALLS = 32
 // Transport/storage protection is separate from supplier context. Larger full
 // conversations reserve the approved entire model context before supplier send.
 export const HOSTED_AI_REQUEST_MAX_BYTES = 1024 * 1024

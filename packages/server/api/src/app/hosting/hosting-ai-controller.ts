@@ -26,7 +26,7 @@ const stepSchema = z.strictObject({
     webSearch: z.strictObject({ enabled: z.boolean(), options: z.record(z.string(), z.unknown()).optional() }).optional(),
 })
 // Internal AI calls have already passed execution admission. A single chat can
-// make 32 calls; the login/IP bucket would reject normal multi-step building and
+// make multiple funded calls; the login/IP bucket would reject normal building and
 // let one tenant starve all other tenants sharing the worker's network address.
 export const hostedAiRateLimit: RateLimitOptions = {
     max: 240, timeWindow: '1 minute', hook: 'preHandler',
