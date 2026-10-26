@@ -28,7 +28,7 @@ vi.mock('../../builder-hooks', () => ({
 }));
 vi.mock(
   '../../builder-header/flow-status/view-draft-or-edit-flow-button',
-  () => ({ EditFlowOrViewDraftButton: () => null })
+  () => ({ EditFlowOrViewDraftButton: () => null }),
 );
 vi.mock('../utils/flow-canvas-utils', () => ({
   flowCanvasUtils: {

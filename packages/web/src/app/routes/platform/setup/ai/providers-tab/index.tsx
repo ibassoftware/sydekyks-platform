@@ -214,7 +214,11 @@ export function ProvidersTab({
   const page = (
     <>
       <AdminPageHeader
-        title={managedDefaultShown ? t('Separate provider keys (BYOK)') : t('Providers')}
+        title={
+          managedDefaultShown
+            ? t('Separate provider keys (BYOK)')
+            : t('Providers')
+        }
         badge={
           <span className="text-sm tabular-nums text-gray-11">
             {configs.length}
@@ -222,7 +226,9 @@ export function ProvidersTab({
         }
         description={
           managedDefaultShown
-            ? t('These optional provider keys have their own models and project access. They do not set or replace the Sydekyks managed default above.')
+            ? t(
+                'These optional provider keys have their own models and project access. They do not set or replace the Sydekyks managed default above.',
+              )
             : configs.length === 0
             ? t(
                 'Connect a provider to turn on chat, agents, and AI steps across your platform.',
@@ -252,7 +258,10 @@ export function ProvidersTab({
       {isProvidersError ? (
         <DataFetchErrorState entity={t('AI providers')} onRetry={refetch} />
       ) : configs.length === 0 ? (
-        <EmptyProviders onConnect={openConnect} managedDefaultShown={managedDefaultShown} />
+        <EmptyProviders
+          onConnect={openConnect}
+          managedDefaultShown={managedDefaultShown}
+        />
       ) : (
         <>
           {locked && <LockedProvidersAlert />}
@@ -593,7 +602,7 @@ function ProjectChips({
 
 function EmptyProviders({
   onConnect,
-  managedDefaultShown = false,
+  managedDefaultShown: _managedDefaultShown = false,
 }: {
   onConnect: (provider?: AIProviderName) => void;
   managedDefaultShown?: boolean;

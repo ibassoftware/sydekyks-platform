@@ -56,7 +56,7 @@ const save = () =>
     0,
     15000,
     'Agreed client allowance',
-    new AbortController().signal
+    new AbortController().signal,
   );
 beforeEach(() => {
   mocks.current = session;
@@ -67,7 +67,7 @@ describe('operator shared Credit request fencing', () => {
     mocks.request.mockResolvedValue(view());
     await save();
     expect(mocks.request.mock.calls[0][0]).toBe(
-      '/v1/hosting/operator/credits-allowance'
+      '/v1/hosting/operator/credits-allowance',
     );
     expect(mocks.request.mock.calls[0][1].data).toMatchObject({
       platformId: target,
@@ -77,7 +77,7 @@ describe('operator shared Credit request fencing', () => {
       requestKey: expect.any(String),
     });
     expect(mocks.request.mock.calls[0][1].data).not.toHaveProperty(
-      'amountMicroUsd'
+      'amountMicroUsd',
     );
     expect(creditAllowanceKey(session, target)).toContain(session.epoch);
   });
@@ -86,14 +86,14 @@ describe('operator shared Credit request fencing', () => {
     async (field) => {
       mocks.request.mockResolvedValue({ ...view(), [field]: 'x'.repeat(21) });
       await expect(save()).rejects.toMatchObject({ kind: 'unavailable' });
-    }
+    },
   );
   it('rejects a late response after logout or identity switch', async () => {
     let resolve!: (value: unknown) => void;
     mocks.request.mockReturnValue(
       new Promise((r) => {
         resolve = r;
-      })
+      }),
     );
     const response = save();
     mocks.current = null;

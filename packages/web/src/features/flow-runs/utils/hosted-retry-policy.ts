@@ -1,7 +1,7 @@
 import { FlowRun, FlowRunStatus } from '@activepieces/shared';
 
 export function canRerunHostedRun(
-  run: Pick<FlowRun, 'status' | 'parentRunId' | 'stepNameToTest'>
+  run: Pick<FlowRun, 'status' | 'parentRunId' | 'stepNameToTest'>,
 ) {
   return (
     run.status === FlowRunStatus.FAILED &&

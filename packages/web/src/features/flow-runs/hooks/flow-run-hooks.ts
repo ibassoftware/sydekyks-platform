@@ -76,7 +76,7 @@ function groupByCategory(data: FlowRunCountByStatus[]) {
     color: cat.color,
     count: cat.statuses.reduce(
       (sum, s) => sum + (statusToCount.get(s) ?? 0),
-      0
+      0,
     ),
   })).filter((cat) => cat.count > 0);
 }
@@ -109,7 +109,7 @@ export const flowRunQueries = {
     const categories = useMemo(() => groupByCategory(data?.data ?? []), [data]);
     const total = useMemo(
       () => categories.reduce((sum, c) => sum + c.count, 0),
-      [categories]
+      [categories],
     );
 
     return { categories, total, isLoading, dataUpdatedAt, refetch };
@@ -163,7 +163,7 @@ export const flowRunMutations = {
                 'Retry is only available for {failedJobRetentionDays} after a run fails.',
                 {
                   failedJobRetentionDays: apError.params.failedJobRetentionDays,
-                }
+                },
               ),
               duration: 5000,
               closeButton: true,
@@ -191,7 +191,7 @@ export const flowRunMutations = {
       onSuccess: (runs) => {
         const succeededRuns = runs.filter((r) => !r.error) as FlowRun[];
         const failedRuns = runs.filter(
-          (r) => !!r.error
+          (r) => !!r.error,
         ) as Required<FlowRunWithRetryError>[];
         onSuccess(succeededRuns);
         if (failedRuns.length > 0) {

@@ -35,7 +35,7 @@ const PartnerStatus = z.object({
 export type PartnerPurchaseStatus = z.infer<typeof PartnerStatus>;
 async function guarded<T>(
   session: Session,
-  operation: () => Promise<T>
+  operation: () => Promise<T>,
 ): Promise<T> {
   assertBillingSession(session);
   try {
@@ -54,14 +54,14 @@ async function guarded<T>(
         ? 'session'
         : code === 'HOSTING_ACCESS_DENIED'
         ? 'denied'
-        : 'unavailable'
+        : 'unavailable',
     );
   }
 }
 export const partnerPurchaseApi = {
   async status(session: Session, signal: AbortSignal) {
     const raw = await guarded(session, () =>
-      api.get<unknown>('/v1/hosting/partner-billing', undefined, { signal })
+      api.get<unknown>('/v1/hosting/partner-billing', undefined, { signal }),
     );
     const parsed = PartnerStatus.safeParse(raw);
     if (!parsed.success) throw new BillingError('unavailable');
@@ -76,8 +76,8 @@ export const partnerPurchaseApi = {
     const value = await guarded(session, () =>
       api.post<{ url: string | null; state: string }>(
         '/v1/hosting/partner-billing/checkout',
-        { package: selected }
-      )
+        { package: selected },
+      ),
     );
     if (!value.url) return;
     let url: URL;

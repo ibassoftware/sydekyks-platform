@@ -115,13 +115,10 @@ export const operatorClientsQuery = (
     kind,
   ],
   queryFn: ({ signal }: { signal: AbortSignal }) =>
-    read(
-      session,
-      '/v1/hosting/operator/clients',
-      Clients,
-      signal,
-      { ...(after ? { after } : {}), kind },
-    ),
+    read(session, '/v1/hosting/operator/clients', Clients, signal, {
+      ...(after ? { after } : {}),
+      kind,
+    }),
   enabled: allowed,
   retry: false as const,
   gcTime: 0,

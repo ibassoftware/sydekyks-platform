@@ -19,25 +19,28 @@ describe('hosted rerun affordance', () => {
       expect(canRerunHostedRun({ status })).toBe(false);
     }
     expect(
-      canRerunHostedRun({ status: FlowRunStatus.FAILED, parentRunId: 'parent' })
+      canRerunHostedRun({
+        status: FlowRunStatus.FAILED,
+        parentRunId: 'parent',
+      }),
     ).toBe(false);
     expect(
-      canRerunHostedRun({ status: FlowRunStatus.FAILED, stepNameToTest: 'ai' })
+      canRerunHostedRun({ status: FlowRunStatus.FAILED, stepNameToTest: 'ai' }),
     ).toBe(false);
   });
 
   it('explains uncertain liability and BYOK changes without exposing internal codes', () => {
     expect(
-      hostedRetryErrorMessage('HOSTING_RETRY_PRIOR_WORK_UNRESOLVED')
+      hostedRetryErrorMessage('HOSTING_RETRY_PRIOR_WORK_UNRESOLVED'),
     ).toContain('confirmed outcome');
     expect(hostedRetryErrorMessage('HOSTING_RETRY_PAYER_CHANGED')).toContain(
-      'BYOK'
+      'BYOK',
     );
     expect(
-      hostedRetryErrorMessage('HOSTING_EXECUTION_CREDITS_EXCEEDED')
+      hostedRetryErrorMessage('HOSTING_EXECUTION_CREDITS_EXCEEDED'),
     ).toContain('not enough Credits');
     expect(hostedRetryErrorMessage('HOSTING_ENTITLEMENT_EXPIRED')).toContain(
-      'renew access'
+      'renew access',
     );
   });
 });

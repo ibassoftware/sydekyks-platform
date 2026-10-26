@@ -88,7 +88,7 @@ export const RunsTable = () => {
   const [errorDialogRun, setErrorDialogRun] = useState<FlowRun | null>(null);
 
   const [hasSeededDefaultRange, setHasSeededDefaultRange] = useState(() =>
-    searchParams.has('createdAfter')
+    searchParams.has('createdAfter'),
   );
   useEffect(() => {
     if (hasSeededDefaultRange) return;
@@ -102,7 +102,7 @@ export const RunsTable = () => {
         }
         return next;
       },
-      { replace: true }
+      { replace: true },
     );
     setHasSeededDefaultRange(true);
   }, [hasSeededDefaultRange, setSearchParams]);
@@ -149,7 +149,7 @@ export const RunsTable = () => {
           !isFlowRunStateTerminal({
             status: run.status,
             ignoreInternalError: false,
-          })
+          }),
       );
       return runningRuns?.length ? 15 * 1000 : false;
     },
@@ -169,7 +169,7 @@ export const RunsTable = () => {
     onViewError: setErrorDialogRun,
     onViewRun: (run) =>
       navigate(
-        authenticationSession.appendProjectRoutePrefix(`/runs/${run.id}`)
+        authenticationSession.appendProjectRoutePrefix(`/runs/${run.id}`),
       ),
   });
 
@@ -230,7 +230,7 @@ export const RunsTable = () => {
           accessorKey: 'archivedAt',
         },
       ],
-      [flows]
+      [flows],
     );
 
   const retryRuns = flowRunMutations.useBulkRetryRuns({
@@ -259,7 +259,7 @@ export const RunsTable = () => {
           duration: 15000,
           closeButton: true,
           dismissible: true,
-        }
+        },
       );
     },
   });
@@ -340,7 +340,7 @@ export const RunsTable = () => {
           const allCancellable = selectedRows.every(
             (row) =>
               row.status === FlowRunStatus.PAUSED ||
-              row.status === FlowRunStatus.QUEUED
+              row.status === FlowRunStatus.QUEUED,
           );
           const isDisabled =
             hostedPilot ||
@@ -357,7 +357,7 @@ export const RunsTable = () => {
                   message={
                     hostedPilot
                       ? t(
-                          'Queued-run cancellation is unavailable in the hosted pilot'
+                          'Queued-run cancellation is unavailable in the hosted pilot',
                         )
                       : t('Only paused or queued runs can be cancelled')
                   }
@@ -372,7 +372,7 @@ export const RunsTable = () => {
                       if (hostedPilot) return;
                       const runIds = selectedRows.map((row) => row.id);
                       const status = searchParams.getAll(
-                        'status'
+                        'status',
                       ) as FlowRunStatus[];
                       cancelRuns.mutate({
                         projectId,
@@ -385,7 +385,7 @@ export const RunsTable = () => {
                             ? (status.filter(
                                 (s) =>
                                   s === FlowRunStatus.PAUSED ||
-                                  s === FlowRunStatus.QUEUED
+                                  s === FlowRunStatus.QUEUED,
                               ) as (
                                 | typeof FlowRunStatus.PAUSED
                                 | typeof FlowRunStatus.QUEUED
@@ -420,7 +420,7 @@ export const RunsTable = () => {
       {
         render: (_, resetSelection) => {
           const allFailed = selectedRows.every((row) =>
-            isFailedState(row.status)
+            isFailedState(row.status),
           );
           const isDisabled =
             selectedRows.length === 0 ||
@@ -475,7 +475,7 @@ export const RunsTable = () => {
                             status: hostedPilot
                               ? [FlowRunStatus.FAILED]
                               : (searchParams.getAll(
-                                  'status'
+                                  'status',
                                 ) as FlowRunStatus[]),
                             flowId: searchParams.getAll('flowId'),
                             createdAfter:
@@ -507,7 +507,7 @@ export const RunsTable = () => {
                     {hostedPilot && (
                       <p className="max-w-64 px-2 py-1.5 text-xs text-gray-11">
                         {t(
-                          'Starts from the beginning and uses Credits. Earlier actions may happen again.'
+                          'Starts from the beginning and uses Credits. Earlier actions may happen again.',
                         )}
                       </p>
                     )}
@@ -515,7 +515,7 @@ export const RunsTable = () => {
                       selectedRows.some((row) => isFailedState(row.status)) && (
                         <MessageTooltip
                           message={t(
-                            'Only failed runs can be retried from failed step'
+                            'Only failed runs can be retried from failed step',
                           )}
                           isDisabled={!allFailed}
                         >
@@ -533,7 +533,7 @@ export const RunsTable = () => {
                                   ? Array.from(excludedRows)
                                   : undefined,
                                 status: searchParams.getAll(
-                                  'status'
+                                  'status',
                                 ) as FlowRunStatus[],
                                 flowId: searchParams.getAll('flowId'),
                                 createdAfter:
@@ -581,22 +581,22 @@ export const RunsTable = () => {
       hostedPilot,
       projectId,
       searchParams,
-    ]
+    ],
   );
 
   const handleRowClick = useCallback(
     (row: FlowRun, newWindow: boolean) => {
       if (newWindow) {
         openNewWindow(
-          authenticationSession.appendProjectRoutePrefix(`/runs/${row.id}`)
+          authenticationSession.appendProjectRoutePrefix(`/runs/${row.id}`),
         );
       } else {
         navigate(
-          authenticationSession.appendProjectRoutePrefix(`/runs/${row.id}`)
+          authenticationSession.appendProjectRoutePrefix(`/runs/${row.id}`),
         );
       }
     },
-    [navigate, openNewWindow]
+    [navigate, openNewWindow],
   );
 
   const retriedRunsInQueryParams = searchParams.getAll(RUN_IDS_QUERY_PARAM);
@@ -624,7 +624,7 @@ export const RunsTable = () => {
       <DataTable
         emptyStateTextTitle={t('No flow runs found')}
         emptyStateTextDescription={t(
-          'Come back later when your automations start running'
+          'Come back later when your automations start running',
         )}
         emptyStateIcon={<History className="size-14" />}
         columns={columns}

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, ReactNode } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -66,7 +66,9 @@ const access = { session, allowed: true } as ReturnType<
   typeof useHostedOperatorAccess
 >;
 let container: HTMLDivElement, root: Root;
+const mount = (view: ReactNode) => root.render(view);
 beforeEach(() => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -78,64 +80,75 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  vi.unstubAllGlobals();
 });
-async function render() {
+async function mountAllowance() {
   await act(async () =>
-    root.render(
+    mount(
       <ClientCreditAllowanceSection
         access={access}
         platformId={target}
         clientName="Client example"
-      />
-    )
+      />,
+    ),
   );
 }
 async function input(
   node: HTMLInputElement | HTMLTextAreaElement,
-  text: string
+  text: string,
 ) {
   await act(async () => {
     Object.getOwnPropertyDescriptor(
       node instanceof HTMLTextAreaElement
         ? HTMLTextAreaElement.prototype
         : HTMLInputElement.prototype,
-      'value'
+      'value',
     )!.set!.call(node, text);
     node.dispatchEvent(new Event('input', { bubbles: true }));
   });
 }
 const button = (label: string) =>
   Array.from(container.querySelectorAll('button')).find(
-    (node) => node.textContent === label
+    (node) => node.textContent === label,
   )!;
 describe('operator shared Credits editor', () => {
   it('shows one allowance with an operator cost estimate and requires a reason', async () => {
-    await render();
-    expect(container.textContent).toContain('Monthly Credits allowance');
-    expect(container.textContent).toContain('$0.015');
-    expect(container.textContent).toContain(
-      'does not increase the subscription price'
-    );
+    await mountAllowance();
+    expect(container).toMatchObject({
+      textContent: expect.stringContaining('Monthly Credits allowance'),
+    });
+    expect(container).toMatchObject({
+      textContent: expect.stringContaining('$0.015'),
+    });
+    expect(container).toMatchObject({
+      textContent: expect.stringContaining(
+        'does not increase the subscription price',
+      ),
+    });
     expect(container.querySelectorAll('input[type=number]')).toHaveLength(1);
-    expect(container.textContent).not.toContain('AI credits per');
+    expect(container).not.toMatchObject({
+      textContent: expect.stringContaining('AI credits per'),
+    });
     expect(button('Save client allowance').disabled).toBe(true);
     await input(
       container.querySelector('textarea')!,
-      'Agreed client allowance'
+      'Agreed client allowance',
     );
     expect(button('Save client allowance').disabled).toBe(false);
   });
   it('blocks amounts below used plus held Credits and allows the exact committed floor', async () => {
-    await render();
+    await mountAllowance();
     await input(
       container.querySelector('textarea')!,
-      'Agreed client allowance'
+      'Agreed client allowance',
     );
     const amount = container.querySelector(
-      'input[type="number"]'
+      'input[type="number"]',
     )! as HTMLInputElement;
     await input(amount, '4');
-    expect(container.textContent).toContain('below used and held Credits');
+    expect(container).toMatchObject({
+      textContent: expect.stringContaining('below used and held Credits'),
+    });
     expect(button('Save client allowance').disabled).toBe(true);
     await input(amount, '5');
     expect(button('Save client allowance').disabled).toBe(false);
@@ -155,10 +168,12 @@ describe('operator shared Credits editor', () => {
   });
   it('keeps trial and assessment grants fixed instead of rendering an override form', async () => {
     mocks.state = { ...state(), planId: 'trial', fixed: true };
-    await render();
-    expect(container.textContent).toContain(
-      'Trial and assessment allowances are fixed'
-    );
+    await mountAllowance();
+    expect(container).toMatchObject({
+      textContent: expect.stringContaining(
+        'Trial and assessment allowances are fixed',
+      ),
+    });
     expect(container.querySelector('form')).toBeNull();
     expect(mocks.save).not.toHaveBeenCalled();
   });

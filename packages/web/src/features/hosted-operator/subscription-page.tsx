@@ -2,13 +2,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { clientPlanName, managedClientQuery } from './client-admin-api';
-
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { assertAuthSession } from '@/features/hosted-onboarding/auth-session';
 
+import { clientPlanName, managedClientQuery } from './client-admin-api';
 import { ManualTermControls } from './manual-term-controls';
 import { operatorClientsQuery, useHostedOperatorAccess } from './operator-api';
 import {

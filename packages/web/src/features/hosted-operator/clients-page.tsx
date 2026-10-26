@@ -3,12 +3,11 @@ import { t } from 'i18next';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { ManagedClientPanel } from './managed-client-panel';
-import { clientPlanName } from './client-admin-api';
-
 import { Button } from '@/components/ui/button';
 import { formatHostedCredits } from '@/features/hosted-chat/hosted-chat-api';
 
+import { clientPlanName } from './client-admin-api';
+import { ManagedClientPanel } from './managed-client-panel';
 import { ManualAccountForm } from './manual-account-form';
 import {
   HostedClients,

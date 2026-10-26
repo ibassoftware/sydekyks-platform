@@ -48,7 +48,7 @@ const FlowRunCard = React.memo(
     const hosted = useHostedBillingEnabled();
     const { Icon, variant } = flowRunUtils.getStatusIcon(run.status);
     const userHasPermissionToRetryRun = useAuthorization().checkAccess(
-      Permission.WRITE_RUN
+      Permission.WRITE_RUN,
     );
     const projectId = authenticationSession.getProjectId();
     const navigate = useNavigate();
@@ -122,7 +122,7 @@ const FlowRunCard = React.memo(
                   ? new Date(run.finishTime).getTime() -
                       new Date(run.startTime).getTime()
                   : undefined,
-                false
+                false,
               )}
             </p>
           )}
@@ -160,7 +160,7 @@ const FlowRunCard = React.memo(
                           'group-hover:opacity-100 opacity-0 rounded-full bg-gray-4 drop-shadow-md',
                           {
                             'opacity-100': isRetryDropdownOpen,
-                          }
+                          },
                         )}
                         onClick={(e) => {
                           e.preventDefault();
@@ -202,7 +202,7 @@ const FlowRunCard = React.memo(
                   {hosted && (
                     <p className="max-w-64 px-2 py-1.5 text-xs text-gray-11">
                       {t(
-                        'Starts from the beginning and uses Credits. Earlier actions may happen again.'
+                        'Starts from the beginning and uses Credits. Earlier actions may happen again.',
                       )}
                     </p>
                   )}
@@ -234,7 +234,7 @@ const FlowRunCard = React.memo(
         </div>
       </CardListItem>
     );
-  }
+  },
 );
 
 FlowRunCard.displayName = 'FlowRunCard';

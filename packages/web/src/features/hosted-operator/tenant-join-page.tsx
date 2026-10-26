@@ -148,7 +148,10 @@ export function TenantJoinPage() {
                 'Your workspace membership is ready. This invitation does not grant Partner status or a new trial.',
               )}
             </p>
-            <Link className="text-accent-11 underline underline-offset-4" to="/">
+            <Link
+              className="text-accent-11 underline underline-offset-4"
+              to="/"
+            >
               {t('Open workspace')}
             </Link>
           </div>

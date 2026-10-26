@@ -50,7 +50,7 @@ async function request(
     expectedRevision: number;
     monthlyCredits: number | null;
     reason: string;
-  }
+  },
 ): Promise<CreditAllowance> {
   assertAuthSession(session);
   if (
@@ -67,7 +67,7 @@ async function request(
         ...(body
           ? { data: { platformId, ...body, requestKey: crypto.randomUUID() } }
           : { params: { platformId } }),
-      }
+      },
     );
     assertAuthSession(session);
     const parsed = Allowance.safeParse(raw);
@@ -88,14 +88,14 @@ async function request(
         ? 'conflict'
         : status === 401 || status === 403 || status === 404
         ? 'denied'
-        : 'unavailable'
+        : 'unavailable',
     );
   }
 }
 export function useCreditAllowance(
   session: Session,
   platformId: string,
-  allowed: boolean
+  allowed: boolean,
 ) {
   return useQuery({
     queryKey: creditAllowanceKey(session, platformId),
@@ -112,7 +112,7 @@ export const saveCreditAllowance = (
   expectedRevision: number,
   monthlyCredits: number | null,
   reason: string,
-  signal: AbortSignal
+  signal: AbortSignal,
 ) =>
   request(session, platformId, signal, {
     expectedRevision,
