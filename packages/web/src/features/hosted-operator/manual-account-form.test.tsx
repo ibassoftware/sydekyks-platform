@@ -108,6 +108,7 @@ describe('manual creation funding and retry controls', () => {
     expect(first).toMatchObject({
       kind: 'partner',
       planId: 'training',
+      monthlyCredits: 30000,
       partner: { package: 'core', approve: false },
       expiresAt: account.expiresAt,
     });
