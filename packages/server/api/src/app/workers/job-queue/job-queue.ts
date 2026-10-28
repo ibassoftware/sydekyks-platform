@@ -29,6 +29,10 @@ const dedicatedWorkersQueues = new Map<string, Queue>()
 export const jobQueue = (log: FastifyBaseLogger) => ({
     async init(): Promise<void> {
         await ensureQueueExists({ log, queueName: QueueName.WORKER_JOBS })
+        if (hostingConfiguration.getServiceMode() === 'hosted') {
+            await ensureQueueExists({ log, queueName: 'workerJobs-tools' })
+            await ensureQueueExists({ log, queueName: 'workerJobs-refresh' })
+        }
         if (hostingConfiguration.getServiceMode() === 'hosted' && !recoveryTimer) {
             recoveryTimer = setInterval(() => {
                 if (recoveryRun) return
@@ -275,6 +279,12 @@ export const PROJECT_GROUP_ROUTABLE_JOB_TYPES = new Set<WorkerJobType>([
 ])
 
 export async function getQueueName({ platformId, projectId, jobType }: GetQueueNameParams, log: FastifyBaseLogger): Promise<string> {
+    // Keep free installations and their worker groups unchanged. Hosted workers
+    // are shared-only; these queues cannot take parent chat/flow jobs.
+    if (hostingConfiguration.getServiceMode() === 'hosted') {
+        if (jobType === WorkerJobType.EXECUTE_TOKEN_REFRESH) return 'workerJobs-refresh'
+        if (jobType && [WorkerJobType.EXECUTE_ACTION, WorkerJobType.EXECUTE_PROPERTY, WorkerJobType.EXECUTE_VALIDATION, WorkerJobType.EXECUTE_RESOLVE_CONNECTION_IDENTIFIER, WorkerJobType.EXECUTE_EXTRACT_PIECE_INFORMATION].includes(jobType)) return 'workerJobs-tools'
+    }
     if (!isNil(platformId) && !isNil(projectId) && !isNil(jobType) && PROJECT_GROUP_ROUTABLE_JOB_TYPES.has(jobType)) {
         const workerGroupsEnabled = await workerGroupService(log).isWorkerGroupsEnabled({ platformId })
         if (workerGroupsEnabled) {

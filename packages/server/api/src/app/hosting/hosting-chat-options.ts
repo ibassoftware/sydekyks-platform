@@ -72,6 +72,6 @@ export async function hostedChatOptions({ manager, actor, userId, projectId: req
         webSearch = payerAvailable
     }
     catch { /* Advertise only features that can currently be admitted. */ }
-    return { ...(payerLock ? { payerLock } : {}), creditPolicy: { executionCredits: 1, maxRunCredits: HOSTED_MAX_ROOT_CREDITS.toString() }, credits: { execution: credits.execution }, platformId: actor.platformId, userId, requestedProjectId, projectId, conversationId: conversationId ?? null, model: { id: HOSTED_MANAGED_MODEL, label: 'Sydekyks' }, managedAvailable,
+    return { ...(payerLock ? { payerLock } : {}), creditPolicy: { ledgerUnitsPerCredit: 100, supplierMicroUsdPerCredit: 150000, minimumExecutionCredits: 0.01, executionCredits: 1, maxRunCredits: HOSTED_MAX_ROOT_CREDITS.toString() }, credits: { execution: credits.execution }, platformId: actor.platformId, userId, requestedProjectId, projectId, conversationId: conversationId ?? null, model: { id: HOSTED_MANAGED_MODEL, label: 'Sydekyks' }, managedAvailable,
         nativeFeatures: { files: payerAvailable, webSearch, maxTurnCredits: Number(HOSTED_NATIVE_CREDIT_LIMIT), maxFilesPerTurn: 4 }, keys }
 }

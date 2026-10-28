@@ -1,5 +1,8 @@
-function getPlan({ planId }: { planId: HostedPlanId }): HostedPlan {
-    return PLANS[planId]
+function getPlan({ planId, catalogVersion }: { planId: HostedPlanId, catalogVersion?: string }): HostedPlan {
+    const plan = PLANS[planId]
+    const legacy = { training: 10_000, starter: 10_000, team: 100_000, scale: 500_000 }
+    return catalogVersion && catalogVersion !== '2026-10-28.display-credits-v1' && planId in legacy
+        ? { ...plan, executions: legacy[planId as keyof typeof legacy] } : plan
 }
 
 // aiCredits is retained for historical grant compatibility only. New managed AI
@@ -9,16 +12,16 @@ const PLANS = Object.freeze({
     assessment: Object.freeze({ users: 1, projects: 1, executions: 100, concurrency: 1, aiCredits: 1_000, byokEnabled: true }),
     // Invitations currently reserve one project per client member. Keep every
     // advertised seat reachable; operational staff do not consume these seats.
-    training: Object.freeze({ users: 1, projects: 1, executions: 10_000, concurrency: 2, aiCredits: 5_000, byokEnabled: true }),
-    starter: Object.freeze({ users: 10, projects: 10, executions: 10_000, concurrency: 2, aiCredits: 5_000, byokEnabled: true }),
+    training: Object.freeze({ users: 1, projects: 1, executions: 30_000, concurrency: 2, aiCredits: 5_000, byokEnabled: true }),
+    starter: Object.freeze({ users: 10, projects: 10, executions: 30_000, concurrency: 2, aiCredits: 5_000, byokEnabled: true }),
     // Keep the persisted team identifier; its customer-facing name is Growth.
-    team: Object.freeze({ users: 30, projects: 30, executions: 100_000, concurrency: 5, aiCredits: 20_000, byokEnabled: true }),
-    scale: Object.freeze({ users: 100, projects: 100, executions: 500_000, concurrency: 10, aiCredits: 0, byokEnabled: true }),
+    team: Object.freeze({ users: 30, projects: 30, executions: 120_000, concurrency: 5, aiCredits: 20_000, byokEnabled: true }),
+    scale: Object.freeze({ users: 100, projects: 100, executions: 400_000, concurrency: 10, aiCredits: 0, byokEnabled: true }),
 })
 
 export const hostingCatalog = Object.freeze({
-    version: '2026-10-20.v2',
-    supportedVersions: Object.freeze(['2026-10-15.v1', '2026-10-20.v2']),
+    version: '2026-10-28.display-credits-v1',
+    supportedVersions: Object.freeze(['2026-10-15.v1', '2026-10-20.v2', '2026-10-28.display-credits-v1']),
     trialDays: 14,
     // Historical windows must never be recalculated from the new offer.
     trainingPeriodDays: 30,
@@ -33,6 +36,9 @@ export const hostingCatalog = Object.freeze({
         team: Object.freeze({ name: 'Growth', amountMinor: 39_900, currency: 'usd', salesAssisted: false }),
         scale: Object.freeze({ name: 'Scale', amountMinor: 129_900, currency: 'usd', salesAssisted: true }),
     }),
+    // Numeric API quantities and all persisted accounting stay in ledger units.
+    ledgerUnitsPerDisplayedCredit: 100,
+    supplierMicroUsdPerDisplayedCredit: 150_000,
     aiMicroUsdPerCredit: 1_500,
     maxCreditsPerRun: 1_000,
     // Legacy accounting conversion; do not use for new managed AI charges.

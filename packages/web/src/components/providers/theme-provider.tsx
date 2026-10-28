@@ -6,21 +6,21 @@ import { brandSeed } from '@/lib/brand-seed';
 import { sydekyksBrand } from '@/lib/sydekyks-brand';
 
 const ThemeProviderContext = createContext<ThemeProviderState | undefined>(
-  undefined,
+  undefined
 );
 
 const systemThemeQuery = '(prefers-color-scheme: dark)';
 
 export function ThemeProvider({
   children,
-  defaultPreference = 'light',
+  defaultPreference = 'dark',
   storageKey = 'ap-ui-theme',
   ...props
 }: ThemeProviderProps) {
   const [preference, setPreference] = useState<ThemePreference>(
     () =>
       parsePreference({ value: localStorage.getItem(storageKey) }) ??
-      defaultPreference,
+      defaultPreference
   );
   const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(getSystemTheme);
   const branding = flagsHooks.useWebsiteBranding();
@@ -67,7 +67,7 @@ export function ThemeProvider({
       document.documentElement.setAttribute('data-brand-palette', 'sydekyks');
       document.documentElement.style.setProperty(
         '--on-accent',
-        'var(--sydekyks-on-accent)',
+        'var(--sydekyks-on-accent)'
       );
     } else {
       document.documentElement.removeAttribute('data-brand-palette');

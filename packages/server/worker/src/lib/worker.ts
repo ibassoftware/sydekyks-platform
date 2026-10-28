@@ -190,8 +190,10 @@ async function startPollingWorkers(apiClient: WorkerToApiContract): Promise<void
     // a deploy disconnects every worker at once, so reuse turned that into mass stalls.
     abortInFlightRuntime()
 
+    const hosted = workerServiceMode.getProps().serviceMode === 'hosted'
+    const loopCount = concurrency + (hosted ? 2 : 0)
     const createdRuntime = createSandboxRuntime({
-        concurrency,
+        concurrency: loopCount,
         basePath: sandboxConfig.getCacheBasePath(),
         getSettings: () => sandboxConfig.getSandboxSettings(),
     })
@@ -224,15 +226,15 @@ async function startPollingWorkers(apiClient: WorkerToApiContract): Promise<void
         healthServerInstance = startHealthServer()
     }
 
-    logger.info({ concurrency }, 'Starting poll loops')
+    logger.info({ concurrency, hostedToolLanes: hosted ? 2 : 0 }, 'Starting poll loops')
 
-    resetPollLoopLiveness({ loopCount: concurrency })
-    await Promise.all(Array.from({ length: concurrency }, (_, workerIndex) =>
-        pollAndExecute(apiClient, createdRuntime, workerIndex, generation),
+    resetPollLoopLiveness({ loopCount })
+    await Promise.all(Array.from({ length: loopCount }, (_, workerIndex) =>
+        pollAndExecute(apiClient, createdRuntime, workerIndex, generation, hosted && workerIndex >= concurrency ? (workerIndex === concurrency ? 'tools' : 'refresh') : undefined),
     ))
 }
 
-async function pollAndExecute(apiClient: WorkerToApiContract, runtime: Runtime, workerIndex: number, generation: number): Promise<void> {
+async function pollAndExecute(apiClient: WorkerToApiContract, runtime: Runtime, workerIndex: number, generation: number, hostedLane?: 'tools' | 'refresh'): Promise<void> {
     const workerLog = logger.child({ workerIndex })
     workerLog.info('Polling worker started')
 
@@ -250,7 +252,7 @@ async function pollAndExecute(apiClient: WorkerToApiContract, runtime: Runtime, 
             continue
         }
 
-        const { data: job, error: pollError } = await tryCatch(() => apiClient.poll(machineInfo))
+        const { data: job, error: pollError } = await tryCatch(() => apiClient.poll({ ...machineInfo, ...(hostedLane ? { hostedLane } : {}) }))
         if (pollError) {
             workerLog.error({ error: pollError }, 'Poll failed')
             await sleep(25000)

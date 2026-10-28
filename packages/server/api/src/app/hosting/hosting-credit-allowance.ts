@@ -91,9 +91,10 @@ export function createHostedCreditAllowance({ dataSource, manager: existingManag
 // A manually funded contract is its own default. A separate audited allowance
 // override may change eligible grants; clearing it restores that funded amount.
 async function fundedDefaultCredits(manager: EntityManager, platformId: string, planId: HostedPlanId): Promise<number> {
+    if (planId === 'team' && await hasOperatorCreditFunding(manager, platformId)) return HOSTED_OPERATOR_MONTHLY_CREDITS
     const account = await manager.getRepository(HostingAccountEntity).findOneBy({ id: platformId })
     const manual = account?.planId === planId ? await currentManualTerm(manager, account) : null
-    return manual?.monthlyCredits ?? hostingCatalog.getPlan({ planId }).executions
+    return manual?.monthlyCredits ?? hostingCatalog.getPlan({ planId, catalogVersion: account?.planId === planId ? account.catalogVersion : undefined }).executions
 }
 async function currentPolicy(manager: EntityManager, platformId: string) {
     const binding = await manager.getRepository(HostingCreditAllowanceBindingEntity).findOneBy({ platformId })

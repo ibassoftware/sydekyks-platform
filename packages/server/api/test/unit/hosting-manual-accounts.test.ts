@@ -99,7 +99,7 @@ describe('operator manual accounts and bounded funding', () => {
         expect(pending.partners[0]).toMatchObject({ identityId: account.identityId, active: false })
         expect((await partnerAdmin.list({ actor, status: 'active', search: account.email })).total).toBe(0)
     })
-    it.each([['starter', 10, 10000], ['team', 30, 100000], ['scale', 100, 500000]] as const)('creates a %s client with correct seats, password and clipped monthly single-Credit funding', async (planId, seats, credits) => {
+    it.each([['starter', 10, 30000], ['team', 30, 120000], ['scale', 100, 400000]] as const)('creates a %s client with correct seats, password and clipped monthly single-Credit funding', async (planId, seats, credits) => {
         const result = await created({ planId })
         expect(result).toMatchObject({ platformId: actor.platformId, replayed: false, account: { kind: 'client', planId, seats, monthlyCredits: credits, emailOwnershipVerified: false } })
         const account = result.account, identity = await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: account.identityId })
@@ -131,7 +131,7 @@ describe('operator manual accounts and bounded funding', () => {
     })
     it('creates Partner training with one seat and an optional real course, independent assessment and explicit approval only', async () => {
         const courseId = await partnerCourse(), result = await created({ kind: 'partner', planId: 'training', partner: { package: 'core', courseId, approve: false } })
-        expect(result.account).toMatchObject({ kind: 'partner', planId: 'training', seats: 1, package: 'core', enrollmentId: expect.any(String) })
+        expect(result.account).toMatchObject({ kind: 'partner', planId: 'training', seats: 1, monthlyCredits: 30000, package: 'core', enrollmentId: expect.any(String) })
         expect(await ds.getRepository(HostingAccessRoleEntity).countBy({ id: result.account.identityId })).toBe(0)
         const enrollment = await ds.getRepository(LmsEnrollmentEntity).findOneByOrFail({ id: result.account.enrollmentId! })
         expect(enrollment).toMatchObject({ identityId: result.account.identityId, workspacePlatformId: result.account.platformId, accessType: 'partner_training', package: 'core', status: 'active', paymentReference: `manual-term:${result.account.termId}` })
@@ -140,6 +140,7 @@ describe('operator manual accounts and bounded funding', () => {
         const approved = await created({ kind: 'partner', planId: 'training', partner: { package: 'launch', approve: true } })
         expect(await ds.getRepository(HostingAccessRoleEntity).findOneBy({ id: approved.account.identityId })).toMatchObject({ role: 'partner', active: true })
         expect(approved.account.enrollmentId).toBeNull()
+        expect(approved.account.monthlyCredits).toBe(30000)
     })
     it('assigns a published Partner course later using the existing funded term without adding funding, changing revision or certifying', async () => {
         const account = (await created({ kind: 'partner', planId: 'training', partner: { package: 'launch', approve: false } })).account

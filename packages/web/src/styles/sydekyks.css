@@ -27,20 +27,20 @@
 
   :root[data-brand='sydekyks'][data-theme='dark'],
   [data-brand='sydekyks'] [data-theme='dark'] {
-    --gray-1: #101f27;
-    --gray-2: #18313b;
-    --gray-3: #203c46;
-    --gray-4: #2b4650;
-    --gray-5: #364f57;
-    --gray-6: #405c62;
-    --gray-7: #547076;
-    --gray-8: #7d9699;
-    --gray-9: #97a9a9;
-    --gray-10: #adbcba;
-    --gray-11: #d0dbd6;
-    --gray-12: #f5f3e9;
-    --panel: #203c46;
-    --sydekyks-on-accent: #18313b;
+    --gray-1: #0b101b;
+    --gray-2: #0e1522;
+    --gray-3: #141e2e;
+    --gray-4: #1b283c;
+    --gray-5: #223149;
+    --gray-6: #2b3b52;
+    --gray-7: #3a4a63;
+    --gray-8: #687b98;
+    --gray-9: #8f9fb6;
+    --gray-10: #adbacd;
+    --gray-11: #c9d7e8;
+    --gray-12: #f4f6fb;
+    --panel: #141e2e;
+    --sydekyks-on-accent: #201107;
   }
 
   :root[data-brand-palette='sydekyks'],
@@ -68,15 +68,15 @@
     --accent-5: #65432c;
     --accent-6: #7d5232;
     --accent-7: #b5774f;
-    --accent-8: #ff8551;
-    --accent-9: #ff8551;
-    --accent-10: #ffa47c;
+    --accent-8: #ff9958;
+    --accent-9: #ff9958;
+    --accent-10: #ffb17f;
     --accent-11: #ffd0b5;
     --accent-12: #fff1e5;
   }
 
   [data-brand='sydekyks'] ::selection {
-    background: #ff8551;
+    background: #ff9958;
     color: #18313b;
   }
 
@@ -96,3 +96,7 @@
     display: none;
   }
 }
+
+[data-brand='sydekyks'][data-theme='dark'] { color-scheme: dark; }
+[data-brand='sydekyks'] { scrollbar-color: var(--gray-7) var(--gray-2); }
+[data-brand='sydekyks'] :focus-visible { outline-color: var(--accent-8); }

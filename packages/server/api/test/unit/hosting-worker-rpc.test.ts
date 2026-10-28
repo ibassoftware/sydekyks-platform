@@ -65,6 +65,18 @@ describe('connection-bound hosting worker gates', () => {
         expect(start).toHaveBeenCalledTimes(1)
     })
 
+    it('polls independent hosted tool and refresh lanes with the same connection fence', async () => {
+        vi.stubEnv('AP_SERVICE_MODE', 'hosted')
+        const props: WorkerProps = { serviceMode: 'hosted', accountingProtocol: 1, runtimeProfile: HOSTED_RUNTIME_PROFILE, capabilities: [...HOSTED_RUNTIME_CAPABILITIES], version: apVersionUtil.getCurrentRelease(), EXECUTION_MODE: 'SANDBOX_CODE_ONLY' }
+        const rpc = createHandlers(log, null, 'socket-lanes', props)
+        for (const hostedLane of ['tools', 'refresh'] as const) {
+            await rpc.poll({ ...machine, workerProps: props, hostedLane })
+            expect(poll).toHaveBeenLastCalledWith(`workerJobs-${hostedLane}`, 'socket-lanes', undefined)
+        }
+        await rpc.poll({ ...machine, workerProps: props })
+        expect(poll).toHaveBeenLastCalledWith('workerJobs', 'socket-lanes', undefined)
+    })
+
     it('does not permit hosted start or prewarming even with claimed protocol support', async () => {
         vi.stubEnv('AP_SERVICE_MODE', 'hosted')
         const rpc = createHandlers(log, null, 'socket-a', { serviceMode: 'hosted', accountingProtocol: 1 })

@@ -1,3 +1,4 @@
+import { formatCreditUnits } from '@/lib/hosted-credit-units';
 import {
   HostedBillingActionReason,
   HostedCustomerBillingOverview,
@@ -63,7 +64,7 @@ export function HostedBillingView({
   const eligiblePlans = partner
     ? []
     : info.plans.filter(
-        (plan) => plan.checkout.enabled || plan.checkout.continuing,
+        (plan) => plan.checkout.enabled || plan.checkout.continuing
       );
   const showPartnerPurchase =
     !partner && info.planId === 'trial' && selectedPackage !== null;
@@ -99,7 +100,7 @@ export function HostedBillingView({
           <Alert role="status">
             <AlertDescription>
               {t(
-                'Test billing. Stripe actions use test mode; no live payments are enabled.',
+                'Test billing. Stripe actions use test mode; no live payments are enabled.'
               )}
             </AlertDescription>
           </Alert>
@@ -107,28 +108,28 @@ export function HostedBillingView({
         {stale && (
           <Notice>
             {t(
-              'Refresh failed. These are the last loaded balances; payment actions are paused until a successful refresh.',
+              'Refresh failed. These are the last loaded balances; payment actions are paused until a successful refresh.'
             )}
           </Notice>
         )}
         {actionError && (
           <Notice>
             {t(
-              'The billing action could not be completed. Refresh to check its status before trying again.',
+              'The billing action could not be completed. Refresh to check its status before trying again.'
             )}
           </Notice>
         )}
         {!manual && checkoutReturn === 'success' && (
           <Notice>
             {t(
-              'You returned from Checkout. Payment confirmation may still be pending. Your plan changes only after the server verifies payment.',
+              'You returned from Checkout. Payment confirmation may still be pending. Your plan changes only after the server verifies payment.'
             )}
           </Notice>
         )}
         {!manual && checkoutReturn === 'cancel' && (
           <Notice>
             {t(
-              'Checkout closed. No plan change is confirmed by this return link.',
+              'Checkout closed. No plan change is confirmed by this return link.'
             )}
           </Notice>
         )}
@@ -136,14 +137,14 @@ export function HostedBillingView({
           <Notice>
             {info.notice === 'account_paused'
               ? t(
-                  'This account is paused. Contact support before purchasing a plan.',
+                  'This account is paused. Contact support before purchasing a plan.'
                 )
               : info.notice === 'billing_review'
               ? t(
-                  'Billing needs review. New work may be paused while your payment status is checked.',
+                  'Billing needs review. New work may be paused while your payment status is checked.'
                 )
               : t(
-                  'Billing updates are delayed. Refresh later to check the verified status.',
+                  'Billing updates are delayed. Refresh later to check the verified status.'
                 )}
           </Notice>
         )}
@@ -160,15 +161,15 @@ export function HostedBillingView({
             {partner
               ? info.planId === 'assessment'
                 ? t(
-                    'One-time assessment allowance. Contact Sydekyks for training.',
+                    'One-time assessment allowance. Contact Sydekyks for training.'
                   )
                 : t('Contact Sydekyks to renew hosting after this term.')
               : info.planId === 'trial'
               ? t(
-                  'Your trial has limited time and Credits. Contact Sydekyks to arrange continued hosting.',
+                  'Your trial has limited time and Credits. Contact Sydekyks to arrange continued hosting.'
                 )
               : t(
-                  'Your plan and Credits are shared across this workspace. Assigned Partner and Sydekyks support access does not use client seats.',
+                  'Your plan and Credits are shared across this workspace. Assigned Partner and Sydekyks support access does not use client seats.'
                 )}
           </p>
           <dl className="grid gap-x-6 gap-y-4 rounded-lg bg-gray-2 p-4 text-sm sm:grid-cols-3">
@@ -178,7 +179,7 @@ export function HostedBillingView({
               }
               value={recordedDate(
                 info.hostingEndsAt ??
-                  (info.planId === 'trial' ? info.trialEndsAt : null),
+                  (info.planId === 'trial' ? info.trialEndsAt : null)
               )}
             />
             <Detail
@@ -206,7 +207,7 @@ export function HostedBillingView({
             info.entitlementState === 'paused') && (
             <p className="text-sm">
               {t(
-                'New work is unavailable until your account has an active entitlement. Previously held credits may still settle.',
+                'New work is unavailable until your account has an active entitlement. Previously held credits may still settle.'
               )}
             </p>
           )}
@@ -243,7 +244,7 @@ export function HostedBillingView({
           <p className="text-sm text-gray-11">
             {t(
               'Up to {limit} runs can be active at the same time. This limit is included in your plan; each run uses your shared Credits.',
-              { limit: info.limits.concurrency },
+              { limit: info.limits.concurrency }
             )}
           </p>
           {(info.usage.pendingUsers > 0 || info.usage.pendingProjects > 0) && (
@@ -253,7 +254,7 @@ export function HostedBillingView({
                 {
                   users: info.usage.pendingUsers,
                   projects: info.usage.pendingProjects,
-                },
+                }
               )}
             </p>
           )}
@@ -279,7 +280,7 @@ export function HostedBillingView({
             </summary>
             <p className="mt-2 leading-relaxed">
               {t(
-                'Held Credits are reserved for work in progress; unused holds return to your available balance. Unused Credits do not roll over. With your own AI key, runs use Credits and your provider bills AI usage separately.',
+                'Held Credits are reserved for work in progress; unused holds return to your available balance. Unused Credits do not roll over. With your own AI key, runs use Credits and your provider bills AI usage separately.'
               )}
             </p>
           </details>
@@ -294,7 +295,7 @@ export function HostedBillingView({
                 </h2>
                 <p className="mt-1 text-sm text-gray-11">
                   {t(
-                    'Review the plan before continuing to test Checkout. Access changes only after verified payment.',
+                    'Review the plan before continuing to test Checkout. Access changes only after verified payment.'
                   )}
                 </p>
               </div>
@@ -344,13 +345,13 @@ export function HostedBillingView({
                       {plan.salesAssisted ? (
                         <p className="text-sm leading-6">
                           {t(
-                            'Contact Sydekyks for a capacity review before activating Scale.',
+                            'Contact Sydekyks for a capacity review before activating Scale.'
                           )}
                         </p>
                       ) : manual ? (
                         <p className="text-sm leading-6">
                           {t(
-                            'Contact Sydekyks to request this plan. Access and renewal dates change only after the team confirms your payment and entitlement.',
+                            'Contact Sydekyks to request this plan. Access and renewal dates change only after the team confirms your payment and entitlement.'
                           )}
                         </p>
                       ) : (
@@ -392,7 +393,7 @@ export function HostedBillingView({
             {info.cancelAtPeriodEnd ? (
               <p role="status" className="text-sm">
                 {t(
-                  'Cancellation is scheduled for the end of your paid term. Use the billing portal to review it.',
+                  'Cancellation is scheduled for the end of your paid term. Use the billing portal to review it.'
                 )}
               </p>
             ) : info.pendingPlanId && info.pendingChangeAt ? (
@@ -402,21 +403,21 @@ export function HostedBillingView({
                   {
                     plan: planName(info.pendingPlanId),
                     date: new Date(info.pendingChangeAt).toLocaleDateString(),
-                  },
+                  }
                 )}
               </p>
             ) : null}
             {manual ? (
               <p className="text-sm text-gray-11">
                 {t(
-                  'This account was funded manually and has no Stripe subscription. Contact Sydekyks to arrange a plan change or cancellation; no automatic card charge is scheduled here.',
+                  'This account was funded manually and has no Stripe subscription. Contact Sydekyks to arrange a plan change or cancellation; no automatic card charge is scheduled here.'
                 )}
               </p>
             ) : (
               <>
                 <p className="max-w-prose text-sm text-gray-11">
                   {t(
-                    'Choose a plan at any time for your next renewal. Nothing is charged today. The next paid invoice activates the new plan and its monthly Credits. Cancellation is available in the billing portal below.',
+                    'Choose a plan at any time for your next renewal. Nothing is charged today. The next paid invoice activates the new plan and its monthly Credits. Cancellation is available in the billing portal below.'
                   )}
                 </p>
                 <div className="divide-y border-y">
@@ -439,7 +440,7 @@ export function HostedBillingView({
                               users: plan.limits.users,
                               credits: quantity(String(plan.limits.executions)),
                               runs: plan.limits.concurrency,
-                            },
+                            }
                           )}
                         </p>
                       </div>
@@ -484,7 +485,7 @@ export function HostedBillingView({
                     <p className="text-sm font-medium">
                       {t('Effective {date}. No charge today.', {
                         date: new Date(
-                          info.hostingEndsAt ?? info.validUntil,
+                          info.hostingEndsAt ?? info.validUntil
                         ).toLocaleDateString(),
                       })}
                     </p>
@@ -496,16 +497,16 @@ export function HostedBillingView({
                             price: price(reviewedPlan.price),
                             users: reviewedPlan.limits.users,
                             credits: quantity(
-                              String(reviewedPlan.limits.executions),
+                              String(reviewedPlan.limits.executions)
                             ),
                             runs: reviewedPlan.limits.concurrency,
-                          },
+                          }
                         )}
                       </p>
                     )}
                     <p className="text-sm">
                       {t(
-                        'Your current paid term remains unchanged. The new monthly price, user limit and Credits apply only after the renewal invoice is paid. If your users or Command Centers exceed the new limit at renewal, access may pause until capacity is resolved.',
+                        'Your current paid term remains unchanged. The new monthly price, user limit and Credits apply only after the renewal invoice is paid. If your users or Command Centers exceed the new limit at renewal, access may pause until capacity is resolved.'
                       )}
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -531,7 +532,7 @@ export function HostedBillingView({
                 {!info.planChangesEnabled && !info.cancelAtPeriodEnd && (
                   <p className="text-sm text-gray-11">
                     {t(
-                      'Plan changes are unavailable until an active Stripe subscription is verified. Refresh or contact Sydekyks for help.',
+                      'Plan changes are unavailable until an active Stripe subscription is verified. Refresh or contact Sydekyks for help.'
                     )}
                   </p>
                 )}
@@ -553,10 +554,10 @@ export function HostedBillingView({
           <p className="text-sm text-gray-11">
             {manual
               ? t(
-                  'Contact Sydekyks for payment instructions, invoices, plan changes or cancellation.',
+                  'Contact Sydekyks for payment instructions, invoices, plan changes or cancellation.'
                 )
               : t(
-                  'Use Stripe to manage payment details, view invoices or cancel at the end of the paid period. Cancellation does not add a free hosted plan.',
+                  'Use Stripe to manage payment details, view invoices or cancel at the end of the paid period. Cancellation does not add a free hosted plan.'
                 )}
           </p>
           {!manual && !partner && (
@@ -660,10 +661,10 @@ function date(value: string) {
   });
 }
 function quantity(value: string) {
-  return BigInt(value).toLocaleString();
+  return formatCreditUnits(value);
 }
 function price(
-  value: NonNullable<HostedCustomerBillingOverview['plans'][number]['price']>,
+  value: NonNullable<HostedCustomerBillingOverview['plans'][number]['price']>
 ) {
   const formatter = new Intl.NumberFormat(undefined, {
     style: 'currency',
@@ -671,7 +672,7 @@ function price(
   });
   return formatter.format(
     value.amountMinor /
-      10 ** (formatter.resolvedOptions().maximumFractionDigits ?? 2),
+      10 ** (formatter.resolvedOptions().maximumFractionDigits ?? 2)
   );
 }
 function planName(id: HostedCustomerBillingOverview['planId']) {
@@ -705,30 +706,30 @@ function reason(value: HostedBillingActionReason | null) {
   const messages: Record<HostedBillingActionReason, string> = {
     manual_billing: t('Contact Sydekyks for manual billing support.'),
     billing_unavailable: t(
-      'Purchasing is not configured. Your verified usage remains available.',
+      'Purchasing is not configured. Your verified usage remains available.'
     ),
     account_paused: t('Your account is paused. Contact support.'),
     billing_review: t('Billing needs review before a new purchase.'),
     resource_limit: t(
-      'Your members, projects or pending invitations exceed this plan’s limits.',
+      'Your members, projects or pending invitations exceed this plan’s limits.'
     ),
     subscription_exists: t(
-      'A subscription already exists. Use the billing portal below.',
+      'A subscription already exists. Use the billing portal below.'
     ),
     checkout_pending: t(
-      'A billing action is already in progress. Refresh to check its status.',
+      'A billing action is already in progress. Refresh to check its status.'
     ),
     session_changed: t(
-      'An earlier billing action belongs to another login session. Contact support.',
+      'An earlier billing action belongs to another login session. Contact support.'
     ),
     recovery_required: t(
-      'An earlier billing action needs review. Contact support before retrying.',
+      'An earlier billing action needs review. Contact support before retrying.'
     ),
     sales_assisted: t(
-      'This plan requires a capacity review. Contact Sydekyks.',
+      'This plan requires a capacity review. Contact Sydekyks.'
     ),
     customer_missing: t(
-      'The billing portal becomes available after a billing customer has been created.',
+      'The billing portal becomes available after a billing customer has been created.'
     ),
   };
   return messages[value];

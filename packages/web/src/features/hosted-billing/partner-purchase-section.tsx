@@ -115,7 +115,7 @@ function PartnerPurchaseSession({
       {showOffers && (
         <p className="max-w-prose text-sm text-gray-11">
           {t(
-            'Both packages include your own training workspace for 12 calendar months, 10,000 Credits each month and two exam attempts. The qualification requirements are the same. Partner approval and certification require independent assessment; client subscriptions are purchased separately.',
+            'Both packages include your own training workspace for 12 calendar months, 300 Credits each month and two exam attempts. The qualification requirements are the same. Partner approval and certification require independent assessment; client subscriptions are purchased separately.'
           )}
         </p>
       )}
@@ -127,28 +127,28 @@ function PartnerPurchaseSession({
       {query.isError && (
         <Notice>
           {t(
-            'Purchase status could not be checked. Refresh before continuing to payment.',
+            'Purchase status could not be checked. Refresh before continuing to payment.'
           )}
         </Notice>
       )}
       {actionError && (
         <Notice>
           {t(
-            'Checkout could not be opened. Check purchase status before trying again; payment may still be pending.',
+            'Checkout could not be opened. Check purchase status before trying again; payment may still be pending.'
           )}
         </Notice>
       )}
       {status?.billingMode === 'manual' && (
         <Notice>
           {t(
-            'Partner purchases are handled directly by Sydekyks. Contact the team to arrange payment and receipt activation.',
+            'Partner purchases are handled directly by Sydekyks. Contact the team to arrange payment and receipt activation.'
           )}
         </Notice>
       )}
       {status?.billingMode === 'stripe_test' && (
         <Notice>
           {t(
-            'Stripe test mode. These packages use sandbox payments. Access begins only after the server verifies the paid purchase.',
+            'Stripe test mode. These packages use sandbox payments. Access begins only after the server verifies the paid purchase.'
           )}
         </Notice>
       )}
@@ -163,10 +163,10 @@ function PartnerPurchaseSession({
           <p role="status" className="text-sm text-gray-11">
             {status.reason === 'unconfigured'
               ? t(
-                  'Partner checkout is being configured. Contact the team to arrange a purchase.',
+                  'Partner checkout is being configured. Contact the team to arrange a purchase.'
                 )
               : t(
-                  'This workspace needs a review before a Partner purchase. Use your own training workspace and contact the team for help.',
+                  'This workspace needs a review before a Partner purchase. Use your own training workspace and contact the team for help.'
                 )}
           </p>
         )}
@@ -194,7 +194,7 @@ function PartnerPurchaseSession({
                 {selectedPackage === selected && (
                   <p className="text-xs text-gray-11">
                     {t(
-                      'Selected on the website. Review the package before continuing.',
+                      'Selected on the website. Review the package before continuing.'
                     )}
                   </p>
                 )}
@@ -231,7 +231,7 @@ function PartnerPurchaseSession({
       {showOffers && (
         <p className="text-xs text-gray-11">
           {t(
-            'Unused Credits do not roll over. A full refund revokes access funded by that purchase; a partial refund currently preserves it. Existing training terms require team review before another purchase.',
+            'Unused Credits do not roll over. A full refund revokes access funded by that purchase; a partial refund currently preserves it. Existing training terms require team review before another purchase.'
           )}
         </p>
       )}
@@ -251,20 +251,20 @@ function purchaseMessage(status: PartnerPurchaseStatus) {
   if (purchase.state === 'fulfilled')
     return purchase.refundedMinor > 0
       ? t(
-          'Purchase verified. Your training access remains active after a partial refund.',
+          'Purchase verified. Your training access remains active after a partial refund.'
         )
       : t(
-          'Purchase verified. Your training workspace and course access are ready.',
+          'Purchase verified. Your training workspace and course access are ready.'
         );
   if (purchase.state === 'refunded')
     return t(
-      'Fully refunded. The access funded by this purchase has been revoked.',
+      'Fully refunded. The access funded by this purchase has been revoked.'
     );
   if (purchase.state === 'review')
     return t(
-      'This purchase needs review. Contact the team before attempting another payment.',
+      'This purchase needs review. Contact the team before attempting another payment.'
     );
   return t(
-    'Payment confirmation is pending. Check purchase status after completing Checkout.',
+    'Payment confirmation is pending. Check purchase status after completing Checkout.'
   );
 }

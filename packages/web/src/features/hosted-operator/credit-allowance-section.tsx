@@ -1,3 +1,8 @@
+import {
+  creditUnitsInput,
+  formatCreditUnits,
+  parseCreditInput,
+} from '@/lib/hosted-credit-units';
 import { hostingCatalog } from '@activepieces/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
@@ -72,7 +77,7 @@ function ClientAllowance({
     setNotice(
       value.overrideMonthlyCredits === null
         ? 'Plan default restored. Usage, held costs and access dates are unchanged.'
-        : 'Client allowance saved. Usage, held costs and access dates are unchanged.',
+        : 'Client allowance saved. Usage, held costs and access dates are unchanged.'
     );
     await refreshReferences();
   }
@@ -84,7 +89,7 @@ function ClientAllowance({
         'hosted-operator-clients',
         'hosted-billing',
         'hosted-chat-options',
-      ].map((key) => cache.invalidateQueries({ queryKey: [key] })),
+      ].map((key) => cache.invalidateQueries({ queryKey: [key] }))
     );
   }
   return (
@@ -143,7 +148,7 @@ function ClientAllowance({
           onConflict={async () => {
             assertAuthSession(access.session);
             setNotice(
-              'The allowance changed while you were editing. Review the refreshed limit before saving again.',
+              'The allowance changed while you were editing. Review the refreshed limit before saving again.'
             );
             await refreshReferences();
           }}
@@ -164,10 +169,12 @@ function AllowanceEditor({
   onConflict: () => Promise<void>;
 }) {
   const [basis, setBasis] = useState<'plan' | 'override'>(
-    state.overrideMonthlyCredits === null ? 'plan' : 'override',
+    state.overrideMonthlyCredits === null ? 'plan' : 'override'
   );
   const [amount, setAmount] = useState(
-    String(state.overrideMonthlyCredits ?? state.defaultMonthlyCredits),
+    creditUnitsInput(
+      state.overrideMonthlyCredits ?? state.defaultMonthlyCredits
+    )
   );
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -182,14 +189,9 @@ function AllowanceEditor({
       controller.current?.abort();
     };
   }, []);
-  const parsed = Number(amount);
-  const valid =
-    basis === 'plan' ||
-    (amount.trim() !== '' &&
-      Number.isInteger(parsed) &&
-      parsed >= 0 &&
-      parsed <= 1_000_000);
-  const selected = basis === 'plan' ? state.defaultMonthlyCredits : parsed;
+  const parsed = parseCreditInput(amount);
+  const valid = basis === 'plan' || (amount.trim() !== '' && parsed !== null);
+  const selected = basis === 'plan' ? state.defaultMonthlyCredits : parsed ?? 0;
   const usedAndHeld = state.period
     ? BigInt(state.period.consumed) + BigInt(state.period.reserved)
     : 0n;
@@ -220,7 +222,7 @@ function AllowanceEditor({
         state.revision,
         restore || basis === 'plan' ? null : selected,
         reason.trim(),
-        attempt.signal,
+        attempt.signal
       );
       assertAuthSession(access.session);
       if (!mounted.current || attempt.signal.aborted) return;
@@ -232,7 +234,7 @@ function AllowanceEditor({
           setError(
             cause instanceof AiSettingsError && cause.kind === 'conflict'
               ? 'This allowance changed while you were editing. Refresh, review the current limit and try again.'
-              : 'The allowance was not confirmed. Refresh to check access and the saved limit before retrying.',
+              : 'The allowance was not confirmed. Refresh to check access and the saved limit before retrying.'
           );
           if (cause instanceof AiSettingsError && cause.kind === 'conflict')
             await onConflict();
@@ -250,13 +252,13 @@ function AllowanceEditor({
       <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
         <dt className="font-medium">Saved monthly setting</dt>
         <dd>
-          {state.effectiveMonthlyCredits.toLocaleString()} Credits
+          {formatCreditUnits(state.effectiveMonthlyCredits)} Credits
           {state.overrideMonthlyCredits === null
             ? ' · default allowance'
             : ' · client override'}
         </dd>
         <dt className="font-medium">Plan default</dt>
-        <dd>{state.defaultMonthlyCredits.toLocaleString()} Credits</dd>
+        <dd>{formatCreditUnits(state.defaultMonthlyCredits)} Credits</dd>
         <dt className="font-medium">Revision</dt>
         <dd>{state.revision}</dd>
       </dl>
@@ -322,7 +324,7 @@ function AllowanceEditor({
           >
             <option value="plan">
               Use the default allowance —{' '}
-              {state.defaultMonthlyCredits.toLocaleString()} credits
+              {formatCreditUnits(state.defaultMonthlyCredits)} credits
             </option>
             <option value="override">Set a client allowance</option>
           </select>
@@ -338,12 +340,14 @@ function AllowanceEditor({
             id="client-monthly-credits"
             className="mt-2"
             type="number"
-            inputMode="numeric"
-            step={1}
+            inputMode="decimal"
+            step={0.01}
             min={0}
-            max={1000000}
+            max={10000}
             value={
-              basis === 'plan' ? String(state.defaultMonthlyCredits) : amount
+              basis === 'plan'
+                ? creditUnitsInput(state.defaultMonthlyCredits)
+                : amount
             }
             disabled={busy || basis === 'plan'}
             onChange={(event) => setAmount(event.target.value)}
@@ -352,8 +356,10 @@ function AllowanceEditor({
           />
           <p id="client-allowance-preview" className="mt-2 text-sm font-medium">
             {valid
-              ? `${selected.toLocaleString()} Credits per funded monthly period.`
-              : 'Enter a whole number from 0 to 1,000,000.'}
+              ? `${formatCreditUnits(
+                  selected
+                )} Credits per funded monthly period.`
+              : 'Enter 0 to 10,000 Credits, in steps of 0.01.'}
           </p>
           {valid && (
             <p className="mt-2 text-sm leading-6 text-gray-11">

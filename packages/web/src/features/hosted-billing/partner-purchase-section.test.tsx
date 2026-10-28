@@ -45,7 +45,7 @@ async function render(disabled = false) {
     root.render(
       <QueryClientProvider client={client}>
         <PartnerPurchaseSection selectedPackage="guided" disabled={disabled} />
-      </QueryClientProvider>,
+      </QueryClientProvider>
     );
   });
   await act(async () => {
@@ -78,10 +78,10 @@ describe('Partner purchase review', () => {
     await render();
     expect(mocks.checkout).not.toHaveBeenCalled();
     expect(pageText()).toContain('Selected on the website');
-    expect(pageText()).toContain('10,000 Credits');
+    expect(pageText()).toContain('300 Credits');
     expect(pageText()).toContain('independent assessment');
     const buy = [...container.querySelectorAll('button')].find((button) =>
-      button.textContent?.includes('Buy Guided'),
+      button.textContent?.includes('Buy Guided')
     )!;
     expect(buy.disabled).toBe(false);
     await act(async () => {
@@ -139,7 +139,7 @@ describe('Partner purchase review', () => {
   it('pauses Partner checkout when the parent billing overview is stale', async () => {
     await render(true);
     const buy = [...container.querySelectorAll('button')].find((button) =>
-      button.textContent?.includes('Buy Guided'),
+      button.textContent?.includes('Buy Guided')
     )!;
     expect(buy.disabled).toBe(true);
     await act(async () => buy.click());

@@ -26,7 +26,7 @@ export const HOSTED_ACCOUNTING_PROTOCOL = 1
 // Exact profile: older workers cannot accept native file/search jobs without the
 // pinned payer, private file references and metered supplier-tool contract.
 export const HOSTED_RUNTIME_PROFILE = 'partner-pilot-v5'
-export const HOSTED_RUNTIME_CAPABILITIES = ['flow-admission-v1', 'root-chat-v1', 'ai-hard-cap-v1', 'durable-settlement-v1', 'connection-fencing-v1', 'code-isolation-v1', 'saved-agents-v1', 'agent-tools-v1', 'trigger-lifecycle-v1', 'ai-router-v1', 'gadget-maintenance-v1', 'catalogue-todos-v1', 'native-files-search-v1'] as const
+export const HOSTED_RUNTIME_CAPABILITIES = ['flow-admission-v1', 'root-chat-v1', 'ai-hard-cap-v1', 'durable-settlement-v1', 'connection-fencing-v1', 'code-isolation-v1', 'saved-agents-v1', 'agent-tools-v1', 'trigger-lifecycle-v1', 'ai-router-v1', 'gadget-maintenance-v1', 'catalogue-todos-v1', 'native-files-search-v1', 'nested-tool-lanes-v1'] as const
 export const serviceModePolicy = { resolve, workerIsCompatible, assertWorkerSettings }
 
 type WorkerCompatibilityParams = {

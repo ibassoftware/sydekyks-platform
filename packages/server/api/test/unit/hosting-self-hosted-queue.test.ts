@@ -14,7 +14,7 @@ vi.mock('../../src/app/hosting/hosting-recovery', () => ({ hostingRecovery: vi.f
 vi.mock('../../src/app/sydekyks-community/shared-worker-routing', () => ({ workerGroupService: () => workerGroup }))
 vi.mock('../../src/app/project/project-worker-group.service', () => ({ projectWorkerGroupService: vi.fn() }))
 
-import { jobQueue, JobType } from '../../src/app/workers/job-queue/job-queue'
+import { getQueueName, jobQueue, JobType } from '../../src/app/workers/job-queue/job-queue'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -27,5 +27,24 @@ describe('default self-hosted execution admission', () => {
         await expect(jobQueue(fastify().log).add({ id: data.runId, type: JobType.ONE_TIME, data })).resolves.toEqual({ id: 'queued-self-hosted-run' })
         expect(execution).not.toHaveBeenCalled()
         expect(add).toHaveBeenCalledExactlyOnceWith(data.runId, data, expect.not.objectContaining({ attempts: 1 }))
+    })
+})
+
+
+describe('hosted tool queues cannot be occupied by parent chats', () => {
+    it.each([WorkerJobType.EXECUTE_PROPERTY, WorkerJobType.EXECUTE_ACTION, WorkerJobType.EXECUTE_VALIDATION, WorkerJobType.EXECUTE_RESOLVE_CONNECTION_IDENTIFIER])('routes %s to tool capacity with a separate refresh dependency', async jobType => {
+        vi.stubEnv('AP_SERVICE_MODE', 'hosted')
+        const args = { platformId: 'synthetic-platform', projectId: 'synthetic-project' }
+        expect(await getQueueName({ ...args, jobType }, fastify().log)).toBe('workerJobs-tools')
+        expect(await getQueueName({ ...args, jobType: WorkerJobType.EXECUTE_TOKEN_REFRESH }, fastify().log)).toBe('workerJobs-refresh')
+        expect(await getQueueName({ ...args, jobType: WorkerJobType.EXECUTE_AGENT_RUN }, fastify().log)).toBe('workerJobs')
+        expect(await getQueueName({ ...args, jobType: WorkerJobType.EXECUTE_FLOW }, fastify().log)).toBe('workerJobs')
+        expect(execution).not.toHaveBeenCalled()
+    })
+    it('leaves self-hosted action/refresh routing unchanged', async () => {
+        vi.stubEnv('AP_SERVICE_MODE', 'self_hosted')
+        for (const jobType of [WorkerJobType.EXECUTE_ACTION, WorkerJobType.EXECUTE_TOKEN_REFRESH]) {
+            expect(await getQueueName({ platformId: 'free', projectId: 'free', jobType }, fastify().log)).toBe('workerJobs')
+        }
     })
 })

@@ -7,6 +7,7 @@ const action = z.object({ enabled: z.boolean(), reason: HostedBillingActionReaso
 const meter = z.object({ state: z.enum(['active', 'expired', 'revoked', 'missing']), amount: quantity, consumed: quantity, reserved: quantity, available: quantity, validFrom: date.nullable(), validUntil: date.nullable() })
 const limits = z.object({ users: z.number().int().nonnegative(), projects: z.number().int().nonnegative(), executions: z.number().int().nonnegative(), concurrency: z.number().int().nonnegative(), aiCredits: z.number().int().nonnegative(), byokEnabled: z.literal(true) })
 export const HostedBillingOverview = z.object({
+    creditUnits: z.object({ ledgerUnitsPerCredit: z.literal(100), supplierMicroUsdPerCredit: z.literal(150000), minimumExecutionCredits: z.literal(0.01) }).optional(),
     schemaVersion: z.literal(1), platformId: z.string(), userId: z.string(), catalogVersion: z.string(), serverTime: date,
     billingMode: z.enum(['manual', 'stripe_test']).default('manual'), environment: z.enum(['manual', 'test']), planId: z.enum(['trial', 'training', 'assessment', 'starter', 'team', 'scale']), status: z.enum(['trialing', 'active', 'suspended']),
     entitlementState: z.enum(['trial', 'training', 'assessment', 'paid', 'expired', 'paused']), validUntil: date, trialEndsAt: date, billingHold: z.boolean(),

@@ -98,7 +98,8 @@ export function createHandlers(log: FastifyBaseLogger, assignment: WorkerGroupAs
             if (!workerVersionIsCompatible({ log, workerVersion: input.workerProps.version, workerId: input.workerId, rpcMethod: 'poll' })) {
                 return null
             }
-            const pollQueueName = getPollQueueName(assignment)
+            if (input.hostedLane && (hostingConfiguration.getServiceMode() !== 'hosted' || assignment)) return null
+            const pollQueueName = input.hostedLane ? `workerJobs-${input.hostedLane}` : getPollQueueName(assignment)
             const job = await jobBroker(log).poll(pollQueueName, connectionId, connectionSignal)
             if (job) {
                 log.info({ worker: { id: input.workerId }, job: { id: job.jobId, type: job.jobData.jobType } }, '[workerRpc#poll] Returning job to worker')

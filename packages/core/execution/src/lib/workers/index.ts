@@ -48,6 +48,7 @@ export const WorkerProps = z.object({
 export type WorkerProps = z.infer<typeof WorkerProps>
 
 export const MachineInformation = z.object({
+    hostedLane: z.enum(['tools', 'refresh']).optional(),
     cpuUsagePercentage: z.number(),
     diskInfo: z.object({
         total: z.number(),

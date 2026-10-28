@@ -1,3 +1,4 @@
+import { creditUnitsInput, parseCreditInput } from '@/lib/hosted-credit-units';
 import { useQuery } from '@tanstack/react-query';
 import { t } from 'i18next';
 import { FormEvent, useEffect, useRef, useState } from 'react';
@@ -92,14 +93,21 @@ export function ManualTermControls({
   const expired = Date.parse(account.expiresAt) <= Date.now();
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!until || !confirmed || !expired || locked.current) return;
+    if (
+      !until ||
+      !confirmed ||
+      !expired ||
+      locked.current ||
+      (monthly !== '' && parseCreditInput(monthly) === null)
+    )
+      return;
     const form = event.currentTarget,
       values = new FormData(form),
       details = {
         expectedRevision: account!.revision,
         expiresAt: until,
         monthlyCredits:
-          monthly !== '' ? Number(monthly) : account!.monthlyCredits,
+          monthly !== '' ? parseCreditInput(monthly)! : account!.monthlyCredits,
         reason: String(values.get('reason') ?? '').trim(),
       };
     const fingerprint = JSON.stringify(details);
@@ -121,7 +129,7 @@ export function ManualTermControls({
       setMonthly('');
       setConfirmed(false);
       setNotice(
-        t('New manual hosting term recorded. Refresh dates to review access.'),
+        t('New manual hosting term recorded. Refresh dates to review access.')
       );
       await term.refetch();
       onSaved();
@@ -129,8 +137,8 @@ export function ManualTermControls({
       if (mounted.current)
         setError(
           t(
-            'Renewal was not confirmed. Refresh the funding state before retrying. A changed term, active term or Stripe billing needs review.',
-          ),
+            'Renewal was not confirmed. Refresh the funding state before retrying. A changed term, active term or Stripe billing needs review.'
+          )
         );
     } finally {
       locked.current = false;
@@ -155,7 +163,7 @@ export function ManualTermControls({
       courseAttempt.current = null;
       setCourseId('');
       setNotice(
-        t('Partner course assigned. No additional Credits were issued.'),
+        t('Partner course assigned. No additional Credits were issued.')
       );
       await term.refetch();
       onSaved();
@@ -163,8 +171,8 @@ export function ManualTermControls({
       if (mounted.current)
         setError(
           t(
-            'Course assignment was not confirmed. Refresh this workspace and check its enrollment before retrying.',
-          ),
+            'Course assignment was not confirmed. Refresh this workspace and check its enrollment before retrying.'
+          )
         );
     } finally {
       locked.current = false;
@@ -183,12 +191,12 @@ export function ManualTermControls({
         {t('Monthly Credits are funded through')}{' '}
         <strong>{subscriptionUtcLabel(account.expiresAt)}</strong>.{' '}
         {t(
-          'Changing the renewal due date above does not fund another monthly allowance.',
+          'Changing the renewal due date above does not fund another monthly allowance.'
         )}
       </p>
       <p className="text-sm leading-6 text-gray-11">
         {t(
-          'After the current funded term expires, record a verified manual renewal here. The new term starts now; it does not backfill missed months or reset previous charges and holds.',
+          'After the current funded term expires, record a verified manual renewal here. The new term starts now; it does not backfill missed months or reset previous charges and holds.'
         )}
       </p>
       {account.kind === 'partner' && !account.enrollmentId && (
@@ -196,7 +204,7 @@ export function ManualTermControls({
           <h3 className="font-medium">{t('Assign Partner training')}</h3>
           <p className="text-sm text-gray-11">
             {t(
-              'Attach a published Partner course to this funded workspace. This does not issue another hosting allowance or certify the Partner.',
+              'Attach a published Partner course to this funded workspace. This does not issue another hosting allowance or certify the Partner.'
             )}
           </p>
           <label htmlFor="manual-partner-course" className="block text-sm">
@@ -231,7 +239,7 @@ export function ManualTermControls({
           {courses.data?.length === 0 && (
             <p className="text-sm text-gray-11">
               {t(
-                'Publish a global Partner course in Learning before assigning it here.',
+                'Publish a global Partner course in Learning before assigning it here.'
               )}
             </p>
           )}
@@ -246,7 +254,7 @@ export function ManualTermControls({
       {!expired && (
         <p className="text-sm text-gray-11">
           {t(
-            'The existing funded term is still active. A second term is unavailable until it expires.',
+            'The existing funded term is still active. A second term is unavailable until it expires.'
           )}
         </p>
       )}
@@ -268,9 +276,9 @@ export function ManualTermControls({
               className="mt-2"
               type="number"
               min={0}
-              max={1_000_000}
-              step={1}
-              placeholder={String(account.monthlyCredits)}
+              max={10_000}
+              step={0.01}
+              placeholder={creditUnitsInput(account.monthlyCredits)}
               value={monthly}
               onChange={(event) => setMonthly(event.target.value)}
             />
@@ -295,7 +303,7 @@ export function ManualTermControls({
             />
             <span>
               {t(
-                'I verified the payment or authorization for this new hosting term.',
+                'I verified the payment or authorization for this new hosting term.'
               )}
             </span>
           </label>

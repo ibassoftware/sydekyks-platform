@@ -1,3 +1,4 @@
+import { formatCreditUnits, parseCreditInput } from '@/lib/hosted-credit-units';
 import { MAX_FULL_NAME_LENGTH } from '@activepieces/shared';
 import { useQuery } from '@tanstack/react-query';
 import { t } from 'i18next';
@@ -25,30 +26,30 @@ type Session = ReturnType<typeof useHostedAuthSession>;
 const selectStyle =
   'mt-2 block w-full rounded-md border border-gray-6 bg-gray-1 px-3 py-2 text-sm';
 const credits = {
-  training: 10_000,
-  starter: 10_000,
-  team: 100_000,
-  scale: 500_000,
+  training: 300,
+  starter: 300,
+  team: 1200,
+  scale: 4000,
 };
 function message(error: unknown) {
   if (error instanceof ManualAccountError) {
     if (/EMAIL|IDENTITY|EXISTS|ACCOUNT_UNAVAILABLE/.test(error.code))
       return t(
-        'This email already belongs to an account. Use account lookup to manage it; this form does not replace an existing password or membership.',
+        'This email already belongs to an account. Use account lookup to manage it; this form does not replace an existing password or membership.'
       );
     if (/EXPIR|DATE/.test(error.code))
       return t('Choose a future expiration date within the next 36 months.');
     if (/COURSE/.test(error.code))
       return t(
-        'The selected course is unavailable. Refresh the course list or create the account without a course and enroll it later.',
+        'The selected course is unavailable. Refresh the course list or create the account without a course and enroll it later.'
       );
     if (/SESSION|ACCESS|OPERATOR/.test(error.code))
       return t(
-        'Your operator session could not be confirmed. Sign in again before continuing.',
+        'Your operator session could not be confirmed. Sign in again before continuing.'
       );
   }
   return t(
-    'Creation was not confirmed. Keep the same details and retry to check the saved result before creating another account.',
+    'Creation was not confirmed. Keep the same details and retry to check the saved result before creating another account.'
   );
 }
 export function ManualAccountForm({
@@ -61,9 +62,9 @@ export function ManualAccountForm({
   onCreated?: (account: ManualAccount) => void;
 }) {
   const [plan, setPlan] = useState<'training' | 'starter' | 'team' | 'scale'>(
-    kind === 'partner' ? 'training' : 'starter',
+    kind === 'partner' ? 'training' : 'starter'
   );
-  const [monthly, setMonthly] = useState(10_000),
+  const [monthly, setMonthly] = useState(300),
     [expiry, setExpiry] = useState(''),
     [confirmed, setConfirmed] = useState(false),
     [approved, setApproved] = useState(false);
@@ -91,7 +92,13 @@ export function ManualAccountForm({
     grace = expiresAt ? subscriptionGraceEnd(expiresAt) : null;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (locked.current || !confirmed || !expiresAt) return;
+    if (
+      locked.current ||
+      !confirmed ||
+      !expiresAt ||
+      parseCreditInput(String(monthly)) === null
+    )
+      return;
     const form = event.currentTarget,
       values = new FormData(form);
     const common = {
@@ -102,7 +109,7 @@ export function ManualAccountForm({
         .toLowerCase(),
       password: String(values.get('password') ?? ''),
       expiresAt,
-      monthlyCredits: monthly,
+      monthlyCredits: parseCreditInput(String(monthly))!,
       reason: String(values.get('reason') ?? '').trim(),
     };
     const details =
@@ -167,7 +174,7 @@ export function ManualAccountForm({
       </h2>
       <p className="mt-2 text-sm leading-6 text-gray-11">
         {t(
-          'Create a new account with an initial password and a manually funded hosting term. Verify payment or your authorization before granting access. No email or Stripe charge is sent.',
+          'Create a new account with an initial password and a manually funded hosting term. Verify payment or your authorization before granting access. No email or Stripe charge is sent.'
         )}
       </p>
       <form onSubmit={(event) => void submit(event)} className="mt-5">
@@ -235,7 +242,7 @@ export function ManualAccountForm({
           </div>
           <p className="text-sm text-gray-11">
             {t(
-              'Share the initial password privately. Existing accounts and passwords are never overwritten by this form.',
+              'Share the initial password privately. Existing accounts and passwords are never overwritten by this form.'
             )}
           </p>
           {kind === 'client' ? (
@@ -255,13 +262,13 @@ export function ManualAccountForm({
                 }}
               >
                 <option value="starter">
-                  {t('Starter · 10 users · 10,000 monthly Credits')}
+                  {t('Starter · 10 users · 300 monthly Credits')}
                 </option>
                 <option value="team">
-                  {t('Growth · 30 users · 100,000 monthly Credits')}
+                  {t('Growth · 30 users · 1,200 monthly Credits')}
                 </option>
                 <option value="scale">
-                  {t('Scale · 100 users · 500,000 monthly Credits')}
+                  {t('Scale · 100 users · 4,000 monthly Credits')}
                 </option>
               </select>
             </label>
@@ -295,7 +302,7 @@ export function ManualAccountForm({
               {courses.isError && (
                 <p role="alert" className="text-sm">
                   {t(
-                    'Courses could not load. You can create the account without a course and enroll it later.',
+                    'Courses could not load. You can create the account without a course and enroll it later.'
                   )}{' '}
                   <Button
                     type="button"
@@ -337,8 +344,8 @@ export function ManualAccountForm({
                 className="mt-2"
                 type="number"
                 min={0}
-                max={1_000_000}
-                step={1}
+                max={10_000}
+                step={0.01}
                 required
                 value={monthly}
                 onChange={(event) => setMonthly(Number(event.target.value))}
@@ -347,7 +354,7 @@ export function ManualAccountForm({
           </div>
           <p className="text-sm leading-6 text-gray-11">
             {t(
-              'Monthly allowances stop at the expiration date. Remaining Credits can be used during the 15-day grace period; runtime is then suspended. New allowances do not accumulate for missed months.',
+              'Monthly allowances stop at the expiration date. Remaining Credits can be used during the 15-day grace period; runtime is then suspended. New allowances do not accumulate for missed months.'
             )}
             {grace && (
               <>
@@ -366,7 +373,7 @@ export function ManualAccountForm({
               minLength={3}
               maxLength={500}
               placeholder={t(
-                'Receipt reference or reason this term is authorized',
+                'Receipt reference or reason this term is authorized'
               )}
             />
           </label>
@@ -380,7 +387,7 @@ export function ManualAccountForm({
               />
               <span>
                 {t(
-                  'Approve operational Partner access now. Course completion, certification and client assignments remain separate decisions.',
+                  'Approve operational Partner access now. Course completion, certification and client assignments remain separate decisions.'
                 )}
               </span>
             </label>
@@ -395,7 +402,7 @@ export function ManualAccountForm({
             />
             <span>
               {t(
-                'I verified the manual payment or authorization for this account and the hosting term above.',
+                'I verified the manual payment or authorization for this account and the hosting term above.'
               )}
             </span>
           </label>
@@ -422,7 +429,7 @@ export function ManualAccountForm({
             {t('Account created:')} {created.name}
           </p>
           <p className="break-words">
-            {created.email} · {created.monthlyCredits.toLocaleString()}{' '}
+            {created.email} · {formatCreditUnits(created.monthlyCredits)}{' '}
             {t('monthly Credits')} · {created.seats} {t('user limit')}
           </p>
           <p>
@@ -433,7 +440,7 @@ export function ManualAccountForm({
           </p>
           <p>
             {t(
-              'The person can now sign in with the email and initial password you entered. Sign out of your admin account before testing their login.',
+              'The person can now sign in with the email and initial password you entered. Sign out of your admin account before testing their login.'
             )}
           </p>
           <p>

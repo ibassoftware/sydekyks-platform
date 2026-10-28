@@ -3,6 +3,7 @@ import { DataSource, Not } from 'typeorm'
 import { assertHostingOperator } from './hosting-access-policy'
 import { hostingResourceUsage } from './hosting-billing-resources'
 import { hostingConfiguration } from './hosting-configuration'
+import { effectiveHostedCredits } from './hosting-credit-allowance'
 import { hostedCreditLiability } from './hosting-credit-policy'
 import { assertCustomerBillingUser } from './hosting-customer-billing-policy'
 import { HostingGrant, HostingGrantEntity } from './hosting-entities'
@@ -88,6 +89,7 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
                 .filter(grant => grant.meter === 'execution' && grant.validFrom > now && subscriptionGrantActive(account, grant, grant.validFrom))
                 .sort((left, right) => left.validFrom.getTime() - right.validFrom.getTime())[0] : undefined
             return HostedBillingOverview.parse({
+                creditUnits: { ledgerUnitsPerCredit: 100, supplierMicroUsdPerCredit: 150000, minimumExecutionCredits: 0.01 },
                 schemaVersion: 1, platformId: account.id, userId: user.id, catalogVersion: account.catalogVersion, serverTime: now.toISOString(), billingMode, environment: billingMode === 'manual' ? 'manual' : 'test',
                 manualFunding, planId: account.planId, status: account.status, entitlementState: paused ? 'paused' : subscriptionAccountUntil(account) <= now ? 'expired' : account.planId === 'trial' ? 'trial' : account.planId === 'training' ? 'training' : account.planId === 'assessment' ? 'assessment' : 'paid', validUntil: subscriptionAccountUntil(account).toISOString(), trialEndsAt: account.trialEndsAt.toISOString(), billingHold: account.billingHold ?? false, subscriptionStatus: bound?.subscriptionStatus ?? null, planChangesEnabled: !platformAdmin && !partnerHome && billingMode === 'stripe_test' && !manualFunding && configured && !paused && !!bound?.subscriptionId && bound.subscriptionStatus === 'active' && !bound.cancelAtPeriodEnd && bound.holds.length === 0,
                 pendingPlanId: bound?.pendingPlanId ?? null, pendingChangeAt: bound?.pendingChangeAt?.toISOString() ?? null, cancelAtPeriodEnd: bound?.cancelAtPeriodEnd ?? false,
@@ -97,7 +99,7 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
                 renewalDueAt: account.subscription?.bindingValid ? account.subscription.policy?.renewalDueAt?.toISOString() ?? null : null,
                 nextCreditAllowanceAt: nextAllowance?.validFrom.toISOString() ?? null,
                 notice: account.status === 'suspended' ? 'account_paused' : account.billingHold && !ended ? 'billing_review' : bound?.lastError ? 'billing_delayed' : null,
-                meters: { execution: meter(unified, now, !paused && subscriptionAccountActive(account, now), account), managedAi: meter(managed, now, !paused && subscriptionAccountActive(account, now), account), previousPeriodHeldMicroUsd: previousHeld.toString() }, usage: { ...usage, activeExecutions: account.activeExecutions }, limits: { ...hostingCatalog.getPlan({ planId: account.planId }), aiCredits: 0, byokEnabled: true }, plans, portal: { enabled: portalReason === null, reason: portalReason, continuing: false },
+                meters: { execution: meter(unified, now, !paused && subscriptionAccountActive(account, now), account), managedAi: meter(managed, now, !paused && subscriptionAccountActive(account, now), account), previousPeriodHeldMicroUsd: previousHeld.toString() }, usage: { ...usage, activeExecutions: account.activeExecutions }, limits: { ...hostingCatalog.getPlan({ planId: account.planId }), executions: await effectiveHostedCredits(manager, account.id, account.planId), aiCredits: 0, byokEnabled: true }, plans, portal: { enabled: portalReason === null, reason: portalReason, continuing: false },
             })
         } })
     } }

@@ -1,3 +1,4 @@
+import { formatCreditUnits } from '@/lib/hosted-credit-units';
 import { useQuery } from '@tanstack/react-query';
 import { t } from 'i18next';
 import { ArrowLeft, Files, Globe, Paperclip } from 'lucide-react';
@@ -27,7 +28,7 @@ export function HostedWebSearchControl({ disabled }: { disabled: boolean }) {
         'h-9 gap-1.5 rounded-full border px-2.5 text-xs sm:h-8',
         chat.nativeWebSearch
           ? 'border-accent-8 bg-accent-3 text-accent-12 hover:bg-accent-4'
-          : 'border-gray-7 text-gray-11 hover:bg-gray-3',
+          : 'border-gray-7 text-gray-11 hover:bg-gray-3'
       )}
       aria-label={t('Search web')}
       aria-pressed={chat.nativeWebSearch}
@@ -45,13 +46,13 @@ export function HostedWebSearchControl({ disabled }: { disabled: boolean }) {
         aria-hidden="true"
         className={cn(
           'inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5',
-          chat.nativeWebSearch ? 'bg-accent-9' : 'bg-gray-8',
+          chat.nativeWebSearch ? 'bg-accent-9' : 'bg-gray-8'
         )}
       >
         <span
           className={cn(
             'size-3 rounded-full',
-            chat.nativeWebSearch ? 'translate-x-3 bg-on-accent' : 'bg-gray-1',
+            chat.nativeWebSearch ? 'translate-x-3 bg-on-accent' : 'bg-gray-1'
           )}
         />
       </span>
@@ -131,7 +132,9 @@ export function HostedAttachmentControl({
               {chat.payer?.type === 'byok'
                 ? t('Your provider bills AI and web search separately.')
                 : t('Files and search: up to {credits} Credits per message.', {
-                    credits: chat.options.nativeFeatures.maxTurnCredits,
+                    credits: formatCreditUnits(
+                      chat.options.nativeFeatures.maxTurnCredits
+                    ),
                   })}
             </p>
           </div>
@@ -181,7 +184,7 @@ export function HostedNativeFileManager({ disabled }: { disabled: boolean }) {
       <section className="space-y-3 pb-1" aria-label={t('Uploaded files')}>
         <p className="leading-5">
           {t(
-            'Files expire after 24 hours. Removing access stops future reads; saved replies remain. Start a new chat if it used a removed file.',
+            'Files expire after 24 hours. Removing access stops future reads; saved replies remain. Start a new chat if it used a removed file.'
           )}
         </p>
         {list.isPending ? (
@@ -201,7 +204,7 @@ export function HostedNativeFileManager({ disabled }: { disabled: boolean }) {
         ) : !list.data?.length ? (
           <p>
             {t(
-              'No active AI uploads in this project. Attach a file to your next message.',
+              'No active AI uploads in this project. Attach a file to your next message.'
             )}
           </p>
         ) : (
@@ -239,8 +242,8 @@ export function HostedNativeFileManager({ disabled }: { disabled: boolean }) {
                       } catch {
                         setError(
                           t(
-                            'The file ID could not be copied. Allow clipboard access and try again.',
-                          ),
+                            'The file ID could not be copied. Allow clipboard access and try again.'
+                          )
                         );
                       }
                     }}
@@ -266,8 +269,8 @@ export function HostedNativeFileManager({ disabled }: { disabled: boolean }) {
                     } catch {
                       setError(
                         t(
-                          'Removal could not be confirmed. Reload the file list before trying again.',
-                        ),
+                          'Removal could not be confirmed. Reload the file list before trying again.'
+                        )
                       );
                     } finally {
                       setBusy(null);
