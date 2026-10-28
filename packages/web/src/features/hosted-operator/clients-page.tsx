@@ -165,7 +165,7 @@ function ClientUsageTable({
   data: HostedClients;
   onManage?: (platformId: string) => void;
 }) {
-  const number = (value: string) => formatHostedCredits(value);
+  const number = (value: string) => BigInt(value).toLocaleString();
   if (!data.clients.length)
     return (
       <p role="status" className="text-sm text-gray-11">
