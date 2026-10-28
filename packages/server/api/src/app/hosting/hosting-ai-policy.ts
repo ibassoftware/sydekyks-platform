@@ -13,14 +13,15 @@ export const HOSTED_AI_MAX_OUTPUT = 4096
 export const HOSTED_AI_TIMEOUT_MS = 60_000
 // Transport/storage protection is separate from supplier context. Larger full
 // conversations reserve the approved entire model context before supplier send.
-export const HOSTED_AI_REQUEST_MAX_BYTES = 1024 * 1024
-export const HOSTED_AI_MAX_MESSAGES = 512
+export const HOSTED_AI_REQUEST_MAX_BYTES = 16 * 1024 * 1024
+export const HOSTED_AI_MAX_MESSAGES = 8192
+export const HOSTED_AI_MESSAGE_MAX_CHARS = HOSTED_AI_REQUEST_MAX_BYTES / 2
 
-const toolCall = z.strictObject({ id: z.string().max(256), type: z.literal('function'), function: z.strictObject({ name: z.string().max(128), arguments: z.string().max(16384) }) })
+const toolCall = z.strictObject({ id: z.string().max(256), type: z.literal('function'), function: z.strictObject({ name: z.string().max(128), arguments: z.string().max(HOSTED_AI_MESSAGE_MAX_CHARS) }) })
 const message = z.discriminatedUnion('role', [
-    z.strictObject({ role: z.enum(['system', 'user']), content: z.string().max(32768) }),
-    z.strictObject({ role: z.literal('assistant'), content: z.string().max(32768).nullable(), tool_calls: z.array(toolCall).max(16).optional() }),
-    z.strictObject({ role: z.literal('tool'), content: z.string().max(32768), tool_call_id: z.string().max(256) }),
+    z.strictObject({ role: z.enum(['system', 'user']), content: z.string().max(HOSTED_AI_MESSAGE_MAX_CHARS) }),
+    z.strictObject({ role: z.literal('assistant'), content: z.string().max(HOSTED_AI_MESSAGE_MAX_CHARS).nullable(), tool_calls: z.array(toolCall).max(16).optional() }),
+    z.strictObject({ role: z.literal('tool'), content: z.string().max(HOSTED_AI_MESSAGE_MAX_CHARS), tool_call_id: z.string().max(256) }),
 ])
 export const HostedAiRequest = z.strictObject({
     callKey: z.string().regex(/^[a-zA-Z0-9_.:-]{1,100}$/), attempt: z.number().int().min(0).max(2).default(0),

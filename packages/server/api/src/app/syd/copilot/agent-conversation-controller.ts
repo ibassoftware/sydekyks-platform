@@ -8,6 +8,9 @@ import { securityAccess } from '../../core/security/authorization/fastify-securi
 import { buildPaginator } from '../../helper/pagination/build-paginator'
 import { paginationHelper } from '../../helper/pagination/pagination-utils'
 import { Order } from '../../helper/pagination/paginator'
+import { HOSTED_AI_REQUEST_MAX_BYTES } from '../../hosting/hosting-ai-policy'
+import { hostingConfiguration } from '../../hosting/hosting-configuration'
+import { HostedChatContent } from '../../hosting/hosting-copilot'
 import { sydAgentConnections } from './agent-connections'
 import { sydAgentRuntime } from './agent-runtime'
 import { sydApprovalGate } from './approval-gate'
@@ -16,6 +19,7 @@ import { SydAgentConversationEntity } from './models/agent-conversation.entity'
 import { sydChatAgentAdministration } from './tools/chat-agent-administration'
 
 export const sydAgentConversationController: FastifyPluginAsyncZod = async (app) => {
+    const hosted = hostingConfiguration.getServiceMode() === 'hosted'
     app.post('/conversations', { config: userConfig, schema: { body: CreateAgentConversationRequest } }, async (request, reply) => {
         return reply.code(201).send(await sydAgentRuntime.create({ ...actor(request), agentId: request.body.agentId, projectId: request.body.projectId, builder: request.body.builder ?? false, log: request.log }))
     })
@@ -42,7 +46,7 @@ export const sydAgentConversationController: FastifyPluginAsyncZod = async (app)
         await sydAgentRuntime.repo().delete({ id: row.id, ...actor(request) })
         return reply.code(204).send()
     })
-    app.post('/conversations/:id/messages', { config: userConfig, schema: { params, body: SendAgentMessageRequest } }, async (request) => {
+    app.post('/conversations/:id/messages', { config: userConfig, ...(hosted ? { bodyLimit: HOSTED_AI_REQUEST_MAX_BYTES } : {}), schema: { params, body: hosted ? SendAgentMessageRequest.safeExtend({ content: HostedChatContent }) : SendAgentMessageRequest } }, async (request) => {
         const row = await owned(request)
         if (!row.projectId) throw unavailable(row.id)
         const agent = row.agentId ? await sydChatAgentAdministration(request.log).getOneOrThrow({ id: row.agentId, projectId: row.projectId, userId: row.userId }) : null

@@ -6,8 +6,9 @@ import { IsNull } from 'typeorm'
 import { z } from 'zod'
 import { securityAccess } from '../../core/security/authorization/fastify-security'
 import { validateHostedAiFileIdsForActor } from '../../hosting/hosting-ai-files'
+import { HOSTED_AI_REQUEST_MAX_BYTES } from '../../hosting/hosting-ai-policy'
 import { hostingConfiguration } from '../../hosting/hosting-configuration'
-import { assertHostedChatContext, hostedCopilotPayer } from '../../hosting/hosting-copilot'
+import { assertHostedChatContext, HostedChatContent, hostedCopilotPayer } from '../../hosting/hosting-copilot'
 import { hostingFail } from '../../hosting/hosting-transactions'
 import { mcpUtils } from '../../mcp/tools/mcp-utils'
 import { assertCreditsAndAppSumoNotExceeded } from '../../platform/billing-provider'
@@ -154,7 +155,7 @@ const register: FastifyPluginAsyncZod = async (app) => {
     app.delete('/conversations/:id', CONVERSATION_ROUTE, async (request, reply) => handlers.deleteConversation({ request, reply }))
     app.get('/conversations/:id/messages', CONVERSATION_ROUTE, async (request, reply) => handlers.getMessages({ request, reply }))
     app.post('/conversations/:id/messages/:messageIndex/feedback', SetMessageFeedbackRoute, async (request, reply) => handlers.setMessageFeedback({ request, reply }))
-    app.post('/conversations/:id/messages', { ...CONVERSATION_ROUTE, schema: { ...CONVERSATION_ROUTE.schema, body: SydSendMessageRequest } }, async (request, reply) => handlers.sendMessage({ request, reply }))
+    app.post('/conversations/:id/messages', { ...CONVERSATION_ROUTE, ...(hostingConfiguration.getServiceMode() === 'hosted' ? { bodyLimit: HOSTED_AI_REQUEST_MAX_BYTES } : {}), schema: { ...CONVERSATION_ROUTE.schema, body: hostingConfiguration.getServiceMode() === 'hosted' ? SydSendMessageRequest.safeExtend({ content: HostedChatContent }) : SydSendMessageRequest } }, async (request, reply) => handlers.sendMessage({ request, reply }))
     app.post('/tool-approvals/:gateId', ToolApprovalRoute, async (request, reply) => handlers.decideToolApproval({ request, reply }))
     app.post('/conversations/:id/cancel', CONVERSATION_ROUTE, async (request, reply) => handlers.cancelConversation({ request, reply }))
     app.get('/conversations/:id/pending-gate', CONVERSATION_ROUTE, async (request, reply) => handlers.getPendingDecision({ request, reply }))

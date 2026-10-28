@@ -1,5 +1,6 @@
 import { AIProviderName } from '@activepieces/core-utils'
 import { AgentConversationStatus, AgentRunSource, WorkerJobType, WorkerToApiContract } from '@activepieces/shared'
+import { z } from 'zod'
 import { aiKeyScope } from '../ai/ai-key-scope'
 import { AIProviderEntity } from '../ai/ai-provider-entity'
 import { databaseConnection } from '../database/database-connection'
@@ -13,7 +14,7 @@ import { HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingModelCallEntity } from './hosting-model-call-entity'
 import { hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
-// Reserve half the 1 MiB transport envelope for the system prompt, complete
+// Reserve half the 16 MiB transport envelope for the system prompt, complete
 // tool schemas and this run's tool results, plus system/continuation positions.
 // Stored and model-visible hosted history stays intact. Every supplier call
 // still needs its own funded small-input or full-context quote.
@@ -21,10 +22,13 @@ export const HOSTED_CHAT_HISTORY_MAX_BYTES = HOSTED_AI_REQUEST_MAX_BYTES / 2
 // Leave one system message and one assistant/tool continuation pair. Each
 // subsequent request still checks the full, untrimmed wire transcript.
 export const HOSTED_CHAT_HISTORY_MAX_MESSAGES = HOSTED_AI_MAX_MESSAGES - 3
+export const HostedChatContent = z.string().max(HOSTED_CHAT_HISTORY_MAX_BYTES)
 
-export function assertHostedChatContext({ messages, content }: { messages: unknown[], content: string }): void {
+export function assertHostedChatContext({ messages, content, configuration }: { messages: unknown[], content: string, configuration?: unknown }): void {
     // Refuse before claiming the conversation or reserving an execution.
-    if (content.length > 32768 || messages.length + 1 > HOSTED_CHAT_HISTORY_MAX_MESSAGES || Buffer.byteLength(JSON.stringify([...messages, { role: 'user', content }])) > HOSTED_CHAT_HISTORY_MAX_BYTES) hostingFail('HOSTING_CHAT_CONTEXT_LIMIT')
+    const history = [...messages, { role: 'user', content }]
+    const bytes = configuration === undefined ? JSON.stringify(history) : JSON.stringify({ messages: history, configuration })
+    if (content.length > HOSTED_CHAT_HISTORY_MAX_BYTES || messages.length + 1 > HOSTED_CHAT_HISTORY_MAX_MESSAGES || Buffer.byteLength(bytes) > HOSTED_CHAT_HISTORY_MAX_BYTES) hostingFail('HOSTING_CHAT_CONTEXT_LIMIT')
 }
 
 export async function hostedCopilotPayer({ platformId, projectId, provider, configId }: { platformId: string, projectId: string, provider?: string, configId?: string }): Promise<HostedAiInput['payer']> {

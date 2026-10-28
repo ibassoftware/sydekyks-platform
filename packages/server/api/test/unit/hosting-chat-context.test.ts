@@ -111,9 +111,9 @@ describe('coherent hosted chat continuation envelope', () => {
         expect(JSON.stringify(bytes)).toBe(saved)
         const messages = Array.from({ length: HOSTED_CHAT_HISTORY_MAX_MESSAGES }, () => ({ role: 'user', content: 'short' }))
         expect(() => assertHostedChatContext({ messages, content: 'Continue' })).toThrow('HOSTING_CHAT_CONTEXT_LIMIT')
-        expect(() => assertHostedChatContext({ messages: [], content: 'x'.repeat(32769) })).toThrow('HOSTING_CHAT_CONTEXT_LIMIT')
+        expect(() => assertHostedChatContext({ messages: [], content: 'x'.repeat(32769) })).not.toThrow()
     })
-    it('funds the full approved input window for the bounded 1 MiB envelope, including output and attachments', () => {
+    it('funds the full approved 1M-token input window for the larger bounded envelope, including output and attachments', () => {
         const request = HostedAiRequest.parse({ callKey: 'copilot:0', payer: { type: 'managed' }, model: 'sydekyks', max_tokens: 4096, messages: Array.from({ length: HOSTED_AI_MAX_MESSAGES }, () => ({ role: 'user', content: 'x' })), tools: Array.from({ length: 128 }, (_, index) => ({ type: 'function', function: { name: `gadget_${index}`, parameters: { type: 'object', $comment: '' } } })) })
         if (!request.tools) throw new Error('Expected tools')
         request.tools[0].function.parameters.$comment = 'x'.repeat(HOSTED_AI_REQUEST_MAX_BYTES - Buffer.byteLength(JSON.stringify(request)))
@@ -123,5 +123,22 @@ describe('coherent hosted chat continuation envelope', () => {
         request.tools[0].function.parameters.$comment += 'x'
         expect(() => hostedAiInputBound(request)).toThrow('HOSTING_AI_REQUEST_LIMIT')
         expect(() => HostedAiRequest.parse({ ...request, messages: [...request.messages, { role: 'user', content: 'one too many' }] })).toThrow()
+    })
+    it('preserves multi-megabyte history and individual Gmail results while reserving the same full model window', () => {
+        const result = JSON.stringify({ messages: [{ body: 'Synthetic email body. '.repeat(150000) }] })
+        const messages: HostedAiInput['messages'] = [{ role: 'user', content: 'Read the latest three emails.' }, { role: 'assistant', content: null, tool_calls: [{ id: 'mail', type: 'function', function: { name: 'gmail_search', arguments: '{}' } }] }, { role: 'tool', tool_call_id: 'mail', content: result }]
+        const saved = JSON.stringify(messages)
+        expect(Buffer.byteLength(result)).toBeGreaterThan(1024 * 1024)
+        expect(HOSTED_AI_CONTEXT_TOKENS).toBe(1_048_576)
+        expect(() => assertHostedChatContext({ messages, content: 'Continue', configuration: { instructions: 'Keep every original message and mapping.', tools: [] } })).not.toThrow()
+        const request = HostedAiRequest.parse({ callKey: 'copilot:large', payer: { type: 'managed' }, model: 'sydekyks', max_tokens: 4096, messages })
+        expect(hostedAiInputBound(request) + request.max_tokens).toBe(1_048_576)
+        expect(request.messages).toEqual(messages)
+        expect(JSON.stringify(messages)).toBe(saved)
+        expect(HOSTED_CHAT_HISTORY_MAX_BYTES).toBe(8 * 1024 * 1024)
+        expect(HOSTED_AI_REQUEST_MAX_BYTES).toBe(16 * 1024 * 1024)
+    })
+    it('includes Agent configuration in the same large pre-admission boundary', () => {
+        expect(() => assertHostedChatContext({ messages: [], content: 'Continue', configuration: { instructions: 'x'.repeat(HOSTED_CHAT_HISTORY_MAX_BYTES) } })).toThrow('HOSTING_CHAT_CONTEXT_LIMIT')
     })
 })

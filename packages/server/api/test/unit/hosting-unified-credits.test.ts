@@ -7,25 +7,24 @@ import fastify from 'fastify'
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
 import { DataSource } from 'typeorm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createHostedAgentModel } from '../../../worker/src/lib/execute/jobs/ee/agent/hosted-agent-model'
 import { executeAgentRunJob } from '../../../worker/src/lib/execute/jobs/ee/agent/execute-agent-run'
+import { createHostedAgentModel } from '../../../worker/src/lib/execute/jobs/ee/agent/hosted-agent-model'
 import * as agentTurnRuntime from '../../../worker/src/lib/execute/jobs/ee/agent/run-agent-turn'
 import type { JobContext } from '../../../worker/src/lib/execute/types'
-import { entitiesMustBeOwnedByCurrentProject } from '../../src/app/authentication/authorization'
-import * as databaseRuntime from '../../src/app/database/database-connection'
-import { hostingAiController } from '../../src/app/hosting/hosting-ai-controller'
-import { hostingServices } from '../../src/app/hosting/hosting-services'
 import { AIProviderEntity } from '../../src/app/ai/ai-provider-entity'
+import { entitiesMustBeOwnedByCurrentProject } from '../../src/app/authentication/authorization'
 import { UserIdentityEntity } from '../../src/app/authentication/user-identity/user-identity-entity'
+import * as databaseRuntime from '../../src/app/database/database-connection'
 import { SydekyksUnifiedCredits1903000000000 } from '../../src/app/database/migration/postgres/1903000000000-SydekyksUnifiedCredits'
 import { SydekyksCreditRateV21905000000000 } from '../../src/app/database/migration/postgres/1905000000000-SydekyksCreditRateV2'
 import { SydekyksCreditRateV31913000000000 } from '../../src/app/database/migration/postgres/1913000000000-SydekyksCreditRateV3'
 import { SydekyksInclusiveCredits1914000000000 } from '../../src/app/database/migration/postgres/1914000000000-SydekyksInclusiveCredits'
 import { FlagEntity } from '../../src/app/flags/flag.entity'
 import { encryptUtils } from '../../src/app/helper/encryption'
+import { hostingAiController } from '../../src/app/hosting/hosting-ai-controller'
 import { createHostedAiGateway } from '../../src/app/hosting/hosting-ai-gateway'
-import { settledCompletionStream } from '../../src/app/hosting/hosting-ai-stream'
 import { HOSTED_AI_CONTEXT_TOKENS, HOSTED_AI_REQUEST_MAX_BYTES, hostedAiCost, hostedAiInputBound, HostedAiQuote } from '../../src/app/hosting/hosting-ai-policy'
+import { settledCompletionStream } from '../../src/app/hosting/hosting-ai-stream'
 import { HOSTED_MAX_ROOT_CREDITS, hostedAiCredits, hostedCreditLiability, hostedUsesCreditAccounting } from '../../src/app/hosting/hosting-credit-policy'
 import { HostingDispatchEntity } from '../../src/app/hosting/hosting-dispatch-entity'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrantEntity, HostingLedgerEntity, HostingReservationEntity } from '../../src/app/hosting/hosting-entities'
@@ -38,6 +37,7 @@ import { HostingModelCallEntity } from '../../src/app/hosting/hosting-model-call
 import { createHostedOnboarding } from '../../src/app/hosting/hosting-onboarding'
 import { createHostedPricing, hostedPricingView } from '../../src/app/hosting/hosting-pricing'
 import { PRICING_CALENDAR } from '../../src/app/hosting/hosting-pricing-source'
+import { hostingServices } from '../../src/app/hosting/hosting-services'
 import { HostingActor, hostingTransactions as tx } from '../../src/app/hosting/hosting-transactions'
 import { sydApprovalGate } from '../../src/app/syd/copilot/approval-gate'
 import { SydConversationEntity } from '../../src/app/syd/copilot/models/conversation.entity'
@@ -99,11 +99,11 @@ async function configureManaged() {
     const current = await tx.run({ dataSource: ds, fn: async manager => hostedPricingView(manager, await tx.now(manager)) })
     await pricing.approve({ actor, input: { expectedRevision: current.revision, observationId: current.observationId!, termsHash: current.termsHash!, requestKey: apId(), validUntil: PRICING_CALENDAR.until, calendarVersion: PRICING_CALENDAR.version } })
 }
-async function chatByok(payer: 'managed' | 'byok' = 'byok') {
+async function chatByok(payer: 'managed' | 'byok' = 'byok', userMessage = 'Synthetic BYOK chat') {
     const user = await ds.getRepository(UserEntity).findOneByOrFail({ identityId: actor.identityId, platformId: actor.platformId }), configId = apId(), runId = apId(), conversationId = apId()
     await ds.getRepository(AIProviderEntity).insert({ id: configId, platformId: actor.platformId, provider: 'deepseek', displayName: 'Synthetic chat BYOK', auth: await encryptUtils.encryptObject({ apiKey: 'synthetic-chat-byok-key-not-real' }), config: {}, status: 'active', enabledForChat: false, projectScope: 'all', projectIds: [], modelScope: 'all', modelIds: [], statusVersion: 0 })
     await ds.getRepository(SydConversationEntity).insert({ id: conversationId, platformId: actor.platformId, projectId, userId: user.id, source: AgentRunSource.CHAT, activeRunId: runId, status: AgentConversationStatus.IDLE })
-    const data: ExecuteAgentRunJobData = { schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, jobType: WorkerJobType.EXECUTE_AGENT_RUN, platformId: actor.platformId, projectId, conversationId, runId, userId: user.id, source: AgentRunSource.CHAT, userMessage: 'Synthetic BYOK chat', modelName: payer === 'byok' ? 'deepseek-flash' : 'sydekyks', provider: payer === 'byok' ? AIProviderName.DEEPSEEK : AIProviderName.ACTIVEPIECES, ...(payer === 'byok' ? { providerConfigId: configId } : {}) }
+    const data: ExecuteAgentRunJobData = { schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, jobType: WorkerJobType.EXECUTE_AGENT_RUN, platformId: actor.platformId, projectId, conversationId, runId, userId: user.id, source: AgentRunSource.CHAT, userMessage, modelName: payer === 'byok' ? 'deepseek-flash' : 'sydekyks', provider: payer === 'byok' ? AIProviderName.DEEPSEEK : AIProviderName.ACTIVEPIECES, ...(payer === 'byok' ? { providerConfigId: configId } : {}) }
     const delivery = { queueName: 'synthetic-chat-byok', jobId: runId, data, queueToken: 'synthetic-chat-worker-lock' }, execution = createHostedExecution({ dataSource: ds })
     const origin = { type: 'user' as const, userId: user.id, tokenVersion: actor.tokenVersion }
     await execution.prepare({ ...delivery, origin })
@@ -113,6 +113,18 @@ async function chatByok(payer: 'managed' | 'byok' = 'byok') {
 function completion(model: string, prompt = 4000, output = 1000) {
     return { status: 200, data: { id: 'private-upstream', model, created: Math.floor(Date.now() / 1000), object: 'chat.completion', choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'Synthetic response' } }], usage: { prompt_tokens: prompt, completion_tokens: output, total_tokens: prompt + output, prompt_cache_hit_tokens: 0, prompt_cache_miss_tokens: prompt } } }
 }
+
+describe('large hosted prompt durable admission', () => {
+    it('preserves a multi-megabyte prompt through prepare and funded admission', async () => {
+        const content = 'Synthetic user document. '.repeat(90000)
+        const value = await chatByok('byok', content)
+        const admissionId = await value.execution.admit(value.delivery)
+        const dispatch = await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ admissionId })
+        expect(dispatch.payload).toMatchObject({ userMessage: content })
+        expect((await balance()).consumed).toBe(1n)
+        expect((await balance()).reserved).toBe(0n)
+    })
+})
 
 describe('historical additive V1–V3 Credits accounting', () => {
     it.each([{ version: 'single-credits-500-microusd-v1', rate: 500n, amount: 10n, actual: 3n }, { version: 'single-credits-250-microusd-v2', rate: 250n, amount: 20n, actual: 5n }])('preserves $version uncertain holds through V3 and settles/replays at the stored rate once', async ({ version, rate, amount, actual }) => {
@@ -565,7 +577,9 @@ describe('full gateway Credit journey', () => {
             saveAgentMessages: async () => {
                 await ds.getRepository(SydConversationEntity).update({ id: value.conversationId, activeRunId: value.delivery.data.runId }, { status: AgentConversationStatus.IDLE })
             },
-            sendAgentEvent: async ({ event }: { event: AgentEvent }) => { events.push(event) },
+            sendAgentEvent: async ({ event }: { event: AgentEvent }) => {
+                events.push(event)
+            },
             executeAgentTool: async () => ({ result: false }), heartbeatAgentConversation: async () => {},
         } } as unknown as JobContext
         // Exercise the worker's actual hosted model, controller and ledger. The
@@ -669,7 +683,9 @@ describe('full gateway Credit journey', () => {
                 return new Response(response.body, { status: response.statusCode, statusText: response.statusMessage, headers: response.headers as HeadersInit })
             })
             const model = createHostedAgentModel({ ctx: { admissionId, engineToken: 'synthetic-engine-token', internalApiUrl: 'http://127.0.0.1:80/api/' } as JobContext, config: { protocol: 1, payer: { type: 'managed' }, model: 'sydekyks' } })
-            await streamText({ model, prompt: 'Continue', maxRetries: 0, onError: ({ error }) => { failure = error } }).consumeStream()
+            await streamText({ model, prompt: 'Continue', maxRetries: 0, onError: ({ error }) => {
+                failure = error
+            } }).consumeStream()
         }
         finally {
             vi.stubGlobal('fetch', originalFetch)
@@ -685,7 +701,9 @@ describe('full gateway Credit journey', () => {
             saveAgentMessages: async () => {
                 await ds.getRepository(SydConversationEntity).update({ id: value.conversationId, activeRunId: value.delivery.data.runId }, { status: AgentConversationStatus.ERROR })
             },
-            sendAgentEvent: async ({ event }: { event: AgentEvent }) => { events.push(event) },
+            sendAgentEvent: async ({ event }: { event: AgentEvent }) => {
+                events.push(event)
+            },
             executeAgentTool: async () => ({ result: false }), heartbeatAgentConversation: async () => {},
         } } as unknown as JobContext
         const result = await executeAgentRunJob.execute(ctx, value.delivery.data)

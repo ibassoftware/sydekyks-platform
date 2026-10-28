@@ -128,7 +128,7 @@ export function hostedChatErrorText(kind: HostedChatError['kind']) {
     case 'access':
       return 'Workspace access is paused or expired. Check billing or contact your workspace administrator.';
     case 'context':
-      return 'This conversation exceeds the current chat limits. Start a new chat with a shorter message. No Credits were charged for this send.';
+      return 'This request exceeds the supported model-context or transport size. Reduce the request before sending. No Credits were charged for this send.';
     case 'file':
       return 'An attachment was removed, expired or is unavailable. Start a new chat and upload the file again. No Credits were charged for this send.';
     case 'send':
@@ -164,7 +164,10 @@ export async function hostedChatRequest<T>(
       ? (error.response?.data as { code?: string })?.code
       : undefined;
     if (status === 410) throw new HostedChatError('file');
-    if (code === 'HOSTING_CHAT_CONTEXT_LIMIT')
+    if (
+      code === 'HOSTING_CHAT_CONTEXT_LIMIT' ||
+      (sending && status === 413 && code === 'FST_ERR_CTP_BODY_TOO_LARGE')
+    )
       throw new HostedChatError('context');
     if (
       status === 401 ||

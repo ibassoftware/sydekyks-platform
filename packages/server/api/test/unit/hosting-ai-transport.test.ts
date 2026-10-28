@@ -4,11 +4,11 @@ import fastify, { FastifyInstance } from 'fastify'
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createHostedAgentModel, hostedAgentRefusalOf } from '../../../worker/src/lib/execute/jobs/ee/agent/hosted-agent-model'
-import { entitiesMustBeOwnedByCurrentProject } from '../../src/app/authentication/authorization'
 import type { JobContext } from '../../../worker/src/lib/execute/types'
-import { HostingError } from '../../src/app/hosting/hosting-transactions'
+import { entitiesMustBeOwnedByCurrentProject } from '../../src/app/authentication/authorization'
 import { hostedAiRateLimit, hostingAiController } from '../../src/app/hosting/hosting-ai-controller'
 import { HOSTED_AI_CONTEXT_TOKENS, HOSTED_AI_REQUEST_MAX_BYTES, hostedAiInputBound, HostedAiRequest } from '../../src/app/hosting/hosting-ai-policy'
+import { HostingError } from '../../src/app/hosting/hosting-transactions'
 
 const { execute, stream, assertModel } = vi.hoisted(() => ({ execute: vi.fn(async (_input: unknown) => ({ accepted: true })), stream: vi.fn(), assertModel: vi.fn(async () => undefined) }))
 vi.mock('../../src/app/hosting/hosting-copilot', () => ({ assertHostedCopilotModel: assertModel }))
@@ -40,6 +40,15 @@ afterAll(async () => {
 })
 
 describe('real hosted AI HTTP parser, serializer and rate admission', () => {
+    it('accepts a large Gmail tool result and a multi-megabyte continuation through the real parser', async () => {
+        const result = 'Synthetic mail content. '.repeat(100000)
+        const payload = { ...input, messages: [...input.messages, { role: 'assistant', content: null, tool_calls: [{ id: 'gmail', type: 'function', function: { name: 'gmail_search', arguments: '{}' } }] }, { role: 'tool', tool_call_id: 'gmail', content: result }] }
+        const parsed = HostedAiRequest.parse(payload)
+        expect(hostedAiInputBound(parsed) + parsed.max_tokens).toBe(1_048_576)
+        const response = await app.inject({ method: 'POST', url: path, headers: headers(), payload: JSON.stringify(payload) })
+        expect(response.statusCode).toBe(200)
+        expect(execute.mock.lastCall?.[0].request.messages.at(-1).content).toBe(result)
+    })
     it('accepts full tool schemas and continuation history beyond the old 64 KiB envelope', async () => {
         const tools = Array.from({ length: 36 }, (_, index) => ({ type: 'function', function: { name: `catalogue_${index}`, description: 'Catalogue Gadget input.', parameters: { type: 'object', properties: { value: { type: 'string', description: 'x'.repeat(1800) } }, required: ['value'], additionalProperties: false } } }))
         const payload = { ...input, tools, messages: [...input.messages, { role: 'assistant', content: 'x'.repeat(20000) }, { role: 'user', content: 'Keep those fields and continue.' }] }
@@ -70,7 +79,9 @@ describe('real hosted AI HTTP parser, serializer and rate admission', () => {
             const model = createHostedAgentModel({ ctx: { admissionId: 'synthetic-admission', engineToken: 'synthetic-engine-token', internalApiUrl } as JobContext, config: { protocol: 1, payer: { type: 'managed' }, model: 'sydekyks' } })
             let failure: unknown
             if (streaming) {
-                const result = streamText({ model, prompt: 'Continue', maxRetries: 0, onError: ({ error }) => { failure = error } })
+                const result = streamText({ model, prompt: 'Continue', maxRetries: 0, onError: ({ error }) => {
+                    failure = error
+                } })
                 await result.consumeStream()
             }
             else failure = await generateText({ model, prompt: 'Continue', maxRetries: 0 }).then(() => null, error => error)

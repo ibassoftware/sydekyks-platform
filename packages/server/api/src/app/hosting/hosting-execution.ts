@@ -17,7 +17,7 @@ import { UserEntity } from '../user/user-entity'
 import { WaitpointEntity } from '../waitpoints/waitpoint-entity'
 import { WaitpointStatus } from '../waitpoints/waitpoint-types'
 import { hostedAiCredential } from './hosting-ai-credentials'
-import { HOSTED_DEEPSEEK_MODEL } from './hosting-ai-policy'
+import { HOSTED_AI_REQUEST_MAX_BYTES, HOSTED_DEEPSEEK_MODEL } from './hosting-ai-policy'
 import { HostingDispatch, HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingReservationEntity } from './hosting-entities'
 import { currentHostedActionPayer, currentHostedFlowPayer, hostedFlowPayer } from './hosting-flow-payer'
@@ -206,7 +206,7 @@ export function createHostedExecution({ dataSource }: { dataSource: DataSource }
             const root = previous ? await rootOf({ manager, dispatch: previous }) : null
             if (root) await assertBound({ manager, root })
             const normalized = JobData.parse(JSON.parse(JSON.stringify(data)))
-            assertPayload(normalized)
+            assertPayload(normalized, normalized.jobType === WorkerJobType.EXECUTE_AGENT_RUN)
             if (!Number.isSafeInteger(delay) || delay < 0 || delay > 86_400_000) hostingFail('HOSTING_INVALID_DELAY')
             await manager.getRepository(HostingDispatchEntity).save({ id, platformId, projectId, identityId: actor.identityId, tokenVersion: actor.tokenVersion ?? null, originType: actor.tokenVersion === undefined ? 'scheduled' : 'user', queueKey, payloadHash: hashData(normalized), rootKey, state: 'prepared', flowRunId, generation, rootDispatchId: root?.id ?? null, parentDispatchId: previous?.id ?? null, callbackWaitpointId: previous?.callbackWaitpointId ?? null, queueName, jobId, payload: normalized, availableAt: new Date((await tx.now(manager)).getTime() + delay) })
             return normalized
@@ -751,8 +751,8 @@ function canonical(value: unknown): string {
 function hashData(data: unknown): string {
     return digest(canonical(JSON.parse(JSON.stringify(data))))
 }
-function assertPayload(value: unknown): void {
-    if (Buffer.byteLength(JSON.stringify(value)) > MAX_PAYLOAD_BYTES) hostingFail('HOSTING_PAYLOAD_LIMIT')
+function assertPayload(value: unknown, agentJob = false): void {
+    if (Buffer.byteLength(JSON.stringify(value)) > (agentJob ? HOSTED_AI_REQUEST_MAX_BYTES : MAX_PAYLOAD_BYTES)) hostingFail('HOSTING_PAYLOAD_LIMIT')
 }
 type Delivery = { queueName: string, jobId: string, data: JobData }
 type Completion = { queueName: string, jobId: string, queueToken: string, connectionId: string, admissionId: string, status: EngineResponseStatus }

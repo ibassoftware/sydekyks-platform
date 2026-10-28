@@ -22,7 +22,7 @@ export function hostedAgentFailureMessage(message: string): string {
     if (/HOSTING_AI_OUTCOME_UNCERTAIN/.test(message)) return 'The provider response could not be verified. Credits may remain held while this is reviewed. Contact your workspace administrator before retrying.'
     if (/HOSTING_(ENTITLEMENT|GRANT|ACCESS|PROJECT_ACCESS)|HOSTING_AI_SEGMENT_DENIED/.test(message)) return 'This run no longer has access to the workspace or its credits. Refresh your session and check your available credits.'
     if (/Payload Too Large|HOSTING_AI_(REQUEST|STREAM)_LIMIT/.test(message)) return 'This conversation exceeds the current chat limits. Start a new chat with a shorter message.'
-    return 'This reply could not be completed. Check your available credits and selected billing option before sending again.'
+    return 'This reply stopped because of a service or provider error. Earlier usage may still be charged. Contact your workspace administrator before retrying.'
 }
 
 // Only the authenticated internal gateway can turn a managed-provider failure

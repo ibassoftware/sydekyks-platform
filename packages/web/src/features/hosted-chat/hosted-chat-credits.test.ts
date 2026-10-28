@@ -29,6 +29,32 @@ beforeEach(() => {
 });
 
 describe('single Credits refusal messages', () => {
+  it.each([
+    { status: 403, data: { code: 'HOSTING_CHAT_CONTEXT_LIMIT' } },
+    { status: 413, data: { code: 'FST_ERR_CTP_BODY_TOO_LARGE' } },
+  ])(
+    'identifies a known pre-run context refusal instead of an unknown send outcome',
+    async (response) => {
+      mocks.request.mockRejectedValue({ response });
+      await expect(
+        hostedChatRequest(scope, '/v1/example', { method: 'POST' }, true),
+      ).rejects.toMatchObject({
+        kind: 'context',
+        message: expect.stringContaining(
+          'No Credits were charged for this send',
+        ),
+      });
+    },
+  );
+  it('keeps a transport failure uncertain rather than claiming the request was free', async () => {
+    mocks.request.mockRejectedValue(new Error('Network connection lost'));
+    await expect(
+      hostedChatRequest(scope, '/v1/example', { method: 'POST' }, true),
+    ).rejects.toMatchObject({
+      kind: 'send',
+      message: expect.stringContaining('could not be confirmed'),
+    });
+  });
   it('identifies a definitively unsent expired attachment and gives a recovery action', async () => {
     mocks.request.mockRejectedValue({ response: { status: 410, data: {} } });
     await expect(

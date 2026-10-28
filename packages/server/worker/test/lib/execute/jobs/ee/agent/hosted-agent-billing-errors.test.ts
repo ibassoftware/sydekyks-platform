@@ -3,6 +3,12 @@ import { describe, expect, it } from 'vitest'
 import { hostedAgentFailureMessage, hostedAgentRefusalOf } from '../../../../../../src/lib/execute/jobs/ee/agent/hosted-agent-model'
 
 describe('hosted agent billing safeguards', () => {
+    it('does not describe an unclassified service error as a customer Credit shortage', () => {
+        const message = hostedAgentFailureMessage('Unclassified service failure')
+        expect(message).toContain('service or provider error')
+        expect(message).not.toContain('Check your available credits')
+        expect(message).toContain('Earlier usage may still be charged')
+    })
     it.each([
         ['HOSTING_CREDITS_EXHAUSTED', 'Not enough Credits'],
         ['HOSTING_RUN_CREDIT_LIMIT', 'safety limit'],

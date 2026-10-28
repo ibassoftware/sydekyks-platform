@@ -105,7 +105,7 @@ async function start({ conversation, config, content, files, nativeFileIds: adde
         await assertCreditsAndAppSumoNotExceeded({ platformId, log })
     }
     const flowTools = await resolveFlowTools({ tools: jobConfig.tools, projectId, log })
-    if (hosted && Buffer.byteLength(JSON.stringify({ messages: conversation.messages, content, instructions: jobConfig.instructions, tools: jobConfig.tools, flowTools })) > 40 * 1024) throw new ActivepiecesError({ code: ErrorCode.VALIDATION, params: { message: 'This Agent configuration and conversation exceed the hosted context limit. Reduce its instructions or tools, or start a shorter conversation.' } })
+    if (hosted) assertHostedChatContext({ messages: conversation.messages, content, configuration: { instructions: jobConfig.instructions, tools: jobConfig.tools, flowTools } })
     const runId = hosted && flowStep && waitpointId ? createHash('sha256').update(`agent-step:${platformId}:${projectId}:${waitpointId}`).digest('hex').slice(0, 21) : apId()
     await transaction(async (manager) => {
         const scoped = { id: conversation.id, platformId, userId, projectId }
