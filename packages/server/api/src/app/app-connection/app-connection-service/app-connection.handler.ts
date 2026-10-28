@@ -18,6 +18,7 @@ import { projectService } from '../../project/project-service'
 import { userInteractionWatcher } from '../../workers/user-interaction-watcher'
 import { AppConnectionSchema } from '../app-connection.entity'
 import { appConnectionsRepo } from './app-connection-service'
+import { persistConnectionRefresh, readConnectionRefreshSnapshot } from './connection-refresh-snapshot'
 import { oauth2Handler } from './oauth2'
 import { oauth2Util } from './oauth2/oauth2-util'
 
@@ -184,11 +185,8 @@ export const appConnectionHandler = (log: FastifyBaseLogger) => ({
                 let appConnection: AppConnection | null = null
 
                 try {
-                    const encryptedAppConnection = await appConnectionsRepo().findOneBy({
-                        platformId,
-                        projectIds: ArrayContains([projectId]),
-                        externalId,
-                    })
+                    const snapshot = await readConnectionRefreshSnapshot(appConnectionsRepo(), { platformId, projectIds: ArrayContains([projectId]), externalId })
+                    const encryptedAppConnection = snapshot.connection
                     if (isNil(encryptedAppConnection)) {
                         return encryptedAppConnection
                     }
@@ -198,7 +196,7 @@ export const appConnectionHandler = (log: FastifyBaseLogger) => ({
                     }
                     const refreshedAppConnection = await this.refresh(appConnection, projectId, log, { parentAdmissionId })
         
-                    await persistRefreshedConnection(encryptedAppConnection, refreshedAppConnection, projectId)
+                    await persistConnectionRefresh(appConnectionsRepo(), snapshot, refreshedAppConnection, projectId)
                     return refreshedAppConnection
                 }
                 catch (e) {
@@ -231,11 +229,8 @@ export const appConnectionHandler = (log: FastifyBaseLogger) => ({
             key: `${platformId}_${externalId}`,
             timeoutInSeconds: 60,
             fn: async () => {
-                const encryptedAppConnection = await appConnectionsRepo().findOneBy({
-                    id,
-                    platformId,
-                    projectIds: ArrayContains([projectId]),
-                })
+                const snapshot = await readConnectionRefreshSnapshot(appConnectionsRepo(), { id, platformId, projectIds: ArrayContains([projectId]) })
+                const encryptedAppConnection = snapshot.connection
                 if (isNil(encryptedAppConnection)) {
                     return null
                 }
@@ -248,7 +243,7 @@ export const appConnectionHandler = (log: FastifyBaseLogger) => ({
                 try {
                     if (!skipRefresh && (forceRefresh || await this.needRefresh(appConnection, log))) {
                         appConnection = await this.refresh(appConnection, projectId, log, { hostedOrigin })
-                        await persistRefreshedConnection(encryptedAppConnection, appConnection, projectId)
+                        await persistConnectionRefresh(appConnectionsRepo(), snapshot, appConnection, projectId)
                     }
                 }
                 catch (e) {
@@ -495,18 +490,4 @@ type CountPublishedFlowsParams = {
     projectId: ProjectId
     externalId: string
     applyToPublishedVersions: boolean
-}
-
-async function persistRefreshedConnection(original: AppConnectionSchema, refreshed: AppConnection, projectId: string): Promise<void> {
-    const value = await encryptUtils.encryptObject(refreshed.value)
-    if (hostingConfiguration.getServiceMode() !== 'hosted') {
-        await appConnectionsRepo().update(refreshed.id, { status: AppConnectionStatus.ACTIVE, value })
-        return
-    }
-    // A refresh must not overwrite a credential replacement or restore a removed
-    // project grant while the external provider request was in flight.
-    const result = await appConnectionsRepo().createQueryBuilder().update().set({ status: AppConnectionStatus.ACTIVE, value })
-        .where({ id: original.id, platformId: original.platformId, updated: original.updated, projectIds: ArrayContains([projectId]) })
-        .andWhere('value = CAST(:originalValue AS jsonb)', { originalValue: JSON.stringify(original.value) }).returning(['id']).execute()
-    if (!Array.isArray(result.raw) || result.raw.length !== 1) hostingFail('HOSTING_CONNECTION_REVISION_MISMATCH')
 }

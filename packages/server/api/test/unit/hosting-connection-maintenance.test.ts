@@ -9,10 +9,12 @@ vi.mock('../../src/app/helper/encryption', async importOriginal => ({ ...await i
 vi.mock('../../src/app/pieces/metadata/piece-metadata-service', () => ({ getPiecePackageWithoutArchive: async (_log: unknown, platformId: string, piece: unknown) => ({ ...(piece as object), platformId, packageType: 'REGISTRY', pieceType: 'OFFICIAL' }) }))
 vi.mock('../../src/app/workers/user-interaction-watcher', () => ({ userInteractionWatcher: { submitAndWaitForResponse: submit } }))
 import { appConnectionHandler } from '../../src/app/app-connection/app-connection-service/app-connection.handler'
-const builder = { update: () => builder, set: () => builder, where: (...args: unknown[]) => {
-    where(...args); return builder 
+const builder = { addSelect: () => builder, getRawAndEntities: async () => {
+    const connection = await find(); return { entities: connection ? [connection] : [], raw: connection ? [{ refreshUpdatedAt: connection.updated }] : [] }
+}, update: () => builder, set: () => builder, where: (...args: unknown[]) => {
+    where(...args); return builder
 }, andWhere: (...args: unknown[]) => {
-    andWhere(...args); return builder 
+    andWhere(...args); return builder
 }, returning: () => builder, execute }
 const log = fastify().log
 function row() {
@@ -28,7 +30,7 @@ describe('hosted connection refresh return and revision boundaries', () => {
     it.each(['rotation', 'unshare'])('rejects an in-flight %s without overwriting or returning old credentials', async () => {
         let release!: (value: unknown) => void
         submit.mockImplementationOnce(() => new Promise(resolve => {
-            release = resolve 
+            release = resolve
         }))
         execute.mockResolvedValueOnce({ raw: [] })
         const original = row(); find.mockResolvedValue(original)
@@ -36,7 +38,8 @@ describe('hosted connection refresh return and revision boundaries', () => {
         await vi.waitFor(() => expect(submit).toHaveBeenCalledOnce())
         release({ status: EngineResponseStatus.OK, response: { skipped: false, access_token: 'synthetic-refreshed', expires_in: 3600 } })
         await expect(result).rejects.toThrow('HOSTING_CONNECTION_REVISION_MISMATCH')
-        expect(where).toHaveBeenCalledWith(expect.objectContaining({ id: 'connection', platformId: 'platform', updated: original.updated, projectIds: expect.anything() }))
+        expect(where).toHaveBeenCalledWith(expect.objectContaining({ id: 'connection', platformId: 'platform', projectIds: expect.anything() }))
+        expect(andWhere).toHaveBeenCalledWith('updated = CAST(:originalUpdatedAt AS timestamptz)', { originalUpdatedAt: original.updated })
         expect(andWhere).toHaveBeenCalledWith('value = CAST(:originalValue AS jsonb)', { originalValue: JSON.stringify(original.value) })
         expect(update).not.toHaveBeenCalled()
     })
