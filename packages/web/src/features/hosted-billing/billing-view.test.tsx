@@ -30,7 +30,7 @@ vi.mock('./partner-purchase-section', () => ({
 vi.mock('i18next', () => ({
   t: (text: string, values?: Record<string, unknown>) =>
     text.replace(/\{(\w+)\}/g, (_, key: string) =>
-      String(values?.[key] ?? key)
+      String(values?.[key] ?? key),
     ),
 }));
 vi.mock('@/components/custom/centered-page', () => ({
@@ -139,8 +139,8 @@ async function render(info = overview(), stale = false) {
         onRefresh={refresh}
         onPortal={portal}
         onPlanChange={changePlan}
-      />
-    )
+      />,
+    ),
   );
 }
 describe('role-appropriate hosted billing', () => {
@@ -172,7 +172,7 @@ describe('role-appropriate hosted billing', () => {
     ])
       expect(text).not.toContain(value);
     expect(text).toContain(
-      'Contact Sydekyks for payment instructions, invoices'
+      'Contact Sydekyks for payment instructions, invoices',
     );
     expect(text).toContain('No funded allowance scheduled');
     expect(element.querySelectorAll('button')).toHaveLength(0);
@@ -227,18 +227,18 @@ describe('role-appropriate hosted billing', () => {
     expect(checkout).not.toHaveBeenCalled();
     const buttons = Array.from(element.querySelectorAll('button'));
     const growth = buttons.find((button) =>
-      button.textContent?.includes('Choose Growth')
+      button.textContent?.includes('Choose Growth'),
     )!;
     expect(growth).toBeDefined();
     expect(
-      buttons.some((button) => button.textContent?.includes('Choose Starter'))
+      buttons.some((button) => button.textContent?.includes('Choose Starter')),
     ).toBe(false);
     const purchasable = element.querySelector(
-      '[aria-labelledby="hosted-plans"]'
+      '[aria-labelledby="hosted-plans"]',
     );
     expect(purchasable?.textContent ?? '').not.toContain('$1,299.00');
     expect(
-      buttons.some((button) => button.textContent?.includes('Review Scale'))
+      buttons.some((button) => button.textContent?.includes('Review Scale')),
     ).toBe(false);
     await act(async () => growth.click());
     expect(checkout).toHaveBeenCalledWith('team');
@@ -251,7 +251,7 @@ describe('role-appropriate hosted billing', () => {
     info.planChangesEnabled = true;
     await render(info);
     const review = Array.from(element.querySelectorAll('button')).find(
-      (button) => button.textContent === 'Review Growth'
+      (button) => button.textContent === 'Review Growth',
     )!;
     expect(changePlan).not.toHaveBeenCalled();
     await act(async () => review.click());
@@ -261,12 +261,12 @@ describe('role-appropriate hosted billing', () => {
     expect(reviewText()).toContain('30 users');
     expect(reviewText()).toContain('1,200 monthly Credits');
     expect(reviewText()).toContain(
-      new Date(info.hostingEndsAt!).toLocaleDateString()
+      new Date(info.hostingEndsAt!).toLocaleDateString(),
     );
     expect(reviewText()).toContain('No charge today');
     expect(changePlan).not.toHaveBeenCalled();
     const confirm = Array.from(region.querySelectorAll('button')).find(
-      (button) => button.textContent === 'Confirm plan for renewal'
+      (button) => button.textContent === 'Confirm plan for renewal',
     )!;
     await act(async () => confirm.click());
     expect(changePlan).toHaveBeenCalledExactlyOnceWith('team');
@@ -280,12 +280,12 @@ describe('role-appropriate hosted billing', () => {
     await render(info);
     expect(pageText()).toContain('has no Stripe subscription');
     expect(pageText()).not.toContain(
-      'Choose a plan at any time for your next renewal'
+      'Choose a plan at any time for your next renewal',
     );
     expect(
       Array.from(element.querySelectorAll('button')).some((button) =>
-        button.textContent?.includes('Manage payments or cancel in Stripe')
-      )
+        button.textContent?.includes('Manage payments or cancel in Stripe'),
+      ),
     ).toBe(false);
     expect(changePlan).not.toHaveBeenCalled();
   });
@@ -315,10 +315,10 @@ describe('role-appropriate hosted billing', () => {
     expect(pageText()).toContain('99.82');
     const buttons = Array.from(element.querySelectorAll('button'));
     const growth = buttons.find((button) =>
-      button.textContent?.includes('Choose Growth')
+      button.textContent?.includes('Choose Growth'),
     )!;
     const partner = buttons.find((button) =>
-      button.textContent?.includes('Review Partner')
+      button.textContent?.includes('Review Partner'),
     )!;
     expect(growth.disabled).toBe(true);
     expect(partner.disabled).toBe(true);

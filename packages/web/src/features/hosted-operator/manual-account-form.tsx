@@ -1,4 +1,3 @@
-import { formatCreditUnits, parseCreditInput } from '@/lib/hosted-credit-units';
 import { MAX_FULL_NAME_LENGTH } from '@activepieces/shared';
 import { useQuery } from '@tanstack/react-query';
 import { t } from 'i18next';
@@ -8,6 +7,7 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useHostedAuthSession } from '@/features/hosted-onboarding/auth-session';
+import { formatCreditUnits, parseCreditInput } from '@/lib/hosted-credit-units';
 
 import {
   createManualAccount,
@@ -35,21 +35,21 @@ function message(error: unknown) {
   if (error instanceof ManualAccountError) {
     if (/EMAIL|IDENTITY|EXISTS|ACCOUNT_UNAVAILABLE/.test(error.code))
       return t(
-        'This email already belongs to an account. Use account lookup to manage it; this form does not replace an existing password or membership.'
+        'This email already belongs to an account. Use account lookup to manage it; this form does not replace an existing password or membership.',
       );
     if (/EXPIR|DATE/.test(error.code))
       return t('Choose a future expiration date within the next 36 months.');
     if (/COURSE/.test(error.code))
       return t(
-        'The selected course is unavailable. Refresh the course list or create the account without a course and enroll it later.'
+        'The selected course is unavailable. Refresh the course list or create the account without a course and enroll it later.',
       );
     if (/SESSION|ACCESS|OPERATOR/.test(error.code))
       return t(
-        'Your operator session could not be confirmed. Sign in again before continuing.'
+        'Your operator session could not be confirmed. Sign in again before continuing.',
       );
   }
   return t(
-    'Creation was not confirmed. Keep the same details and retry to check the saved result before creating another account.'
+    'Creation was not confirmed. Keep the same details and retry to check the saved result before creating another account.',
   );
 }
 export function ManualAccountForm({
@@ -62,7 +62,7 @@ export function ManualAccountForm({
   onCreated?: (account: ManualAccount) => void;
 }) {
   const [plan, setPlan] = useState<'training' | 'starter' | 'team' | 'scale'>(
-    kind === 'partner' ? 'training' : 'starter'
+    kind === 'partner' ? 'training' : 'starter',
   );
   const [monthly, setMonthly] = useState(300),
     [expiry, setExpiry] = useState(''),
@@ -174,7 +174,7 @@ export function ManualAccountForm({
       </h2>
       <p className="mt-2 text-sm leading-6 text-gray-11">
         {t(
-          'Create a new account with an initial password and a manually funded hosting term. Verify payment or your authorization before granting access. No email or Stripe charge is sent.'
+          'Create a new account with an initial password and a manually funded hosting term. Verify payment or your authorization before granting access. No email or Stripe charge is sent.',
         )}
       </p>
       <form onSubmit={(event) => void submit(event)} className="mt-5">
@@ -242,7 +242,7 @@ export function ManualAccountForm({
           </div>
           <p className="text-sm text-gray-11">
             {t(
-              'Share the initial password privately. Existing accounts and passwords are never overwritten by this form.'
+              'Share the initial password privately. Existing accounts and passwords are never overwritten by this form.',
             )}
           </p>
           {kind === 'client' ? (
@@ -302,7 +302,7 @@ export function ManualAccountForm({
               {courses.isError && (
                 <p role="alert" className="text-sm">
                   {t(
-                    'Courses could not load. You can create the account without a course and enroll it later.'
+                    'Courses could not load. You can create the account without a course and enroll it later.',
                   )}{' '}
                   <Button
                     type="button"
@@ -354,7 +354,7 @@ export function ManualAccountForm({
           </div>
           <p className="text-sm leading-6 text-gray-11">
             {t(
-              'Monthly allowances stop at the expiration date. Remaining Credits can be used during the 15-day grace period; runtime is then suspended. New allowances do not accumulate for missed months.'
+              'Monthly allowances stop at the expiration date. Remaining Credits can be used during the 15-day grace period; runtime is then suspended. New allowances do not accumulate for missed months.',
             )}
             {grace && (
               <>
@@ -373,7 +373,7 @@ export function ManualAccountForm({
               minLength={3}
               maxLength={500}
               placeholder={t(
-                'Receipt reference or reason this term is authorized'
+                'Receipt reference or reason this term is authorized',
               )}
             />
           </label>
@@ -387,7 +387,7 @@ export function ManualAccountForm({
               />
               <span>
                 {t(
-                  'Approve operational Partner access now. Course completion, certification and client assignments remain separate decisions.'
+                  'Approve operational Partner access now. Course completion, certification and client assignments remain separate decisions.',
                 )}
               </span>
             </label>
@@ -402,7 +402,7 @@ export function ManualAccountForm({
             />
             <span>
               {t(
-                'I verified the manual payment or authorization for this account and the hosting term above.'
+                'I verified the manual payment or authorization for this account and the hosting term above.',
               )}
             </span>
           </label>
@@ -440,7 +440,7 @@ export function ManualAccountForm({
           </p>
           <p>
             {t(
-              'The person can now sign in with the email and initial password you entered. Sign out of your admin account before testing their login.'
+              'The person can now sign in with the email and initial password you entered. Sign out of your admin account before testing their login.',
             )}
           </p>
           <p>

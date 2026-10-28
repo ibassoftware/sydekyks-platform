@@ -1,4 +1,3 @@
-import { formatCreditUnits } from '@/lib/hosted-credit-units';
 import {
   HostedOnboardingOffer,
   HostedOnboardingStatus,
@@ -12,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formatCreditUnits } from '@/lib/hosted-credit-units';
 
 export type AuthStage =
   | 'email'
@@ -83,7 +83,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
   const password = stage === 'password';
   function resend() {
     const field = formRef.current?.querySelector<HTMLInputElement>(
-      'input[name="email"]'
+      'input[name="email"]',
     );
     if (field && !field.reportValidity()) return;
     onResend(verification ? field?.value : email);
@@ -131,31 +131,31 @@ export function HostedAuthView(props: HostedAuthViewProps) {
               <p className="mt-2 text-sm leading-relaxed text-gray-11">
                 {approvalPending
                   ? t(
-                      'Your account is ready. Ask the Sydekyks team to approve this account for pilot access, then sign in again. You do not need to create another account.'
+                      'Your account is ready. Ask the Sydekyks team to approve this account for pilot access, then sign in again. You do not need to create another account.',
                     )
                   : ready && status
                   ? t(
-                      'Your current access is verified by the server. Signing in never restarts a trial.'
+                      'Your current access is verified by the server. Signing in never restarts a trial.',
                     )
                   : ready
                   ? t(
-                      'Your workspace access is checked on the server. Signing in never restarts a trial.'
+                      'Your workspace access is checked on the server. Signing in never restarts a trial.',
                     )
                   : details
                   ? t(
-                      'Your account is ready. Add your name to continue. New pilot workspace access requires Sydekyks approval; existing memberships and trial eligibility are checked on the server.'
+                      'Your account is ready. Add your name to continue. New pilot workspace access requires Sydekyks approval; existing memberships and trial eligibility are checked on the server.',
                     )
                   : verification
                   ? t(
-                      'Enter the complete verification code from your email and choose a new password to secure your account.'
+                      'Enter the complete verification code from your email and choose a new password to secure your account.',
                     )
                   : code
                   ? t(
                       'If this address can sign in, a six-digit code was sent to {email}. Codes expire after 10 minutes.',
-                      { email }
+                      { email },
                     )
                   : t(
-                      'Use your email to create an account or return to an existing workspace. We’ll send a sign-in code.'
+                      'Use your email to create an account or return to an existing workspace. We’ll send a sign-in code.',
                     )}
               </p>
             )}
@@ -178,7 +178,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
               <Alert className="mt-5">
                 <AlertDescription>
                   {t(
-                    'Email codes are unavailable. Sign in with your chosen password, or open your private setup link to finish creating your account.'
+                    'Email codes are unavailable. Sign in with your chosen password, or open your private setup link to finish creating your account.',
                   )}
                 </AlertDescription>
               </Alert>
@@ -219,7 +219,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                     disabled={pending}
                     required
                     description={t(
-                      'Enter all six digits, including any leading zero.'
+                      'Enter all six digits, including any leading zero.',
                     )}
                   />
                 )}
@@ -245,7 +245,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                       disabled={pending}
                       required
                       description={t(
-                        'Paste the entire code, including hyphens. This is different from a six-digit sign-in code.'
+                        'Paste the entire code, including hyphens. This is different from a six-digit sign-in code.',
                       )}
                     />
                     <Field
@@ -258,7 +258,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                       disabled={pending}
                       required
                       description={t(
-                        'Use 8–64 characters. This replaces any password chosen before email verification.'
+                        'Use 8–64 characters. This replaces any password chosen before email verification.',
                       )}
                     />
                     <Field
@@ -292,9 +292,9 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                             {
                               days: offer.trialDays,
                               credits: formatCreditUnits(
-                                offer.trial.executions
+                                offer.trial.executions,
                               ),
-                            }
+                            },
                           )
                         : t('Review the trial details before continuing.')}{' '}
                       {t('No payment is collected during this setup.')}
@@ -346,7 +346,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                       })
                     : status.entitlementState === 'assessment'
                     ? t(
-                        'Assessment access is active. Its one-time allowance ends on the stated date.'
+                        'Assessment access is active. Its one-time allowance ends on the stated date.',
                       )
                     : status.entitlementState === 'paid'
                     ? t('Paid access through {date}.', {
@@ -354,10 +354,10 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                       })
                     : status.entitlementState === 'expired'
                     ? t(
-                        'Your access period has ended. Contact Sydekyks to arrange continued access; a workspace admin can review the recorded allowances in Billing.'
+                        'Your access period has ended. Contact Sydekyks to arrange continued access; a workspace admin can review the recorded allowances in Billing.',
                       )
                     : t(
-                        'This workspace is paused. Contact support or your platform administrator.'
+                        'This workspace is paused. Contact support or your platform administrator.',
                       )}
                 </p>
                 <Button className="w-full" onClick={onContinue}>
@@ -397,7 +397,7 @@ export function HostedAuthView(props: HostedAuthViewProps) {
                 {verification && (
                   <p className="text-xs text-gray-11">
                     {t(
-                      'If verification succeeded but setup was interrupted, sign in with the new password you just set to resume.'
+                      'If verification succeeded but setup was interrupted, sign in with the new password you just set to resume.',
                     )}
                   </p>
                 )}

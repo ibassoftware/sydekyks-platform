@@ -89,27 +89,27 @@ async function mountAllowance() {
         access={access}
         platformId={target}
         clientName="Client example"
-      />
-    )
+      />,
+    ),
   );
 }
 async function input(
   node: HTMLInputElement | HTMLTextAreaElement,
-  text: string
+  text: string,
 ) {
   await act(async () => {
     Object.getOwnPropertyDescriptor(
       node instanceof HTMLTextAreaElement
         ? HTMLTextAreaElement.prototype
         : HTMLInputElement.prototype,
-      'value'
+      'value',
     )!.set!.call(node, text);
     node.dispatchEvent(new Event('input', { bubbles: true }));
   });
 }
 const button = (label: string) =>
   Array.from(container.querySelectorAll('button')).find(
-    (node) => node.textContent === label
+    (node) => node.textContent === label,
   )!;
 describe('operator shared Credits editor', () => {
   it('shows one allowance with an operator cost estimate and requires a reason', async () => {
@@ -122,7 +122,7 @@ describe('operator shared Credits editor', () => {
     });
     expect(container).toMatchObject({
       textContent: expect.stringContaining(
-        'does not increase the subscription price'
+        'does not increase the subscription price',
       ),
     });
     expect(container.querySelectorAll('input[type=number]')).toHaveLength(1);
@@ -132,7 +132,7 @@ describe('operator shared Credits editor', () => {
     expect(button('Save client allowance').disabled).toBe(true);
     await input(
       container.querySelector('textarea')!,
-      'Agreed client allowance'
+      'Agreed client allowance',
     );
     expect(button('Save client allowance').disabled).toBe(false);
   });
@@ -140,10 +140,10 @@ describe('operator shared Credits editor', () => {
     await mountAllowance();
     await input(
       container.querySelector('textarea')!,
-      'Agreed client allowance'
+      'Agreed client allowance',
     );
     const amount = container.querySelector(
-      'input[type="number"]'
+      'input[type="number"]',
     )! as HTMLInputElement;
     await input(amount, '0.04');
     expect(container).toMatchObject({
@@ -171,7 +171,7 @@ describe('operator shared Credits editor', () => {
     await mountAllowance();
     expect(container).toMatchObject({
       textContent: expect.stringContaining(
-        'Trial and assessment allowances are fixed'
+        'Trial and assessment allowances are fixed',
       ),
     });
     expect(container.querySelector('form')).toBeNull();

@@ -1,4 +1,3 @@
-import { formatCreditUnits } from '@/lib/hosted-credit-units';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
@@ -6,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { assertAuthSession } from '@/features/hosted-onboarding/auth-session';
+import { formatCreditUnits } from '@/lib/hosted-credit-units';
 
 import {
   ChargeDraft,
@@ -197,7 +197,7 @@ function ChargeDetail({
     access.session,
     platformId,
     callId,
-    access.allowed
+    access.allowed,
   );
   return (
     <div className="mt-6 border-t border-gray-6 pt-6">
@@ -319,13 +319,13 @@ function ChargeEditor({
           draft(),
           preview.preview,
           requestKey.current,
-          attempt.signal
+          attempt.signal,
         );
         assertAuthSession(access.session);
         if (!mounted.current || attempt.signal.aborted) return;
         cache.setQueryData(
           chargeKey(access.session, view.platformId, view.callId),
-          result.view
+          result.view,
         );
         await Promise.all(
           [
@@ -333,14 +333,14 @@ function ChargeEditor({
             'hosted-billing',
             'hosted-operator-clients',
             'hosted-chat-options',
-          ].map((key) => cache.invalidateQueries({ queryKey: [key] }))
+          ].map((key) => cache.invalidateQueries({ queryKey: [key] })),
         );
       } else {
         const result = await previewCharge(
           access.session,
           view.callId,
           draft(),
-          attempt.signal
+          attempt.signal,
         );
         assertAuthSession(access.session);
         if (!mounted.current || attempt.signal.aborted) return;
@@ -413,7 +413,7 @@ function ChargeEditor({
             view.payer === 'byok'
               ? 'No managed AI charge'
               : `1 Credit per ${usd(
-                  (BigInt(view.microUsdPerCredit) * 100n).toString()
+                  (BigInt(view.microUsdPerCredit) * 100n).toString(),
                 )}`
           }
         />
@@ -474,7 +474,7 @@ function ChargeEditor({
               disabled={busy}
               onChange={(event) =>
                 changed(() =>
-                  setOutcome(event.target.value as ChargeDraft['outcome'])
+                  setOutcome(event.target.value as ChargeDraft['outcome']),
                 )
               }
             >
@@ -677,13 +677,13 @@ function ChargeEditor({
                     <Fact
                       name="Resulting execution Credits used"
                       value={formatCreditUnits(
-                        preview.preview.rootConsumedCredits ?? '0'
+                        preview.preview.rootConsumedCredits ?? '0',
                       )}
                     />
                     <Fact
                       name="Resulting execution Credits held"
                       value={formatCreditUnits(
-                        preview.preview.rootReservedCredits ?? '0'
+                        preview.preview.rootReservedCredits ?? '0',
                       )}
                     />
                   </>

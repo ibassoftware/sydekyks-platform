@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import {
   creditUnitsInput,
   formatCreditUnits,
@@ -12,7 +13,7 @@ describe('hosted displayed Credits retain integer accounting', () => {
     expect(formatCreditUnits('99842')).toBe('998.42');
     expect(formatCreditUnits('91')).toBe('0.91');
     expect(formatCreditUnits('900719925474099301')).toBe(
-      '9,007,199,254,740,993.01'
+      '9,007,199,254,740,993.01',
     );
   });
   it('round trips saved limits exactly and rejects finer fractions/unsafe values', () => {

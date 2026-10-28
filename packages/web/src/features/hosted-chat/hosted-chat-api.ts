@@ -1,10 +1,9 @@
 import { z } from 'zod';
 
-import { formatCreditUnits } from '@/lib/hosted-credit-units';
-
 import { currentAuthSession } from '@/features/hosted-onboarding/auth-session';
 import { api } from '@/lib/api';
 import { authenticationSession } from '@/lib/authentication-session';
+import { formatCreditUnits } from '@/lib/hosted-credit-units';
 
 export type HostedChatPayer =
   | { type: 'managed' }
@@ -83,7 +82,7 @@ export const HostedChatOptions = z.object({
     })
     .optional(),
   keys: z.array(
-    z.object({ id: z.string().length(21), name: z.string().min(1).max(80) })
+    z.object({ id: z.string().length(21), name: z.string().min(1).max(80) }),
   ),
 });
 export type HostedChatOptions = z.infer<typeof HostedChatOptions>;
@@ -102,7 +101,7 @@ export class HostedChatError extends Error {
       | 'access'
       | 'context'
       | 'file'
-      | 'send'
+      | 'send',
   ) {
     super(hostedChatErrorText(kind));
     this.name = 'HostedChatError';
@@ -150,7 +149,7 @@ export async function hostedChatRequest<T>(
   scope: HostedChatScope,
   path: string,
   config: Parameters<typeof api.sessionScoped>[1],
-  sending = false
+  sending = false,
 ): Promise<T> {
   assertHostedChatScope(scope);
   try {
@@ -215,7 +214,7 @@ export const hostedChatApi = {
             : {}),
         },
         signal,
-      }
+      },
     );
     const result = HostedChatOptions.safeParse(raw);
     if (!result.success) throw new HostedChatError('unavailable');
@@ -232,13 +231,13 @@ export const hostedChatApi = {
 };
 export function assertHostedPayerAvailable(
   payer: HostedChatPayer | null,
-  options?: HostedChatOptions
+  options?: HostedChatOptions,
 ): asserts payer is HostedChatPayer {
   if (!payer)
     throw new HostedChatError(
       options && !options.managedAvailable && options.keys.length === 0
         ? 'unavailable'
-        : 'selection'
+        : 'selection',
     );
   if (!options) throw new HostedChatError('unavailable');
   if (

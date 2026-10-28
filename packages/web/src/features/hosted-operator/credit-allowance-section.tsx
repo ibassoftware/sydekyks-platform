@@ -1,8 +1,3 @@
-import {
-  creditUnitsInput,
-  formatCreditUnits,
-  parseCreditInput,
-} from '@/lib/hosted-credit-units';
 import { hostingCatalog } from '@activepieces/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
@@ -12,6 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { formatHostedCredits } from '@/features/hosted-chat/hosted-chat-api';
 import { assertAuthSession } from '@/features/hosted-onboarding/auth-session';
+import {
+  creditUnitsInput,
+  formatCreditUnits,
+  parseCreditInput,
+} from '@/lib/hosted-credit-units';
 
 import { AiSettingsError } from './ai-settings-api';
 import {
@@ -77,7 +77,7 @@ function ClientAllowance({
     setNotice(
       value.overrideMonthlyCredits === null
         ? 'Plan default restored. Usage, held costs and access dates are unchanged.'
-        : 'Client allowance saved. Usage, held costs and access dates are unchanged.'
+        : 'Client allowance saved. Usage, held costs and access dates are unchanged.',
     );
     await refreshReferences();
   }
@@ -89,7 +89,7 @@ function ClientAllowance({
         'hosted-operator-clients',
         'hosted-billing',
         'hosted-chat-options',
-      ].map((key) => cache.invalidateQueries({ queryKey: [key] }))
+      ].map((key) => cache.invalidateQueries({ queryKey: [key] })),
     );
   }
   return (
@@ -148,7 +148,7 @@ function ClientAllowance({
           onConflict={async () => {
             assertAuthSession(access.session);
             setNotice(
-              'The allowance changed while you were editing. Review the refreshed limit before saving again.'
+              'The allowance changed while you were editing. Review the refreshed limit before saving again.',
             );
             await refreshReferences();
           }}
@@ -169,12 +169,12 @@ function AllowanceEditor({
   onConflict: () => Promise<void>;
 }) {
   const [basis, setBasis] = useState<'plan' | 'override'>(
-    state.overrideMonthlyCredits === null ? 'plan' : 'override'
+    state.overrideMonthlyCredits === null ? 'plan' : 'override',
   );
   const [amount, setAmount] = useState(
     creditUnitsInput(
-      state.overrideMonthlyCredits ?? state.defaultMonthlyCredits
-    )
+      state.overrideMonthlyCredits ?? state.defaultMonthlyCredits,
+    ),
   );
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -222,7 +222,7 @@ function AllowanceEditor({
         state.revision,
         restore || basis === 'plan' ? null : selected,
         reason.trim(),
-        attempt.signal
+        attempt.signal,
       );
       assertAuthSession(access.session);
       if (!mounted.current || attempt.signal.aborted) return;
@@ -234,7 +234,7 @@ function AllowanceEditor({
           setError(
             cause instanceof AiSettingsError && cause.kind === 'conflict'
               ? 'This allowance changed while you were editing. Refresh, review the current limit and try again.'
-              : 'The allowance was not confirmed. Refresh to check access and the saved limit before retrying.'
+              : 'The allowance was not confirmed. Refresh to check access and the saved limit before retrying.',
           );
           if (cause instanceof AiSettingsError && cause.kind === 'conflict')
             await onConflict();
@@ -357,7 +357,7 @@ function AllowanceEditor({
           <p id="client-allowance-preview" className="mt-2 text-sm font-medium">
             {valid
               ? `${formatCreditUnits(
-                  selected
+                  selected,
                 )} Credits per funded monthly period.`
               : 'Enter 0 to 10,000 Credits, in steps of 0.01.'}
           </p>

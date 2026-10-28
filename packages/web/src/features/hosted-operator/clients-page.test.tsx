@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({ kinds: [] as string[], allowed: true }));
 vi.mock('i18next', () => ({
   t: (value: string, data?: Record<string, unknown>) =>
     value.replace(/\{(\w+)\}/g, (token, key) =>
-      data?.[key] === undefined ? token : String(data[key])
+      data?.[key] === undefined ? token : String(data[key]),
     ),
 }));
 vi.mock('./operator-api', () => ({
@@ -22,7 +22,7 @@ vi.mock('./operator-api', () => ({
     _session: unknown,
     _after: unknown,
     _allowed: boolean,
-    kind: string
+    kind: string,
   ) => {
     mocks.kinds.push(kind);
     return {};
@@ -91,8 +91,8 @@ describe('operator client list', () => {
           ]}
         >
           <HostedClientsPage />
-        </MemoryRouter>
-      )
+        </MemoryRouter>,
+      ),
     );
     expect(mocks.kinds.at(-1)).toBe('client');
     expect(pageText()).toContain('Growth');
@@ -103,11 +103,11 @@ describe('operator client list', () => {
     expect(pageText()).toContain('Persistent management for');
     expect(
       element.querySelector(
-        'button[aria-label="Manage client Moonlight Bakery"]'
-      )
+        'button[aria-label="Manage client Moonlight Bakery"]',
+      ),
     ).not.toBeNull();
     const partners = [...element.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Partner hosting'
+      (button) => button.textContent === 'Partner hosting',
     )!;
     await act(async () => partners.click());
     expect(mocks.kinds.at(-1)).toBe('partner');
@@ -121,14 +121,14 @@ describe('operator client list', () => {
       root.render(
         <MemoryRouter>
           <HostedClientsPage />
-        </MemoryRouter>
-      )
+        </MemoryRouter>,
+      ),
     );
     expect(pageText()).toContain('configured service operators');
     expect(
       element.querySelector(
-        'button[aria-label="Manage client Moonlight Bakery"]'
-      )
+        'button[aria-label="Manage client Moonlight Bakery"]',
+      ),
     ).toBeNull();
   });
 });
