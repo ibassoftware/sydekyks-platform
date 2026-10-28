@@ -1,6 +1,7 @@
 import { apVersionUtil, UNKNOWN_VERSION } from '@activepieces/server-utils'
 import { HOSTED_ACCOUNTING_PROTOCOL, HOSTED_RUNTIME_CAPABILITIES, HOSTED_RUNTIME_PROFILE, serviceModePolicy, WorkerProps, WorkerSettingsResponse } from '@activepieces/shared'
 import { system, WorkerSystemProp } from './configs'
+import { getWorkerLaneConfiguration } from './worker-lanes'
 
 function getProps(): WorkerProps {
     return {
@@ -26,8 +27,7 @@ function assertRuntimeAvailable(): void {
     const mode = system.get(WorkerSystemProp.EXECUTION_MODE)
     if (mode && mode !== 'SANDBOX_CODE_ONLY') throw new Error('Hosted workers require SANDBOX_CODE_ONLY')
     if (system.get(WorkerSystemProp.WORKER_GROUP_ID) || system.getBoolean(WorkerSystemProp.PROJECT_WORKER)) throw new Error('Hosted pilot requires shared workers')
-    const concurrency = system.get(WorkerSystemProp.WORKER_CONCURRENCY)
-    if (!concurrency || !/^[1-5]$/.test(concurrency)) throw new Error('Hosted pilot worker concurrency must be between 1 and 5')
+    getWorkerLaneConfiguration()
 }
 
 export const workerServiceMode = { getProps, assertSettings, assertRuntimeAvailable }

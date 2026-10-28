@@ -50,6 +50,8 @@ export enum WorkerSystemProp {
     IS_CANARY_WORKER = 'AP_IS_CANARY_WORKER',
     PROJECT_WORKER = 'AP_PROJECT_WORKER',
     WORKER_CONCURRENCY = 'AP_WORKER_CONCURRENCY',
+    WORKER_TOOLS_CONCURRENCY = 'AP_WORKER_TOOLS_CONCURRENCY',
+    WORKER_REFRESH_CONCURRENCY = 'AP_WORKER_REFRESH_CONCURRENCY',
     EXECUTION_MODE = 'AP_EXECUTION_MODE',
     SANDBOX_MEMORY_LIMIT = 'AP_SANDBOX_MEMORY_LIMIT',
     REUSE_SANDBOX = 'AP_REUSE_SANDBOX',
@@ -66,6 +68,8 @@ const defaultValues: Partial<Record<WorkerSystemProp, string>> = {
     // Transitional default (ADR 0004): N boxes per worker preserves main's historical behavior.
     // The destination is concurrency 1 + horizontal replicas (ADR 0003).
     [WorkerSystemProp.WORKER_CONCURRENCY]: '5',
+    [WorkerSystemProp.WORKER_TOOLS_CONCURRENCY]: '1',
+    [WorkerSystemProp.WORKER_REFRESH_CONCURRENCY]: '1',
     [WorkerSystemProp.CACHE_BASE_PATH]: 'cache',
     // Off by default: prewarm resolves and compiles every enabled flow on the platform, so its
     // startup memory/CPU cost grows with flow count and can OOM small workers on large instances.

@@ -1,7 +1,7 @@
 import os from 'os'
 import { monitorEventLoopDelay } from 'perf_hooks'
 import { createLogger } from '@activepieces/server-utils'
-import { system, WorkerSystemProp } from '../config/configs'
+import { getWorkerLaneConfiguration } from '../config/worker-lanes'
 
 const SNAPSHOT_INTERVAL_MS = 60_000
 const NANOS_PER_MS = 1e6
@@ -15,7 +15,7 @@ export const workerSystemSnapshot = {
         const histogram = monitorEventLoopDelay({ resolution: 100 })
         histogram.enable()
 
-        const concurrency = parseInt(system.get(WorkerSystemProp.WORKER_CONCURRENCY) ?? '1', 10)
+        const lanes = getWorkerLaneConfiguration()
 
         const tick = (): void => {
             try {
@@ -30,7 +30,10 @@ export const workerSystemSnapshot = {
                     memHeapUsedMb: mbRounded(mem.heapUsed),
                     memHeapTotalMb: mbRounded(mem.heapTotal),
                     eventLoopDelayP99Ms,
-                    workerConcurrency: concurrency,
+                    workerConcurrency: lanes.ordinary,
+                    toolsConcurrency: lanes.tools,
+                    refreshConcurrency: lanes.refresh,
+                    totalExecutionSlots: lanes.lanes.length,
                 })
                 // Emit with _forceKeep to bypass info-level sampling — snapshots are
                 // operational metrics and must always reach the drain regardless of

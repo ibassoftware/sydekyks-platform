@@ -32,7 +32,7 @@ describe('worker service mode', () => {
             expect(() => workerServiceMode.assertSettings({ response: { ...response, ...patch } })).toThrow()
         }
     })
-    it.each(['0', '6', '2.5', '', 'invalid'])('rejects unbounded hosted concurrency %s', value => {
+    it.each(['0', '21', '2.5', '', 'invalid'])('rejects unbounded hosted concurrency %s', value => {
         hosted(); vi.stubEnv('AP_WORKER_CONCURRENCY', value)
         expect(() => workerServiceMode.assertRuntimeAvailable()).toThrow('concurrency')
     })

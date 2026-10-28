@@ -9,6 +9,7 @@ import { io, Socket } from 'socket.io-client'
 import { createApiToWorkerHandlers } from './api-notify-service'
 import { getApiUrl, system, WorkerSystemProp } from './config/configs'
 import { logger } from './config/logger'
+import { getWorkerLaneConfiguration } from './config/worker-lanes'
 import { workerServiceMode } from './config/worker-service-mode'
 import { workerSettings } from './config/worker-settings'
 import { getHandler } from './execute/job-registry'
@@ -190,8 +191,8 @@ async function startPollingWorkers(apiClient: WorkerToApiContract): Promise<void
     // a deploy disconnects every worker at once, so reuse turned that into mass stalls.
     abortInFlightRuntime()
 
-    const hosted = workerServiceMode.getProps().serviceMode === 'hosted'
-    const loopCount = concurrency + (hosted ? 2 : 0)
+    const laneConfiguration = getWorkerLaneConfiguration()
+    const loopCount = laneConfiguration.lanes.length
     const createdRuntime = createSandboxRuntime({
         concurrency: loopCount,
         basePath: sandboxConfig.getCacheBasePath(),
@@ -226,11 +227,11 @@ async function startPollingWorkers(apiClient: WorkerToApiContract): Promise<void
         healthServerInstance = startHealthServer()
     }
 
-    logger.info({ concurrency, hostedToolLanes: hosted ? 2 : 0 }, 'Starting poll loops')
+    logger.info({ concurrency, hostedToolLanes: laneConfiguration.tools + laneConfiguration.refresh, toolsConcurrency: laneConfiguration.tools, refreshConcurrency: laneConfiguration.refresh, totalExecutionSlots: loopCount }, 'Starting poll loops')
 
     resetPollLoopLiveness({ loopCount })
-    await Promise.all(Array.from({ length: loopCount }, (_, workerIndex) =>
-        pollAndExecute(apiClient, createdRuntime, workerIndex, generation, hosted && workerIndex >= concurrency ? (workerIndex === concurrency ? 'tools' : 'refresh') : undefined),
+    await Promise.all(laneConfiguration.lanes.map((hostedLane, workerIndex) =>
+        pollAndExecute(apiClient, createdRuntime, workerIndex, generation, hostedLane),
     ))
 }
 
@@ -485,10 +486,15 @@ function getWorkerProps(): WorkerProps {
     const hostingProps = workerServiceMode.getProps()
     try {
         const settings = sandboxConfig.getSandboxSettings()
+        const lanes = getWorkerLaneConfiguration()
         return {
             ...hostingProps,
             EXECUTION_MODE: settings.EXECUTION_MODE,
-            WORKER_CONCURRENCY: system.get(WorkerSystemProp.WORKER_CONCURRENCY)!,
+            WORKER_CONCURRENCY: String(lanes.ordinary),
+            ...(hostingProps.serviceMode === 'hosted' ? {
+                WORKER_TOOLS_CONCURRENCY: String(lanes.tools),
+                WORKER_REFRESH_CONCURRENCY: String(lanes.refresh),
+            } : {}),
             SANDBOX_MEMORY_LIMIT: settings.SANDBOX_MEMORY_LIMIT,
             REUSE_SANDBOX: system.get(WorkerSystemProp.REUSE_SANDBOX) ?? 'false',
             version: versionChecker.workerVersion,

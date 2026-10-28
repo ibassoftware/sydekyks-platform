@@ -1,20 +1,25 @@
 import { createServer } from 'node:http'
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { Server as IOServer, Socket } from 'socket.io'
+import { createSandboxRuntime } from '@activepieces/sandbox'
+import { apVersionUtil } from '@activepieces/server-utils'
 import {
     createRpcServer,
+    EngineResponseStatus,
+    HOSTED_ACCOUNTING_PROTOCOL,
+    HOSTED_RUNTIME_CAPABILITIES,
+    HOSTED_RUNTIME_PROFILE,
     PackageType,
     PieceType,
-    WorkerJobType,
-    EngineResponseStatus,
     WebsocketServerEvent,
+    WorkerJobType,
 } from '@activepieces/shared'
-import { JobResultKind } from '../../src/lib/execute/types'
 import type {
-    WorkerToApiContract,
-    ExecuteExtractPieceMetadataJobData,
     ConsumeJobRequest,
+    ExecuteExtractPieceMetadataJobData,
+    WorkerToApiContract,
 } from '@activepieces/shared'
+import { Server as IOServer, Socket } from 'socket.io'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { JobResultKind } from '../../src/lib/execute/types'
 
 const mockGetHandler = vi.fn()
 
@@ -137,6 +142,7 @@ describe('worker integration', () => {
         await worker.stop()
         mockGetHandler.mockReset()
         vi.restoreAllMocks()
+        vi.unstubAllEnvs()
         delete process.env.AP_WORKER_CONCURRENCY
         await new Promise<void>((resolve) => {
             ioServer.close(() => resolve())
@@ -171,12 +177,12 @@ describe('worker integration', () => {
         })
     }
 
-    function registerRpcServer(overrides: Partial<WorkerToApiContract>): void {
+    function registerRpcServer(overrides: Partial<WorkerToApiContract>, settings: Partial<WorkerSettingsResponse> = {}): void {
         ioServer.on('connection', (serverSocket) => {
             serverSocket.on(WebsocketServerEvent.FETCH_WORKER_SETTINGS, (...args: unknown[]) => {
                 const callback = args[args.length - 1]
                 if (typeof callback === 'function') {
-                    callback(WORKER_SETTINGS)
+                    callback({ ...WORKER_SETTINGS, ...settings })
                 }
             })
             createRpcServer<WorkerToApiContract>(serverSocket, {
@@ -199,6 +205,29 @@ describe('worker integration', () => {
             })
         })
     }
+
+    it('reserves twenty independent RPC poll loops for each hosted lane', async () => {
+        vi.stubEnv('AP_SERVICE_MODE', 'hosted')
+        vi.stubEnv('AP_EXECUTION_MODE', 'SANDBOX_CODE_ONLY')
+        vi.stubEnv('AP_WORKER_CONCURRENCY', '20')
+        vi.stubEnv('AP_WORKER_TOOLS_CONCURRENCY', '20')
+        vi.stubEnv('AP_WORKER_REFRESH_CONCURRENCY', '20')
+        vi.stubEnv('AP_PROJECT_WORKER', 'false')
+        vi.stubEnv('AP_WORKER_GROUP_ID', undefined)
+        const poll = vi.fn((_input: { hostedLane?: string }) => new Promise<null>(() => undefined))
+        registerRpcServer({ poll }, {
+            SERVICE_MODE: 'hosted', HOSTING_ACCOUNTING_PROTOCOL: HOSTED_ACCOUNTING_PROTOCOL,
+            HOSTING_RUNTIME_PROFILE: HOSTED_RUNTIME_PROFILE, HOSTING_RUNTIME_CAPABILITIES: [...HOSTED_RUNTIME_CAPABILITIES],
+            APP_VERSION: apVersionUtil.getCurrentRelease(), EXECUTION_MODE: 'SANDBOX_CODE_ONLY',
+        })
+        await worker.start({ apiUrl: `http://127.0.0.1:${port}/api/`, socketUrl: { url: `http://127.0.0.1:${port}`, path: '/api/socket.io' }, workerToken: 'test-token' })
+        await waitFor(() => poll.mock.calls.length === 60)
+        const lanes = poll.mock.calls.map(args => (args[0] as { hostedLane?: string } | undefined)?.hostedLane)
+        expect(lanes.filter(lane => lane === undefined)).toHaveLength(20)
+        expect(lanes.filter(lane => lane === 'tools')).toHaveLength(20)
+        expect(lanes.filter(lane => lane === 'refresh')).toHaveLength(20)
+        expect(createSandboxRuntime).toHaveBeenLastCalledWith(expect.objectContaining({ concurrency: 60 }))
+    }, 15_000)
 
     it('does not execute or complete a polled job when admission is withheld', async () => {
         const job = buildConsumeJobRequest()

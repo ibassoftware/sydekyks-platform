@@ -40,6 +40,8 @@ export const WorkerProps = z.object({
     capabilities: z.array(z.string()).optional(),
     EXECUTION_MODE: z.string().optional(),
     WORKER_CONCURRENCY: z.string().optional(),
+    WORKER_TOOLS_CONCURRENCY: z.string().optional(),
+    WORKER_REFRESH_CONCURRENCY: z.string().optional(),
     SANDBOX_MEMORY_LIMIT: z.string().optional(),
     REUSE_SANDBOX: z.string().optional(),
     version: z.string().optional(),
