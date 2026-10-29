@@ -95,7 +95,7 @@ describe('PostgreSQL allowance serialization', () => {
         const cap = allowance.save({ actor, input: { platformId: client.platformId, expectedRevision: 0, requestKey: 'race:cap', monthlyCredits: 1, reason: 'Reduce to the committed base run' } }).finally(() => {
             completed++
         })
-        const reserve = ledger.reserveManagedCall({ actor: client.actor, rootReservationId: execution.reservation.id, key: 'race:reservation', maxCostMicroUsd: 1000n }).finally(() => {
+        const reserve = ledger.reserveManagedCall({ actor: client.actor, rootReservationId: execution.reservation.id, key: 'race:reservation', maxCostMicroUsd: 3000n }).finally(() => {
             completed++
         })
         try {
@@ -110,11 +110,11 @@ describe('PostgreSQL allowance serialization', () => {
         if (held.status === 'fulfilled') {
             const claim = await ledger.claimManagedCall({ actor: client.actor, reservationId: held.value.id })
             expect(claim.claimed).toBe(true)
-            await ledger.settleManagedCall({ platformId: client.platformId, reservationId: held.value.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 500n })
+            await ledger.settleManagedCall({ platformId: client.platformId, reservationId: held.value.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 2000n })
         }
         else expect(String(held.reason)).toContain('CREDITS_EXHAUSTED')
         const view = await allowance.read({ actor, platformId: client.platformId })
-        expect(view.period).toMatchObject({ amount: saved.status === 'fulfilled' ? '1' : '10000', reserved: '0', consumed: held.status === 'fulfilled' ? '3' : '1', available: held.status === 'fulfilled' ? '9997' : '0' })
+        expect(view.period).toMatchObject({ amount: saved.status === 'fulfilled' ? '1' : '30000', reserved: '0', consumed: held.status === 'fulfilled' ? '2' : '1', available: held.status === 'fulfilled' ? '29998' : '0' })
         expect([saved, held].filter(result => result.status === 'fulfilled')).toHaveLength(1)
         await ledger.finishExecution({ platformId: client.platformId, reservationId: execution.reservation.id, dispatchId: execution.dispatchId })
     })
@@ -130,8 +130,8 @@ describe('PostgreSQL allowance serialization', () => {
         const trainingGrants = (await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId, meter: 'execution' })).filter(grant => grant.sourceKey.startsWith('training:'))
         expect(trainingGrants.every(grant => grant.revokedAt !== null)).toBe(true)
         expect((await allowance.read({ actor, platformId: client.platformId })).period).toBeNull()
-        await ledger.settleManagedCall({ platformId: client.platformId, reservationId: held.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 1000n })
-        expect(await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: held.grantId })).toMatchObject({ consumed: 5n, reserved: 0n, revokedAt: expect.any(Date) })
+        await ledger.settleManagedCall({ platformId: client.platformId, reservationId: held.id, dispatchId: claim.dispatchId!, actualCostMicroUsd: 4000n })
+        expect(await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: held.grantId })).toMatchObject({ consumed: 3n, reserved: 0n, revokedAt: expect.any(Date) })
         await ledger.finishExecution({ platformId: client.platformId, reservationId: execution.reservation.id, dispatchId: execution.dispatchId })
     })
     it('rechecks operator credentials after waiting for a target account lock', async () => {
@@ -175,7 +175,7 @@ describe('PostgreSQL allowance serialization', () => {
             expect(await ds.getRepository(HostingCreditAllowanceChangeEntity).count()).toBe(1)
             const views = await Promise.all([client.platformId, other.platformId].map(platformId => allowance.read({ actor, platformId })))
             expect(views.map(view => view.revision).sort()).toEqual([0, 1])
-            expect(views.map(view => view.period?.amount).sort()).toEqual(expect.arrayContaining(['10000']))
+            expect(views.map(view => view.period?.amount).sort()).toEqual(expect.arrayContaining(['30000']))
         }
         finally {
             release(); spy.mockRestore()
