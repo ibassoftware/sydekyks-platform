@@ -26,7 +26,17 @@
     "note": "Source audit; schema/production behavior is covered separately in the follow-up acceptance plan."
   },
   "validation": {
-    "status": "in progress; see upstream-integration/2026-10-29/validation.json"
+    "productionBuildTasks": 19,
+    "frontendTypecheck": "passed",
+    "frontendTests": 492,
+    "apiFocusedTests": 67,
+    "workerTests": 332,
+    "gadgetSafetyTests": 66,
+    "utilityTests": 7,
+    "barrierTests": 26,
+    "distributionTests": 5,
+    "lintTasks": 36,
+    "followUp": "upstream-integration/2026-10-29/validation.json"
   },
   "limits": [
     "No image publication, deployment or live provider calls.",

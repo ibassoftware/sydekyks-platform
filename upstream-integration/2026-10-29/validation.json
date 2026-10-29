@@ -12,11 +12,11 @@
     "distributionTestsPassed": 5,
     "sourceDistributionAudit": "passed; zero restricted import edges",
     "forkOnlyFilesLost": 0,
-    "lint": "35 of 36 tasks initially passed; final web/worker rerun in progress",
+    "lint": "All 36 non-piece tasks passed across the initial run and final web/worker rerun (warnings remain; zero errors).",
     "secretScan": "Three public upstream PEM-marker references reviewed: documentation/normalization strings and runtime-generated test keys; no stored private credential found."
   },
   "saas": {
-    "status": "merge pending"
+    "status": "SaaS merge and results are recorded on codex/partner-pilot."
   },
   "outstandingAcceptance": [
     "Full PostgreSQL/Redis API release and concurrency/race suites",
