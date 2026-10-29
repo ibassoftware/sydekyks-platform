@@ -6,8 +6,9 @@ import {
   isAgentImage,
 } from '@activepieces/shared';
 import { fireEvent, render, screen, cleanup } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
 import { useState } from 'react';
+import { afterEach, expect, it, vi } from 'vitest';
+
 import { AgentAppearancePicker } from './agent-appearance-picker';
 import { AgentMark } from './agent-mark';
 const png =

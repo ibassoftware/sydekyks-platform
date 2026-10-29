@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { render, fireEvent, screen, cleanup } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+
 import { BuilderCopilotPanel } from './builder-copilot-panel';
 vi.mock('i18next', () => ({ t: (value: string) => value }));
 afterEach(cleanup);

@@ -11,10 +11,10 @@ import { t } from 'i18next';
 import { ImagePlus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import { AgentMark } from './agent-mark';
+
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-
-import { AgentMark } from './agent-mark';
 
 const ICON_LABELS: Record<AgentIcon, string> = {
   [AgentIcon.BOT]: 'Robot',
