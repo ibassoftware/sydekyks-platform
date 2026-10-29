@@ -69,7 +69,7 @@ function OutputViewerShell({
   return (
     <div className="rounded-xl border border-solid border-gray-6 overflow-hidden">
       <Tabs defaultValue="friendly">
-        <div className="px-3 py-2 flex border-solid border-b border-gray-6 items-center gap-1">
+        <div className="px-3 py-2 flex flex-wrap border-solid border-b border-gray-6 items-center gap-2">
           <span className="grow">{title}</span>
           <div className="flex items-center gap-0">
             <TooltipProvider>
