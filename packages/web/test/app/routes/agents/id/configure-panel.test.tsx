@@ -24,7 +24,18 @@ const save = vi.hoisted(() => ({
   },
 }));
 vi.mock('i18next', () => ({ t: (key: string) => key }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => vi.fn(),
+  Link: ({
+    to,
+    children,
+    ...props
+  }: { to: string } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
+}));
 vi.mock('@/features/agents/hooks/agents-hooks', () => ({
   agentsMutations: {
     useUpdateAgent: () => ({ mutate: save.mutate, isPending: false }),
