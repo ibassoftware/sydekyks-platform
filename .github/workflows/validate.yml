@@ -92,6 +92,10 @@ jobs:
           packages/web/test/features/agents/new-blank-agent-button.test.tsx
           packages/web/test/app/routes/agents
           packages/web/test/app/builder
+          packages/web/src/features/agents/agent-appearance-picker.test.tsx
+          packages/web/src/app/builder/builder-copilot-panel.test.tsx
+          packages/web/test/app/components/sidebar/platform/index.test.tsx
+          --maxWorkers=2
       - name: Check Syd API and MCP authorization regressions
         env:
           SYD_TEST_POSTGRES: 'true'

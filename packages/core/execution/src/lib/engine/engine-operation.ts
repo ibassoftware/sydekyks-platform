@@ -119,7 +119,6 @@ type BaseExecuteFlowOperation<T extends ExecutionType> = BaseEngineOperation & {
     stepNameToTest: string | null
     sampleData?: Record<string, unknown>
     logsFileId?: string
-    entryStepName?: string
 }
 
 export enum StreamStepProgress {

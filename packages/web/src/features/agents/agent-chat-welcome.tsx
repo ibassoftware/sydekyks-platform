@@ -1,4 +1,4 @@
-import { AgentIcon, ColorName } from '@activepieces/shared';
+import { Agent, ColorName } from '@activepieces/shared';
 import { t } from 'i18next';
 
 import { AgentMark } from './agent-mark';
@@ -6,7 +6,7 @@ import { AgentMark } from './agent-mark';
 type AgentChatWelcomeProps = {
   displayName: string;
   description: string | null;
-  icon: AgentIcon;
+  icon: Agent['icon'];
   color: ColorName;
 };
 
