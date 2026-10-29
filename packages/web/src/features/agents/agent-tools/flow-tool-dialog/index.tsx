@@ -15,6 +15,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog';
@@ -37,7 +38,7 @@ export function AgentFlowToolDialog({
   tools,
 }: AgentFlowToolDialogProps) {
   const [selectedFlows, setSelectedFlows] = useState<AgentFlowTool[]>(
-    tools.filter((tools) => tools.type === AgentToolType.FLOW),
+    tools.filter((tools) => tools.type === AgentToolType.FLOW)
   );
 
   const {
@@ -53,13 +54,13 @@ export function AgentFlowToolDialog({
     return data?.data.filter(
       (flow) =>
         flow.version.trigger.type === FlowTriggerType.PIECE &&
-        flow.version.trigger.settings.pieceName === '@activepieces/piece-mcp',
+        flow.version.trigger.settings.pieceName === '@activepieces/piece-mcp'
     );
   }, [data]);
 
   const handleSave = () => {
     const noneFlowTools: AgentTool[] = tools.filter(
-      (tool) => tool.type !== AgentToolType.FLOW,
+      (tool) => tool.type !== AgentToolType.FLOW
     );
 
     const updatedTools = [...noneFlowTools, ...selectedFlows];
@@ -71,11 +72,16 @@ export function AgentFlowToolDialog({
   return (
     <Dialog open={showAddFlowDialog} onOpenChange={setShowAddFlowDialog}>
       <DialogContent className="w-[90vw] max-w-[750px] h-[80vh] max-h-[800px] flex flex-col overflow-hidden p-0">
-        <DialogHeader className="min-h-16 flex px-4 items-start justify-center mb-0 border-b">
-          <DialogTitle>{t('Add Flow Tools')}</DialogTitle>
+        <DialogHeader className="shrink-0 px-4 py-4 pr-12 text-left mb-0 border-b">
+          <DialogTitle>{t('Missions this Sydekyk can call')}</DialogTitle>
+          <DialogDescription className="text-sm leading-5">
+            {t(
+              'Choose published, enabled Missions with an MCP trigger. This lets the Sydekyk call them as tools. To run a Sydekyk inside a Mission, open that Mission and add a Run Sydekyk step instead.'
+            )}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="px-4 py-3 border-b">
+        <div className="shrink-0 px-4 py-3 border-b">
           <div className="relative border rounded-md">
             <Search className="absolute left-2 top-2.5 size-4 text-gray-11" />
             <Input
@@ -87,7 +93,7 @@ export function AgentFlowToolDialog({
           </div>
         </div>
 
-        <ScrollArea className="grow overflow-y-auto">
+        <ScrollArea className="min-h-0 grow overflow-y-auto">
           <FlowDialogContent
             flows={flows || []}
             searchQuery={searchQuery}
@@ -96,7 +102,7 @@ export function AgentFlowToolDialog({
           />
         </ScrollArea>
 
-        <DialogFooter className="border-t p-4 mt-auto">
+        <DialogFooter className="shrink-0 border-t p-4 mt-auto">
           <CreateMcpFlowButton />
           <DialogClose asChild>
             <Button type="button" variant="ghost">

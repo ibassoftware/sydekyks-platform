@@ -15,13 +15,12 @@ import {
   PieceAudienceFilter,
 } from '@activepieces/shared';
 import { t } from 'i18next';
-import { Download, Info, ShieldAlert } from 'lucide-react';
+import { Info, ShieldAlert } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { StepOutputSkeleton } from '@/app/components/step-output-skeleton';
 import { SmartOutputViewer } from '@/components/custom/smart-output-viewer';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AgentTimeline } from '@/features/agents';
@@ -41,6 +40,7 @@ import { StepDataPanelViewToggle } from '../step-data/step-data-panel-view-toggl
 import { isRunAgent } from '../test-step/agent-test-step';
 
 import { AiRouterRoutes } from './ai-router-routes';
+import { SlicedOutputViewer } from './sliced-output-viewer';
 import { truncatedInputUtils } from './truncated-input-utils';
 
 type RunActiveTab = 'input' | 'output' | 'timeline';
@@ -54,16 +54,16 @@ export const FlowStepInputOutput = () => {
       state.selectedStep
         ? flowStructureUtil.getStepOrThrow(
             state.selectedStep,
-            state.flowVersion.trigger,
+            state.flowVersion.trigger
           )
         : null,
-    ],
+    ]
   );
   const isAgent = isRunAgent(selectedStep);
   const isTrigger =
     !isNil(selectedStep) && flowStructureUtil.isTrigger(selectedStep.type);
   const [requestedTab, setActiveTab] = useState<RunActiveTab>(
-    isAgent ? 'timeline' : 'output',
+    isAgent ? 'timeline' : 'output'
   );
   const activeTab: RunActiveTab =
     (requestedTab === 'timeline' && !isAgent) ||
@@ -75,7 +75,7 @@ export const FlowStepInputOutput = () => {
       ? flowRunUtils.extractStepOutput(
           selectedStep.name,
           loopsIndexes,
-          run.steps,
+          run.steps
         )
       : null;
   }, [run, selectedStep?.name, loopsIndexes, flowVersion.trigger]);
@@ -86,7 +86,7 @@ export const FlowStepInputOutput = () => {
     ? (selectedStepOutput?.output as LogSliceRef | undefined)
     : undefined;
   const friendlyError = tryParseFriendlyPieceError(
-    selectedStepOutput?.errorMessage,
+    selectedStepOutput?.errorMessage
   );
   const stepPieceName =
     selectedStep?.type === FlowActionType.PIECE ||
@@ -118,7 +118,7 @@ export const FlowStepInputOutput = () => {
     ignoreInternalError: true,
   });
   const { data: rententionDays } = flagsHooks.useFlag<number>(
-    ApFlagId.EXECUTION_DATA_RETENTION_DAYS,
+    ApFlagId.EXECUTION_DATA_RETENTION_DAYS
   );
 
   if (
@@ -141,7 +141,7 @@ export const FlowStepInputOutput = () => {
   const message =
     run.status === FlowRunStatus.INTERNAL_ERROR && isNil(selectedStepOutput)
       ? t(
-          'There are no logs captured for this run, because of an internal error, please contact support.',
+          'There are no logs captured for this run, because of an internal error, please contact support.'
         )
       : handleRunFailureOrEmptyLog(run, rententionDays);
   if (message) {
@@ -170,7 +170,7 @@ export const FlowStepInputOutput = () => {
             </span>
             <span className="text-xs text-gray-11 leading-relaxed">
               {t(
-                'This step was skipped during this run, no input or output was captured.',
+                'This step was skipped during this run, no input or output was captured.'
               )}
             </span>
           </div>
@@ -255,7 +255,7 @@ export const FlowStepInputOutput = () => {
           {!isTrigger && (
             <TabsContent value="input" className="flex flex-col gap-3">
               {truncatedInputUtils.hasTruncatedValues(
-                selectedStepOutput.input,
+                selectedStepOutput.input
               ) && <TruncatedInputNotice />}
               <SmartOutputViewer
                 json={selectedStepOutput.input}
@@ -351,7 +351,7 @@ const TruncatedInputNotice = () => (
     <Info className="w-4 h-4 mt-0.5 text-gray-11 shrink-0" />
     <span>
       {t(
-        'Some input values were too large to keep in the run logs and are shown as truncated. The step ran with the full values.',
+        'Some input values were too large to keep in the run logs and are shown as truncated. The step ran with the full values.'
       )}{' '}
     </span>
   </div>
@@ -362,33 +362,24 @@ const SlicedOutputDownload = ({
 }: {
   slicedOutputRef: LogSliceRef;
 }) => (
-  <div className="flex flex-col gap-3 p-4 bg-gray-3 rounded-md">
-    <div className="flex items-start gap-2 text-sm">
-      <Info className="w-4 h-4 mt-0.5 text-gray-11 shrink-0" />
-      <span>
-        {t(
-          'Output is too large to display inline ({size}). Download to inspect.',
-          { size: formatUtils.formatStorageSize(slicedOutputRef.size) },
-        )}
-      </span>
-    </div>
-    <Button asChild variant="outline" size="sm" className="w-fit gap-2">
+  <SlicedOutputViewer
+    slicedOutputRef={slicedOutputRef}
+    downloadLink={
       <a
         href={slicedOutputRef.url}
         target="_blank"
         rel="noopener noreferrer"
-        download
+        download="output.json"
       >
-        <Download className="w-4 h-4" />
         {t('Download output')}
       </a>
-    </Button>
-  </div>
+    }
+  />
 );
 
 function handleRunFailureOrEmptyLog(
   run: FlowRun | null,
-  retentionDays: number | null,
+  retentionDays: number | null
 ) {
   if (
     isNil(run) ||
@@ -400,7 +391,7 @@ function handleRunFailureOrEmptyLog(
   if (isNil(run.logsFileId)) {
     return t(
       'Logs are kept for {days} days after execution and then deleted.',
-      { days: retentionDays },
+      { days: retentionDays }
     );
   }
   return null;

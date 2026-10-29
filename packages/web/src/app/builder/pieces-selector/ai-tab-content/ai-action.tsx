@@ -1,4 +1,5 @@
 import { FlowActionType, FlowTriggerType } from '@activepieces/shared';
+import { t } from 'i18next';
 
 import { CardListItem } from '@/components/custom/card-list';
 import {
@@ -20,7 +21,11 @@ const getPieceSelectorItemInfo = (item: PieceSelectorItem) => {
     item.type === FlowTriggerType.PIECE
   ) {
     return {
-      displayName: item.actionOrTrigger.displayName,
+      displayName:
+        item.pieceMetadata.pieceName === '@activepieces/piece-ai' &&
+        item.actionOrTrigger.name === 'run_agent'
+          ? t('Run Sydekyk')
+          : item.actionOrTrigger.displayName,
       description: item.actionOrTrigger.description,
     };
   }

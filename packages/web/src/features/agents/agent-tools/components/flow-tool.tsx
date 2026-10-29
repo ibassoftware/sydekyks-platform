@@ -36,7 +36,9 @@ export const AgentFlowToolComponent = ({
           <div className="h-8 w-8 rounded-md bg-gray-3 flex items-center justify-center">
             <Target className="size-4 text-gray-11" />
           </div>
-          <span className="text-sm font-medium">{t('Flows')}</span>
+          <span className="text-sm font-medium">
+            {t('Missions this Sydekyk can call')}
+          </span>
         </div>
       </AccordionTrigger>
 
@@ -85,7 +87,7 @@ export const AgentFlowToolComponent = ({
           onClick={() => setShowAddFlowDialog(true)}
         >
           <Plus className="size-3 mr-1" />
-          {t('Add Flow')}
+          {t('Call a Mission')}
         </Button>
       </AccordionContent>
     </AccordionItem>
