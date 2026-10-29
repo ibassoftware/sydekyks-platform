@@ -7,8 +7,6 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import { projectsTableColumns } from './columns';
-
 import { platformApi } from '@/api/platforms-api';
 import { DashboardPageHeader } from '@/app/components/dashboard-page-header';
 import {
@@ -45,6 +43,8 @@ import { platformHooks } from '@/hooks/platform-hooks';
 import { AdminControl, adminControl } from '@/lib/admin-control';
 import { releaseAvailability } from '@/lib/release-availability';
 import { validationUtils } from '@/lib/validation-utils';
+
+import { projectsTableColumns } from './columns';
 
 export default function ProjectsPage() {
   const hosted = useHostedBillingEnabled();

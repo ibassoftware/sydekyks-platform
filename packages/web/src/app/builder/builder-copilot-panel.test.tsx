@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+/* eslint-disable jest-dom/prefer-in-document, jest-dom/prefer-to-have-attribute, jest-dom/prefer-to-have-value -- These tests use Vitest assertions without a jest-dom runtime. */
 import { render, fireEvent, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 

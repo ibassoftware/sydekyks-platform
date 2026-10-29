@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+/* eslint-disable jest-dom/prefer-in-document, jest-dom/prefer-to-have-attribute -- These tests use Vitest assertions without a jest-dom runtime. */
 import {
   AgentIcon,
   ColorName,
