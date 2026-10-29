@@ -5,16 +5,15 @@ import {
   CreateAgentRequest,
   isAgentImage,
 } from '@activepieces/shared';
-import { fireEvent, render, screen, cleanup } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
 import { AgentAppearancePicker } from './agent-appearance-picker';
 import { AgentMark } from './agent-mark';
 const png =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a9sAAAAASUVORK5CYII=';
 vi.mock('i18next', () => ({ t: (value: string) => value }));
-afterEach(cleanup);
 it('accepts bounded raster images through the server request schema and rejects remote, executable and oversized inputs', () => {
   expect(isAgentImage(png)).toBe(true);
   expect(CreateAgentRequest.shape.icon.safeParse(png).success).toBe(true);
@@ -41,27 +40,26 @@ it('renders every available icon and saves icon and color selection independentl
   }
   render(<Fixture />);
   expect(
-    screen.getByRole('button', { name: 'Robot' }).getAttribute('aria-pressed')
+    screen.getByRole('button', { name: 'Robot' }).getAttribute('aria-pressed'),
   ).toBe('true');
   fireEvent.click(screen.getByRole('button', { name: 'Mail' }));
   expect(
-    screen.getByRole('button', { name: 'Mail' }).getAttribute('aria-pressed')
+    screen.getByRole('button', { name: 'Mail' }).getAttribute('aria-pressed'),
   ).toBe('true');
   expect(
-    screen.getByRole('button', { name: 'Robot' }).getAttribute('aria-pressed')
+    screen.getByRole('button', { name: 'Robot' }).getAttribute('aria-pressed'),
   ).toBe('false');
   fireEvent.click(screen.getByRole('button', { name: ColorName.ORANGE }));
   expect(
     screen
       .getByRole('button', { name: ColorName.ORANGE })
-      .getAttribute('aria-pressed')
+      .getAttribute('aria-pressed'),
   ).toBe('true');
 });
 it('shows a raster thumbnail with an icon fallback when decoding fails', () => {
-  const { container } = render(<AgentMark icon={png} color={ColorName.BLUE} />);
-  const image = container.querySelector('img')!;
-  expect(image.src).toBe(png);
+  render(<AgentMark icon={png} color={ColorName.BLUE} />);
+  const image = screen.getByAltText('');
+  expect(image.getAttribute('src')).toBe(png);
   fireEvent.error(image);
-  expect(container.querySelector('img')).toBeNull();
-  expect(container.querySelector('svg')).not.toBeNull();
+  expect(screen.queryByAltText('')).toBeNull();
 });

@@ -1,24 +1,23 @@
 // @vitest-environment jsdom
-import { render, fireEvent, screen, cleanup } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { render, fireEvent, screen } from '@testing-library/react';
+import { expect, it, vi } from 'vitest';
 
 import { BuilderCopilotPanel } from './builder-copilot-panel';
 vi.mock('i18next', () => ({ t: (value: string) => value }));
-afterEach(cleanup);
 it('keeps the conversation mounted while hidden and restores it when reopened', () => {
   const { rerender } = render(
     <BuilderCopilotPanel open={false}>
       <input aria-label="Draft" defaultValue="Unsaved question" />
-    </BuilderCopilotPanel>
+    </BuilderCopilotPanel>,
   );
   expect(screen.queryByRole('complementary', { name: 'Ask Syd' })).toBeNull();
   rerender(
     <BuilderCopilotPanel open>
       <input aria-label="Draft" defaultValue="" />
-    </BuilderCopilotPanel>
+    </BuilderCopilotPanel>,
   );
   expect(
-    (screen.getByRole('textbox', { name: 'Draft' }) as HTMLInputElement).value
+    (screen.getByRole('textbox', { name: 'Draft' }) as HTMLInputElement).value,
   ).toBe('Unsaved question');
 });
 it('resizes from the keyboard within the available canvas bounds', () => {
@@ -29,7 +28,7 @@ it('resizes from the keyboard within the available canvas bounds', () => {
   render(
     <BuilderCopilotPanel open>
       <p>Conversation</p>
-    </BuilderCopilotPanel>
+    </BuilderCopilotPanel>,
   );
   const handle = screen.getByRole('separator', { name: 'Resize Ask Syd' });
   fireEvent.keyDown(handle, { key: 'ArrowRight' });

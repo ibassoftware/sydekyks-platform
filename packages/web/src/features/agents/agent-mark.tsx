@@ -62,7 +62,7 @@ export const AgentMark = ({
     <div
       className={cn(
         'flex shrink-0 items-center justify-center overflow-hidden border border-gray-6 bg-gray-1',
-        SIZES[size].box
+        SIZES[size].box,
       )}
     >
       {image ? (
@@ -88,7 +88,7 @@ export const AgentTrioMark = ({ className }: { className?: string }) => (
   <div
     className={cn(
       'flex h-[104px] w-[236px] shrink-0 items-center justify-center gap-5',
-      className
+      className,
     )}
     aria-hidden
   >

@@ -27,7 +27,7 @@ type ConfigureAgentValues = z.output<typeof ConfigureAgentSchema>;
 
 const toUpdateRequest = (
   values: ConfigureAgentValues,
-  agent: Agent
+  agent: Agent,
 ): UpdateAgentRequest => ({
   goLive: true,
   displayName: values.displayName,

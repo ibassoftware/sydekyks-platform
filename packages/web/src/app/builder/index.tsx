@@ -7,17 +7,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { PanelImperativeHandle } from 'react-resizable-panels';
 import { useMedia, usePrevious } from 'react-use';
 
-import { BuilderCopilot } from './builder-copilot';
-import { BuilderCopilotPanel } from './builder-copilot-panel';
-import { BuilderHeader } from './builder-header/builder-header';
-import { FlowCanvas } from './flow-canvas';
-import { flowCanvasHooks } from './flow-canvas/hooks';
-import { flowCanvasConsts } from './flow-canvas/utils/consts';
-import { BuilderBanner } from './flow-canvas/widgets/builder-banner';
-import { FlowVersionsList } from './flow-versions';
-import { RunsList } from './run-list';
-
-import { CursorPositionProvider } from './state/cursor-position-context';
 import { useBuilderStateContext } from '@/app/builder/builder-hooks';
 import { DataSelector } from '@/app/builder/data-selector';
 import { CanvasControls } from '@/app/builder/flow-canvas/canvas-controls';
@@ -34,6 +23,16 @@ import { platformHooks } from '@/hooks/platform-hooks';
 import { useElementSize } from '@/hooks/use-element-size';
 import { cn } from '@/lib/utils';
 
+import { BuilderCopilot } from './builder-copilot';
+import { BuilderCopilotPanel } from './builder-copilot-panel';
+import { BuilderHeader } from './builder-header/builder-header';
+import { FlowCanvas } from './flow-canvas';
+import { flowCanvasHooks } from './flow-canvas/hooks';
+import { flowCanvasConsts } from './flow-canvas/utils/consts';
+import { BuilderBanner } from './flow-canvas/widgets/builder-banner';
+import { FlowVersionsList } from './flow-versions';
+import { RunsList } from './run-list';
+import { CursorPositionProvider } from './state/cursor-position-context';
 import { StepSettingsPanel } from './step-settings/step-settings-panel';
 
 const animateResizeClassName = `transition-all `;
@@ -65,7 +64,7 @@ const BuilderPage = () => {
     state.removeAllStepTestsListeners,
     flowStructureUtil.getStep(
       state.selectedStep ?? '',
-      state.flowVersion.trigger
+      state.flowVersion.trigger,
     ),
     state.stepDataPanelView,
     state.isStepDataPanelOpen,

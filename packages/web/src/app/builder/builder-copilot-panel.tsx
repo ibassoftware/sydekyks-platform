@@ -25,7 +25,7 @@ export function BuilderCopilotPanel({
     const update = () => {
       const limit = Math.max(
         MIN_WIDTH,
-        Math.min(800, Math.floor(parent.clientWidth / 2))
+        Math.min(800, Math.floor(parent.clientWidth / 2)),
       );
       setMaximum(limit);
       setWidth((current) => Math.min(current, limit));
@@ -48,7 +48,7 @@ export function BuilderCopilotPanel({
       style={{ '--ask-syd-width': `${width}px` } as CSSProperties}
       className={cn(
         'absolute inset-0 z-40 min-w-0 border-r border-gray-6 bg-panel xl:relative xl:inset-auto xl:z-auto xl:w-[var(--ask-syd-width)] xl:max-w-[50%] xl:shrink-0',
-        !open && 'hidden'
+        !open && 'hidden',
       )}
     >
       {children}
@@ -70,7 +70,7 @@ export function BuilderCopilotPanel({
               ? MIN_WIDTH
               : event.key === 'End'
               ? maximum
-              : width + (event.key === 'ArrowLeft' ? -32 : 32)
+              : width + (event.key === 'ArrowLeft' ? -32 : 32),
           );
         }}
         onPointerDown={(event) => {
