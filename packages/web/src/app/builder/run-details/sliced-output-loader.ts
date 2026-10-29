@@ -35,7 +35,7 @@ export function subscribeOutputSession(listener: () => void) {
 export async function loadSlicedOutput(
   ref: LogSliceRef,
   signal: AbortSignal,
-  authenticated: boolean
+  authenticated: boolean,
 ): Promise<string> {
   const session = outputSessionKey();
   const assertCurrent = () => {

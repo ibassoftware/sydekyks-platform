@@ -12,7 +12,7 @@ export function UseInMissionNote({ projectId }: { projectId: string }) {
       </h3>
       <p className="text-sm leading-5 text-gray-11">
         {t(
-          'Set Sharing to Everyone in this Command Center and publish your changes. In a Mission in the same Command Center, add a step, choose AI & Sydekyks → Run Sydekyk, then pick this saved Sydekyk and enter its task in Prompt.'
+          'Set Sharing to Everyone in this Command Center and publish your changes. In a Mission in the same Command Center, add a step, choose AI & Sydekyks → Run Sydekyk, then pick this saved Sydekyk and enter its task in Prompt.',
         )}
       </p>
       <Button variant="link" className="h-auto self-start p-0" asChild>

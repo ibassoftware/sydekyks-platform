@@ -19,7 +19,7 @@ interface FlowDialogContentProps {
   flows: PopulatedFlow[];
   selectedFlows: AgentFlowTool[];
   setSelectedFlows: (
-    value: AgentFlowTool[] | ((prev: AgentFlowTool[]) => AgentFlowTool[])
+    value: AgentFlowTool[] | ((prev: AgentFlowTool[]) => AgentFlowTool[]),
   ) => void;
   searchQuery: string;
 }
@@ -37,7 +37,7 @@ export const FlowDialogContent = ({
 
     const query = debouncedQuery.toLowerCase();
     return flows.filter((flow) =>
-      flow.version.displayName.toLowerCase().includes(query)
+      flow.version.displayName.toLowerCase().includes(query),
     );
   }, [flows, debouncedQuery]);
 
@@ -47,7 +47,7 @@ export const FlowDialogContent = ({
   const toggleFlow = (flow: PopulatedFlow) => {
     setSelectedFlows((prev) => {
       const exists = prev.some(
-        (tool) => tool.externalFlowId === flow.externalId
+        (tool) => tool.externalFlowId === flow.externalId,
       );
 
       if (exists) {
@@ -59,7 +59,7 @@ export const FlowDialogContent = ({
         {
           externalFlowId: flow.externalId,
           toolName: mcpToolNameUtils.createToolName(
-            `${flow.version.displayName}_${flow.id}`
+            `${flow.version.displayName}_${flow.id}`,
           ),
           flowDisplayName: flow.version.displayName,
           type: AgentToolType.FLOW,
@@ -133,10 +133,10 @@ export const FlowDialogContent = ({
           <div className="mt-2 max-w-sm text-sm leading-relaxed text-gray-11">
             {searchQuery
               ? t(
-                  'Try another search. Only Missions with an MCP trigger appear here.'
+                  'Try another search. Only Missions with an MCP trigger appear here.',
                 )
               : t(
-                  'Only Missions with an MCP trigger appear here. Publish and enable one so this Sydekyk can call it.'
+                  'Only Missions with an MCP trigger appear here. Publish and enable one so this Sydekyk can call it.',
                 )}
           </div>
 

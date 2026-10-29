@@ -38,7 +38,7 @@ export function AgentFlowToolDialog({
   tools,
 }: AgentFlowToolDialogProps) {
   const [selectedFlows, setSelectedFlows] = useState<AgentFlowTool[]>(
-    tools.filter((tools) => tools.type === AgentToolType.FLOW)
+    tools.filter((tools) => tools.type === AgentToolType.FLOW),
   );
 
   const {
@@ -54,13 +54,13 @@ export function AgentFlowToolDialog({
     return data?.data.filter(
       (flow) =>
         flow.version.trigger.type === FlowTriggerType.PIECE &&
-        flow.version.trigger.settings.pieceName === '@activepieces/piece-mcp'
+        flow.version.trigger.settings.pieceName === '@activepieces/piece-mcp',
     );
   }, [data]);
 
   const handleSave = () => {
     const noneFlowTools: AgentTool[] = tools.filter(
-      (tool) => tool.type !== AgentToolType.FLOW
+      (tool) => tool.type !== AgentToolType.FLOW,
     );
 
     const updatedTools = [...noneFlowTools, ...selectedFlows];
@@ -76,7 +76,7 @@ export function AgentFlowToolDialog({
           <DialogTitle>{t('Missions this Sydekyk can call')}</DialogTitle>
           <DialogDescription className="text-sm leading-5">
             {t(
-              'Choose published, enabled Missions with an MCP trigger. This lets the Sydekyk call them as tools. To run a Sydekyk inside a Mission, open that Mission and add a Run Sydekyk step instead.'
+              'Choose published, enabled Missions with an MCP trigger. This lets the Sydekyk call them as tools. To run a Sydekyk inside a Mission, open that Mission and add a Run Sydekyk step instead.',
             )}
           </DialogDescription>
         </DialogHeader>

@@ -39,7 +39,7 @@ export function SlicedOutputViewer({
   const session = useSyncExternalStore(
     subscribeOutputSession,
     outputSessionKey,
-    outputSessionKey
+    outputSessionKey,
   );
   return (
     <ScopedOutputViewer
@@ -85,7 +85,7 @@ function ScopedOutputViewer({
   }, [fileId, url, size, authenticated, requested, attempt, oversized]);
   const structured = useMemo(
     () => (result ? structuredPreview(result.text) : null),
-    [result]
+    [result],
   );
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -109,14 +109,14 @@ function ScopedOutputViewer({
       ) : oversized || tooLarge ? (
         <p className="text-sm text-gray-11">
           {t(
-            'This output exceeds the 16 MB preview limit. Download the complete output to inspect it.'
+            'This output exceeds the 16 MB preview limit. Download the complete output to inspect it.',
           )}
         </p>
       ) : failed ? (
         <div className="flex flex-col items-start gap-2">
           <p role="alert" className="text-sm text-danger-11">
             {t(
-              'Output could not be loaded. Check your workspace access or retention period, then try again.'
+              'Output could not be loaded. Check your workspace access or retention period, then try again.',
             )}
           </p>
           <Button

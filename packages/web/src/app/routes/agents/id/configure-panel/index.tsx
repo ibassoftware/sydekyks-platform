@@ -97,7 +97,7 @@ const AgentProjectRow = ({ agent }: { agent: Agent }) => {
   const { checkAccess } = useAuthorization(agent.projectId);
   const { data: allProjects } = projectCollectionUtils.useAll();
   const home = (allProjects ?? []).find(
-    (project) => project.id === agent.projectId
+    (project) => project.id === agent.projectId,
   );
 
   if (
@@ -134,7 +134,7 @@ const AgentProjectRow = ({ agent }: { agent: Agent }) => {
         onMoved={(projectId) =>
           projectCollectionUtils.setCurrentProject(
             projectId,
-            `/projects/${agent.projectId}/agents/${agent.id}`
+            `/projects/${agent.projectId}/agents/${agent.id}`,
           )
         }
       />
@@ -163,7 +163,7 @@ const AgentDangerZone = ({
       <div className="flex items-start justify-between gap-4">
         <span className="text-sm leading-5 text-gray-11">
           {t(
-            'Its instructions, its tools, and every conversation held with it go with it.'
+            'Its instructions, its tools, and every conversation held with it go with it.',
           )}
         </span>
         <DeleteAgentDialog
@@ -227,7 +227,7 @@ const ConfigureBehaviorTab = ({
   const draft = form.watch('draft');
   const { data: embeddingSource } = useKnowledgeBaseEmbeddingSource();
   const knowledgeCount = tools.filter(
-    (tool) => tool.type === AgentToolType.KNOWLEDGE_BASE
+    (tool) => tool.type === AgentToolType.KNOWLEDGE_BASE,
   ).length;
 
   return (
@@ -244,7 +244,7 @@ const ConfigureBehaviorTab = ({
                 minRows={4}
                 maxRows={12}
                 placeholder={t(
-                  'Reply to refund requests. Check the order in Stripe first, and escalate anything over $200.'
+                  'Reply to refund requests. Check the order in Stripe first, and escalate anything over $200.',
                 )}
                 className="px-3 py-3 text-sm leading-relaxed"
               />
@@ -277,7 +277,7 @@ const ConfigureBehaviorTab = ({
             form.setValue(
               'draft.provider',
               parseProvider(picked.provider ?? undefined),
-              { shouldDirty: true }
+              { shouldDirty: true },
             );
             form.setValue('draft.modelName', picked.modelName ?? null, {
               shouldDirty: true,
@@ -285,7 +285,7 @@ const ConfigureBehaviorTab = ({
             form.setValue(
               'draft.providerConfigId',
               picked.providerConfigId ?? null,
-              { shouldDirty: true }
+              { shouldDirty: true },
             );
             form.setValue('draft.modelTierId', picked.modelTierId ?? null, {
               shouldDirty: true,
@@ -342,7 +342,7 @@ const ConfigureBehaviorTab = ({
                   value={field.value}
                   onChange={(event) =>
                     field.onChange(
-                      Number(event.target.value) || DEFAULT_AGENT_MAX_STEPS
+                      Number(event.target.value) || DEFAULT_AGENT_MAX_STEPS,
                     )
                   }
                 />
@@ -366,7 +366,7 @@ const ConfigureIdentity = ({
   >;
 }) => {
   const { checkAccess, isFetchingProjectRole } = useAuthorization(
-    agent.projectId
+    agent.projectId,
   );
   const canShare =
     agent.ownerId === authenticationSession.getCurrentUserId() ||
@@ -416,7 +416,7 @@ const ConfigureIdentity = ({
                 field.onChange(
                   value === 'project'
                     ? AgentVisibility.PROJECT
-                    : AgentVisibility.RESTRICTED
+                    : AgentVisibility.RESTRICTED,
                 );
                 form.setValue('sharedWithUserIds', [], { shouldDirty: true });
               }}
@@ -443,7 +443,7 @@ const ConfigureIdentity = ({
             {!canShare && (
               <p className="text-xs leading-5 text-gray-11">
                 {t(
-                  'Only the creator or a Command Center administrator can change sharing.'
+                  'Only the creator or a Command Center administrator can change sharing.',
                 )}
               </p>
             )}
@@ -491,7 +491,8 @@ const ConfigureIdentity = ({
                     className={cn(
                       'flex size-9 items-center justify-center rounded-lg border border-gray-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-9',
                       PROJECT_COLOR_SWATCH[field.value] ===
-                        PROJECT_COLOR_SWATCH[colorName] && 'ring-2 ring-gray-12'
+                        PROJECT_COLOR_SWATCH[colorName] &&
+                        'ring-2 ring-gray-12',
                     )}
                   >
                     <span
@@ -640,7 +641,7 @@ const AgentConfigurePanel = forwardRef<
 
   const markSavedUnlessEditedSince = (
     written: ConfigureAgentInput,
-    saved: Agent
+    saved: Agent,
   ) => {
     const fromServer = formValuesOf(saved);
     if (
@@ -723,7 +724,7 @@ const AgentConfigurePanel = forwardRef<
             <DialogTitle>{t('Replace your unsaved edits?')}</DialogTitle>
             <DialogDescription>
               {t(
-                'Your edits will be replaced with the latest saved version of this Sydekyk.'
+                'Your edits will be replaced with the latest saved version of this Sydekyk.',
               )}
             </DialogDescription>
           </DialogHeader>
@@ -806,7 +807,7 @@ const AgentConfigurePanel = forwardRef<
             >
               <p>
                 {t(
-                  'This Sydekyk changed in another editor. Your edits are still here. Load the saved version before publishing.'
+                  'This Sydekyk changed in another editor. Your edits are still here. Load the saved version before publishing.',
                 )}
               </p>
               <Button
