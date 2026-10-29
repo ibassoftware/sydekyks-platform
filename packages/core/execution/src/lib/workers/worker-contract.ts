@@ -137,6 +137,7 @@ export type GetAgentConfigRequest = {
     messageSource?: 'onboarding'
     agentId?: string
     flowRunId?: string
+    waitpointId?: string
     projectId?: string | null
     userMessage: string
     modelName: string | null
@@ -167,8 +168,12 @@ export type AgentConfigResponse = {
     resolvedModelName?: string
     imageModelId?: string
     searchCredentials?: AiProviderCredentials
+    searchProviderConfigId?: string
     searchModelId?: string
     imageCredentials?: AiProviderCredentials
+    imageProviderConfigId?: string
+    agentId?: string
+    projectId?: string
     systemPrompt: string
     messages: unknown[]
     allMessages: unknown[]
@@ -507,6 +512,7 @@ export type SaveFlowStepFileRequest = {
 export type ReportAiUsageRequest = {
     billing: ActivepiecesAiBilling
     provider: AIProviderName
+    providerConfigId?: string
     modelId: string
     idempotencyKey: string
     usage: AiUsageCharge
@@ -514,6 +520,10 @@ export type ReportAiUsageRequest = {
     generationId?: string
     inputTokens?: number
     outputTokens?: number
+    cacheReadTokens?: number
+    cacheWriteTokens?: number
+    reasoningTokens?: number
+    observedCostUsd?: number
     requestId?: string
     flowRun?: AiUsageFlowRunContext
     chat?: AiUsageChatContext

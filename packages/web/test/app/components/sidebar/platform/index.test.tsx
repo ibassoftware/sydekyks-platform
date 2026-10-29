@@ -133,4 +133,27 @@ describe('current self-hosted PlatformSidebar', () => {
       screen.getByRole('link', { name: 'Billing & subscription' }),
     ).toBeTruthy();
   });
+
+  it('shows Tiers between Providers and Capabilities on cloud', () => {
+    plan.aiProvidersEnabled = true;
+    flags.edition = 'cloud';
+
+    renderSidebar();
+
+    const aiCenter = screen.getByRole('list', { name: 'AI Center' });
+    expect(
+      Array.from(aiCenter.children).map((item) =>
+        item.getAttribute('aria-label'),
+      ),
+    ).toEqual(['Providers', 'Tiers', 'Capabilities']);
+  });
+
+  it('hides Tiers on self-hosted enterprise', () => {
+    plan.aiProvidersEnabled = true;
+    flags.edition = 'ee';
+
+    renderSidebar();
+
+    expect(screen.queryAllByRole('listitem', { name: 'Tiers' })).toEqual([]);
+  });
 });

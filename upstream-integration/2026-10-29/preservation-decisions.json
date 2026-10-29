@@ -1,0 +1,2055 @@
+[
+  {
+    "path": "packages/server/api/src/app/ai/ai-credits.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ai/ai-execute-controller.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ai/ai-router.service.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ai/ai-usage-service.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ai/usage/ai-call-context.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ai/usage/ai-usage-block.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ai/usage/ai-usage-copy.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ai/usage/ai-usage-entities.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ai/usage/ai-usage-event.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ai/usage/ai-usage-jobs.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ai/usage/ai-usage-price.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ai/usage/ai-usage-retention.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ai/usage/ai-usage-rollup.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/app.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/database/database-connection.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/database/migration/postgres/1878000000000-AddAiUsageTables.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/database/postgres-connection.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/agent-helpers.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/agent-memory-ai.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/agent-run-controller.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/rpc/agent-config-rpc.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/rpc/tool-execution-rpc.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/platform/platform-plan/billing-providers/autumn-billing.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/platform/platform-plan/billing-providers/autumn-utils.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/helper/system-jobs/common.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/knowledge-base/knowledge-base.service.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/platform/billing-provider.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/test/integration/ce/agent/agent-run-worker-handoff.test.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/test/integration/ce/knowledge-base/knowledge-base-billing.test.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/agent/agent-chat-model.test.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/ai-usage/ai-usage-copy.test.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/ai/ai-call-context.test.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/ai/ai-router.service.test.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/ai/ai-usage-conversation-credits.test.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/ai/ai-usage-event.test.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/ai/ai-usage-tracking.test.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/ee/agent/agent-fast-model-provider.test.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/ee/agent/agent-rpc-handlers.test.ts",
+    "resolution": "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+    "upstreamCommit": "bfc310001ca"
+  },
+  {
+    "path": "packages/server/api/src/app/database/migration/postgres/1877000000000-AddIsDefaultToProject.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/server/api/src/app/database/postgres-connection.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/platform-project-controller.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/platform-project-service.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/server/api/src/app/platform/platform.controller.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/server/api/src/app/platform/platform.service.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/server/api/src/app/project/project-entity.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/server/api/src/app/project/project-service.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/server/api/test/helpers/mocks/index.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/platform/platform.test.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/projects/default-projects.test.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/web/public/locales/en/translation.json",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/web/src/api/platforms-api.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/projects/index.tsx",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/sample-data.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/project-role/add-default-projects-dialog.tsx",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/project-role/default-projects-section.tsx",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/project-role/index.tsx",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/web/src/features/projects/stores/project-collection.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/web/src/features/projects/stores/projects-collection.test.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/web/src/hooks/platform-hooks.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/web/test/app/components/project-settings/form-defaults.test.ts",
+    "resolution": "Retain independently implemented project administration and schema",
+    "upstreamCommit": "9c8feef1c4a"
+  },
+  {
+    "path": "packages/core/shared/src/lib/management/platform/new-member-settings.ts",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/core/shared/test/management/new-member-settings.test.ts",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/server/api/src/app/app.ts",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/project-members/project-member.service.ts",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/project-role/project-role.service.ts",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/scim/scim-user-service.ts",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/users/ee-user-hooks.ts",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/server/api/src/app/user-invitations/user-invitation.service.ts",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/server/api/src/app/user/user-hooks.ts",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/server/api/src/app/user/user-service.ts",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/managed-authn/external-token.test.ts",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/projects/default-projects-join.test.ts",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/web/public/locales/en/translation.json",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/project-role/default-projects-section.tsx",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/project-role/platform-roles-list.tsx",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/web/src/features/members/components/invite-user/default-projects-note.tsx",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/web/src/features/members/components/invite-user/invite-user-dialog.tsx",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/web/src/features/members/components/role-selector.tsx",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/web/src/features/members/lib/role-copy.ts",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/web/src/hooks/platform-hooks.ts",
+    "resolution": "Retain independent membership provisioning and tenant checks",
+    "upstreamCommit": "bb35dd23d7c"
+  },
+  {
+    "path": "packages/server/api/src/app/authentication/authentication.service.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/platform/platform-list-controller.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/platform-project-jobs.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/project-members/project-member.service.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/project-role/project-role.controller.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/project-role/project-role.service.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/server/api/src/app/platform/platform.service.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/server/api/src/app/project/project-service.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/server/api/src/app/user-invitations/user-invitation.module.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/server/api/src/app/user-invitations/user-invitation.service.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/server/api/src/app/user/user-service.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/authn/sign-in-without-a-project.test.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/project-role/project-role-events.test.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/user-invitations/invite-existing-user-transaction.test.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/user-invitations/platform-invite-project.test.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/users/change-role-with-project.test.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/public/locales/en/translation.json",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/app/components/no-projects-state.tsx",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/plan-feature-sample.tsx",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/projects/columns.tsx",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/projects/index.tsx",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/project-role/index.tsx",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/project-role/personal-projects-section.tsx",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/users/actions/update-user-dialog.tsx",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/users/actions/user-actions.tsx",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/components/custom/delete-dialog.tsx",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/features/members/components/invite-user/invite-user-dialog.tsx",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/features/members/components/invite-user/invited-project-select.tsx",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/features/members/components/invite-user/no-team-projects-state.tsx",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/features/members/lib/invite-defaults.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/features/platform-admin/hooks/new-member-settings-hooks.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/features/platform-admin/index.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/features/projects/components/platform-switcher.tsx",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/features/projects/stores/project-collection.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/src/lib/authentication-session.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/test/features/members/lib/invite-defaults.test.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/web/test/lib/authentication-session.test.ts",
+    "resolution": "Retain independent invitations and project authorization",
+    "upstreamCommit": "e5ba922d0f5"
+  },
+  {
+    "path": "packages/core/shared/src/lib/management/platform/new-member-settings.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/core/shared/test/management/new-member-settings.test.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/server/api/src/app/app.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/alerts/alerts-service.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/personal-projects/personal-projects.module.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/personal-projects/personal-projects.service.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/server/api/src/app/helper/system-jobs/common.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/server/api/src/app/platform/platform.controller.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/server/api/src/app/platform/platform.service.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/server/api/src/app/user/user-service.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/server/api/test/integration/ce/user/personal-projects-on-community.test.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/projects/auto-create-personal-projects.test.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/projects/create-missing-personal-projects.test.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/web/public/locales/en/translation.json",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/project-role/personal-projects-dialogs.tsx",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/project-role/personal-projects-section.tsx",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/web/src/features/platform-admin/api/personal-projects-api.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/web/src/features/platform-admin/hooks/new-member-settings-hooks.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/web/src/features/platform-admin/index.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/web/src/hooks/platform-hooks.ts",
+    "resolution": "Retain Community personal-project behavior",
+    "upstreamCommit": "7208c1c15a1"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/project-members/project-member.controller.ts",
+    "resolution": "Retain independently implemented membership lifecycle",
+    "upstreamCommit": "1b6f4dc04df"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/project-members/project-member.service.ts",
+    "resolution": "Retain independently implemented membership lifecycle",
+    "upstreamCommit": "1b6f4dc04df"
+  },
+  {
+    "path": "packages/server/api/src/app/helper/error-handler.ts",
+    "resolution": "Retain independently implemented membership lifecycle",
+    "upstreamCommit": "1b6f4dc04df"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/project-members/project-members.test.ts",
+    "resolution": "Retain independently implemented membership lifecycle",
+    "upstreamCommit": "1b6f4dc04df"
+  },
+  {
+    "path": "packages/web/public/locales/en/translation.json",
+    "resolution": "Retain independently implemented membership lifecycle",
+    "upstreamCommit": "1b6f4dc04df"
+  },
+  {
+    "path": "packages/web/src/app/components/project-settings/members/columns.tsx",
+    "resolution": "Retain independently implemented membership lifecycle",
+    "upstreamCommit": "1b6f4dc04df"
+  },
+  {
+    "path": "packages/web/src/app/components/project-settings/members/index.tsx",
+    "resolution": "Retain independently implemented membership lifecycle",
+    "upstreamCommit": "1b6f4dc04df"
+  },
+  {
+    "path": "packages/web/src/app/components/project-settings/members/last-project-dialog.tsx",
+    "resolution": "Retain independently implemented membership lifecycle",
+    "upstreamCommit": "1b6f4dc04df"
+  },
+  {
+    "path": "packages/server/api/src/app/core/canary/canary-routing.middleware.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/platform/admin/admin-platform.controller.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/platform/platform-plan/worker-group.service.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/platform-project-service.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/flows/pre-warm-workers.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/project/project-service.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/project/project-worker-group.service.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/job-queue/interceptors/rate-limiter-interceptor.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/job-queue/job-queue.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/job/index.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/machine/machine-controller.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/machine/machine-service.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/platform-queue-migration.service.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/rpc/worker-rpc-service.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/platform-worker-group.service.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/project-worker-group.service.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/queue-migration.service.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/worker-group-queues.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/worker-group-routing.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/test/integration/ce/workers/platform-queue-migration.test.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/core/canary/canary-proxy.integration.test.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/core/canary/canary-routing.middleware.test.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/core/canary/platform-worker-group.service.test.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/core/canary/worker-group.service.test.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/workers/machine/machine-list-filter.test.ts",
+    "resolution": "Retain independent shared-worker routing instead of upstream enterprise group services",
+    "upstreamCommit": "ec210114487"
+  },
+  {
+    "path": "packages/server/api/src/app/database/migration/postgres/1864000000000-AddWorkerGroupIdToFlow.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/database/postgres-connection.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/platform-project-controller.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/platform-project-service.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/flows/flow-run/flow-run-service.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/flows/flow/flow.controller.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/flows/flow/flow.entity.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/project/project-service.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/job-queue/job-queue.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/machine/machine-controller.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/machine/machine-service.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/flow-worker-group.service.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/platform-worker-group.service.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/project-worker-group.service.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/queue-migration.service.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/worker-group-queues.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/worker-group-routing.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/worker-group.controller.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-module.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/test/integration/ce/workers/platform-queue-migration.test.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/workers/worker-groups/worker-group-queues.test.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/workers/worker-groups/worker-group-routing.test.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/assign-projects-dialog.tsx",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/web/src/features/platform-admin/api/workers-api.ts",
+    "resolution": "Retain independent shared-worker routing",
+    "upstreamCommit": "dfeed9d5a58"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/job-queue/interceptors/rate-limiter-interceptor.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "ed24b9b0647"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/machine/machine-service.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "ed24b9b0647"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/flow-worker-group.service.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "ed24b9b0647"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/project-worker-group.service.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "ed24b9b0647"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/worker-group.controller.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "ed24b9b0647"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/workers/job-queue/interceptors/rate-limiter-interceptor.test.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "ed24b9b0647"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/assign-flows-dialog.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "ed24b9b0647"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/by-flow-view.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "ed24b9b0647"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/by-group-view.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "ed24b9b0647"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/by-project-view.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "ed24b9b0647"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/worker-assignments-tab.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "ed24b9b0647"
+  },
+  {
+    "path": "packages/web/src/features/platform-admin/api/workers-api.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "ed24b9b0647"
+  },
+  {
+    "path": "packages/web/src/features/platform-admin/hooks/workers-hooks.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "ed24b9b0647"
+  },
+  {
+    "path": "packages/core/shared/src/lib/management/worker-group/worker-group-assignments.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/server/api/src/app/database/postgres-connection.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/platform-project-service.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/server/api/src/app/project/project-service.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/job-queue/interceptors/rate-limiter-interceptor.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/machine/machine-service.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/flow-worker-group.service.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/project-worker-group.service.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/queue-migration.service.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/worker-group-assignment.service.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/worker-group-queues.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/worker-groups/worker-group.controller.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/server/api/test/integration/ce/flows/flow/flow.test.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/server/api/test/integration/ce/workers/worker-group-assignments.test.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/workers/job-queue/interceptors/rate-limiter-interceptor.test.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/workers/worker-groups/worker-group-queues.test.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/public/locales/de/translation.json",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/public/locales/en/translation.json",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/public/locales/es/translation.json",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/public/locales/fr/translation.json",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/public/locales/ja/translation.json",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/public/locales/nl/translation.json",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/public/locales/pt/translation.json",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/public/locales/zh-TW/translation.json",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/public/locales/zh/translation.json",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/components/admin/admin-page-resources.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/assign-flows-dialog.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/assign-projects-dialog.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/by-flow-view.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/by-group-view.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/by-project-view.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/index.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/project-avatar.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/worker-assignments-tab.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/worker-groups/add-items-dialog.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/worker-groups/api.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/worker-groups/group-cards.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/worker-groups/group-page.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/worker-groups/hooks.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/worker-groups/move-all-dialog.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/worker-groups/parts.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/worker-groups/run-limit.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/worker-groups/search-results.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/worker-groups/setup-guide.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/worker-groups/tables.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/worker-groups/worker-groups-page.tsx",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/features/platform-admin/api/workers-api.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/features/platform-admin/hooks/workers-hooks.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/src/features/projects/stores/project-collection.ts",
+    "resolution": "Retain existing worker administration",
+    "upstreamCommit": "786405fb426"
+  },
+  {
+    "path": "packages/web/public/app-logos/gmail.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/app-logos/google-drive.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/app-logos/hubspot.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/app-logos/intercom.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/app-logos/notion.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/app-logos/salesforce.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/app-logos/slack.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/app-logos/stripe.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/app-logos/zendesk.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/client-logos/chatgpt.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/client-logos/claude-code.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/client-logos/claude.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/client-logos/codex.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/client-logos/cursor.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/client-logos/gemini-cli.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/client-logos/mcp.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/client-logos/opencode.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/client-logos/vscode.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/client-logos/windsurf.svg",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/locales/de/translation.json",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/locales/en/translation.json",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/locales/es/translation.json",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/locales/fr/translation.json",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/locales/ja/translation.json",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/locales/nl/translation.json",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/locales/pt/translation.json",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/locales/zh-TW/translation.json",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/public/locales/zh/translation.json",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/components/project-settings/mcp-server/tool-tiers/mcp-tool-tier-list.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/activity/activity-tab.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/client-icon.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/connect/client-instructions.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/connect/client-tile.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/connect/connect-landing.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/connect/connect-page.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/connect/connect-tab.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/connect/logo-stack.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/connect/prompt-card.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/connect/use-connect-home.ts",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/grants/grants-columns.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/grants/grants-tab.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/index.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/mcp-client-catalog.ts",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/mcp-client-display.ts",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/mcp-nav.ts",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/pieces-showcase.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/pieces/pieces-panel.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/recently-connected.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/components/custom/clipboard/copy-button.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/components/custom/clipboard/use-copy-to-clipboard.ts",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/src/components/custom/logo-plate.tsx",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/test/app/routes/mcp-server/mcp-client-catalog.test.ts",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/web/test/components/custom/clipboard/use-copy-to-clipboard.test.ts",
+    "resolution": "Retain instance-specific MCP setup and Sydekyks client links",
+    "upstreamCommit": "75e157640e9"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/job-queue/interceptors/rate-limiter-interceptor.ts",
+    "resolution": "Retain independent concurrency accounting instead of upstream Cloud plan tiers",
+    "upstreamCommit": "616f63c3b06"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/workers/job-queue/interceptors/rate-limiter-interceptor.test.ts",
+    "resolution": "Retain independent concurrency accounting instead of upstream Cloud plan tiers",
+    "upstreamCommit": "616f63c3b06"
+  },
+  {
+    "path": "packages/web/public/locales/en/translation.json",
+    "resolution": "Retain independent concurrency accounting instead of upstream Cloud plan tiers",
+    "upstreamCommit": "616f63c3b06"
+  },
+  {
+    "path": "packages/web/src/app/components/project-settings/general/index.tsx",
+    "resolution": "Retain independent concurrency accounting instead of upstream Cloud plan tiers",
+    "upstreamCommit": "616f63c3b06"
+  },
+  {
+    "path": "packages/server/api/src/app/app.ts",
+    "resolution": "Retain independent authentication; excluded upstream SSO providers",
+    "upstreamCommit": "27b1ea2128e"
+  },
+  {
+    "path": "packages/server/api/src/app/authentication/authentication-utils.ts",
+    "resolution": "Retain independent authentication; excluded upstream SSO providers",
+    "upstreamCommit": "27b1ea2128e"
+  },
+  {
+    "path": "packages/server/api/src/app/authentication/authentication.service.ts",
+    "resolution": "Retain independent authentication; excluded upstream SSO providers",
+    "upstreamCommit": "27b1ea2128e"
+  },
+  {
+    "path": "packages/server/api/src/app/authentication/verified-domain-hooks.ts",
+    "resolution": "Retain independent authentication; excluded upstream SSO providers",
+    "upstreamCommit": "27b1ea2128e"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/authentication/saml-authn/authn-sso-saml-service.ts",
+    "resolution": "Retain independent authentication; excluded upstream SSO providers",
+    "upstreamCommit": "27b1ea2128e"
+  },
+  {
+    "path": "packages/server/api/test/integration/ce/authentication/sign-in-discovery.test.ts",
+    "resolution": "Retain independent authentication; excluded upstream SSO providers",
+    "upstreamCommit": "27b1ea2128e"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/authn/sign-in-discovery.test.ts",
+    "resolution": "Retain independent authentication; excluded upstream SSO providers",
+    "upstreamCommit": "27b1ea2128e"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/authn/sign-in-discovery.test.ts",
+    "resolution": "Retain independent authentication; excluded upstream SSO providers",
+    "upstreamCommit": "27b1ea2128e"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/saml-discover/saml-discover.test.ts",
+    "resolution": "Retain independent authentication; excluded upstream SSO providers",
+    "upstreamCommit": "27b1ea2128e"
+  },
+  {
+    "path": "packages/server/api/src/app/authentication/authentication-utils.ts",
+    "resolution": "Retain independent platform administration; upstream audit service is excluded",
+    "upstreamCommit": "4bc37aa6792"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/authentication/saml-authn/authn-sso-saml-controller.ts",
+    "resolution": "Retain independent platform administration; upstream audit service is excluded",
+    "upstreamCommit": "4bc37aa6792"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/authentication/saml-authn/authn-sso-saml-service.ts",
+    "resolution": "Retain independent platform administration; upstream audit service is excluded",
+    "upstreamCommit": "4bc37aa6792"
+  },
+  {
+    "path": "packages/server/api/src/app/platform/authentication-audit-events.ts",
+    "resolution": "Retain independent platform administration; upstream audit service is excluded",
+    "upstreamCommit": "4bc37aa6792"
+  },
+  {
+    "path": "packages/server/api/src/app/platform/platform-side-effects.ts",
+    "resolution": "Retain independent platform administration; upstream audit service is excluded",
+    "upstreamCommit": "4bc37aa6792"
+  },
+  {
+    "path": "packages/server/api/src/app/platform/platform.service.ts",
+    "resolution": "Retain independent platform administration; upstream audit service is excluded",
+    "upstreamCommit": "4bc37aa6792"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/audit-event/authentication-audit-events.test.ts",
+    "resolution": "Retain independent platform administration; upstream audit service is excluded",
+    "upstreamCommit": "4bc37aa6792"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/authn/cloud-authn.test.ts",
+    "resolution": "Retain independent platform administration; upstream audit service is excluded",
+    "upstreamCommit": "4bc37aa6792"
+  },
+  {
+    "path": "packages/web/public/locales/en/translation.json",
+    "resolution": "Retain independent platform administration; upstream audit service is excluded",
+    "upstreamCommit": "4bc37aa6792"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/event-destinations/lib/event-groups.ts",
+    "resolution": "Retain independent platform administration; upstream audit service is excluded",
+    "upstreamCommit": "4bc37aa6792"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/event-destinations/lib/event-labels.ts",
+    "resolution": "Retain independent platform administration; upstream audit service is excluded",
+    "upstreamCommit": "4bc37aa6792"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/audit-logs/index.tsx",
+    "resolution": "Retain independent platform administration; upstream audit service is excluded",
+    "upstreamCommit": "4bc37aa6792"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/authentication/saml-authn/authn-sso-saml-service.ts",
+    "resolution": "Retain independently implemented SSO policy",
+    "upstreamCommit": "7b677a2f9e6"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/sso-domain/sso-domain.test.ts",
+    "resolution": "Retain independently implemented SSO policy",
+    "upstreamCommit": "7b677a2f9e6"
+  },
+  {
+    "path": "packages/web/public/locales/de/translation.json",
+    "resolution": "Retain independently implemented SSO policy",
+    "upstreamCommit": "7b677a2f9e6"
+  },
+  {
+    "path": "packages/web/public/locales/en/translation.json",
+    "resolution": "Retain independently implemented SSO policy",
+    "upstreamCommit": "7b677a2f9e6"
+  },
+  {
+    "path": "packages/web/public/locales/es/translation.json",
+    "resolution": "Retain independently implemented SSO policy",
+    "upstreamCommit": "7b677a2f9e6"
+  },
+  {
+    "path": "packages/web/public/locales/fr/translation.json",
+    "resolution": "Retain independently implemented SSO policy",
+    "upstreamCommit": "7b677a2f9e6"
+  },
+  {
+    "path": "packages/web/public/locales/ja/translation.json",
+    "resolution": "Retain independently implemented SSO policy",
+    "upstreamCommit": "7b677a2f9e6"
+  },
+  {
+    "path": "packages/web/public/locales/nl/translation.json",
+    "resolution": "Retain independently implemented SSO policy",
+    "upstreamCommit": "7b677a2f9e6"
+  },
+  {
+    "path": "packages/web/public/locales/pt/translation.json",
+    "resolution": "Retain independently implemented SSO policy",
+    "upstreamCommit": "7b677a2f9e6"
+  },
+  {
+    "path": "packages/web/public/locales/zh-TW/translation.json",
+    "resolution": "Retain independently implemented SSO policy",
+    "upstreamCommit": "7b677a2f9e6"
+  },
+  {
+    "path": "packages/web/public/locales/zh/translation.json",
+    "resolution": "Retain independently implemented SSO policy",
+    "upstreamCommit": "7b677a2f9e6"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/sso/domain-verification.tsx",
+    "resolution": "Retain independently implemented SSO policy",
+    "upstreamCommit": "7b677a2f9e6"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/sso/domains-section.tsx",
+    "resolution": "Retain independently implemented SSO policy",
+    "upstreamCommit": "7b677a2f9e6"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/sso/verify-domain-dialog.tsx",
+    "resolution": "Retain independently implemented SSO policy",
+    "upstreamCommit": "7b677a2f9e6"
+  },
+  {
+    "path": "packages/web/test/app/routes/platform/security/sso/sso-page.test.tsx",
+    "resolution": "Retain independently implemented SSO policy",
+    "upstreamCommit": "7b677a2f9e6"
+  },
+  {
+    "path": "packages/server/api/src/app/authentication/authentication-utils.ts",
+    "resolution": "Retain independent authentication settings and API contracts",
+    "upstreamCommit": "f1f49f65ffb"
+  },
+  {
+    "path": "packages/server/api/src/app/platform/platform.service.ts",
+    "resolution": "Retain independent authentication settings and API contracts",
+    "upstreamCommit": "f1f49f65ffb"
+  },
+  {
+    "path": "packages/server/api/test/integration/ce/platform/last-sign-in-method.test.ts",
+    "resolution": "Retain independent authentication settings and API contracts",
+    "upstreamCommit": "f1f49f65ffb"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/audit-event/authentication-audit-events.test.ts",
+    "resolution": "Retain independent authentication settings and API contracts",
+    "upstreamCommit": "f1f49f65ffb"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/platform/last-sign-in-method.test.ts",
+    "resolution": "Retain independent authentication settings and API contracts",
+    "upstreamCommit": "f1f49f65ffb"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/platform/platform.test.ts",
+    "resolution": "Retain independent authentication settings and API contracts",
+    "upstreamCommit": "f1f49f65ffb"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/platform/last-sign-in-method.test.ts",
+    "resolution": "Retain independent authentication settings and API contracts",
+    "upstreamCommit": "f1f49f65ffb"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/sso-domain/sso-domain.test.ts",
+    "resolution": "Retain independent authentication settings and API contracts",
+    "upstreamCommit": "f1f49f65ffb"
+  },
+  {
+    "path": "Dockerfile",
+    "resolution": "Retain Sydekyks Docker packaging and update Node to 24.22.1; pin verified digest before completion"
+  },
+  {
+    "path": "bun.lock",
+    "resolution": "Regenerate Bun lock from merged workspace manifests, preserving Sydekyks dependency versions"
+  },
+  {
+    "path": "package.json",
+    "resolution": "Three-way JSON merge; retain custom values where both sides changed"
+  },
+  {
+    "path": "packages/core/execution/package.json",
+    "resolution": "Three-way JSON merge; retain custom values where both sides changed"
+  },
+  {
+    "path": "packages/core/shared/src/index.ts",
+    "resolution": "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+  },
+  {
+    "path": "packages/core/utils/src/index.ts",
+    "resolution": "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+  },
+  {
+    "path": "packages/server/api/src/app/ai/ai-provider-service.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/ai/ai-usage-service.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/app.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/core/canary/canary-routing.middleware.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/core/websockets.service.ts",
+    "resolution": "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+  },
+  {
+    "path": "packages/server/api/src/app/database/postgres-connection.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/flows/flow-run/flow-run-service.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/flows/flow-version/piece-upgrade.service.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/flows/pre-warm-workers.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/pieces/metadata/piece-metadata-controller.ts",
+    "resolution": "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+  },
+  {
+    "path": "packages/server/api/src/app/platform/platform.controller.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/platform/platform.service.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/project/project-service.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/trigger/trigger-source/trigger-source-service.ts",
+    "resolution": "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+  },
+  {
+    "path": "packages/server/api/src/app/user-invitations/user-invitation.module.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/user-invitations/user-invitation.service.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/user/user-service.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/job-queue/interceptors/rate-limiter-interceptor.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/job-queue/job-broker.ts",
+    "resolution": "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/job-queue/job-queue.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/machine/machine-service.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/api/src/app/workers/rpc/worker-rpc-service.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/utils/src/ai-utils.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/worker/src/lib/execute/jobs/ee/agent/execute-agent-run.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/worker/src/lib/execute/jobs/ee/agent/run-agent-turn.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/worker/src/lib/execute/jobs/ee/agent/tools/cross-project-tools.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/server/worker/test/lib/execute/jobs/ee/agent/run-agent-turn-fallback.test.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/public/locales/de/translation.json",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/public/locales/en/translation.json",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/public/locales/es/translation.json",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/public/locales/fr/translation.json",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/public/locales/ja/translation.json",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/public/locales/nl/translation.json",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/public/locales/pt/translation.json",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/public/locales/zh/translation.json",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/src/app/builder/flow-canvas/widgets/builder-banner.tsx",
+    "resolution": "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+  },
+  {
+    "path": "packages/web/src/app/builder/index.tsx",
+    "resolution": "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+  },
+  {
+    "path": "packages/web/src/app/builder/state/flow-state.ts",
+    "resolution": "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+  },
+  {
+    "path": "packages/web/src/app/components/global-search/static-pages.ts",
+    "resolution": "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+  },
+  {
+    "path": "packages/web/src/app/components/global-search/use-global-search-results.ts",
+    "resolution": "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+  },
+  {
+    "path": "packages/web/src/app/components/sidebar/platform/index.tsx",
+    "resolution": "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+  },
+  {
+    "path": "packages/web/src/app/routes/agents/index.tsx",
+    "resolution": "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+  },
+  {
+    "path": "packages/web/src/app/routes/chat-with-ai/components/flow-build-card.tsx",
+    "resolution": "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/mcp-client-catalog.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/index.tsx",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/projects/index.tsx",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/audit-logs/index.tsx",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/src/features/members/components/invite-user/invite-user-dialog.tsx",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/src/features/projects/stores/project-collection.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/test/app/components/sidebar/platform/index.test.tsx",
+    "resolution": "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+  },
+  {
+    "path": "packages/web/test/app/routes/mcp-server/mcp-client-catalog.test.ts",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/web/test/app/routes/platform/security/sso/sso-page.test.tsx",
+    "resolution": "Preserve independent Sydekyks implementation; follow-up tests required"
+  },
+  {
+    "path": "packages/pieces/community/emailoctopus/src/lib/triggers/contact-Unsubscribes.ts",
+    "resolution": "Explicit case-only rename to packages/pieces/community/emailoctopus/src/lib/triggers/contact-unsubscribes.ts; adopt upstream trigger"
+  },
+  {
+    "path": "packages/pieces/community/emailoctopus/src/lib/triggers/email-Clicked.ts",
+    "resolution": "Explicit case-only rename to packages/pieces/community/emailoctopus/src/lib/triggers/email-clicked.ts; adopt upstream trigger"
+  },
+  {
+    "path": "packages/pieces/community/emailoctopus/src/lib/triggers/new-Contact.ts",
+    "resolution": "Explicit case-only rename to packages/pieces/community/emailoctopus/src/lib/triggers/new-contact.ts; adopt upstream trigger"
+  },
+  {
+    "path": "packages/core/shared/src/lib/management/platform/index.ts",
+    "resolution": "Keep shared contracts aligned with preserved independent services; no upstream Cloud-only schema fields"
+  },
+  {
+    "path": "packages/core/shared/src/lib/management/platform/platform.model.ts",
+    "resolution": "Keep shared contracts aligned with preserved independent services; no upstream Cloud-only schema fields"
+  },
+  {
+    "path": "packages/core/shared/src/lib/management/project/project.ts",
+    "resolution": "Keep shared contracts aligned with preserved independent services; no upstream Cloud-only schema fields"
+  },
+  {
+    "path": "packages/core/shared/src/lib/management/project/project-requests.ts",
+    "resolution": "Keep shared contracts aligned with preserved independent services; no upstream Cloud-only schema fields"
+  },
+  {
+    "path": "packages/core/shared/src/lib/management/invitations/index.ts",
+    "resolution": "Keep shared contracts aligned with preserved independent services; no upstream Cloud-only schema fields"
+  },
+  {
+    "path": "packages/core/shared/src/lib/management/ai-providers/index.ts",
+    "resolution": "Keep shared contracts aligned with preserved independent services; no upstream Cloud-only schema fields"
+  }
+]
