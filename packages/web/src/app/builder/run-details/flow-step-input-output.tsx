@@ -15,17 +15,17 @@ import {
   PieceAudienceFilter,
 } from '@activepieces/shared';
 import { t } from 'i18next';
-import { Download, Info, ShieldAlert } from 'lucide-react';
+import { Info, ShieldAlert } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { StepOutputSkeleton } from '@/app/components/step-output-skeleton';
 import { SmartOutputViewer } from '@/components/custom/smart-output-viewer';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AgentTimeline } from '@/features/agents';
 import { flowRunUtils } from '@/features/flow-runs';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import { ProtectedFileLink } from '@/features/hosted-files/protected-file';
 import { piecesHooks } from '@/features/pieces';
 import { flagsHooks } from '@/hooks/flags-hooks';
@@ -42,6 +42,7 @@ import { StepDataPanelViewToggle } from '../step-data/step-data-panel-view-toggl
 import { isRunAgent } from '../test-step/agent-test-step';
 
 import { AiRouterRoutes } from './ai-router-routes';
+import { SlicedOutputViewer } from './sliced-output-viewer';
 import { truncatedInputUtils } from './truncated-input-utils';
 
 type RunActiveTab = 'input' | 'output' | 'timeline';
@@ -362,30 +363,25 @@ const SlicedOutputDownload = ({
   slicedOutputRef,
 }: {
   slicedOutputRef: LogSliceRef;
-}) => (
-  <div className="flex flex-col gap-3 p-4 bg-gray-3 rounded-md">
-    <div className="flex items-start gap-2 text-sm">
-      <Info className="w-4 h-4 mt-0.5 text-gray-11 shrink-0" />
-      <span>
-        {t(
-          'Output is too large to display inline ({size}). Download to inspect.',
-          { size: formatUtils.formatStorageSize(slicedOutputRef.size) },
-        )}
-      </span>
-    </div>
-    <Button asChild variant="outline" size="sm" className="w-fit gap-2">
-      <ProtectedFileLink
-        href={slicedOutputRef.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        download="output.json"
-      >
-        <Download className="w-4 h-4" />
-        {t('Download output')}
-      </ProtectedFileLink>
-    </Button>
-  </div>
-);
+}) => {
+  const hosted = useHostedBillingEnabled();
+  return (
+    <SlicedOutputViewer
+      slicedOutputRef={slicedOutputRef}
+      authenticated={hosted}
+      downloadLink={
+        <ProtectedFileLink
+          href={slicedOutputRef.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          download="output.json"
+        >
+          {t('Download output')}
+        </ProtectedFileLink>
+      }
+    />
+  );
+};
 
 function handleRunFailureOrEmptyLog(
   run: FlowRun | null,
