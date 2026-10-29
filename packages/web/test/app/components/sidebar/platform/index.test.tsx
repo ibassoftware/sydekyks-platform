@@ -16,6 +16,20 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock('i18next', () => ({ t: (key: string) => key }));
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }));
+// This fixture exercises self-hosted navigation. Hosted permission/transport
+// hooks stay disabled rather than starting unrelated API queries while rendering.
+vi.mock('@/app/components/project-settings/mcp-server/utils/mcp-hooks', () => ({
+  mcpHooks: { useMcpReach: () => ({ reachesMcp: false }) },
+}));
+vi.mock('@/features/hosted-operator/operator-api', () => ({
+  useHostedOperatorAccess: () => ({ allowed: false }),
+}));
+vi.mock('@/features/hosted-operator/trainers-api', () => ({
+  usePlatformTrainerAccess: () => ({ allowed: false }),
+}));
+vi.mock('@/features/hosted-operator/workspaces-api', () => ({
+  useOperationalWorkspaces: () => ({ allowed: false }),
+}));
 vi.mock('@/hooks/platform-hooks', () => ({
   platformHooks: {
     useCurrentPlatform: () => ({ platform: { plan: state.plan } }),
