@@ -25,3 +25,5 @@ export * from './lib/ai-provider-health'
 export * from './lib/deno'
 export * from './lib/sandbox-error'
 export * from './lib/gadget-name'
+
+export * from './lib/http-header-utils'

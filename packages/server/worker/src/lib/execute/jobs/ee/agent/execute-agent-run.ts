@@ -98,6 +98,7 @@ export const executeAgentRunJob: JobHandler<ExecuteAgentRunJobData, FireAndForge
                 ...spreadIfDefined('editorContext', data.editorContext),
                 ...spreadIfDefined('agentId', data.agentId),
                 ...spreadIfDefined('flowRunId', flowRunId),
+                ...spreadIfDefined('waitpointId', waitpointId),
                 ...spreadIfDefined('provider', data.provider),
                 ...spreadIfDefined('providerConfigId', data.providerConfigId),
                 ...spreadIfDefined('projectId', projectId),

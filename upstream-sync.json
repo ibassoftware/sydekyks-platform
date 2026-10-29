@@ -1,9 +1,9 @@
 {
-  "date": "2026-10-21",
-  "previousMain": "8d02eb8595ea06ed50c1ed2cec34e74bf88d3632",
-  "previousUpstream": "c7d897533048d65e08ee293958bdb42e6d70b28d",
-  "upstream": "8ee9d9677b91b13b1f8d8c08ed7967df7b7d4965",
-  "upstreamCommits": 198,
+  "date": "2026-10-29",
+  "previousMain": "592ac91c3de7fc5303828538bafb3d9782253377",
+  "previousUpstream": "8ee9d9677b91b13b1f8d8c08ed7967df7b7d4965",
+  "upstream": "bfc310001ca4de3efe2e15d4ad827b8593dc2b14",
+  "upstreamCommits": 172,
   "historyStrategy": "Three-way source integration onto existing Sydekyks history; no rewritten published commits and no copied legacy fork history.",
   "retained": [
     "Independent Syd backend, chat and editor contracts, saved-agent creation and publication fixes",
@@ -13,37 +13,34 @@
     "Existing exclusions of upstream enterprise modules, internal documentation and vendor publishing workflows"
   ],
   "adaptations": [
-    "Keep legacy provider/model APIs and hook contracts alongside the new model-options APIs",
-    "Retain the AI SDK 7 adapters, GPT-6 models and tiered-turn compatibility; integrate Responses API no-storage behavior and encrypted reasoning tests",
-    "Register piece-translation and barrier-index background migrations behind a new additive Sydekyks migration",
-    "Exclude upstream enterprise task orchestration and its worker/UI integration; keep the independent Syd implementation",
-    "Complete background migrations before asserting zero schema drift; validate upgrade, rollback, repeat application and existing payload preservation on PostgreSQL",
-    "Update stale team-project availability expectations to match the existing released behavior"
+    "Retain independently implemented Syd, authentication, project lifecycle, worker routing, licensing and Credits contracts.",
+    "Integrate safe Community/Gadget changes and adapt builder refresh/save behavior to the Sydekyks Copilot.",
+    "Update the immutable Node 24.22.1 base while preserving Sydekyks packaging.",
+    "Preserve released schema and migration identities; excluded upstream Cloud/Enterprise migrations are not registered.",
+    "Preserve connection-owned job admission IDs while rejecting disconnected poll waiters."
   ],
   "preservationAudit": {
-    "forkOnlyFilesRetained": 156,
-    "missingForkOnlyFiles": 0,
-    "lostCustomTranslationOverrides": 0,
-    "unresolvedMergeMarkers": 0,
-    "restrictedProductionImportEdges": 0
+    "forkOnlyFilesRetained": 203,
+    "missingForkOnlyFiles": [],
+    "restrictedProductionImportEdges": 0,
+    "note": "Source audit; schema/production behavior is covered separately in the follow-up acceptance plan."
   },
   "validation": {
     "productionBuildTasks": 19,
+    "frontendTypecheck": "passed",
+    "frontendTests": 492,
+    "apiFocusedTests": 67,
+    "workerTests": 332,
+    "gadgetSafetyTests": 66,
+    "utilityTests": 7,
+    "barrierTests": 26,
+    "distributionTests": 5,
     "lintTasks": 36,
-    "releaseApiTests": 187,
-    "releaseApiSkippedTests": 0,
-    "workerTests": 317,
-    "webTests": 257,
-    "providerAdapterTests": 58,
-    "providerUtilityTests": 92,
-    "sharedContractTests": 31,
-    "mcpOauthAndMigrationHelperTests": 208,
-    "newModelTranslationAndBarrierTests": 29,
-    "distributionBoundaryTests": 5,
-    "freeAccessAndRegistryTests": 8
+    "followUp": "upstream-integration/2026-10-29/validation.json"
   },
   "limits": [
     "No image publication, deployment or live provider calls.",
-    "Upstream enterprise implementation changes remain excluded from the Sydekyks distribution."
-  ]
+    "Excluded upstream Enterprise services, Cloud-only accounting and vendor workflows remain excluded; independent Sydekyks implementations are retained."
+  ],
+  "conflictInventory": "upstream-integration/2026-10-29/README.md"
 }

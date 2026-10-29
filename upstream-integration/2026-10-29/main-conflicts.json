@@ -1,0 +1,616 @@
+[
+  {
+    "path": "Dockerfile",
+    "resolution": [
+      "Retain Sydekyks Docker packaging and update Node to 24.22.1; pin verified digest before completion"
+    ],
+    "followUpTests": [
+      "Frozen Bun install, full production build and immutable Docker build for both architectures; preserve Sydekyks version and registries."
+    ]
+  },
+  {
+    "path": "bun.lock",
+    "resolution": [
+      "Regenerate Bun lock from merged workspace manifests, preserving Sydekyks dependency versions"
+    ],
+    "followUpTests": [
+      "Frozen Bun install, full production build and immutable Docker build for both architectures; preserve Sydekyks version and registries."
+    ]
+  },
+  {
+    "path": "package.json",
+    "resolution": [
+      "Three-way JSON merge; retain custom values where both sides changed"
+    ],
+    "followUpTests": [
+      "Frozen Bun install, full production build and immutable Docker build for both architectures; preserve Sydekyks version and registries."
+    ]
+  },
+  {
+    "path": "packages/core/execution/package.json",
+    "resolution": [
+      "Three-way JSON merge; retain custom values where both sides changed"
+    ],
+    "followUpTests": [
+      "Frozen Bun install, full production build and immutable Docker build for both architectures; preserve Sydekyks version and registries."
+    ]
+  },
+  {
+    "path": "packages/core/shared/src/index.ts",
+    "resolution": [
+      "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/core/utils/src/index.ts",
+    "resolution": [
+      "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/ai/ai-provider-service.ts",
+    "resolution": [
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Verify AI SDK 7, GPT-6, tool repair/approval, supplier errors and provider separation; hosted Credits require their dedicated suite."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/ai/ai-usage-service.ts",
+    "resolution": [
+      "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Verify AI SDK 7, GPT-6, tool repair/approval, supplier errors and provider separation; hosted Credits require their dedicated suite."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/app.ts",
+    "resolution": [
+      "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+      "Retain independent membership provisioning and tenant checks",
+      "Retain Community personal-project behavior",
+      "Retain independent authentication; excluded upstream SSO providers",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/core/canary/canary-routing.middleware.ts",
+    "resolution": [
+      "Retain independent shared-worker routing instead of upstream enterprise group services",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Exercise disconnect/reconnect during poll and after dispatch; preserve connection ownership, admission IDs, queued job IDs and concurrency fences."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/core/websockets.service.ts",
+    "resolution": [
+      "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow",
+      "Install packet readiness middleware around the existing principal/tenant/session revalidation and permission checks."
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/database/postgres-connection.ts",
+    "resolution": [
+      "Retain independent usage/Credits accounting; exclude upstream Autumn analytics wiring",
+      "Retain independently implemented project administration and schema",
+      "Retain independent shared-worker routing",
+      "Retain existing worker administration",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Fresh install and upgrade on disposable PostgreSQL; preserve released migration identities, execute background migrations, assert zero schema drift and unchanged existing rows."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/flows/flow-run/flow-run-service.ts",
+    "resolution": [
+      "Retain independent shared-worker routing",
+      "Preserve independent Sydekyks implementation; follow-up tests required",
+      "Adapted server-side fan-out queue fields and atomic retry status check while retaining projectLifecycle fencing and independent credit gates."
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/flows/flow-version/piece-upgrade.service.ts",
+    "resolution": [
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/flows/pre-warm-workers.ts",
+    "resolution": [
+      "Retain independent shared-worker routing instead of upstream enterprise group services",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Exercise disconnect/reconnect during poll and after dispatch; preserve connection ownership, admission IDs, queued job IDs and concurrency fences."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/pieces/metadata/piece-metadata-controller.ts",
+    "resolution": [
+      "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/platform/platform.controller.ts",
+    "resolution": [
+      "Retain independently implemented project administration and schema",
+      "Retain Community personal-project behavior",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/platform/platform.service.ts",
+    "resolution": [
+      "Retain independently implemented project administration and schema",
+      "Retain independent invitations and project authorization",
+      "Retain Community personal-project behavior",
+      "Retain independent platform administration; upstream audit service is excluded",
+      "Retain independent authentication settings and API contracts",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/project/project-service.ts",
+    "resolution": [
+      "Retain independently implemented project administration and schema",
+      "Retain independent invitations and project authorization",
+      "Retain independent shared-worker routing instead of upstream enterprise group services",
+      "Retain independent shared-worker routing",
+      "Retain existing worker administration",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/trigger/trigger-source/trigger-source-service.ts",
+    "resolution": [
+      "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow",
+      "Preserve projectLifecycle wrapping and pass isTriggerUnchanged plus previous schedule through republish hooks."
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/user-invitations/user-invitation.module.ts",
+    "resolution": [
+      "Retain independent invitations and project authorization",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/user-invitations/user-invitation.service.ts",
+    "resolution": [
+      "Retain independent membership provisioning and tenant checks",
+      "Retain independent invitations and project authorization",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/user/user-service.ts",
+    "resolution": [
+      "Retain independent membership provisioning and tenant checks",
+      "Retain independent invitations and project authorization",
+      "Retain Community personal-project behavior",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/workers/job-queue/interceptors/rate-limiter-interceptor.ts",
+    "resolution": [
+      "Retain independent shared-worker routing instead of upstream enterprise group services",
+      "Retain existing worker administration",
+      "Retain independent concurrency accounting instead of upstream Cloud plan tiers",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Exercise disconnect/reconnect during poll and after dispatch; preserve connection ownership, admission IDs, queued job IDs and concurrency fences."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/workers/job-queue/job-broker.ts",
+    "resolution": [
+      "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow",
+      "Pass the live socket to the dispatcher; retain connection-owned admission IDs and existing release/start fencing."
+    ],
+    "followUpTests": [
+      "Exercise disconnect/reconnect during poll and after dispatch; preserve connection ownership, admission IDs, queued job IDs and concurrency fences."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/workers/job-queue/job-queue.ts",
+    "resolution": [
+      "Retain independent shared-worker routing instead of upstream enterprise group services",
+      "Retain independent shared-worker routing",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Exercise disconnect/reconnect during poll and after dispatch; preserve connection ownership, admission IDs, queued job IDs and concurrency fences."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/workers/machine/machine-service.ts",
+    "resolution": [
+      "Retain independent shared-worker routing instead of upstream enterprise group services",
+      "Retain independent shared-worker routing",
+      "Retain existing worker administration",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Exercise disconnect/reconnect during poll and after dispatch; preserve connection ownership, admission IDs, queued job IDs and concurrency fences."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/workers/rpc/worker-rpc-service.ts",
+    "resolution": [
+      "Retain independent shared-worker routing instead of upstream enterprise group services",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Exercise disconnect/reconnect during poll and after dispatch; preserve connection ownership, admission IDs, queued job IDs and concurrency fences."
+    ]
+  },
+  {
+    "path": "packages/server/utils/src/ai-utils.ts",
+    "resolution": [
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Verify AI SDK 7, GPT-6, tool repair/approval, supplier errors and provider separation; hosted Credits require their dedicated suite."
+    ]
+  },
+  {
+    "path": "packages/server/worker/src/lib/execute/jobs/ee/agent/execute-agent-run.ts",
+    "resolution": [
+      "Preserve independent Sydekyks implementation; follow-up tests required",
+      "Retain independent execution/provider logic and pass optional waitpoint metadata during config retrieval."
+    ],
+    "followUpTests": [
+      "Exercise disconnect/reconnect during poll and after dispatch; preserve connection ownership, admission IDs, queued job IDs and concurrency fences."
+    ]
+  },
+  {
+    "path": "packages/server/worker/src/lib/execute/jobs/ee/agent/run-agent-turn.ts",
+    "resolution": [
+      "Preserve independent Sydekyks implementation; follow-up tests required",
+      "Retain AI SDK 7, explicit tool strictness and skill prompts; add upstream stop-condition token budget and custom-endpoint 400 classification."
+    ],
+    "followUpTests": [
+      "Exercise disconnect/reconnect during poll and after dispatch; preserve connection ownership, admission IDs, queued job IDs and concurrency fences."
+    ]
+  },
+  {
+    "path": "packages/server/worker/src/lib/execute/jobs/ee/agent/tools/cross-project-tools.ts",
+    "resolution": [
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Exercise disconnect/reconnect during poll and after dispatch; preserve connection ownership, admission IDs, queued job IDs and concurrency fences."
+    ]
+  },
+  {
+    "path": "packages/server/worker/test/lib/execute/jobs/ee/agent/run-agent-turn-fallback.test.ts",
+    "resolution": [
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Exercise disconnect/reconnect during poll and after dispatch; preserve connection ownership, admission IDs, queued job IDs and concurrency fences."
+    ]
+  },
+  {
+    "path": "packages/web/public/locales/de/translation.json",
+    "resolution": [
+      "Retain existing worker administration",
+      "Retain instance-specific MCP setup and Sydekyks client links",
+      "Retain independently implemented SSO policy",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Verify all pre-existing Sydekyks translation overrides survive and new keys render without changing product terminology."
+    ]
+  },
+  {
+    "path": "packages/web/public/locales/en/translation.json",
+    "resolution": [
+      "Retain independently implemented project administration and schema",
+      "Retain independent membership provisioning and tenant checks",
+      "Retain independent invitations and project authorization",
+      "Retain Community personal-project behavior",
+      "Retain independently implemented membership lifecycle",
+      "Retain existing worker administration",
+      "Retain instance-specific MCP setup and Sydekyks client links",
+      "Retain independent concurrency accounting instead of upstream Cloud plan tiers",
+      "Retain independent platform administration; upstream audit service is excluded",
+      "Retain independently implemented SSO policy",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Verify all pre-existing Sydekyks translation overrides survive and new keys render without changing product terminology."
+    ]
+  },
+  {
+    "path": "packages/web/public/locales/es/translation.json",
+    "resolution": [
+      "Retain existing worker administration",
+      "Retain instance-specific MCP setup and Sydekyks client links",
+      "Retain independently implemented SSO policy",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Verify all pre-existing Sydekyks translation overrides survive and new keys render without changing product terminology."
+    ]
+  },
+  {
+    "path": "packages/web/public/locales/fr/translation.json",
+    "resolution": [
+      "Retain existing worker administration",
+      "Retain instance-specific MCP setup and Sydekyks client links",
+      "Retain independently implemented SSO policy",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Verify all pre-existing Sydekyks translation overrides survive and new keys render without changing product terminology."
+    ]
+  },
+  {
+    "path": "packages/web/public/locales/ja/translation.json",
+    "resolution": [
+      "Retain existing worker administration",
+      "Retain instance-specific MCP setup and Sydekyks client links",
+      "Retain independently implemented SSO policy",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Verify all pre-existing Sydekyks translation overrides survive and new keys render without changing product terminology."
+    ]
+  },
+  {
+    "path": "packages/web/public/locales/nl/translation.json",
+    "resolution": [
+      "Retain existing worker administration",
+      "Retain instance-specific MCP setup and Sydekyks client links",
+      "Retain independently implemented SSO policy",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Verify all pre-existing Sydekyks translation overrides survive and new keys render without changing product terminology."
+    ]
+  },
+  {
+    "path": "packages/web/public/locales/pt/translation.json",
+    "resolution": [
+      "Retain existing worker administration",
+      "Retain instance-specific MCP setup and Sydekyks client links",
+      "Retain independently implemented SSO policy",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Verify all pre-existing Sydekyks translation overrides survive and new keys render without changing product terminology."
+    ]
+  },
+  {
+    "path": "packages/web/public/locales/zh/translation.json",
+    "resolution": [
+      "Retain existing worker administration",
+      "Retain instance-specific MCP setup and Sydekyks client links",
+      "Retain independently implemented SSO policy",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Verify all pre-existing Sydekyks translation overrides survive and new keys render without changing product terminology."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/builder/flow-canvas/widgets/builder-banner.tsx",
+    "resolution": [
+      "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+    ],
+    "followUpTests": [
+      "Run builder state, save/publish, draft refresh, resource-lock, Copilot and output-viewer regressions; inspect multi-tab saves and mobile panels in browser."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/builder/index.tsx",
+    "resolution": [
+      "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow",
+      "Retain the Sydekyks responsive Copilot layout; install upstream draft-refresh hooks and StepSettingsPanel. Include both draft refresh and Copilot revision in the panel key."
+    ],
+    "followUpTests": [
+      "Run builder state, save/publish, draft refresh, resource-lock, Copilot and output-viewer regressions; inspect multi-tab saves and mobile panels in browser."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/builder/state/flow-state.ts",
+    "resolution": [
+      "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow",
+      "Adopt upstream bounded keyed-debounce/save/refresh state machine; retain pendingDebouncedUpdates compatibility field while saving accounts for all pending work."
+    ],
+    "followUpTests": [
+      "Run builder state, save/publish, draft refresh, resource-lock, Copilot and output-viewer regressions; inspect multi-tab saves and mobile panels in browser."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/components/global-search/static-pages.ts",
+    "resolution": [
+      "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow",
+      "Keep Sydekyks feature availability and navigation; upstream Cloud AI-tier navigation is excluded."
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/components/global-search/use-global-search-results.ts",
+    "resolution": [
+      "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow",
+      "Keep Sydekyks feature availability and navigation; upstream Cloud AI-tier navigation is excluded."
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/components/sidebar/platform/index.tsx",
+    "resolution": [
+      "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/routes/agents/index.tsx",
+    "resolution": [
+      "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+    ],
+    "followUpTests": [
+      "Verify AI SDK 7, GPT-6, tool repair/approval, supplier errors and provider separation; hosted Credits require their dedicated suite."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/routes/chat-with-ai/components/flow-build-card.tsx",
+    "resolution": [
+      "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+    ],
+    "followUpTests": [
+      "Verify AI SDK 7, GPT-6, tool repair/approval, supplier errors and provider separation; hosted Credits require their dedicated suite."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/routes/mcp-server/mcp-client-catalog.ts",
+    "resolution": [
+      "Retain instance-specific MCP setup and Sydekyks client links",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/index.tsx",
+    "resolution": [
+      "Retain existing worker administration",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Exercise disconnect/reconnect during poll and after dispatch; preserve connection ownership, admission IDs, queued job IDs and concurrency fences."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/projects/index.tsx",
+    "resolution": [
+      "Retain independently implemented project administration and schema",
+      "Retain independent invitations and project authorization",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/audit-logs/index.tsx",
+    "resolution": [
+      "Retain independent platform administration; upstream audit service is excluded",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/web/src/features/members/components/invite-user/invite-user-dialog.tsx",
+    "resolution": [
+      "Retain independent membership provisioning and tenant checks",
+      "Retain independent invitations and project authorization",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/web/src/features/projects/stores/project-collection.ts",
+    "resolution": [
+      "Retain independently implemented project administration and schema",
+      "Retain independent invitations and project authorization",
+      "Retain existing worker administration",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/web/test/app/components/sidebar/platform/index.test.tsx",
+    "resolution": [
+      "Retain Sydekyks conflicting hunks and integrate nonconflicting upstream changes; compilation and targeted review follow"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/web/test/app/routes/mcp-server/mcp-client-catalog.test.ts",
+    "resolution": [
+      "Retain instance-specific MCP setup and Sydekyks client links",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  },
+  {
+    "path": "packages/web/test/app/routes/platform/security/sso/sso-page.test.tsx",
+    "resolution": [
+      "Retain independently implemented SSO policy",
+      "Preserve independent Sydekyks implementation; follow-up tests required"
+    ],
+    "followUpTests": [
+      "Run authorization/project lifecycle and matching component/API tests; confirm retained Sydekyks behavior against the pre-merge branch."
+    ]
+  }
+]

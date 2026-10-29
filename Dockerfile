@@ -1,4 +1,4 @@
-FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS base
+FROM node:24.22.1-bookworm-slim@sha256:be8204d4bd327363357f532187b752ff62759c31bedf98e9e18fc08c9cbd605c AS base
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 AP_DENO_PATH=/usr/local/bin/deno REDISMS_DISABLE_POSTINSTALL=1
 RUN apt-get update && apt-get install -y --no-install-recommends python3 g++ make git poppler-utils poppler-data procps unzip curl ca-certificates iptables libcap2 && rm -rf /var/lib/apt/lists/*
 RUN architecture="$(uname -m)" && case "$architecture" in x86_64) bun_arch=x64-baseline; deno_arch=x86_64;; aarch64) bun_arch=aarch64; deno_arch=aarch64;; *) exit 1;; esac && curl -fsSL --retry 3 "https://github.com/oven-sh/bun/releases/download/bun-v1.4.0/bun-linux-${bun_arch}.zip" -o /tmp/bun.zip && unzip /tmp/bun.zip -d /tmp/bun && mv /tmp/bun/bun-*/bun /usr/local/bin/bun && curl -fsSL --retry 3 "https://github.com/denoland/deno/releases/download/v2.9.3/deno-${deno_arch}-unknown-linux-gnu.zip" -o /tmp/deno.zip && unzip /tmp/deno.zip -d /usr/local/bin && rm -rf /tmp/bun /tmp/bun.zip /tmp/deno.zip && bun --version && deno --version

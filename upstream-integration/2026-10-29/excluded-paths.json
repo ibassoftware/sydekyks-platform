@@ -1,0 +1,682 @@
+[
+  {
+    "path": ".agents/skills/ai-task/SKILL.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".agents/skills/ai-task/linear.mjs",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".agents/skills/piece-builder/SKILL.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".agents/skills/piece-builder/trigger-patterns.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".claude/rules/linear-tickets.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/CODEOWNERS",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/pull_request_template.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/benchmark.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/ci.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/continuous-delivery-canary.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/continuous-delivery-cloud.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/continuous-delivery-rollback-canary.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/continuous-delivery-rollback.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/continuous-delivery-stg.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/dast.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/e2e-matrix.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/e2e.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/linear-ticket-check.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/release-self-hosted.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/tag-release-candidate.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/tests-e2e-ce.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/tests-e2e-ee.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": ".github/workflows/upgrade-test.yml",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "CLAUDE.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/ai-intelligence/ai-agents.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/ai-intelligence/ai-providers.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/ai-intelligence/mcp-server.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/ai-intelligence/model-picker.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/ai-intelligence/testing-ai-usage-locally.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/connections-auth/ee-authentication-sso-rbac.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/connections-auth/index.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/data-storage-observability/database.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/data-storage-observability/enterprise-oom-tracker.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/data-storage-observability/index.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/data-storage-observability/tables.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/decisions/000015-fan-in-is-an-event-driven-waitpoint-barrier.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/decisions/000049-a-default-project-cannot-be-deleted-while-it-is-a-default.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/decisions/000049-ai-step-picker-and-tier-slug-rewrite-share-one-flow-migration.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/decisions/000050-default-projects-apply-to-new-members-only.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/decisions/000050-lost-flow-edits-are-fixed-by-a-draft-refresh-not-an-edit-lease.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/decisions/000051-batch-children-are-dispatched-by-an-app-queue-job-not-the-engine.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/decisions/000051-default-projects-are-a-flag-on-the-project.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/decisions/000052-pre-publish-verification-runs-in-the-main-chat-not-a-task.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/decisions/000053-ai-usage-is-copied-from-autumn-into-our-postgres.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/design-system/colour.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/engineering/ci-pipeline.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/engineering/cloud-deployment-paths.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/engineering/e2e-tests-and-monitors.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/engineering/engineering-handbook-playbooks.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/engineering/index.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/engineering/linear-tickets.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/engineering/server-module-anatomy.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/execution-runtime/benchmark-cli.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/execution-runtime/workers.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/flows-execution/action-run.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/flows-execution/chat-personalization.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/flows-execution/chat.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/flows-execution/draft-refresh.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/flows-execution/flow-runs.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/flows-execution/flows.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/flows-execution/index.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/flows-execution/server-side-fan-out.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/flows-execution/triggers.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/pieces-engine/pieces.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/platform-editions-ee/ee-platform-plans-billing.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/platform-editions-ee/ee-projects-rbac.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/platform-editions-ee/platform-configuration.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/platform-editions-ee/projects.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/platform-editions-ee/user-invitations.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "brain/knowledge/platform-editions-ee/users.md",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "docs/admin-guide/guides/sso.mdx",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "docs/build-pieces/piece-reference/triggers/overview.mdx",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "docs/build-pieces/piece-reference/triggers/polling-trigger.mdx",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "docs/docs.json",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "docs/handbook/engineering/onboarding/release-cycle.mdx",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "docs/handbook/engineering/playbooks/alerts.mdx",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "docs/handbook/engineering/playbooks/canary-deployment.mdx",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "docs/handbook/engineering/playbooks/infrastructure.mdx",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "docs/handbook/engineering/playbooks/releases.mdx",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "docs/handbook/engineering/playbooks/security-advisory-response.mdx",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "docs/install/architecture/waitpoints.mdx",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "docs/install/reference/breaking-changes-unreleased.mdx",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "docs/install/reference/limits.mdx",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/pieces/community/emailoctopus/src/lib/triggers/contact-Unsubscribes.ts",
+    "reason": "Manual case-only rename or customized upstream deletion; recorded separately"
+  },
+  {
+    "path": "packages/pieces/community/emailoctopus/src/lib/triggers/contact-unsubscribes.ts",
+    "reason": "Manual case-only rename or customized upstream deletion; recorded separately"
+  },
+  {
+    "path": "packages/pieces/community/emailoctopus/src/lib/triggers/email-Clicked.ts",
+    "reason": "Manual case-only rename or customized upstream deletion; recorded separately"
+  },
+  {
+    "path": "packages/pieces/community/emailoctopus/src/lib/triggers/email-clicked.ts",
+    "reason": "Manual case-only rename or customized upstream deletion; recorded separately"
+  },
+  {
+    "path": "packages/pieces/community/emailoctopus/src/lib/triggers/new-Contact.ts",
+    "reason": "Manual case-only rename or customized upstream deletion; recorded separately"
+  },
+  {
+    "path": "packages/pieces/community/emailoctopus/src/lib/triggers/new-contact.ts",
+    "reason": "Manual case-only rename or customized upstream deletion; recorded separately"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/agent-conversation-entity.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/agent-file-utils.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/agent-helpers.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/agent-memory-ai.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/agent-run-controller.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/agent-service.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/personalization/chat-personalization-service.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/personalization/personalization-rows.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/rpc/agent-config-rpc.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/rpc/rpc-shared.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/rpc/tool-execution-rpc.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/agent/tools/agent-tools.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/alerts/alerts-service.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/authentication/saml-authn/authn-sso-saml-controller.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/authentication/saml-authn/authn-sso-saml-service.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/flags/enterprise-flags.hooks.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/flows/flow-approval/flow-approval-request.controller.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/flows/flow-approval/flow-approval-request.service.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/platform/admin/admin-platform.controller.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/platform/admin/deno-migration.service.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/platform/platform-list-controller.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/platform/platform-plan/billing-providers/autumn-billing.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/platform/platform-plan/billing-providers/autumn-utils.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/platform/platform-plan/openrouter/openrouter-api.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/platform/platform-plan/worker-group.service.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/personal-projects/personal-projects.module.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/personal-projects/personal-projects.service.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/platform-project-controller.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/platform-project-jobs.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/platform-project-service.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/project-members/project-member.controller.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/project-members/project-member.service.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/project-role/project-role.controller.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/projects/project-role/project-role.service.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/scim/scim-user-service.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/src/app/ee/users/ee-user-hooks.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ce/agent/agent-run-worker-handoff.test.ts",
+    "reason": "File already deliberately absent from Sydekyks; do not resurrect"
+  },
+  {
+    "path": "packages/server/api/test/integration/ce/ai-provider/managed-provider-key-race.test.ts",
+    "reason": "File already deliberately absent from Sydekyks; do not resurrect"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/agent/agent-resend-race.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/agent/agent-stuck-streaming.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/audit-event/authentication-audit-events.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/authn/cloud-authn.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/authn/sign-in-discovery.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/authn/sign-in-without-a-project.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/flow/migrate-to-deno.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/flow/piece-upgrade.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/managed-authn/external-token.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/platform/last-sign-in-method.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/platform/platform.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/project-members/project-members.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/project-role/project-role-events.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/user-invitations/seat-reservation.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/websockets/collaborative-cross-project.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/cloud/websockets/manual-trigger-rbac.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/agent/agent-action-audit.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/agent/agent-chat-model.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/agent/agent-controller.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/agent/chat-personalization-opt-out.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/ai-usage/ai-usage-copy.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/authn/sign-in-discovery.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/flags/flags.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/flow-approval/flow-approval.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/platform/last-sign-in-method.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/projects/auto-create-personal-projects.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/projects/create-missing-personal-projects.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/projects/default-projects-join.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/projects/default-projects.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/saml-discover/saml-discover.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/sso-domain/sso-domain.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/user-invitations/invite-existing-user-transaction.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/user-invitations/platform-invite-project.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/user-invitations/repeat-platform-invite.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/integration/ee/users/change-role-with-project.test.ts",
+    "reason": "Retain existing distribution and vendor-automation exclusions"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/core/canary/worker-group.service.test.ts",
+    "reason": "File already deliberately absent from Sydekyks; do not resurrect"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/ee/agent/agent-fast-model-provider.test.ts",
+    "reason": "File already deliberately absent from Sydekyks; do not resurrect"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/ee/agent/agent-rpc-handlers.test.ts",
+    "reason": "File already deliberately absent from Sydekyks; do not resurrect"
+  },
+  {
+    "path": "packages/server/api/test/unit/app/ee/platform-plan/credits-gate.test.ts",
+    "reason": "File already deliberately absent from Sydekyks; do not resurrect"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/infra/workers/worker-assignments-tab.tsx",
+    "reason": "Manual case-only rename or customized upstream deletion; recorded separately"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/sso/domain-verification.tsx",
+    "reason": "File already deliberately absent from Sydekyks; do not resurrect"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/sso/domains-section.tsx",
+    "reason": "File already deliberately absent from Sydekyks; do not resurrect"
+  },
+  {
+    "path": "packages/web/src/app/routes/platform/security/sso/verify-domain-dialog.tsx",
+    "reason": "File already deliberately absent from Sydekyks; do not resurrect"
+  }
+]

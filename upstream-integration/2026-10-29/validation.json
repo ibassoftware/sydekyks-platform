@@ -1,0 +1,28 @@
+{
+  "main": {
+    "upstreamConflicts": 58,
+    "productionBuildTasksPassed": 19,
+    "frontendTypecheck": "passed",
+    "frontendTestsPassed": 492,
+    "apiFocusedTestsPassed": 67,
+    "workerTestsPassed": 332,
+    "gadgetSafetyTestsPassed": 66,
+    "utilityTestsPassed": 7,
+    "barrierTestsPassed": 26,
+    "distributionTestsPassed": 5,
+    "sourceDistributionAudit": "passed; zero restricted import edges",
+    "forkOnlyFilesLost": 0,
+    "lint": "All 36 non-piece tasks passed across the initial run and final web/worker rerun (warnings remain; zero errors).",
+    "secretScan": "Three public upstream PEM-marker references reviewed: documentation/normalization strings and runtime-generated test keys; no stored private credential found."
+  },
+  "saas": {
+    "status": "SaaS merge and results are recorded on codex/partner-pilot."
+  },
+  "outstandingAcceptance": [
+    "Full PostgreSQL/Redis API release and concurrency/race suites",
+    "Fresh install, upgrade, migration and schema-drift validation on isolated databases",
+    "Browser multi-tab save/publish, responsive Copilot, output viewer and access-role journeys",
+    "Full image build, runtime staging, architecture and worker compatibility smoke",
+    "Live supplier and production deployment validation were not performed"
+  ]
+}
