@@ -30,8 +30,10 @@ async function execute({ piece, instruction, model, platformId, projectId, log }
         })
         if (!ready.length) throw invalid('Action inputs contain circular dependencies')
         const shape = await schemas({ properties: Object.fromEntries(ready.map((name) => [name, action.props[name]])), input: values, resolve, depth: 0 })
-        const { output } = await generateText({ model, output: Output.json(), prompt: `Extract action inputs from this instruction: ${instruction}\nPreviously filled inputs: ${JSON.stringify(visibleInputs({ input: values, properties: action.props }))}. Use real option values. Leave optional unspecified fields null. Return literal values, never template expressions. Required JSON schema: ${JSON.stringify(z.toJSONSchema(z.object(shape)))}.`, temperature: 0 })
-        values = { ...values, ...literalInputs(z.object(shape).parse(output)), ...pinned }
+        const { output } = await generateText({ model, output: Output.json(), prompt: `Extract action inputs from this instruction: ${instruction}\nPreviously filled inputs: ${JSON.stringify(visibleInputs({ input: values, properties: action.props }))}. For dropdowns, return the listed selection key; the server restores the original option value. Leave optional unspecified fields null. Return literal values, never template expressions. Required JSON schema: ${JSON.stringify(z.toJSONSchema(z.object(shape), { io: 'input' }))}.`, temperature: 0 })
+        // Clean model-authored data before decoding selections. Native option
+        // objects, booleans, arrays and nested nulls must survive unchanged.
+        values = { ...values, ...z.object(shape).parse(literalInputs(z.record(z.string(), z.unknown()).parse(output))), ...pinned }
         pending = pending.filter((name) => !ready.includes(name))
     }
     if (piece.actionName === 'custom_api_call') {
@@ -40,7 +42,7 @@ async function execute({ piece, instruction, model, platformId, projectId, log }
     }
     const resolvedInput = { ...values, ...(externalId ? { auth: externalId } : {}) }
     const result = await executePieceActionRun({ projectId, pieceName: metadata.name, actionName: piece.actionName, input: resolvedInput, ...(externalId ? { connectionExternalId: externalId } : {}), log })
-    return { result, resolvedInput: { ...visibleInputs({ input: literalInputs(values), properties: action.props }), ...(externalId ? { auth: 'Redacted' } : {}) }, actionDisplayName: action.displayName, ...(connection ? { connectionLabel: connection.displayName } : {}) }
+    return { result, resolvedInput: { ...visibleInputs({ input: values, properties: action.props }), ...(externalId ? { auth: 'Redacted' } : {}) }, actionDisplayName: action.displayName, ...(connection ? { connectionLabel: connection.displayName } : {}) }
 }
 
 async function schemas({ properties, input, resolve, depth }: SchemaParams): Promise<Record<string, z.ZodType>> {
@@ -51,6 +53,7 @@ async function schemas({ properties, input, resolve, depth }: SchemaParams): Pro
         if (dynamic && !resolution?.data) throw invalid(`Could not resolve action input ${name}`)
         let schema: z.ZodType
         const choices = resolution?.data?.status === 'options' ? resolution.data.options : 'options' in property ? property.options : null
+        let selections = ''
         if (property.type === PropertyType.DYNAMIC) {
             if (resolution?.data?.status !== 'dynamic') throw invalid(`Could not resolve action fields for ${name}`)
             schema = z.object(await schemas({ properties: resolution.data.props, input, resolve, depth: depth + 1 }))
@@ -59,15 +62,31 @@ async function schemas({ properties, input, resolve, depth }: SchemaParams): Pro
         else if (property.type === PropertyType.NUMBER) schema = z.number()
         else if (property.type === PropertyType.CHECKBOX) schema = z.boolean()
         else if (property.type === PropertyType.ARRAY) schema = property.properties ? z.array(z.object(await schemas({ properties: property.properties, input, resolve, depth: depth + 1 }))) : z.array(z.union([z.string(), z.number(), z.boolean()]))
-        else if (property.type === PropertyType.DROPDOWN || property.type === PropertyType.STATIC_DROPDOWN) schema = z.union([z.string(), z.number()])
+        else if ([PropertyType.DROPDOWN, PropertyType.STATIC_DROPDOWN, PropertyType.MULTI_SELECT_DROPDOWN, PropertyType.STATIC_MULTI_SELECT_DROPDOWN].includes(property.type)) {
+            if (dynamic && resolution?.data?.status !== 'options') throw invalid(`Could not resolve action input ${name}`)
+            const options = dropdownOptions(choices)
+            const multiple = [PropertyType.MULTI_SELECT_DROPDOWN, PropertyType.STATIC_MULTI_SELECT_DROPDOWN].includes(property.type)
+            if (!options.length && property.required && !multiple) throw invalid(`No available options for action input ${name}`)
+            const keys = options.map((_, index) => `option_${index}`)
+            const selection = keys.length ? z.enum(keys).transform(key => structuredClone(options[Number(key.slice(7))].value)) : z.never()
+            schema = multiple ? z.array(selection) : keys.length ? selection : z.null()
+            // Values may contain connection-scoped data (including access
+            // tokens). Expose labels and opaque keys to the model, never values.
+            selections = ` Allowed selections: ${JSON.stringify(options.map((option, index) => ({ label: option.label, key: keys[index] })))}`
+        }
         else if (property.type === PropertyType.JSON || property.type === PropertyType.OBJECT) schema = z.record(z.string(), z.unknown())
-        else if (property.type === PropertyType.MULTI_SELECT_DROPDOWN || property.type === PropertyType.STATIC_MULTI_SELECT_DROPDOWN) schema = z.array(z.union([z.string(), z.number()]))
         else if ([PropertyType.BASIC_AUTH, PropertyType.CUSTOM_AUTH, PropertyType.OAUTH2, PropertyType.OIDC, PropertyType.SECRET_TEXT].includes(property.type)) throw invalid(`Configure the protected field ${name} yourself`)
         else schema = z.string()
-        const description = `${property.displayName}: ${property.description ?? ''}${choices ? ` Allowed options: ${JSON.stringify(choices)}` : ''}`
-        return [name, (property.required ? schema : schema.nullable()).describe(description)] satisfies [string, z.ZodType]
+        const description = `${property.displayName}: ${property.description ?? ''}${selections}`
+        return [name, (property.required ? schema : schema.nullable().optional()).describe(description)] satisfies [string, z.ZodType]
     }))
     return Object.fromEntries(entries)
+}
+
+function dropdownOptions(choices: unknown): Array<{ label: string, value: unknown }> {
+    const options = Array.isArray(choices) ? choices : isRecord(choices) && Array.isArray(choices.options) ? choices.options : null
+    if (!options || options.some(option => !isRecord(option) || typeof option.label !== 'string' || !('value' in option) || option.value === undefined)) throw invalid('Could not resolve dropdown options')
+    return options as Array<{ label: string, value: unknown }>
 }
 
 function visibleInputs({ input, properties }: { input: Record<string, unknown>, properties: PiecePropertyMap }): Record<string, unknown> {
@@ -78,7 +97,7 @@ function visibleInputs({ input, properties }: { input: Record<string, unknown>, 
 function redactNamedSecrets(value: unknown): unknown {
     if (Array.isArray(value)) return value.map(redactNamedSecrets)
     if (!isRecord(value)) return value
-    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, /^(authorization|proxy-authorization|password|passwd|access[_-]?token|refresh[_-]?token|client[_-]?secret|(?:x[_-])?api[_-]?key|token|secret)$/i.test(key) ? 'Redacted' : redactNamedSecrets(entry)]))
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, /^(auth|authorization|proxy-authorization|password|passwd|access[_-]?token|refresh[_-]?token|client[_-]?secret|(?:x[_-])?api[_-]?key|token|secret)$/i.test(key) ? 'Redacted' : redactNamedSecrets(entry)]))
 }
 
 function pinnedInputs(input?: PredefinedInputsStructure): Record<string, unknown> {

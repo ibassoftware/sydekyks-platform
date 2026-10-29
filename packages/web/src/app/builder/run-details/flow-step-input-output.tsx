@@ -15,13 +15,12 @@ import {
   PieceAudienceFilter,
 } from '@activepieces/shared';
 import { t } from 'i18next';
-import { Download, Info, ShieldAlert } from 'lucide-react';
+import { Info, ShieldAlert } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { StepOutputSkeleton } from '@/app/components/step-output-skeleton';
 import { SmartOutputViewer } from '@/components/custom/smart-output-viewer';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AgentTimeline } from '@/features/agents';
@@ -41,6 +40,7 @@ import { StepDataPanelViewToggle } from '../step-data/step-data-panel-view-toggl
 import { isRunAgent } from '../test-step/agent-test-step';
 
 import { AiRouterRoutes } from './ai-router-routes';
+import { SlicedOutputViewer } from './sliced-output-viewer';
 import { truncatedInputUtils } from './truncated-input-utils';
 
 type RunActiveTab = 'input' | 'output' | 'timeline';
@@ -236,7 +236,7 @@ export const FlowStepInputOutput = () => {
           onValueChange={(value) => setActiveTab(value as RunActiveTab)}
           className="w-full"
         >
-          <div className="flex items-center justify-between gap-2 shrink-0 mb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 shrink-0 mb-2">
             <TabsList>
               {!isTrigger && (
                 <TabsTrigger value="input">{t('Input')}</TabsTrigger>
@@ -246,7 +246,7 @@ export const FlowStepInputOutput = () => {
               )}
               <TabsTrigger value="output">{t('Output')}</TabsTrigger>
             </TabsList>
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="ml-auto flex items-center gap-1 shrink-0">
               <StepDataPanelViewToggle />
               <ClosePanelButton />
             </div>
@@ -362,28 +362,19 @@ const SlicedOutputDownload = ({
 }: {
   slicedOutputRef: LogSliceRef;
 }) => (
-  <div className="flex flex-col gap-3 p-4 bg-gray-3 rounded-md">
-    <div className="flex items-start gap-2 text-sm">
-      <Info className="w-4 h-4 mt-0.5 text-gray-11 shrink-0" />
-      <span>
-        {t(
-          'Output is too large to display inline ({size}). Download to inspect.',
-          { size: formatUtils.formatStorageSize(slicedOutputRef.size) },
-        )}
-      </span>
-    </div>
-    <Button asChild variant="outline" size="sm" className="w-fit gap-2">
+  <SlicedOutputViewer
+    slicedOutputRef={slicedOutputRef}
+    downloadLink={
       <a
         href={slicedOutputRef.url}
         target="_blank"
         rel="noopener noreferrer"
-        download
+        download="output.json"
       >
-        <Download className="w-4 h-4" />
         {t('Download output')}
       </a>
-    </Button>
-  </div>
+    }
+  />
 );
 
 function handleRunFailureOrEmptyLog(
