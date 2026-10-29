@@ -66,6 +66,9 @@
       "missingForkOnlyFiles": [],
       "changedHostedPolicyFiles": []
     },
-    "validation": "upstream-integration/2026-10-29/validation.json"
+    "validation": "upstream-integration/2026-10-29/validation.json",
+    "publishedMain": "101eb4a606821b3c61e5fbe9abe68c9aabeb0351",
+    "mainPullRequest": "https://github.com/ibassoftware/sydekyks-platform/pull/17",
+    "publishedMainAncestryMergeConflicts": 0
   }
 }

@@ -13,7 +13,10 @@
     "sourceDistributionAudit": "passed; zero restricted import edges",
     "forkOnlyFilesLost": 0,
     "lint": "All 36 non-piece tasks passed across the initial run and final web/worker rerun (warnings remain; zero errors).",
-    "secretScan": "Three public upstream PEM-marker references reviewed: documentation/normalization strings and runtime-generated test keys; no stored private credential found."
+    "secretScan": "Three public upstream PEM-marker references reviewed: documentation/normalization strings and runtime-generated test keys; no stored private credential found.",
+    "publishedMergeCommit": "101eb4a606821b3c61e5fbe9abe68c9aabeb0351",
+    "pullRequest": "https://github.com/ibassoftware/sydekyks-platform/pull/17",
+    "githubValidationAtMerge": "in progress; no required branch status check was bypassed"
   },
   "saas": {
     "status": "source merge validated; no deployment",
@@ -33,7 +36,9 @@
     "sourceDistributionAudit": "passed; zero restricted imports",
     "forkOnlyFilesLost": [],
     "changedHostedPolicyFiles": [],
-    "preservedHostedGadgetAndBatchPaths": true
+    "preservedHostedGadgetAndBatchPaths": true,
+    "publishedMainAncestryMergeConflicts": 0,
+    "sourceTreeAfterPublishedMainMerge": "Identical to the validated SaaS candidate except this provenance/validation documentation."
   },
   "outstandingAcceptance": [
     "Full PostgreSQL/Redis API release manifest, real concurrency/dispatch races and background migrations beyond the in-memory migration-backed tests already run",
