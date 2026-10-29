@@ -82,19 +82,13 @@ describe('current self-hosted PlatformSidebar', () => {
     state.plan.aiProvidersEnabled = true;
     renderSidebar();
     expect(
-      screen
-        .getByRole('link', { name: 'AI Center' })
-        .getAttribute('href'),
+      screen.getByRole('link', { name: 'AI Center' }).getAttribute('href'),
     ).toBe('/platform/ai');
     expect(
-      screen
-        .getByRole('link', { name: 'Providers' })
-        .getAttribute('href'),
+      screen.getByRole('link', { name: 'Providers' }).getAttribute('href'),
     ).toBe('/platform/ai');
     expect(
-      screen
-        .getByRole('link', { name: 'Capabilities' })
-        .getAttribute('href'),
+      screen.getByRole('link', { name: 'Capabilities' }).getAttribute('href'),
     ).toBe('/platform/ai/capabilities');
   });
   it('presents the inherited plan restriction without pretending a link is server authorization', () => {
@@ -134,26 +128,13 @@ describe('current self-hosted PlatformSidebar', () => {
     ).toBeTruthy();
   });
 
-  it('shows Tiers between Providers and Capabilities on cloud', () => {
-    plan.aiProvidersEnabled = true;
-    flags.edition = 'cloud';
-
-    renderSidebar();
-
-    const aiCenter = screen.getByRole('list', { name: 'AI Center' });
-    expect(
-      Array.from(aiCenter.children).map((item) =>
-        item.getAttribute('aria-label'),
-      ),
-    ).toEqual(['Providers', 'Tiers', 'Capabilities']);
-  });
-
-  it('hides Tiers on self-hosted enterprise', () => {
-    plan.aiProvidersEnabled = true;
-    flags.edition = 'ee';
-
-    renderSidebar();
-
-    expect(screen.queryAllByRole('listitem', { name: 'Tiers' })).toEqual([]);
-  });
+  it.each([ApEdition.CLOUD, ApEdition.ENTERPRISE])(
+    'omits unavailable legacy model tiers on %s',
+    (edition) => {
+      state.plan.aiProvidersEnabled = true;
+      state.edition = edition;
+      renderSidebar();
+      expect(screen.queryByRole('link', { name: 'Tiers' })).toBeNull();
+    },
+  );
 });

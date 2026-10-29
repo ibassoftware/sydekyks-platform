@@ -16,7 +16,6 @@ import { StatusCodes } from 'http-status-codes'
 import { websocketService } from '../../../../../src/app/core/websockets.service'
 import { flowService } from '../../../../../src/app/flows/flow/flow.service'
 import { db } from '../../../../helpers/db'
-import { describeWithAuth } from '../../../../helpers/describe-with-auth'
 import { draftPushes } from '../../../../helpers/draft-push'
 import { createTestContext, TestContext } from '../../../../helpers/test-context'
 import { setupTestEnvironment, teardownTestEnvironment } from '../../../../helpers/test-setup'
@@ -36,7 +35,8 @@ afterEach(() => {
 })
 
 describe('Draft Push', () => {
-    describeWithAuth('POST /v1/flows/:id', () => app, (setup) => {
+    describe('POST /v1/flows/:id [USER]', () => {
+        const setup = () => createTestContext(app)
         it.each(draftWrites)('sends FLOW_DRAFT_UPDATED with the editor session id to the project room after $type', async ({ build }) => {
             const ctx = await setup()
             const flow = await createFlow(ctx)

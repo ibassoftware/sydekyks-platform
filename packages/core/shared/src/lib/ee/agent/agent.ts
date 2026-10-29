@@ -4,6 +4,7 @@ import { AIProviderName, ApId, BaseModelSchema, Nullable } from '@activepieces/c
 import { z } from 'zod'
 import { formErrors } from '../../form-errors'
 import { ColorName } from '../../management/project/project'
+import { AgentImage } from './agent-image'
 
 const MAX_AGENT_TEXT_LENGTH = 51_200
 const MAX_AGENT_TOOLS = 100
@@ -39,6 +40,8 @@ enum AgentIcon {
     ZAP = 'zap',
 }
 
+const AgentIconValue = z.union([z.enum(AgentIcon), AgentImage])
+
 const AgentConfig = z.object({
     instructions: z.string().max(MAX_AGENT_TEXT_LENGTH),
     provider: Nullable(z.enum(AIProviderName)),
@@ -62,7 +65,7 @@ const Agent = z.object({
     folderId: Nullable(ApId),
     displayName: z.string(),
     description: Nullable(z.string()),
-    icon: z.enum(AgentIcon),
+    icon: AgentIconValue,
     color: z.enum(ColorName),
     visibility: z.enum(AgentVisibility),
     sharedWithUserIds: z.array(ApId),
@@ -93,7 +96,7 @@ const CreateAgentRequest = z.object({
     projectId: ApId,
     displayName: z.string().min(1, formErrors.required),
     description: Nullable(z.string()),
-    icon: z.enum(AgentIcon),
+    icon: AgentIconValue,
     color: z.enum(ColorName),
     visibility: z.enum(AgentVisibility).optional(),
     sharedWithUserIds: z.array(ApId).max(MAX_AGENT_SHARED_MEMBERS).optional(),
@@ -171,6 +174,7 @@ export {
     agentUtils,
     AgentConfig,
     AgentIcon,
+    AgentIconValue,
     AgentVisibility,
     CreateAgentRequest,
     DEFAULT_AGENT_MAX_STEPS,

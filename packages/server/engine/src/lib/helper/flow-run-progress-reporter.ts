@@ -107,7 +107,6 @@ export const flowRunProgressReporter = {
                 executionState: {
                     steps: flowExecutorContext.steps,
                     tags: Array.from(flowExecutorContext.tags),
-                    entryStepName: engineConstants.entryStepName,
                 },
             })
             const executionState = await zstdCompress(serialized)

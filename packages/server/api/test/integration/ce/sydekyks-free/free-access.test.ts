@@ -47,7 +47,7 @@ describe('free Sydekyks access', () => {
         const queue = await jobQueue(app.log).getOrCreateQueue({ queueName: `free-test-${apId()}` })
         const id = apId()
         await queue.add(id, { projectId: ctx.project.id, platformId: ctx.platform.id, jobType: WorkerJobType.EXECUTE_FLOW, executionType: ExecutionType.BEGIN, environment: RunEnvironment.TESTING, schemaVersion: LATEST_JOB_DATA_SCHEMA_VERSION, flowId: apId(), flowVersionId: apId(), runId: apId(), payload: { type: 'inline', value: null }, streamStepProgress: StreamStepProgress.NONE, logsFileId: apId() }, { jobId: id })
-        const job = await jobBroker(app.log).poll(queue.name, 'owner-worker')
+        const job = await jobBroker(app.log).poll(queue.name, { id: 'owner-worker', connected: true })
         expect(job).not.toBeNull()
         if (!job) throw new Error('Expected a queued job')
         expect(await jobBroker(app.log).startJob(job, 'other-worker')).toBe(false)

@@ -47,6 +47,17 @@ async function createAgent(ctx: TestContext): Promise<Agent> {
 }
 
 describe('owned saved agents in Community Edition', () => {
+    it('persists a custom raster image and color independently from saved instructions', async () => {
+        const owner = await createTestContext(app), agent = await createAgent(owner)
+        const icon = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a9sAAAAASUVORK5CYII='
+        const saved = await owner.post(`/v1/agents/${agent.id}`, { icon, color: ColorName.ORANGE })
+        expect(saved.statusCode, saved.body).toBe(200)
+        const restored = await owner.get(`/v1/agents/${agent.id}`)
+        expect(restored.json<Agent>()).toMatchObject({ icon, color: ColorName.ORANGE, draft: { instructions: agent.draft.instructions } })
+        const rejected = await owner.post(`/v1/agents/${agent.id}`, { icon: 'data:image/svg+xml;base64,PHN2Zz4=' })
+        expect(rejected.statusCode).toBe(400)
+    })
+
     it('publishes a new agent when the editor explicitly requests goLive, while ordinary saves remain drafts', async () => {
         const owner = await createTestContext(app)
         const agent = await createAgent(owner)

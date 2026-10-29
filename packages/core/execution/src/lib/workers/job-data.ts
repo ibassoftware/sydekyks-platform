@@ -139,7 +139,6 @@ const ExecuteFlowJobDataCommon = z.object({
 export const BeginExecuteFlowJobData = ExecuteFlowJobDataCommon.extend({
     executionType: z.literal(ExecutionType.BEGIN),
     executeTrigger: z.boolean().optional(),
-    entryStepName: z.string().optional(),
 })
 export type BeginExecuteFlowJobData = z.infer<typeof BeginExecuteFlowJobData>
 
@@ -326,7 +325,6 @@ export const ExecuteAgentRunJobData = z.object({
     editorContext: z.object({ flowId: z.string(), flowVersionId: z.string(), selectedStepName: z.string().optional() }).optional(),
     messageSource: z.enum(['onboarding']).optional(),
     agentId: z.string().optional(),
-    flowId: z.string().optional(),
     flowRunId: z.string().optional(),
     waitpointId: z.string().optional(),
     tools: z.array(AgentTool).optional(),

@@ -7,6 +7,10 @@ on:
   workflow_dispatch:
   workflow_call:
 
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -67,6 +71,10 @@ jobs:
       - run: bun x turbo run build --concurrency=2 --filter=web --filter=@activepieces/engine --filter=api --filter=worker
         env:
           NODE_OPTIONS: --max-old-space-size=4096
+      - name: Check frontend TypeScript
+        run: bun x tsc -p packages/web/tsconfig.app.json --pretty false
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
       - name: Check Syd worker and supporting agent regressions
         run: >-
           bun x vitest run --config packages/server/worker/vitest.config.ts
@@ -92,6 +100,10 @@ jobs:
           packages/web/test/features/agents/new-blank-agent-button.test.tsx
           packages/web/test/app/routes/agents
           packages/web/test/app/builder
+          packages/web/src/features/agents/agent-appearance-picker.test.tsx
+          packages/web/src/app/builder/builder-copilot-panel.test.tsx
+          packages/web/test/app/components/sidebar/platform/index.test.tsx
+          --maxWorkers=2
       - name: Check Syd API and MCP authorization regressions
         env:
           SYD_TEST_POSTGRES: 'true'

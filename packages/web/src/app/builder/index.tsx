@@ -24,6 +24,7 @@ import { useElementSize } from '@/hooks/use-element-size';
 import { cn } from '@/lib/utils';
 
 import { BuilderCopilot } from './builder-copilot';
+import { BuilderCopilotPanel } from './builder-copilot-panel';
 import { BuilderHeader } from './builder-header/builder-header';
 import { FlowCanvas } from './flow-canvas';
 import { flowCanvasHooks } from './flow-canvas/hooks';
@@ -44,7 +45,7 @@ const SPLIT_MODE_COLLAPSE_THRESHOLD_PX = 700;
 
 const BuilderPage = () => {
   const { platform } = platformHooks.useCurrentPlatform();
-  const [copilotOpen, setCopilotOpen] = useState(true);
+  const [copilotOpen, setCopilotOpen] = useState(false);
   const compactWorkspace = useMedia('(max-width: 1279px)', false);
   const [
     flowVersion,
@@ -167,17 +168,12 @@ const BuilderPage = () => {
       </div>
       <div className="relative flex min-h-0 flex-1">
         {platform.plan.chatEnabled && (
-          <aside
-            className={cn(
-              'absolute inset-0 z-40 border-r bg-panel xl:static xl:z-auto xl:w-[320px] xl:max-w-[36%] xl:shrink-0 2xl:w-[360px]',
-              !copilotOpen && 'hidden',
-            )}
-          >
+          <BuilderCopilotPanel open={copilotOpen}>
             <BuilderCopilot
               key={flowVersion.flowId}
               onClose={() => setCopilotOpen(false)}
             />
-          </aside>
+          </BuilderCopilotPanel>
         )}
         <div className="min-w-0 flex-1">
           <ResizablePanelGroup orientation="horizontal">

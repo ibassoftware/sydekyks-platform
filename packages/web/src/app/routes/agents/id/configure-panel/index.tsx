@@ -4,11 +4,8 @@ import {
   AgentConfig,
   AgentToolType,
   AgentVisibility,
-  PICKABLE_COLOR_NAMES,
   DEFAULT_AGENT_MAX_STEPS,
   MAX_AGENT_STEP_BUDGET,
-  PROJECT_COLOR_PALETTE,
-  PROJECT_COLOR_SWATCH,
 } from '@activepieces/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { t } from 'i18next';
@@ -62,6 +59,7 @@ import {
   NoEmbeddingSourceNote,
   useKnowledgeBaseEmbeddingSource,
 } from '@/features/agents';
+import { AgentAppearancePicker } from '@/features/agents/agent-appearance-picker';
 import { AgentMark } from '@/features/agents/agent-mark';
 import { DeleteAgentDialog } from '@/features/agents/delete-agent-dialog';
 import { agentsMutations } from '@/features/agents/hooks/agents-hooks';
@@ -467,48 +465,20 @@ const ConfigureIdentity = ({
           </FormItem>
         )}
       />
-      <details className="text-sm">
-        <summary className="w-fit cursor-pointer text-gray-11 outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-9">
-          {t('Appearance')}
-        </summary>
-        <FormField
-          control={form.control}
-          name="color"
-          render={({ field }) => (
-            <FormItem className="mt-3 flex flex-col gap-2">
-              <PanelSectionLabel label={t('Accent color')} />
-              <div className="flex flex-wrap gap-2">
-                {PICKABLE_COLOR_NAMES.map((colorName) => (
-                  <button
-                    key={colorName}
-                    type="button"
-                    aria-label={colorName}
-                    aria-pressed={
-                      PROJECT_COLOR_SWATCH[field.value] ===
-                      PROJECT_COLOR_SWATCH[colorName]
-                    }
-                    onClick={() => field.onChange(colorName)}
-                    className={cn(
-                      'flex size-9 items-center justify-center rounded-lg border border-gray-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-9',
-                      PROJECT_COLOR_SWATCH[field.value] ===
-                        PROJECT_COLOR_SWATCH[colorName] &&
-                        'ring-2 ring-gray-12',
-                    )}
-                  >
-                    <span
-                      className="size-5 rounded-full"
-                      style={{
-                        backgroundColor: PROJECT_COLOR_PALETTE[colorName].color,
-                      }}
-                    />
-                  </button>
-                ))}
-              </div>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-      </details>
+      <AgentAppearancePicker
+        key={agent.id}
+        icon={form.watch('icon')}
+        color={form.watch('color')}
+        onIconChange={(value) =>
+          form.setValue('icon', value, {
+            shouldDirty: true,
+            shouldValidate: true,
+          })
+        }
+        onColorChange={(value) =>
+          form.setValue('color', value, { shouldDirty: true })
+        }
+      />
     </div>
   );
 };
