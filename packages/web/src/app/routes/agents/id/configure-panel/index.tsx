@@ -21,16 +21,6 @@ import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
-import {
-  ConfigureAgentSchema,
-  ConfigureAgentInput,
-  ConfigureAgentValues,
-  formValuesOf,
-  liveValuesOf,
-  toUpdateRequest,
-} from '../../lib/agent-configure-state';
-import { agentEditState } from '../../lib/agent-edit-state';
-
 import { AgentTools } from '@/app/builder/step-settings/agent-settings/agent-tools';
 import { Dot } from '@/components/custom/dot';
 import {
@@ -84,6 +74,16 @@ import { useAuthorization } from '@/hooks/authorization-hooks';
 import { api } from '@/lib/api';
 import { authenticationSession } from '@/lib/authentication-session';
 import { cn } from '@/lib/utils';
+
+import {
+  ConfigureAgentSchema,
+  ConfigureAgentInput,
+  ConfigureAgentValues,
+  formValuesOf,
+  liveValuesOf,
+  toUpdateRequest,
+} from '../../lib/agent-configure-state';
+import { agentEditState } from '../../lib/agent-edit-state';
 
 const parseProvider = (provider?: string) => {
   const parsed = AgentConfig.shape.provider.safeParse(provider ?? null);
