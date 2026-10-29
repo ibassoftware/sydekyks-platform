@@ -101,6 +101,8 @@ jobs:
           packages/web/test/features/agents/new-blank-agent-button.test.tsx
           packages/web/test/app/routes/agents
           packages/web/test/app/builder/step-settings/agent-settings/agent-link.test.tsx
+          packages/web/test/app/builder/run-details/sliced-output-loader.test.ts
+          packages/web/test/app/builder/run-details/sliced-output-viewer.test.tsx
       - name: Check Syd API and MCP authorization regressions
         env:
           SYD_TEST_POSTGRES: 'true'
