@@ -72,7 +72,7 @@ export function AgentFlowToolDialog({
   return (
     <Dialog open={showAddFlowDialog} onOpenChange={setShowAddFlowDialog}>
       <DialogContent className="w-[90vw] max-w-[750px] h-[80vh] max-h-[800px] flex flex-col overflow-hidden p-0">
-        <DialogHeader className="min-h-16 flex px-4 items-start justify-center mb-0 border-b">
+        <DialogHeader className="shrink-0 px-4 py-4 pr-12 text-left mb-0 border-b">
           <DialogTitle>{t('Missions this Sydekyk can call')}</DialogTitle>
           <DialogDescription className="text-sm leading-5">
             {t(
@@ -81,7 +81,7 @@ export function AgentFlowToolDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="px-4 py-3 border-b">
+        <div className="shrink-0 px-4 py-3 border-b">
           <div className="relative border rounded-md">
             <Search className="absolute left-2 top-2.5 size-4 text-gray-11" />
             <Input
@@ -93,7 +93,7 @@ export function AgentFlowToolDialog({
           </div>
         </div>
 
-        <ScrollArea className="grow overflow-y-auto">
+        <ScrollArea className="min-h-0 grow overflow-y-auto">
           <FlowDialogContent
             flows={flows || []}
             searchQuery={searchQuery}
@@ -102,7 +102,7 @@ export function AgentFlowToolDialog({
           />
         </ScrollArea>
 
-        <DialogFooter className="border-t p-4 mt-auto">
+        <DialogFooter className="shrink-0 border-t p-4 mt-auto">
           <CreateMcpFlowButton />
           <DialogClose asChild>
             <Button type="button" variant="ghost">
