@@ -67,6 +67,7 @@ import { DeleteAgentDialog } from '@/features/agents/delete-agent-dialog';
 import { agentsMutations } from '@/features/agents/hooks/agents-hooks';
 import { HostedAgentProviderField } from '@/features/agents/hosted-agent-provider-field';
 import { MoveAgentDialog } from '@/features/agents/move-agent-dialog';
+import { UseInMissionNote } from '@/features/agents/use-in-mission-note';
 import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import {
   ApProjectDisplay,
@@ -855,6 +856,7 @@ const AgentConfigurePanel = forwardRef<
                 needsModel={formNeedsModel}
                 projectId={agent.projectId}
               />
+              <UseInMissionNote projectId={agent.projectId} />
               <details className="border-t border-gray-6 pt-5 text-sm">
                 <summary className="w-fit cursor-pointer text-gray-11 outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-9">
                   {t('Manage this Sydekyk')}

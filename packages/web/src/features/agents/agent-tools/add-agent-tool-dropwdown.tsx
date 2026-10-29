@@ -53,7 +53,7 @@ export const AddToolDropdown = ({
 
         <DropdownMenuItem onSelect={() => setShowAddFlowDialog(true)}>
           <Workflow className="size-3.5 me-2" />
-          <span>{t('Flow tool')}</span>
+          <span>{t('Call a Mission')}</span>
         </DropdownMenuItem>
 
         {!hosted && (

@@ -33,7 +33,7 @@ describe('hosted Agent tools', () => {
       </AddToolDropdown>,
     );
     expect(screen.getAllByText('Piece tool')).toHaveLength(1);
-    expect(screen.getAllByText('Flow tool')).toHaveLength(1);
+    expect(screen.getAllByText('Call a Mission')).toHaveLength(1);
     expect(screen.queryAllByText('Mcp server')).toHaveLength(0);
   });
   it('preserves remote MCP for self hosted workspaces', () => {

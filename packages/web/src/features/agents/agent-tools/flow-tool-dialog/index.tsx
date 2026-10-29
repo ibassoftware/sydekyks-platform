@@ -15,6 +15,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog';
@@ -72,7 +73,12 @@ export function AgentFlowToolDialog({
     <Dialog open={showAddFlowDialog} onOpenChange={setShowAddFlowDialog}>
       <DialogContent className="w-[90vw] max-w-[750px] h-[80vh] max-h-[800px] flex flex-col overflow-hidden p-0">
         <DialogHeader className="min-h-16 flex px-4 items-start justify-center mb-0 border-b">
-          <DialogTitle>{t('Add Flow Tools')}</DialogTitle>
+          <DialogTitle>{t('Missions this Sydekyk can call')}</DialogTitle>
+          <DialogDescription className="text-sm leading-5">
+            {t(
+              'Choose published, enabled Missions with an MCP trigger. This lets the Sydekyk call them as tools. To run a Sydekyk inside a Mission, open that Mission and add a Run Sydekyk step instead.',
+            )}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="px-4 py-3 border-b">

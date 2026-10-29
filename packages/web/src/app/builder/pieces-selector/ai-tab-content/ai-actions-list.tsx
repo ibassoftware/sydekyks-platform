@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 
 import { useTelemetry } from '@/components/providers/telemetry-provider';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import {
   PieceSelectorOperation,
   StepMetadataWithSuggestions,
@@ -52,9 +53,18 @@ export const AIPieceActionsList: React.FC<AIPieceActionsListProps> = ({
     ApFlagId.AGENTS_CONFIGURED,
   );
   const navigate = useNavigate();
+  const hosted = useHostedBillingEnabled();
 
   const aiActions = convertStepMetadataToPieceSelectorItems(
     stepMetadataWithSuggestions,
+  ).filter(
+    (item) =>
+      !(
+        hosted &&
+        item.type === FlowActionType.PIECE &&
+        item.pieceMetadata.pieceName === '@activepieces/piece-ai' &&
+        item.actionOrTrigger.name === 'generateImage'
+      ),
   );
 
   return (
@@ -75,7 +85,9 @@ export const AIPieceActionsList: React.FC<AIPieceActionsListProps> = ({
                 logoUrl: actionIcon,
               }}
               onClick={() => {
-                if (!isAgentsConfigured) {
+                // Hosted AI uses managed or client BYOK routing, not the legacy
+                // self-hosted provider setup flag (which is false in hosted mode).
+                if (!hosted && !isAgentsConfigured) {
                   toast('Connect to OpenAI', {
                     description: t(
                       "To create an agent, you'll first need to connect to OpenAI in platform settings.",

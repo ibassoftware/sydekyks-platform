@@ -127,13 +127,17 @@ export const FlowDialogContent = ({
           </div>
 
           <div className="text-base font-semibold text-gray-12">
-            {t('No flows found')}
+            {t('No callable Missions found')}
           </div>
 
           <div className="mt-2 max-w-sm text-sm leading-relaxed text-gray-11">
             {searchQuery
-              ? t('Try adjusting your search or create a new flow.')
-              : t('Create a flow to use it as a tool in your agent.')}
+              ? t(
+                  'Try another search. Only Missions with an MCP trigger appear here.',
+                )
+              : t(
+                  'Only Missions with an MCP trigger appear here. Publish and enable one so this Sydekyk can call it.',
+                )}
           </div>
 
           {!searchQuery && (
