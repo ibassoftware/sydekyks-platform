@@ -70,5 +70,31 @@
   ],
   "localTestsRun": false,
   "validation": "GitHub CI on merged SaaS head is required; no local tests/builds.",
-  "productionChanged": false
+  "productionChanged": false,
+  "postMergeCiCorrections": [
+    {
+      "path": "packages/web/test/app/components/sidebar/platform/index.test.tsx",
+      "reason": "Disable unrelated hosted access/transport hooks in the self-hosted navigation fixture; preserve every navigation assertion."
+    },
+    {
+      "path": "packages/server/api/test/integration/ce/database/sydekyks-upstream-upgrade.test.ts",
+      "reason": "Assert the exact three upstream foundation migrations precede HostingLedger; keep hosted migrations registered after that prefix and retain payload/translation rollback/reapply checks."
+    },
+    {
+      "path": "packages/server/api/test/integration/ce/syd/copilot-storage.test.ts",
+      "reason": "Keep an exact snapshot of all 37 SaaS release migrations and import both event enums used by title/transcript/completion coverage."
+    },
+    {
+      "path": "packages/server/api/test/integration/ce/syd/agents-ce-api.test.ts",
+      "reason": "Assert the actual HTTP 409 shared-center conflict, its specific reason and the unchanged non-deleted center row."
+    },
+    {
+      "path": "packages/server/api/src/app/workers/rpc/worker-rpc-service.ts",
+      "reason": "Port only main\u2019s validated TITLE_UPDATE event guard; retain SaaS admission, worker lanes, checkpoints and all other RPC behavior.",
+      "followUpTests": [
+        "Late worker-generated title events cannot rewind an authorized user rename.",
+        "CHUNK and FINISHED events still carry the original conversation/run scope."
+      ]
+    }
+  ]
 }

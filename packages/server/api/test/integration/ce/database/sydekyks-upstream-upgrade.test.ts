@@ -64,11 +64,13 @@ describe.skipIf(process.env.AP_DB_TYPE !== 'POSTGRES')(
         'withBackgroundMigrationLock'
       ).mockImplementation(async ({ fn }) => fn());
       const migration = new SydekyksUpstreamOctober211882000000000();
-      expect(getMigrations().map((Migration) => new Migration().name)).toEqual([
+      const registered = getMigrations().map((Migration) => new Migration().name);
+      expect(registered.slice(0, 3)).toEqual([
         'SydekyksInitialSchema1880000000000',
         'SydekyksUpstream1031881000000000',
         migration.name,
       ]);
+      expect(registered[3]).toBe('SydekyksHostingLedger1882000000000');
       await migration.up(runner);
       await migration.up(runner);
       await new BackfillPieceTranslation1874000000000().up(runner);

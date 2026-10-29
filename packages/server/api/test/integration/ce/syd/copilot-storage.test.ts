@@ -1,5 +1,5 @@
 import { apId } from '@activepieces/core-utils'
-import { AgentConversationStatus, AgentRunSource, PersistedAgentMessage, PersistedAgentPartType, PersistedAgentRole } from '@activepieces/shared'
+import { AgentConversationStatus, AgentEventType, AgentRunSource, PersistedAgentMessage, PersistedAgentPartType, PersistedAgentRole, WebsocketClientEvent } from '@activepieces/shared'
 import Fastify from 'fastify'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { websocketService } from '../../../../src/app/core/websockets.service'
@@ -52,6 +52,20 @@ describe('Syd CHAT persistence', () => {
             'SydekyksRecovery1900000000000',
             'SydekyksStorageLimits1901000000000',
             'SydekyksSubscriptions1902000000000',
+            'SydekyksUnifiedCredits1903000000000',
+            'SydekyksCreditAllowance1904000000000',
+            'SydekyksCreditRateV21905000000000',
+            'SydekyksStripeCatalogMigration1906000000000',
+            'SydekyksChargeResolution1907000000000',
+            'SydekyksPartnerPurchases1908000000000',
+            'SydekyksManualAccounts1909000000000',
+            'SydekyksCatalogueTodos1910000000000',
+            'SydekyksNativeTools1911000000000',
+            'SydekyksAiFiles1912000000000',
+            'SydekyksCreditRateV31913000000000',
+            'SydekyksInclusiveCredits1914000000000',
+            'SydekyksDefaultLearning1915000000000',
+            'SydekyksClientPlanChanges1916000000000',
         ])
         for (const table of ['syd_conversation', 'syd_user_memory', 'syd_personalization']) expect(await runner.hasTable(table)).toBe(true)
         expect(await runner.hasColumn('platform_model_tier', 'isFast')).toBe(true)

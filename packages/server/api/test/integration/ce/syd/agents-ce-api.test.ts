@@ -83,7 +83,10 @@ describe('owned saved agents in Community Edition', () => {
             const response = await member.get(`/v1/flows/${flow.id}/versions`, { projectId: owner.project.id })
             expect(response.statusCode, response.body).toBe(200)
             expect((await member.post(`/v1/projects/${owner.project.id}`, { displayName: 'Forbidden rename' })).statusCode).toBe(403)
-            expect((await owner.delete(`/v1/projects/${owner.project.id}`)).statusCode).toBe(400)
+            const blockedArchive = await owner.delete(`/v1/projects/${owner.project.id}`)
+            expect(blockedArchive.statusCode, blockedArchive.body).toBe(409)
+            expect(blockedArchive.body).toContain('HOSTING_SHARED_CENTER_REQUIRED')
+            expect((await manager.getRepository(ProjectEntity).findOneByOrFail({ id: owner.project.id })).deleted).toBeNull()
         }
         finally { vi.unstubAllEnvs() }
     })
