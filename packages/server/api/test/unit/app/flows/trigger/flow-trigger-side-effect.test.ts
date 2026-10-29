@@ -470,7 +470,7 @@ describe('flowTriggerSideEffect', () => {
                 ignoreError: true,
             })
 
-            expect(mockSubmitAndWaitForResponse).toHaveBeenCalledWith(expect.objectContaining({ hookType: TriggerHookType.ON_DISABLE }), mockLog, undefined, undefined)
+            expect(mockSubmitAndWaitForResponse).toHaveBeenCalledWith(expect.objectContaining({ hookType: TriggerHookType.ON_DISABLE }), mockLog, undefined, { type: 'scheduled' })
         })
 
         it('still runs the hooks for a trigger that is not polling', async () => {

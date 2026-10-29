@@ -1,6 +1,6 @@
 import { Permission, PlatformRole, PrincipalType, ProjectType, UserStatus, WebsocketServerEvent } from '@activepieces/shared'
 
-function canAccessProject({ principal, project, user, write, operational = false }: ProjectAccessParams): boolean {
+function canAccessProject({ principal, project, user, write, operational = false, shared = false }: ProjectAccessParams): boolean {
     if (project.deleted || !principal.platformId || principal.platformId !== project.platformId) return false
     if (principal.type === PrincipalType.ENGINE) return principal.projectId === project.id
     if (principal.type !== PrincipalType.USER || !user || user.id !== principal.id || user.status !== UserStatus.ACTIVE || user.platformId !== project.platformId) return false
@@ -8,6 +8,7 @@ function canAccessProject({ principal, project, user, write, operational = false
     if (operational && user.platformRole === PlatformRole.OPERATOR) return true
     if (project.type === ProjectType.PERSONAL && project.ownerId !== user.id) return false
     if (project.ownerId === user.id || user.platformRole === PlatformRole.ADMIN) return true
+    if (shared && project.type === ProjectType.TEAM && user.platformRole === PlatformRole.MEMBER) return true
     return !write && user.platformRole === PlatformRole.OPERATOR
 }
 
@@ -47,5 +48,6 @@ type ProjectAccessParams = {
         status: UserStatus
     }
     write: boolean
+    shared?: boolean
     operational?: boolean
 }

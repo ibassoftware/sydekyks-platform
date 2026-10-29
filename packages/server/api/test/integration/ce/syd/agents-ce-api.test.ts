@@ -1,12 +1,14 @@
 import { AIProviderName, apId } from '@activepieces/core-utils'
 import { agentAiUtils, aiUtils } from '@activepieces/server-utils'
-import { Agent, AgentConversation, AgentConversationStatus, AgentIcon, AgentRunSource, AgentVisibility, AgentToolType, KnowledgeBaseSourceType, FilterOperator, ColorName, EngineResponseStatus, ExecuteAgentRunJobData, McpAuthType, McpProtocol, FlowRunStatus, FlowVersionState, PrincipalType } from '@activepieces/shared'
+import { Agent, AgentConversation, AgentConversationStatus, AgentIcon, AgentRunSource, AgentVisibility, AgentToolType, KnowledgeBaseSourceType, FilterOperator, ColorName, EngineResponseStatus, ExecuteAgentRunJobData, McpAuthType, McpProtocol, FlowRunStatus, FlowVersionState, PrincipalType, ProjectType, PlatformRole, hostingCatalog } from '@activepieces/shared'
 import { MockLanguageModelV4 } from 'ai/test'
 import { simulateReadableStream } from 'ai'
 import { FastifyInstance } from 'fastify'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { executeAgentRunJob } from '../../../../../worker/src/lib/execute/jobs/ee/agent/execute-agent-run'
 import { JobContext } from '../../../../../worker/src/lib/execute/types'
+import { HostingAccountEntity } from '../../../../src/app/hosting/hosting-entities'
+import { ProjectEntity } from '../../../../src/app/project/project-entity'
 import { databaseConnection } from '../../../../src/app/database/database-connection'
 import { distributedStore, redisConnections } from '../../../../src/app/database/redis-connections'
 import { pubsub } from '../../../../src/app/helper/pubsub'
@@ -19,7 +21,7 @@ import { jobQueue } from '../../../../src/app/workers/job-queue/job-queue'
 import { createHandlers } from '../../../../src/app/workers/rpc/worker-rpc-service'
 import { generateMockToken } from '../../../helpers/auth'
 import { createMockFlow, createMockFlowRun, createMockFlowVersion, createMockWaitpoint, createMockSolutionAndSave, mockAndSaveAIProvider } from '../../../helpers/mocks'
-import { createTestContext, TestContext } from '../../../helpers/test-context'
+import { createTestContext, createWorkspaceUserContext, TestContext } from '../../../helpers/test-context'
 import { setupTestEnvironment } from '../../../helpers/test-setup'
 
 vi.mock('../../../../src/app/platform/billing-and-telemetry', () => ({ trackBillingAndSendTelemetry: vi.fn().mockResolvedValue(undefined) }))
@@ -47,6 +49,45 @@ async function createAgent(ctx: TestContext): Promise<Agent> {
 }
 
 describe('owned saved agents in Community Edition', () => {
+    it('persists a custom raster image and color independently from saved instructions', async () => {
+        const owner = await createTestContext(app), agent = await createAgent(owner)
+        const icon = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/a9sAAAAASUVORK5CYII='
+        const saved = await owner.post(`/v1/agents/${agent.id}`, { icon, color: ColorName.ORANGE })
+        expect(saved.statusCode, saved.body).toBe(200)
+        const restored = await owner.get(`/v1/agents/${agent.id}`)
+        expect(restored.json<Agent>()).toMatchObject({ icon, color: ColorName.ORANGE, draft: { instructions: agent.draft.instructions } })
+        const rejected = await owner.post(`/v1/agents/${agent.id}`, { icon: 'data:image/svg+xml;base64,PHN2Zz4=' })
+        expect(rejected.statusCode).toBe(400)
+    })
+
+    it('lets a hosted member list shared Sydekyks and use builder reads while protecting workspace administration', async () => {
+        const owner = await createTestContext(app)
+        const agent = await createAgent(owner)
+        const member = await createWorkspaceUserContext({ app, parentCtx: owner, platformRole: PlatformRole.MEMBER })
+        const manager = databaseConnection().manager
+        await manager.getRepository(ProjectEntity).update({ id: owner.project.id }, { type: ProjectType.TEAM })
+        const now = new Date(), until = new Date(now.getTime() + 86400000)
+        await manager.getRepository(HostingAccountEntity).insert({ id: owner.platform.id, ownerIdentityId: owner.userIdentity.id, initialProjectId: owner.project.id, status: 'active', planId: 'starter', catalogVersion: hostingCatalog.version, trialStartedAt: now, trialEndsAt: until, validUntil: until, activeExecutions: 0 })
+        vi.stubEnv('AP_SERVICE_MODE', 'hosted')
+        try {
+            const listed = await member.get('/v1/agents', { projectId: owner.project.id })
+            expect(listed.statusCode, listed.body).toBe(200)
+            expect(listed.json().data.map((row: Agent) => row.id)).toContain(agent.id)
+            const projects = await member.get('/v1/projects')
+            expect(projects.statusCode, projects.body).toBe(200)
+            expect(projects.json().data.map((row: { id: string }) => row.id)).toEqual([owner.project.id])
+            const flow = createMockFlow({ projectId: owner.project.id })
+            const version = createMockFlowVersion({ flowId: flow.id, state: FlowVersionState.DRAFT })
+            await manager.getRepository('flow').save(flow)
+            await manager.getRepository('flow_version').save(version)
+            const response = await member.get(`/v1/flows/${flow.id}/versions`, { projectId: owner.project.id })
+            expect(response.statusCode, response.body).toBe(200)
+            expect((await member.post(`/v1/projects/${owner.project.id}`, { displayName: 'Forbidden rename' })).statusCode).toBe(403)
+            expect((await owner.delete(`/v1/projects/${owner.project.id}`)).statusCode).toBe(400)
+        }
+        finally { vi.unstubAllEnvs() }
+    })
+
     it('publishes a new agent when the editor explicitly requests goLive, while ordinary saves remain drafts', async () => {
         const owner = await createTestContext(app)
         const agent = await createAgent(owner)

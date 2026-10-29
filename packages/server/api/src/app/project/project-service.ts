@@ -7,6 +7,7 @@ import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
 import { hasOperationalAccess, isOperationalUser } from '../hosting/hosting-access-policy'
 import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { HostingAccountEntity } from '../hosting/hosting-entities'
 import { hostingFail } from '../hosting/hosting-transactions'
 import { userRepo, userService } from '../user/user-service'
 import { projectHooks, ProjectPostCreateContext } from './project-hooks'
@@ -229,8 +230,14 @@ export async function applyProjectsAccessFilters<T extends ObjectLiteral>(
         queryBuilder.andWhere('1 = 0')
         return
     }
-    if (hostingConfiguration.getServiceMode() === 'hosted' && isOperationalUser(user)) {
-        if (!await hasOperationalAccess({ manager: databaseConnection().manager, user })) queryBuilder.andWhere('1 = 0')
+    if (hostingConfiguration.getServiceMode() === 'hosted') {
+        if (isOperationalUser(user) && !await hasOperationalAccess({ manager: databaseConnection().manager, user })) {
+            queryBuilder.andWhere('1 = 0')
+            return
+        }
+        const account = await databaseConnection().getRepository(HostingAccountEntity).findOneBy({ id: platformId })
+        if (!account) queryBuilder.andWhere('1 = 0')
+        else queryBuilder.andWhere('project.id = :sharedProjectId', { sharedProjectId: account.initialProjectId })
         return
     }
     const seesTeamProjects = user.platformRole === PlatformRole.ADMIN || user.platformRole === PlatformRole.OPERATOR

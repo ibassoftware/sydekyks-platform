@@ -17,6 +17,7 @@ import { hostingConfiguration } from '../../../hosting/hosting-configuration'
 import { hostedCopilotPayer } from '../../../hosting/hosting-copilot'
 import { resolvePermissionChecker } from '../../../mcp/mcp-permissions'
 import { projectService } from '../../../project/project-service'
+import { communityAuthorization } from '../../../sydekyks-community/project-access'
 import { userService } from '../../../user/user-service'
 import { sydCopilotContext } from '../copilot-context'
 import { SydChatManagedAgentEntity } from '../models/chat-managed-agent.entity'
@@ -181,6 +182,10 @@ async function assertMayChangeWhoCanSee({ agent, request, projectId, userId, log
 async function resolveReadableProjects({ platformId, userId, projectId, log }: { platformId: string, userId: string, projectId?: string, log: FastifyBaseLogger }): Promise<Project[]> {
     const user = await userService(log).getOneOrFail({ id: userId })
     const projects = await sydCopilotContext.getUserProjects({ platformId, userId, log })
+    if (hostingConfiguration.getServiceMode() === 'hosted') {
+        const readable = await Promise.all(projects.filter(project => !projectId || project.id === projectId).map(async project => ({ project, allowed: (await communityAuthorization.getUserPermissions({ userId, platformId, projectId: project.id, log })).has(Permission.READ_AGENT) })))
+        return readable.filter(item => item.allowed).map(item => item.project)
+    }
     const memberships = userService(log).isUserPrivileged(user) || !databaseConnection().hasMetadata('project_member') ? [] : await databaseConnection().getRepository<ProjectMember>('project_member').createQueryBuilder('member')
         .innerJoin('project_role', 'role', 'role.id = member."projectRoleId"').where({ platformId, userId }).andWhere(':permission = ANY(role.permissions)', { permission: Permission.READ_AGENT }).getMany()
     return projects.filter((project) => (!projectId || project.id === projectId) && (userService(log).isUserPrivileged(user) || project.ownerId === userId || memberships.some((member) => member.projectId === project.id)))

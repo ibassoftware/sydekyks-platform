@@ -152,6 +152,8 @@ describe('hosted tenant onboarding', () => {
             const member = await identity({ email: 'one@example.com' })
             const accepted = await onboarding.acceptInvitation({ identityId: member, token: invitation.token })
             expect((await ds.getRepository(UserEntity).findOneByOrFail({ id: accepted.userId })).platformRole).toBe(PlatformRole.MEMBER)
+            expect(accepted.projectId).toBe(value.projectId)
+            expect(await ds.getRepository(ProjectEntity).countBy({ platformId: value.platformId })).toBe(1)
             expect((await onboarding.acceptInvitation({ identityId: member, token: invitation.token })).userId).toBe(accepted.userId)
             expect((await onboarding.provision({ identityId: member, name: 'No additional trial' })).platformId).toBe(value.platformId)
             expect(await ds.getRepository(HostingAccountEntity).count()).toBe(1)
@@ -194,7 +196,7 @@ describe('hosted tenant onboarding', () => {
         expect(outcomes.filter(result => result.status === 'fulfilled')).toHaveLength(1)
         const stored = await ds.getRepository(HostingInvitationEntity).findOneByOrFail({ id: invitation.id })
         expect(await ds.getRepository(UserEntity).existsBy({ identityId, platformId: value.platformId })).toBe(stored.status === 'accepted')
-        if (stored.status === 'accepted') await expect(ledger.reserveExecution({ actor: { identityId, platformId: value.platformId }, projectId: value.projectId, key: 'personal', payer: 'byok' })).rejects.toThrow('HOSTING_PROJECT_ACCESS_DENIED')
+        if (stored.status === 'accepted') expect((await onboarding.selectTenant({ actor: { identityId, platformId: value.platformId } })).projectId).toBe(value.projectId)
     })
 })
 

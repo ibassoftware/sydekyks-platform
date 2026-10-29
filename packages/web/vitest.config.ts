@@ -3,6 +3,7 @@ import path from 'path';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  root: path.resolve(__dirname),
   test: {
     globals: true,
     environment: 'node',
@@ -12,27 +13,27 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
       '@activepieces/shared': path.resolve(
         __dirname,
-        '../../packages/core/shared/src',
+        '../../packages/core/shared/src'
       ),
       '@activepieces/pieces-framework': path.resolve(
         __dirname,
-        '../../packages/pieces/framework/src',
+        '../../packages/pieces/framework/src'
       ),
       '@activepieces/core-utils': path.resolve(
         __dirname,
-        '../../packages/core/utils/src',
+        '../../packages/core/utils/src'
       ),
       '@activepieces/core-formula': path.resolve(
         __dirname,
-        '../../packages/core/formula/src',
+        '../../packages/core/formula/src'
       ),
       '@activepieces/core-piece-types': path.resolve(
         __dirname,
-        '../../packages/core/piece-types/src',
+        '../../packages/core/piece-types/src'
       ),
       '@activepieces/core-execution': path.resolve(
         __dirname,
-        '../../packages/core/execution/src',
+        '../../packages/core/execution/src'
       ),
     },
   },

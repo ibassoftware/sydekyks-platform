@@ -1,6 +1,9 @@
 import { FlowStatus, PiecesFilterType, PlatformRole, Project, ProjectType, ProjectWithLimits, UserStatus } from '@activepieces/shared'
 import { In } from 'typeorm'
+import { databaseConnection } from '../database/database-connection'
 import { flowRepo } from '../flows/flow/flow.repo'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { HostingAccountEntity } from '../hosting/hosting-entities'
 import { userRepo } from '../user/user-service'
 
 async function enrich({ projects }: { projects: Project[] }): Promise<ProjectWithLimits[]> {
@@ -18,11 +21,12 @@ async function enrich({ projects }: { projects: Project[] }): Promise<ProjectWit
             .getRawMany<FlowCounts>(),
         userRepo().find({ where: { platformId: In(platformIds) }, select: { id: true, platformId: true, platformRole: true, status: true } }),
     ])
+    const sharedIds = new Set(hostingConfiguration.getServiceMode() === 'hosted' ? (await databaseConnection().getRepository(HostingAccountEntity).findBy({ id: In(platformIds) })).map(account => account.initialProjectId) : [])
     const countsByProject = new Map(flowCounts.map(count => [count.projectId, count]))
     return projects.map(project => {
         const count = countsByProject.get(project.id)
         const projectUsers = users.filter(user => user.platformId === project.platformId && (
-            user.id === project.ownerId || (project.type === ProjectType.TEAM && (user.platformRole === PlatformRole.ADMIN || user.platformRole === PlatformRole.OPERATOR))
+            sharedIds.has(project.id) || user.id === project.ownerId || (project.type === ProjectType.TEAM && (user.platformRole === PlatformRole.ADMIN || user.platformRole === PlatformRole.OPERATOR))
         ))
         return {
             ...project,

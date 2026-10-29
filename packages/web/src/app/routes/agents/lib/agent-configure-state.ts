@@ -2,7 +2,7 @@ import { isNil } from '@activepieces/core-utils';
 import {
   Agent,
   AgentConfig,
-  AgentIcon,
+  AgentIconValue,
   AgentVisibility,
   ColorName,
   UpdateAgentRequest,
@@ -15,7 +15,7 @@ import { agentEditState } from './agent-edit-state';
 const ConfigureAgentSchema = z.object({
   displayName: z.string().min(1, formErrors.required),
   description: z.string(),
-  icon: z.enum(AgentIcon),
+  icon: AgentIconValue,
   color: z.enum(ColorName),
   visibility: z.enum(AgentVisibility),
   sharedWithUserIds: z.array(z.string()),
@@ -27,7 +27,7 @@ type ConfigureAgentValues = z.output<typeof ConfigureAgentSchema>;
 
 const toUpdateRequest = (
   values: ConfigureAgentValues,
-  agent: Agent,
+  agent: Agent
 ): UpdateAgentRequest => ({
   goLive: true,
   displayName: values.displayName,

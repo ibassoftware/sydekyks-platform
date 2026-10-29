@@ -44,7 +44,8 @@ async function member({ manager, actor, admin = false, projectId, write = false 
     if (projectId) {
         const project = await manager.getRepository(ProjectEntity).findOneBy({ id: projectId, platformId: actor.platformId })
         if (!project || (project.type === 'PERSONAL' && project.ownerId !== user.id && !operationalAllowed)) hostingFail('HOSTING_PROJECT_ACCESS_DENIED')
-        if (!operationalAllowed && project.ownerId !== user.id && user.platformRole !== PlatformRole.ADMIN && (write || user.platformRole !== PlatformRole.OPERATOR)) hostingFail('HOSTING_PROJECT_ACCESS_DENIED')
+        const shared = project.type === 'TEAM' && user.platformRole === PlatformRole.MEMBER && await manager.getRepository(HostingAccountEntity).existsBy({ id: actor.platformId, initialProjectId: projectId })
+        if (!shared && !operationalAllowed && project.ownerId !== user.id && user.platformRole !== PlatformRole.ADMIN && (write || user.platformRole !== PlatformRole.OPERATOR)) hostingFail('HOSTING_PROJECT_ACCESS_DENIED')
     }
     return user
 }

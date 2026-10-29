@@ -175,7 +175,7 @@ describe('tenant-scoped member administration', () => {
         await expect(service().list({ actor: { identityId: target.id, platformId: admin.platformId, tokenVersion: oldVersion } })).rejects.toThrow('TENANT_ADMIN_REQUIRED')
         await command('change', { userId: tenant.userId, deactivate: true })
         expect(await ds.getRepository(UserEntity).findOneBy({ id: tenant.userId })).toMatchObject({ status: UserStatus.INACTIVE })
-        expect(await ds.getRepository(ProjectEntity).existsBy({ ownerId: tenant.userId })).toBe(true)
+        expect(await ds.getRepository(ProjectEntity).existsBy({ id: tenant.projectId!, platformId: admin.platformId })).toBe(true)
         expect(await ds.getRepository(HostingOutboxEntity).countBy({ event: 'membership.changed' })).toBe(2)
     })
     it('denies nonadmins, stale sessions and cross-tenant changes without exposing another directory', async () => {

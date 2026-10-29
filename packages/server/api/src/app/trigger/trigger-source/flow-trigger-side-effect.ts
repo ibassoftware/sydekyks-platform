@@ -127,7 +127,7 @@ async function runDisableHook({ params, log }: RunDisableHookParams): Promise<vo
             projectId,
             platformId,
             isRepublish,
-        }, log, undefined, params.hostedOrigin),
+        }, log, undefined, params.hostedOrigin ?? { type: 'scheduled' }),
     )
     if (!isNil(error)) {
         if (!ignoreError) {

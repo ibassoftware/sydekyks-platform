@@ -1,4 +1,4 @@
-import { ActivepiecesError, apId, assertNotNullOrUndefined, Cursor, ErrorCode, isNil, PlatformId, ProjectId, SeekPage, spreadIfDefined, UserId } from '@activepieces/core-utils'
+import { ActivepiecesError, apId, assertNotNullOrUndefined, Cursor, ErrorCode, isNil, Permission, PlatformId, ProjectId, SeekPage, spreadIfDefined, UserId } from '@activepieces/core-utils'
 import { PlatformRole, ProjectType, User, UserIdentity, UserStatus, UserWithMetaInformation } from '@activepieces/shared'
 import dayjs from 'dayjs'
 import { FastifyBaseLogger } from 'fastify'
@@ -7,12 +7,15 @@ import { EntityManager, In, IsNull } from 'typeorm'
 import { userIdentityRepository, userIdentityService } from '../authentication/user-identity/user-identity-service'
 import { repoFactory } from '../core/db/repo-factory'
 import { transaction } from '../core/db/transaction'
+import { databaseConnection } from '../database/database-connection'
 import { buildPaginator } from '../helper/pagination/build-paginator'
 import { paginationHelper } from '../helper/pagination/pagination-utils'
 import { hostingConfiguration } from '../hosting/hosting-configuration'
+import { isHostedSharedProject } from '../hosting/hosting-shared-project'
 import { hostingFail } from '../hosting/hosting-transactions'
 import { platformService } from '../platform/platform.service'
 import { projectService } from '../project/project-service'
+import { communityAuthorization } from '../sydekyks-community/project-access'
 import { UserEntity, UserSchema } from './user-entity'
 
 
@@ -302,6 +305,11 @@ async function getUsersForProject({ platformId, projectId, log }: { platformId: 
     const platformAdmins = await userRepo().find({ where: { platformId, platformRole: PlatformRole.ADMIN } }).then((users) => users.map((user) => user.id))
     const project = await projectService(log).getOneOrThrow(projectId)
     if (project.platformId !== platformId) return []
+    if (hostingConfiguration.getServiceMode() === 'hosted' && await isHostedSharedProject(databaseConnection().manager, platformId, projectId)) {
+        const users = await userRepo().findBy({ platformId, status: UserStatus.ACTIVE })
+        const permissions = await Promise.all(users.map(async user => ({ id: user.id, allowed: (await communityAuthorization.getUserPermissions({ userId: user.id, platformId, projectId, log })).has(Permission.READ_AGENT) })))
+        return permissions.filter(user => user.allowed).map(user => user.id)
+    }
     return project.type === ProjectType.PERSONAL ? [project.ownerId] : platformAdmins
 }
 

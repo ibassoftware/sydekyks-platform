@@ -18,6 +18,7 @@ import { repoFactory } from '../core/db/repo-factory'
 import { transaction } from '../core/db/transaction'
 import { flowRepo } from '../flows/flow/flow.repo'
 import { FlowRunEntity } from '../flows/flow-run/flow-run-entity'
+import { hostingConfiguration } from '../hosting/hosting-configuration'
 import { projectLifecycle } from '../project/project-lifecycle'
 import { projectRepo, projectService } from '../project/project-service'
 import { TriggerSourceEntity } from '../trigger/trigger-source/trigger-source-entity'
@@ -66,6 +67,7 @@ export const communityProjectManagement = (log: FastifyBaseLogger) => ({
         principal,
         projectId,
     }: ProjectMutationParams): Promise<void> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') throwValidation('HOSTING_SHARED_CENTER_REQUIRED')
         await communityAuthorization.assertProjectAccess({
             principal,
             projectId,
@@ -115,6 +117,7 @@ export const communityProjectManagement = (log: FastifyBaseLogger) => ({
         principal,
         projectId,
     }: ProjectMutationParams): Promise<Project> {
+        if (hostingConfiguration.getServiceMode() === 'hosted') throwValidation('HOSTING_SHARED_CENTER_REQUIRED')
         const user = await getCurrentUser({ principal, log })
         const project = await projectRepo().findOne({
             where: { id: projectId, platformId: user.platformId },

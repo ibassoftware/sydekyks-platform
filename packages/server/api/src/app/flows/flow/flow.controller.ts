@@ -11,6 +11,7 @@ import { networkUtils } from '../../helper/network-utils'
 import { communityAuthorization } from '../../sydekyks-community/project-access'
 import { userService } from '../../user/user-service'
 import { migrateFlowVersionTemplate } from '../flow-version/migrations'
+import { editorSession } from './editor-session'
 import { FlowEntity } from './flow.entity'
 import { flowService } from './flow.service'
 
@@ -83,6 +84,7 @@ export const flowController: FastifyPluginAsyncZod = async (app) => {
             projectId: request.projectId,
             operation: cleanOperation(request.body),
             previousFlow: flow,
+            editorSessionId: editorSession.idFromRequest(request),
             ip: networkUtils.clientIp(request),
         })
     })
