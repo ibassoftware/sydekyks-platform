@@ -236,7 +236,7 @@ export const FlowStepInputOutput = () => {
           onValueChange={(value) => setActiveTab(value as RunActiveTab)}
           className="w-full"
         >
-          <div className="flex items-center justify-between gap-2 shrink-0 mb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 shrink-0 mb-2">
             <TabsList>
               {!isTrigger && (
                 <TabsTrigger value="input">{t('Input')}</TabsTrigger>
@@ -246,7 +246,7 @@ export const FlowStepInputOutput = () => {
               )}
               <TabsTrigger value="output">{t('Output')}</TabsTrigger>
             </TabsList>
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="ml-auto flex items-center gap-1 shrink-0">
               <StepDataPanelViewToggle />
               <ClosePanelButton />
             </div>
