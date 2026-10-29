@@ -26,7 +26,18 @@ const save = vi.hoisted(() => ({
   },
 }));
 vi.mock('i18next', () => ({ t: (key: string) => key }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => vi.fn(),
+  Link: ({
+    to,
+    children,
+    ...props
+  }: { to: string } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
+}));
 vi.mock('@/features/agents/hooks/agents-hooks', () => ({
   agentsMutations: {
     useUpdateAgent: () => ({ mutate: save.mutate, isPending: false }),
@@ -127,13 +138,13 @@ describe('agent configuration publishing', () => {
   it('keeps the self-hosted model picker and publishes the explicitly chosen connection', async () => {
     render(<AgentConfigurePanel agent={base()} onExit={vi.fn()} />);
     expect(
-      screen.getByText('Pick a model so this agent can answer.'),
+      screen.getByText('Pick a model so this agent can answer.')
     ).toBeTruthy();
     fireEvent.click(
-      screen.getByRole('button', { name: 'Choose self-hosted model' }),
+      screen.getByRole('button', { name: 'Choose self-hosted model' })
     );
     expect(
-      screen.queryByText('Pick a model so this agent can answer.'),
+      screen.queryByText('Pick a model so this agent can answer.')
     ).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Publish & test' }));
     await waitFor(() => expect(save.mutate).toHaveBeenCalledTimes(1));
@@ -159,7 +170,7 @@ describe('agent configuration publishing', () => {
       ...agent,
       displayName: 'Simple Adder',
       draft: Object.fromEntries(
-        Object.entries(agent.draft).reverse(),
+        Object.entries(agent.draft).reverse()
       ) as AgentConfig,
     };
     view.rerender(<AgentConfigurePanel agent={saved} onExit={onExit} />);
@@ -188,7 +199,7 @@ describe('agent configuration publishing', () => {
       save.callbacks?.onSettled();
     });
     expect((screen.getByLabelText(/^Name/) as HTMLInputElement).value).toBe(
-      'Newer name',
+      'Newer name'
     );
     expect(screen.getByText('Unsaved')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
@@ -206,21 +217,21 @@ describe('agent configuration publishing', () => {
       <AgentConfigurePanel
         agent={{ ...agent, displayName: 'Other editor' }}
         onExit={onExit}
-      />,
+      />
     );
     await screen.findByRole('alert');
     expect(screen.queryByRole('button', { name: 'Publish & test' })).toBeNull();
     expect((screen.getByLabelText(/^Name/) as HTMLInputElement).value).toBe(
-      'Local name',
+      'Local name'
     );
     fireEvent.click(screen.getByRole('button', { name: 'Load saved version' }));
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect((screen.getByLabelText(/^Name/) as HTMLInputElement).value).toBe(
-      'Local name',
+      'Local name'
     );
     fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
     expect((screen.getByLabelText(/^Name/) as HTMLInputElement).value).toBe(
-      'Local name',
+      'Local name'
     );
     expect(save.mutate).not.toHaveBeenCalled();
   });
@@ -250,7 +261,7 @@ describe('agent configuration publishing', () => {
       save.callbacks?.onSettled();
     });
     expect((screen.getByLabelText(/^Name/) as HTMLInputElement).value).toBe(
-      'Newer local edit',
+      'Newer local edit'
     );
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Publish & test' })).toBeNull();
