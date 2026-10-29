@@ -1,0 +1,74 @@
+{
+  "date": "2026-10-29",
+  "pullRequest": "https://github.com/ibassoftware/sydekyks-platform/pull/18",
+  "mainMerge": "c6b292b609ba05154e6da58277081da0dd9fe9ce",
+  "validatedPRHead": "3166e4e799d9bb99fda213939d11f2166e247b7a",
+  "prValidation": {
+    "run": 40876620187,
+    "conclusion": "success"
+  },
+  "saasBeforeMainMerge": "7c5e37ec3aa1412245746a13870450b56d03c04a",
+  "recoveryRefs": [
+    "backup/main-before-pr18-20261029",
+    "backup/saas-before-pr18-20261029",
+    "backup/saas-before-main-pr18-20261029"
+  ],
+  "gitConflictCount": 5,
+  "semanticPreservationCount": 1,
+  "resolutions": [
+    {
+      "path": ".github/workflows/validate.yml",
+      "wasGitConflict": true,
+      "resolution": "Union the validated frontend TypeScript step with all SaaS hosted foundation, membership, Credit, PostgreSQL/Redis checks and the SaaS push trigger.",
+      "followUpTests": [
+        "The complete Validate platform workflow must run on the merged SaaS head; verify hosted foundations and frontend TypeScript both execute."
+      ]
+    },
+    {
+      "path": "packages/server/api/src/app/flows/flow-run/flow-run-service.ts",
+      "wasGitConflict": true,
+      "resolution": "Retain the SaaS file byte-for-byte: explicit jobPayload reuse, logsFileId and queue/admission behavior. Main only removes the fan-out path that SaaS already deferred.",
+      "followUpTests": [
+        "Exercise queued payload reuse and retries without duplicate offloading or lost stored payload references.",
+        "Verify hosted root/child dispatch and retry fences with PostgreSQL/Redis."
+      ]
+    },
+    {
+      "path": "packages/server/engine/src/lib/operations/flow.operation.ts",
+      "wasGitConflict": true,
+      "resolution": "Retain the SaaS engine file byte-for-byte, including ResumeExecuteFlowOperation and authenticated fetchHostedCheckpoint recovery.",
+      "followUpTests": [
+        "Resume a hosted checkpoint using the original run identity; reject missing, unauthorized or malformed checkpoint responses.",
+        "Check worker disconnect, cancellation and barrier resume without reintroducing deferred fan-out."
+      ]
+    },
+    {
+      "path": "packages/server/api/test/integration/ce/syd/agents-ce-api.test.ts",
+      "wasGitConflict": true,
+      "resolution": "Retain both the shared raster-image persistence test and the SaaS shared-member list/read/admin-denial regression.",
+      "followUpTests": [
+        "Run agents-ce-api.test.ts including custom image save/reload and malformed SVG rejection.",
+        "Verify invited MEMBER can list shared Sydekyks/read flow versions but cannot rename/archive the sole center."
+      ]
+    },
+    {
+      "path": "upstream-integration/2026-10-29/followup.md",
+      "wasGitConflict": true,
+      "resolution": "Keep the SaaS handoff and append this merge checkpoint; retain the imported main deferred-fanout inventory.",
+      "followUpTests": [
+        "Use this inventory alongside original main-conflicts.json and saas-conflicts.json; verify none of the earlier acceptance obligations are lost."
+      ]
+    },
+    {
+      "path": "packages/server/api/test/integration/ce/sydekyks-free/free-access.test.ts",
+      "wasGitConflict": false,
+      "resolution": "Semantic preservation: undo the cleanly merged main socket-object fixture and retain the SaaS connection-ID argument required by its AbortSignal/admission broker. Both wrong-worker and stale-assignment assertions remain.",
+      "followUpTests": [
+        "Run free-access.test.ts on SaaS and confirm owner worker succeeds, another worker fails, and released assignments cannot start."
+      ]
+    }
+  ],
+  "localTestsRun": false,
+  "validation": "GitHub CI on merged SaaS head is required; no local tests/builds.",
+  "productionChanged": false
+}

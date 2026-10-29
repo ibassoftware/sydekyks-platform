@@ -22,3 +22,9 @@ The founder requested GitHub CI for remaining validation and resource conservati
 Active MEMBER users collaborate on Missions and Sydekyks, including normal builder reads, list and sharing. Workspace/member/invitation/release administration stays restricted. Ordinary OPERATOR remains read-only; assigned operational staff still require a current assignment. Suspended users and cross-client requests remain denied. The sole hosted center cannot be archived. Self-hosted multi-project behavior is retained.
 
 Also restores the scheduled origin for trigger cleanup while honoring explicit hosted provenance; normal disable/delete/republish can clean up provider hooks again. CI includes membership, replay, sharing, migration idempotence, ambiguous-tenant preservation and operator role regression cases.
+
+## PR #18 merge checkpoint
+
+PR #18 passed GitHub validation run `40876620187` at `3166e4e799d9bb99fda213939d11f2166e247b7a` and merged into main as `c6b292b609ba05154e6da58277081da0dd9fe9ce`. Main is now merged into SaaS from pre-merge `7c5e37ec3aa1412245746a13870450b56d03c04a`. Five Git conflicts and one additional semantic worker-fixture decision are recorded in `pr18-merge-conflicts.json`, with resolutions and future-agent test scenarios.
+
+SaaS application and test package contents are preserved exactly from its pre-merge snapshot. The workflow adds main's validated frontend type check alongside the complete hosted suite. CI corrections on this task change import formatting and test fixtures; production accounting, migrations and runtime data are unchanged. The PostgreSQL fixtures now exercise positive inclusive Credit holds, the approved 30,000-unit training grant, one shared center and hosted-only rollback boundaries while preserving exhaustion, uncertainty, idempotency and revocation checks. Final merged-head SaaS CI is pending at this commit. No local tests/builds, image, release tag or deployment.

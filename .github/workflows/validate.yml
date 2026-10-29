@@ -87,6 +87,10 @@ jobs:
           bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/hosting-pricing-revalidation.test.ts --maxWorkers=2
           bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/hosting-learning-workspace.test.ts packages/server/api/test/unit/hosting-customer-credits.test.ts packages/server/api/test/unit/hosting-partner-admin.test.ts packages/server/api/test/unit/hosting-partner-setup.test.ts packages/server/api/test/unit/hosting-tenant-members.test.ts packages/server/api/test/unit/hosting-shared-project.test.ts packages/server/api/test/unit/app/flows/trigger/flow-trigger-side-effect.test.ts packages/server/api/test/unit/lms-course-access.test.ts packages/server/api/test/unit/authorization-not-found.test.ts --maxWorkers=2
           bun x vitest run --config packages/server/worker/vitest.config.ts packages/server/worker/test/lib/worker-service-mode.test.ts --maxWorkers=2
+      - name: Check frontend TypeScript
+        run: bun x tsc -p packages/web/tsconfig.app.json --pretty false
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
       - name: Check Syd worker and supporting agent regressions
         run: >-
           bun x vitest run --config packages/server/worker/vitest.config.ts

@@ -41,3 +41,5 @@ Start with the 58-entry `main-conflicts.json`, the exact 40-path `saas-conflict-
 Old assertions for the public catalogue predated the already-deployed 28 October offers. Those fixtures now expect 30,000/120,000/400,000 ledger units, while explicit custom allowances and historical funded-term checks retain their original values. This changes tests only. The complete hosted accounting source subtree is unchanged from the pre-merge SaaS commit.
 
 Main was published through PR #17 as `101eb4a606821b3c61e5fbe9abe68c9aabeb0351`. The final published-main ancestry merge into SaaS had zero additional conflicts and changed no production source. GitHub validation was still running when the source merge was recorded; inspect the live PR/Actions status before release.
+
+PR #18 follow-up: see [pr18-merge-conflicts.json](pr18-merge-conflicts.json) for five Git conflicts and the semantic worker-fixture preservation decision, and [followup.md](followup.md) for validation and hosted acceptance.
