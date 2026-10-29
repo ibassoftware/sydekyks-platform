@@ -59,7 +59,7 @@ vi.mock('@/features/billing', () => ({
       'eventStreaming',
       'apiKeys',
       'embedding',
-    ].map((key) => [key, { tier: 'enterprise' }])
+    ].map((key) => [key, { tier: 'enterprise' }]),
   ),
   TIER_LABELS: { enterprise: 'Enterprise' },
 }));
@@ -69,7 +69,7 @@ function renderSidebar() {
       <SidebarProvider open>
         <PlatformSidebar />
       </SidebarProvider>
-    </MemoryRouter>
+    </MemoryRouter>,
   );
 }
 beforeEach(() => {
@@ -82,22 +82,22 @@ describe('current self-hosted PlatformSidebar', () => {
     state.plan.aiProvidersEnabled = true;
     renderSidebar();
     expect(
-      screen.getByRole('link', { name: 'AI Center' }).getAttribute('href')
+      screen.getByRole('link', { name: 'AI Center' }).getAttribute('href'),
     ).toBe('/platform/ai');
     expect(
-      screen.getByRole('link', { name: 'Providers' }).getAttribute('href')
+      screen.getByRole('link', { name: 'Providers' }).getAttribute('href'),
     ).toBe('/platform/ai');
     expect(
-      screen.getByRole('link', { name: 'Capabilities' }).getAttribute('href')
+      screen.getByRole('link', { name: 'Capabilities' }).getAttribute('href'),
     ).toBe('/platform/ai/capabilities');
   });
   it('presents the inherited plan restriction without pretending a link is server authorization', () => {
     renderSidebar();
     expect(
-      screen.getByRole('link', { name: 'AI Center Requires a plan upgrade' })
+      screen.getByRole('link', { name: 'AI Center Requires a plan upgrade' }),
     ).toBeTruthy();
     expect(
-      screen.getByRole('link', { name: 'Providers' }).getAttribute('href')
+      screen.getByRole('link', { name: 'Providers' }).getAttribute('href'),
     ).toBe('/platform/ai');
   });
   it('omits unavailable routes and their children from the actual menu', () => {
@@ -112,10 +112,10 @@ describe('current self-hosted PlatformSidebar', () => {
     expect(
       screen.getByRole('link', {
         name: 'Billing & subscription Requires a plan upgrade',
-      })
+      }),
     ).toBeTruthy();
     expect(
-      screen.getByRole('link', { name: 'Back to app' }).getAttribute('href')
+      screen.getByRole('link', { name: 'Back to app' }).getAttribute('href'),
     ).toBe('/chat');
     expect(screen.getByRole('link', { name: 'Configurations' })).toBeTruthy();
   });
@@ -124,7 +124,7 @@ describe('current self-hosted PlatformSidebar', () => {
     renderSidebar();
     expect(screen.queryByRole('link', { name: 'Configurations' })).toBeNull();
     expect(
-      screen.getByRole('link', { name: 'Billing & subscription' })
+      screen.getByRole('link', { name: 'Billing & subscription' }),
     ).toBeTruthy();
   });
 
@@ -135,6 +135,6 @@ describe('current self-hosted PlatformSidebar', () => {
       state.edition = edition;
       renderSidebar();
       expect(screen.queryByRole('link', { name: 'Tiers' })).toBeNull();
-    }
+    },
   );
 });

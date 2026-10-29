@@ -51,12 +51,12 @@ export async function normalizeAgentImage(file: File): Promise<string> {
       (256 - bitmap.width * scale) / 2,
       (256 - bitmap.height * scale) / 2,
       bitmap.width * scale,
-      bitmap.height * scale
+      bitmap.height * scale,
     );
     const result = canvas.toDataURL('image/webp', 0.8);
     if (!isAgentImage(result))
       throw new Error(
-        t('This image is too complex. Choose a smaller or simpler image.')
+        t('This image is too complex. Choose a smaller or simpler image.'),
       );
     return result;
   } finally {
@@ -83,7 +83,7 @@ export function AgentAppearancePicker({
     () => () => {
       generation.current++;
     },
-    []
+    [],
   );
   const chooseIcon = (value: AgentIcon) => {
     generation.current++;
@@ -108,7 +108,7 @@ export function AgentAppearancePicker({
             onClick={() => chooseIcon(value)}
             className={cn(
               'rounded-xl p-1 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-9',
-              icon === value && 'ring-2 ring-accent-9'
+              icon === value && 'ring-2 ring-accent-9',
             )}
           >
             <AgentMark icon={value} color={color} size="sm" />
@@ -151,7 +151,7 @@ export function AgentAppearancePicker({
                 setError(
                   cause instanceof Error
                     ? cause.message
-                    : t('Could not read this image. Choose another image.')
+                    : t('Could not read this image. Choose another image.'),
                 );
             } finally {
               if (request === generation.current) setBusy(false);
@@ -182,7 +182,7 @@ export function AgentAppearancePicker({
             className={cn(
               'flex size-9 items-center justify-center rounded-lg border border-gray-6 outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-9',
               PROJECT_COLOR_SWATCH[color] === PROJECT_COLOR_SWATCH[value] &&
-                'ring-2 ring-gray-12'
+                'ring-2 ring-gray-12',
             )}
           >
             <span

@@ -61,7 +61,7 @@ export default function ProjectsPage() {
       .getAll('type')
       .filter(
         (type): type is ProjectType =>
-          type === ProjectType.PERSONAL || type === ProjectType.TEAM
+          type === ProjectType.PERSONAL || type === ProjectType.TEAM,
       );
     return {
       displayName: displayNameFilter,
@@ -93,7 +93,7 @@ export default function ProjectsPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editDialogProjectId, setEditDialogProjectId] = useState<string>('');
   const editDialogProject = allProjects.find(
-    (project) => project.id === editDialogProjectId
+    (project) => project.id === editDialogProjectId,
   );
   const { data: allGlobalConnectionsPage } =
     globalConnectionsQueries.useGlobalConnections({
@@ -105,7 +105,7 @@ export default function ProjectsPage() {
       ...project,
       globalConnectionsCount:
         allGlobalConnectionsPage?.data?.filter((connection) =>
-          connection.projectIds.includes(project.id)
+          connection.projectIds.includes(project.id),
         ).length ?? 0,
     }));
   }, [allProjects, allGlobalConnectionsPage?.data]);
@@ -114,7 +114,7 @@ export default function ProjectsPage() {
       projectsTableColumns({
         platform,
       }),
-    [platform]
+    [platform],
   );
 
   const columnsWithCheckbox: ColumnDef<
@@ -132,13 +132,13 @@ export default function ProjectsPage() {
           .rows.filter(
             (row) =>
               row.original.id !== currentProject?.id &&
-              row.original.type === ProjectType.TEAM
+              row.original.type === ProjectType.TEAM,
           );
         const allSelectableSelected =
           selectableRows.length > 0 &&
           selectableRows.every((row) => row.getIsSelected());
         const someSelectableSelected = selectableRows.some((row) =>
-          row.getIsSelected()
+          row.getIsSelected(),
         );
 
         return (
@@ -150,7 +150,7 @@ export default function ProjectsPage() {
 
               if (isChecked) {
                 const selectableProjects = selectableRows.map(
-                  (row) => row.original
+                  (row) => row.original,
                 );
                 const newSelectedRows = [
                   ...selectableProjects,
@@ -158,13 +158,14 @@ export default function ProjectsPage() {
                 ];
                 const uniqueRows = Array.from(
                   new Map(
-                    newSelectedRows.map((item) => [item.id, item])
-                  ).values()
+                    newSelectedRows.map((item) => [item.id, item]),
+                  ).values(),
                 );
                 setSelectedRows(uniqueRows);
               } else {
                 const filteredRows = selectedRows.filter(
-                  (row) => !selectableRows.some((r) => r.original.id === row.id)
+                  (row) =>
+                    !selectableRows.some((r) => r.original.id === row.id),
                 );
                 setSelectedRows(filteredRows);
               }
@@ -177,7 +178,7 @@ export default function ProjectsPage() {
         const isDisabled =
           isCurrentProject || row.original.type === ProjectType.PERSONAL;
         const isChecked = selectedRows.some(
-          (selectedRow) => selectedRow.id === row.original.id
+          (selectedRow) => selectedRow.id === row.original.id,
         );
 
         return (
@@ -194,14 +195,14 @@ export default function ProjectsPage() {
                     let newSelectedRows = [...selectedRows];
                     if (isChecked) {
                       const exists = newSelectedRows.some(
-                        (selectedRow) => selectedRow.id === row.original.id
+                        (selectedRow) => selectedRow.id === row.original.id,
                       );
                       if (!exists) {
                         newSelectedRows.push(row.original);
                       }
                     } else {
                       newSelectedRows = newSelectedRows.filter(
-                        (selectedRow) => selectedRow.id !== row.original.id
+                        (selectedRow) => selectedRow.id !== row.original.id,
                       );
                     }
                     setSelectedRows(newSelectedRows);
@@ -214,10 +215,10 @@ export default function ProjectsPage() {
               <TooltipContent side="right">
                 {isCurrentProject
                   ? t(
-                      'Cannot delete active project, switch to another project first'
+                      'Cannot delete active project, switch to another project first',
                     )
                   : t(
-                      "Personal projects cannot be deleted, and you can't subscribe to their alerts"
+                      "Personal projects cannot be deleted, and you can't subscribe to their alerts",
                     )}
               </TooltipContent>
             )}
@@ -233,7 +234,7 @@ export default function ProjectsPage() {
       {
         render: (
           _: RowDataWithActions<ProjectWithLimits>[],
-          resetSelection: () => void
+          resetSelection: () => void,
         ) =>
           releaseAvailability.projectAlerts ? (
             <PlatformAdminProjectAlertSubscriptionBulkActions
@@ -248,18 +249,18 @@ export default function ProjectsPage() {
       {
         render: (
           _: RowDataWithActions<ProjectWithLimits>[],
-          resetSelection: () => void
+          resetSelection: () => void,
         ) => {
           const canDeleteAny = selectedRows.some(
             (row) =>
-              row.id !== currentProject?.id && row.type === ProjectType.TEAM
+              row.id !== currentProject?.id && row.type === ProjectType.TEAM,
           );
           return (
             <div onClick={(e) => e.stopPropagation()}>
               <ConfirmationDeleteDialog
                 title={t('Archive Command Centers')}
                 message={t(
-                  'The selected command centers will be archived. Their missions and data will be preserved.'
+                  'The selected command centers will be archived. Their missions and data will be preserved.',
                 )}
                 entityName={t('Projects')}
                 buttonText={t('Archive')}
@@ -268,10 +269,10 @@ export default function ProjectsPage() {
                   const deletableProjects = selectedRows.filter(
                     (row) =>
                       row.id !== currentProject?.id &&
-                      row.type === ProjectType.TEAM
+                      row.type === ProjectType.TEAM,
                   );
                   const transaction = projectCollectionUtils.delete(
-                    deletableProjects.map((row) => row.id)
+                    deletableProjects.map((row) => row.id),
                   );
                   try {
                     await transaction.isPersisted.promise;
@@ -306,7 +307,7 @@ export default function ProjectsPage() {
         },
       },
     ],
-    [selectedRows, currentProject]
+    [selectedRows, currentProject],
   );
 
   const toolbarButtons = useMemo(
@@ -317,7 +318,7 @@ export default function ProjectsPage() {
         projects={allProjects}
       />,
     ],
-    [allProjects]
+    [allProjects],
   );
 
   const errorToastMessage = (error: unknown): string | undefined => {
@@ -328,13 +329,13 @@ export default function ProjectsPage() {
           return t('Project has enabled flows. Please disable them first.');
         case 'PROJECT_HAS_UNFINISHED_RUNS':
           return t(
-            'Wait for queued, running or paused missions to finish before archiving this command center.'
+            'Wait for queued, running or paused missions to finish before archiving this command center.',
           );
         case 'PERSONAL_PROJECT':
           return t('Your Personal Command Center cannot be archived.');
         case 'ACTIVE_PROJECT':
           return t(
-            'This project is active. Please switch to another project first.'
+            'This project is active. Please switch to another project first.',
           );
       }
       return undefined;
@@ -377,7 +378,7 @@ export default function ProjectsPage() {
         description={
           hosted
             ? t(
-                'One Command Center, shared by everyone in this client account.'
+                'One Command Center, shared by everyone in this client account.',
               )
             : t('Manage your automation projects')
         }
@@ -392,7 +393,7 @@ export default function ProjectsPage() {
               <ItemTitle>{t('Automatic personal project creation')}</ItemTitle>
               <ItemDescription>
                 {t(
-                  'Create a personal project for every new user on signup. Turn off if you provision users into team projects manually (e.g. via SSO or SCIM).'
+                  'Create a personal project for every new user on signup. Turn off if you provision users into team projects manually (e.g. via SSO or SCIM).',
                 )}
               </ItemDescription>
             </ItemContent>
@@ -412,7 +413,7 @@ export default function ProjectsPage() {
       <DataTable
         emptyStateTextTitle={t('No projects found')}
         emptyStateTextDescription={t(
-          'Create a command center to organize your missions, connected accounts and data.'
+          'Create a command center to organize your missions, connected accounts and data.',
         )}
         emptyStateIcon={<Package className="size-14" />}
         onRowClick={async (project) => {
@@ -435,7 +436,7 @@ export default function ProjectsPage() {
                 label: t(
                   type === ProjectType.PERSONAL
                     ? 'Personal Project'
-                    : 'Team Project'
+                    : 'Team Project',
                 ),
                 value: type,
               };
