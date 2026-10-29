@@ -107,7 +107,7 @@ describe('one shared Credits allowance', () => {
         const binding = await training()
         const issued = await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId })
         expect(issued.filter(grant => grant.sourceKey.startsWith('training:') && grant.meter === 'execution')).toHaveLength(12)
-        expect(issued.filter(grant => grant.sourceKey.startsWith('training:') && grant.meter === 'execution').every(grant => grant.amount === 10000n)).toBe(true)
+        expect(issued.filter(grant => grant.sourceKey.startsWith('training:') && grant.meter === 'execution').every(grant => grant.amount === 30000n)).toBe(true)
         expect(issued.filter(grant => grant.sourceKey.startsWith('training:') && grant.meter === 'managed_ai').every(grant => grant.amount === 0n)).toBe(true)
         await createHostedTraining({ dataSource: ds }).activate(binding)
         expect(await ds.getRepository(HostingGrantEntity).countBy({ platformId: client.platformId })).toBe(issued.length)
@@ -161,7 +161,7 @@ describe('one shared Credits allowance', () => {
         const current = (await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId, meter: 'execution' })).find(grant => grant.sourceKey.endsWith(':0'))!
         await ds.getRepository(HostingGrantEntity).update({ id: current.id }, { consumed: 3n })
         const restored = await save(1, 'restore', null)
-        expect(restored.period).toMatchObject({ amount: '10000', consumed: '3', available: '9997' })
+        expect(restored.period).toMatchObject({ amount: '30000', consumed: '3', available: '29997' })
         const change = await ds.getRepository(HostingCreditAllowanceChangeEntity).findOneByOrFail({ platformId: client.platformId, revision: 1 })
         expect(change.grantSnapshots).toHaveLength(12)
         await expect(ds.getRepository(HostingCreditAllowanceChangeEntity).update({ id: change.id }, { reason: 'rewrite' })).rejects.toThrow('HISTORY_IMMUTABLE')
@@ -184,7 +184,7 @@ describe('one shared Credits allowance', () => {
         expect(await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId })).toEqual(before)
         expect(await ds.getRepository(HostingCreditAllowanceChangeEntity).count()).toBe(0)
     })
-    it.each([['starter', 10000n], ['team', 100000n], ['scale', 500000n]] as const)('binds funded %s to an exact fifteen-day grace without refilling on renewal failure', async (planId, amount) => {
+    it.each([['starter', 30000n], ['team', 120000n], ['scale', 400000n]] as const)('binds funded %s to an exact fifteen-day grace without refilling on renewal failure', async (planId, amount) => {
         const stripe = await paid(planId); await stripe.recover()
         const grant = (await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId, meter: 'execution' })).find(value => value.sourceKey.startsWith('stripe:'))!
         expect(grant.amount).toBe(amount)
@@ -205,7 +205,7 @@ describe('one shared Credits allowance', () => {
         const stripe = await paid(); await stripe.recover()
         const initial = await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId })
         const grant = initial.find(value => value.meter === 'execution' && value.sourceKey.startsWith('stripe:'))!
-        expect(grant.amount).toBe(10000n)
+        expect(grant.amount).toBe(30000n)
         expect(initial.find(value => value.meter === 'managed_ai' && value.sourceKey.startsWith('stripe:'))?.amount).toBe(0n)
         await save(0, 'paid-custom', 12000)
         await ds.getRepository(HostingGrantEntity).update({ id: grant.id }, { consumed: 3n, reserved: 2n })
@@ -215,7 +215,7 @@ describe('one shared Credits allowance', () => {
         const view = await createHostedBillingView({ dataSource: ds }).read(client.actor)
         expect(view.meters.execution).toMatchObject({ amount: '12000', consumed: '3', reserved: '2', available: '11995' })
         expect(view.limits.aiCredits).toBe(0)
-        expect(view.plans.map(plan => [plan.id, plan.price?.amountMinor, plan.limits.users, plan.limits.executions])).toEqual([['starter', 9900, 10, 10000], ['team', 39900, 30, 100000], ['scale', 129900, 100, 500000]])
+        expect(view.plans.map(plan => [plan.id, plan.price?.amountMinor, plan.limits.users, plan.limits.executions])).toEqual([['starter', 9900, 10, 30000], ['team', 39900, 30, 120000], ['scale', 129900, 100, 400000]])
         supplier.snapshot.mockResolvedValue({ ...stripe.snapshot, charges: [{ id: 'ch_first', refunded: true, lost: false, holds: ['refunded'] }] })
         await stripe.recover()
         expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: grant.id })).revokedAt).not.toBeNull()

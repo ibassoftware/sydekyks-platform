@@ -5,6 +5,7 @@
 import {
   ApEdition,
   PlatformAdminSurface,
+  PlatformAdminLimit,
   TelemetryEventName,
 } from '@activepieces/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -111,8 +112,6 @@ const renderWithQueryClient = (ui: React.ReactElement) =>
 const usedTeamProjects = (count: number) =>
   Array.from({ length: count }, () => ({ type: 'TEAM' })) as never;
 
-const capturedNames = () => capture.mock.calls.map(([event]) => event.name);
-
 const capturedPayload = (name: TelemetryEventName) =>
   capture.mock.calls.find(([event]) => event.name === name)?.[0].payload;
 
@@ -147,15 +146,39 @@ describe('platform admin telemetry', () => {
 
   it('cannot emit an upstream sales enquiry from unavailable Community controls', () => {
     edition = ApEdition.COMMUNITY;
-    render(<FeatureSample locked title="Unlock Audit Logs" featureKey="AUDIT_LOGS"><div /></FeatureSample>);
+    render(
+      <FeatureSample locked title="Unlock Audit Logs" featureKey="AUDIT_LOGS">
+        <div />
+      </FeatureSample>,
+    );
     expect(screen.queryByRole('button', { name: /contact sales/i })).toBeNull();
-    expect(capturedPayload(TelemetryEventName.PLATFORM_ADMIN_SALES_CONTACTED)).toBeUndefined();
+    expect(
+      capturedPayload(TelemetryEventName.PLATFORM_ADMIN_SALES_CONTACTED),
+    ).toBeUndefined();
   });
 
-  it('does not emit gate telemetry for hidden team creation', () => {
-    renderWithQueryClient(<CreateProjectButton variant="icon" projects={[]} />);
-    expect(screen.queryByRole('button')).toBeNull();
+  it('reports the gate and limit when opening team creation at the plan limit', () => {
+    teamProjectsLimit = 1;
+    renderWithQueryClient(
+      <CreateProjectButton variant="icon" projects={usedTeamProjects(1)} />,
+    );
+    const trigger = screen.getByRole('button', { name: 'New Project' });
+    expect(trigger.getAttribute(ADMIN_CONTROL_ATTRIBUTE)).toBeNull();
     expect(capture).not.toHaveBeenCalled();
+    fireEvent.click(trigger);
+    expect(
+      capturedPayload(TelemetryEventName.PLATFORM_ADMIN_GATE_BLOCKED),
+    ).toEqual({
+      feature: 'PROJECTS',
+      control: AdminControl.PROJECTS_NEW_OPEN,
+    });
+    expect(
+      capturedPayload(TelemetryEventName.PLATFORM_ADMIN_LIMIT_REACHED),
+    ).toEqual({
+      limit: PlatformAdminLimit.TEAM_PROJECTS,
+      used: 1,
+      allowed: 1,
+    });
   });
 
   it('names the feature by its stable key on every surface, not the title', () => {
@@ -179,10 +202,17 @@ describe('platform admin telemetry', () => {
     });
   });
 
-  it('keeps unavailable team creation silent even when a plan has room', () => {
+  it('opens team creation without gate telemetry when the plan has room', () => {
     teamProjectsLimit = 3;
     renderWithQueryClient(<CreateProjectButton variant="full" projects={[]} />);
-    expect(screen.queryByRole('button', { name: /new project/i })).toBeNull();
+    const trigger = screen.getByRole('button', { name: /new project/i });
+    expect(trigger.getAttribute(ADMIN_CONTROL_ATTRIBUTE)).toBe(
+      AdminControl.PROJECTS_NEW_OPEN,
+    );
+    fireEvent.click(trigger);
+    expect(
+      screen.getByRole('dialog', { name: 'Create Project' }),
+    ).toBeDefined();
     expect(capture).not.toHaveBeenCalled();
   });
 });

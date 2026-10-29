@@ -144,7 +144,7 @@ describe('operator learning workspace repair', () => {
         const issued = (await grants()).filter(grant => grant.sourceKey.startsWith(`training:${record.id}:`))
         expect(issued).toHaveLength(24)
         expect(issued.filter(grant => grant.meter === 'managed_ai').map(grant => grant.amount)).toEqual(Array(12).fill(0n))
-        expect(issued.filter(grant => grant.meter === 'execution').map(grant => grant.amount)).toEqual(Array(12).fill(10000n))
+        expect(issued.filter(grant => grant.meter === 'execution').map(grant => grant.amount)).toEqual(Array(12).fill(30000n))
         expect(issued.every(grant => grant.validUntil.getTime() > grant.validFrom.getTime())).toBe(true)
         const ledger = createHostedLedger({ dataSource: ds }), root = await ledger.reserveExecution({ actor: learner.actor, projectId: learner.projectId!, key: 'learning-replay', payer: 'managed' }), rootClaim = await ledger.claimExecution({ actor: learner.actor, reservationId: root.id })
         const call = await ledger.reserveManagedCall({ actor: learner.actor, rootReservationId: root.id, key: 'learning-replay-call', maxCostMicroUsd: 100n }), claim = await ledger.claimManagedCall({ actor: learner.actor, reservationId: call.id })

@@ -1,0 +1,690 @@
+[
+  {
+    "path": ".env.example",
+    "resolution": "Preserve self_hosted default; update separate public-install image example to 1.0.11.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run corresponding build/tests and verify the documented hosted policy against the pre-merge SaaS reference."
+    ]
+  },
+  {
+    "path": ".github/workflows/validate.yml",
+    "resolution": "Retain hosted CI coverage and include expanded upstream builder/API/Gadget safety checks.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run corresponding build/tests and verify the documented hosted policy against the pre-merge SaaS reference."
+    ]
+  },
+  {
+    "path": "bun.lock",
+    "resolution": "Regenerate from merged manifests with Sydekyks dependency pins.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run corresponding build/tests and verify the documented hosted policy against the pre-merge SaaS reference."
+    ]
+  },
+  {
+    "path": "packages/core/utils/src/index.ts",
+    "resolution": "Union HTTP header safety and hosted utility exports.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run corresponding build/tests and verify the documented hosted policy against the pre-merge SaaS reference."
+    ]
+  },
+  {
+    "path": "packages/pieces/community/ai/src/lib/actions/text/ask-ai.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/pieces/community/ai/src/lib/actions/utility/extract-structured-data.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/flows/flow-run/flow-run-service.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run corresponding build/tests and verify the documented hosted policy against the pre-merge SaaS reference."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/mcp/tools/mcp-utils.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run corresponding build/tests and verify the documented hosted policy against the pre-merge SaaS reference."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/syd/copilot/agent-runtime.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/syd/copilot/conversation-controller.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/syd/copilot/tools/configured-piece.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/trigger/trigger-events/trigger-event.service.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Republish unchanged and upgraded polling triggers; preserve polling cursor/schedule and authenticated funded enable/disable provenance."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/trigger/trigger-source/flow-trigger-side-effect.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Republish unchanged and upgraded polling triggers; preserve polling cursor/schedule and authenticated funded enable/disable provenance."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/trigger/trigger-source/trigger-source-service.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Republish unchanged and upgraded polling triggers; preserve polling cursor/schedule and authenticated funded enable/disable provenance."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/webhooks/webhook-controller.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/workers/job-queue/job-broker.ts",
+    "resolution": "Keep exact hosted implementation, session/credential fences or regression fixtures; existing worker lifetime AbortSignal handles disconnected polls.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Exercise socket lifetime cancellation, job ownership/admission IDs, lane settings and duplicate-dispatch prevention. Run hosted worker and 20-concurrency race suites on isolated PostgreSQL/Redis."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/workers/job-queue/queue-dispatcher.ts",
+    "resolution": "Keep exact hosted implementation, session/credential fences or regression fixtures; existing worker lifetime AbortSignal handles disconnected polls.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Exercise socket lifetime cancellation, job ownership/admission IDs, lane settings and duplicate-dispatch prevention. Run hosted worker and 20-concurrency race suites on isolated PostgreSQL/Redis."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/workers/machine/machine-controller.ts",
+    "resolution": "Keep exact hosted implementation, session/credential fences or regression fixtures; existing worker lifetime AbortSignal handles disconnected polls.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Exercise socket lifetime cancellation, job ownership/admission IDs, lane settings and duplicate-dispatch prevention. Run hosted worker and 20-concurrency race suites on isolated PostgreSQL/Redis."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/workers/rpc/worker-rpc-service.ts",
+    "resolution": "Keep exact hosted implementation, session/credential fences or regression fixtures; existing worker lifetime AbortSignal handles disconnected polls.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Exercise socket lifetime cancellation, job ownership/admission IDs, lane settings and duplicate-dispatch prevention. Run hosted worker and 20-concurrency race suites on isolated PostgreSQL/Redis."
+    ]
+  },
+  {
+    "path": "packages/server/api/test/integration/ce/syd/copilot-storage.test.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/server/api/test/unit/app/flows/trigger/flow-trigger-side-effect.test.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Republish unchanged and upgraded polling triggers; preserve polling cursor/schedule and authenticated funded enable/disable provenance."
+    ]
+  },
+  {
+    "path": "packages/server/api/test/unit/app/webhooks/webhook-credit-gate.test.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "packages/server/api/test/unit/authorization-not-found.test.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run corresponding build/tests and verify the documented hosted policy against the pre-merge SaaS reference."
+    ]
+  },
+  {
+    "path": "packages/server/engine/src/lib/operations/flow.operation.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run corresponding build/tests and verify the documented hosted policy against the pre-merge SaaS reference."
+    ]
+  },
+  {
+    "path": "packages/server/worker/src/lib/execute/jobs/ee/agent/execute-agent-run.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Exercise socket lifetime cancellation, job ownership/admission IDs, lane settings and duplicate-dispatch prevention. Run hosted worker and 20-concurrency race suites on isolated PostgreSQL/Redis."
+    ]
+  },
+  {
+    "path": "packages/server/worker/src/lib/execute/jobs/ee/agent/run-agent-turn.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Exercise socket lifetime cancellation, job ownership/admission IDs, lane settings and duplicate-dispatch prevention. Run hosted worker and 20-concurrency race suites on isolated PostgreSQL/Redis."
+    ]
+  },
+  {
+    "path": "packages/server/worker/src/lib/worker.ts",
+    "resolution": "Keep exact hosted implementation, session/credential fences or regression fixtures; existing worker lifetime AbortSignal handles disconnected polls.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Exercise socket lifetime cancellation, job ownership/admission IDs, lane settings and duplicate-dispatch prevention. Run hosted worker and 20-concurrency race suites on isolated PostgreSQL/Redis."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/builder/run-details/flow-step-input-output.tsx",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/components/platform-layout.tsx",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/routes/agents/id/configure-panel/index.tsx",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/routes/agents/id/index.tsx",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "packages/web/src/app/routes/chat-with-ai/conversation-list.tsx",
+    "resolution": "Keep exact hosted implementation, session/credential fences or regression fixtures; existing worker lifetime AbortSignal handles disconnected polls.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "packages/web/src/lib/api.ts",
+    "resolution": "Retain hosted conflicting hunks and accept nonconflicting main improvements; adapt required imports/contracts explicitly.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "packages/web/test/app/builder/run-details/sliced-output-loader.test.ts",
+    "resolution": "Keep exact hosted implementation, session/credential fences or regression fixtures; existing worker lifetime AbortSignal handles disconnected polls.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "packages/web/test/app/builder/run-details/sliced-output-viewer.test.tsx",
+    "resolution": "Keep exact hosted implementation, session/credential fences or regression fixtures; existing worker lifetime AbortSignal handles disconnected polls.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "packages/web/test/app/routes/agents/id/configure-panel.test.tsx",
+    "resolution": "Keep exact hosted implementation, session/credential fences or regression fixtures; existing worker lifetime AbortSignal handles disconnected polls.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "packages/web/test/app/routes/agents/id/leave-guard-arming.test.tsx",
+    "resolution": "Keep exact hosted implementation, session/credential fences or regression fixtures; existing worker lifetime AbortSignal handles disconnected polls.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "packages/web/test/app/routes/agents/id/mobile-history.test.tsx",
+    "resolution": "Keep exact hosted implementation, session/credential fences or regression fixtures; existing worker lifetime AbortSignal handles disconnected polls.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "packages/web/test/app/routes/agents/lib/agent-update-cache.test.tsx",
+    "resolution": "Keep exact hosted implementation, session/credential fences or regression fixtures; existing worker lifetime AbortSignal handles disconnected polls.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "scripts/release-api-regressions.json",
+    "resolution": "Union manifests; retain all hosted router regressions.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Run corresponding build/tests and verify the documented hosted policy against the pre-merge SaaS reference."
+    ]
+  },
+  {
+    "path": "packages/pieces/community/ai/src/i18n/translation.json",
+    "resolution": "Preserve reviewed hosted native Gadget and accounting contract; upstream replacement needs a separate review.",
+    "wasGitConflict": false,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/pieces/community/ai/src/lib/actions/utility/classify-text.ts",
+    "resolution": "Preserve reviewed hosted native Gadget and accounting contract; upstream replacement needs a separate review.",
+    "wasGitConflict": false,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/pieces/community/ai/src/lib/actions/text/ask-ai.ts",
+    "resolution": "Preserve reviewed hosted native Gadget and accounting contract; upstream replacement needs a separate review.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/pieces/community/ai/src/lib/actions/text/temperature.test.ts",
+    "resolution": "Preserve reviewed hosted native Gadget and accounting contract; upstream replacement needs a separate review.",
+    "wasGitConflict": false,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/pieces/community/ai/src/lib/common/props.test.ts",
+    "resolution": "Preserve reviewed hosted native Gadget and accounting contract; upstream replacement needs a separate review.",
+    "wasGitConflict": false,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/pieces/community/ai/src/lib/common/props.ts",
+    "resolution": "Preserve reviewed hosted native Gadget and accounting contract; upstream replacement needs a separate review.",
+    "wasGitConflict": false,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/pieces/community/ai/src/lib/common/ai-step.ts",
+    "resolution": "Preserve reviewed hosted native Gadget and accounting contract; upstream replacement needs a separate review.",
+    "wasGitConflict": false,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/pieces/community/ai/src/lib/actions/utility/extract-structured-data.ts",
+    "resolution": "Preserve reviewed hosted native Gadget and accounting contract; upstream replacement needs a separate review.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/pieces/community/ai/src/lib/actions/output-shape.test.ts",
+    "resolution": "Preserve reviewed hosted native Gadget and accounting contract; upstream replacement needs a separate review.",
+    "wasGitConflict": false,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/pieces/community/ai/package.json",
+    "resolution": "Preserve reviewed hosted native Gadget and accounting contract; upstream replacement needs a separate review.",
+    "wasGitConflict": false,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/pieces/community/ai/src/lib/actions/text/summarize-text.ts",
+    "resolution": "Preserve reviewed hosted native Gadget and accounting contract; upstream replacement needs a separate review.",
+    "wasGitConflict": false,
+    "followUpTests": [
+      "Verify managed/BYOK separation, Credit reservations, 1M context, explicit tool approvals and exact dropdown object values without changing live saved work."
+    ]
+  },
+  {
+    "path": "packages/pieces/community/ai/src/lib/common/web-search.ts",
+    "resolution": "Preserve reviewed hosted native Gadget and accounting contract; upstream replacement needs a separate review.",
+    "wasGitConflict": false,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "packages/server/api/src/app/flows/flow-version/migrations/migrate-v28-ai-piece-model-picker.ts",
+    "resolution": "Keep hosted saved Mission provider/model fields unchanged; no v28 rewrite before pinned AI Gadget migration is reviewed.",
+    "wasGitConflict": false,
+    "followUpTests": [
+      "Run corresponding build/tests and verify the documented hosted policy against the pre-merge SaaS reference."
+    ]
+  },
+  {
+    "path": "packages/core/execution/src/lib/engine/engine-operation.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/core/execution/src/lib/engine/execution-errors.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/core/execution/src/lib/flow-run/execution/execution-journal.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/core/execution/src/lib/flow-run/execution/execution-output.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/core/execution/src/lib/flow-run/waitpoint/index.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/core/execution/src/lib/workers/job-data.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/core/execution/test/flow-run/execution/execution-journal.test.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/core/execution/test/flow-run/waitpoint/barrier-fan-out-source.test.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/server/api/src/app/database/redis/distributed-store-factory.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/server/api/src/app/flows/flow-run/child-run-dispatch-service.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/server/api/src/app/flows/flow-run/flow-run-entity.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/server/api/src/app/waitpoints/barrier-queue-factory.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/server/api/src/app/waitpoints/barrier-queue.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/server/api/src/app/waitpoints/barrier-service.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/server/api/src/app/waitpoints/fan-out-dispatcher-job.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/server/api/src/app/waitpoints/waitpoint-controller.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/server/api/src/app/waitpoints/waitpoint-service.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/server/api/test/integration/ce/flows/flow-run/barrier.test.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/server/engine/src/lib/handler/context/engine-constants.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/server/engine/src/lib/helper/flow-run-progress-reporter.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/server/engine/src/lib/operations/flow.operation.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": true
+  },
+  {
+    "path": "packages/server/engine/test/operations/flow-operation-invariants.test.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/server/worker/src/lib/execute/jobs/execute-flow.ts",
+    "resolution": "Retain existing hosted batch dispatch/checkpoint path. Upstream background fan-out lacks authenticated nested-call provenance; integrate only after a dedicated accounting/idempotency review.",
+    "followUpTests": [
+      "Compare batch/subflow behavior with pre-merge SaaS on isolated PostgreSQL/Redis; prove authenticated parent linkage, reservations, cancellation and exactly-once reconciliation."
+    ],
+    "wasGitConflict": false
+  },
+  {
+    "path": "packages/server/worker/src/lib/execute/jobs/ee/agent/run-agent-turn.ts",
+    "resolution": "Keep the new intra-stream token stop for self-hosted turns. Hosted turns retain their prior policy and funded supplier gateway limits.",
+    "wasGitConflict": true,
+    "followUpTests": [
+      "Exercise socket lifetime cancellation, job ownership/admission IDs, lane settings and duplicate-dispatch prevention. Run hosted worker and 20-concurrency race suites on isolated PostgreSQL/Redis."
+    ]
+  },
+  {
+    "path": "packages/web/src/styles.css",
+    "resolution": "Retain existing hosted palette instead of replacing it with upstream neutral dark values; add only the field-token compatibility needed by imported controls.",
+    "wasGitConflict": false,
+    "followUpTests": [
+      "Run relevant component tests and inspect editor/Agent/History on desktop and mobile; verify same-origin account-scoped file/session handling and manual title edits."
+    ]
+  },
+  {
+    "path": "packages/core/shared/src/lib/core/common/brand-colors.ts",
+    "wasGitConflict": false,
+    "resolution": "Retain hosted palette generator to match preserved CSS and existing branding.",
+    "followUpTests": [
+      "Run status-scales and browser theme checks."
+    ]
+  },
+  {
+    "path": "packages/server/api/test/unit/hosting-commercial-policy.test.ts",
+    "wasGitConflict": false,
+    "resolution": "Correct the pre-existing old-allowance fixture to the approved 28 October 30,000/120,000/400,000 ledger-unit offers. Production catalogue and ledger source are unchanged.",
+    "followUpTests": [
+      "Check existing funded agreements retain their stored allowances; no stored balance or grant is rescaled."
+    ]
+  },
+  {
+    "path": "packages/server/worker/src/lib/execute/jobs/ee/agent/execute-agent-run.ts",
+    "wasGitConflict": true,
+    "resolution": "Use main manual-title preservation; remove the obsolete auto-title declaration too. Hosted execution continues to make no extra title supplier call.",
+    "followUpTests": [
+      "Run worker skills tests and edit a conversation title during an active reply."
+    ]
+  },
+  {
+    "path": "packages/server/api/test/unit/hosting-ai-allowance.test.ts",
+    "wasGitConflict": false,
+    "resolution": "Refresh obsolete offer assertions to the already-approved 28 October catalogue. Preserve all custom-allowance, consumed/reserved, idempotency and existing-agreement assertions; no production policy or ledger code changes.",
+    "followUpTests": [
+      "Re-run the migrated fixture suite and confirm historical funded agreement preservation."
+    ]
+  },
+  {
+    "path": "packages/server/api/test/unit/hosting-client-plan-changes.test.ts",
+    "wasGitConflict": false,
+    "resolution": "Refresh obsolete offer assertions to the already-approved 28 October catalogue. Preserve all custom-allowance, consumed/reserved, idempotency and existing-agreement assertions; no production policy or ledger code changes.",
+    "followUpTests": [
+      "Re-run the migrated fixture suite and confirm historical funded agreement preservation."
+    ]
+  },
+  {
+    "path": "packages/server/api/test/unit/hosting-learning-workspace.test.ts",
+    "wasGitConflict": false,
+    "resolution": "Refresh obsolete offer assertions to the already-approved 28 October catalogue. Preserve all custom-allowance, consumed/reserved, idempotency and existing-agreement assertions; no production policy or ledger code changes.",
+    "followUpTests": [
+      "Re-run the migrated fixture suite and confirm historical funded agreement preservation."
+    ]
+  },
+  {
+    "path": "packages/server/api/test/unit/hosting-partner-billing.test.ts",
+    "wasGitConflict": false,
+    "resolution": "Refresh obsolete offer assertions to the already-approved 28 October catalogue. Preserve all custom-allowance, consumed/reserved, idempotency and existing-agreement assertions; no production policy or ledger code changes.",
+    "followUpTests": [
+      "Re-run the migrated fixture suite and confirm historical funded agreement preservation."
+    ]
+  },
+  {
+    "path": "packages/server/api/test/unit/hosting-stripe-catalog.test.ts",
+    "wasGitConflict": false,
+    "resolution": "Refresh obsolete offer assertions to the already-approved 28 October catalogue. Preserve all custom-allowance, consumed/reserved, idempotency and existing-agreement assertions; no production policy or ledger code changes.",
+    "followUpTests": [
+      "Re-run the migrated fixture suite and confirm historical funded agreement preservation."
+    ]
+  }
+]

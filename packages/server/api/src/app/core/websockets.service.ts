@@ -29,81 +29,11 @@ export const websocketService = {
     socketHasPermission: ({ socket, permission }: SocketHasPermissionParams): boolean => hasPermission(projectRoleBySocket.get(socket), permission),
     notifyWorkers: () => createNotifyClient<ApiToWorkerContract>(app!.io.to(WORKERS_ROOM)),
     async init(socket: Socket, log: FastifyBaseLogger): Promise<void> {
-        const principal = await websocketService.verifyPrincipal(socket)
-        const type = principal.type
-        if (![PrincipalType.USER, PrincipalType.WORKER].includes(type)) {
-            return
-        }
-
-        const castedType = type as keyof typeof listener
-        const projectId = socket.handshake.auth.projectId
-        let projectRole: ReadonlySet<Permission> | undefined
-        switch (type) {
-            case PrincipalType.USER: {
-                projectRole = await validateProjectId({ userId: principal.id, platformId: principal.platform.id, projectId, log })
-                projectRoleBySocket.set(socket, projectRole)
-                log.info({
-                    message: 'User connected',
-                    user: { id: principal.id },
-                    project: { id: projectId },
-                })
-                await socket.join(projectId)
-                await socket.join(principal.id)
-                const recheck = setInterval(() => {
-                    revalidateUserSocket({ socket, userId: principal.id, platformId: principal.platform.id, projectId, log }).catch(() => socket.disconnect(true))
-                }, 5000)
-                recheck.unref()
-                socket.once('disconnect', () => clearInterval(recheck))
-                break
-            }
-            case PrincipalType.WORKER: {
-                const workerId = socket.handshake.auth.workerId
-                log.info({
-                    message: 'Worker connected',
-                    worker: { id: workerId },
-                })
-                await socket.join(workerId)
-                await socket.join(WORKERS_ROOM)
-                break
-            }
-            default: {
-                throw new ActivepiecesError({
-                    code: ErrorCode.AUTHENTICATION,
-                    params: {
-                        message: 'Invalid principal type',
-                    },
-                })
-            }
-        }
-        for (const [event, handler] of Object.entries(listener[castedType])) {
-            // Socket.IO emits the reserved lowercase 'disconnect' per-socket; map our DISCONNECT enum
-            // onto it or the handler never fires (it never did — worker cleanup relied on the 60s sweep).
-            const socketEvent = event === WebsocketServerEvent.DISCONNECT ? 'disconnect' : event
-            socket.on(socketEvent, async (data, callback) => {
-                if (castedType === PrincipalType.USER && socketEvent !== 'disconnect') {
-                    try {
-                        const currentPrincipal = await websocketService.verifyPrincipal(socket)
-                        if (currentPrincipal.type !== PrincipalType.USER || currentPrincipal.id !== principal.id) throw new ActivepiecesError({ code: ErrorCode.AUTHORIZATION, params: { message: 'A current user session is required.' } })
-                        projectRole = await validateProjectId({ userId: currentPrincipal.id, platformId: currentPrincipal.platform.id, projectId, log })
-                        projectRoleBySocket.set(socket, projectRole)
-                    }
-                    catch {
-                        if (typeof callback === 'function') callback({ error: 'UNAUTHORIZED' })
-                        socket.disconnect(true)
-                        return
-                    }
-                }
-                // Permissions are a project-role concept, so they only apply to USER principals.
-                const requiredPermission = castedType === PrincipalType.USER
-                    ? eventPermissions[event as WebsocketServerEvent]
-                    : undefined
-                if (castedType === PrincipalType.USER && !communityProjectAccess.canHandleSocketEvent({ event, permission: requiredPermission, permissions: projectRole })) {
-                    log.warn({ event, userId: principal.id, projectId, requiredPermission }, 'Websocket event blocked: missing permission')
-                    return
-                }
-                return rejectedPromiseHandler(handler(socket)(data, principal, projectId, callback), log)
-            })
-        }
+        const ready = attachListeners(socket, log)
+        socket.use((_packet, next) => {
+            ready.then(() => next(), () => next(new Error('Unauthorized')))
+        })
+        await ready
     },
     async verifyPrincipal(socket: Socket): Promise<Principal> {
         return accessTokenManager(app!.log).verifyPrincipal(socket.handshake.auth.token)
@@ -168,4 +98,82 @@ type SocketHasPermissionParams = {
 
 type RevalidateSocketParams = ValidateProjectIdArgs & {
     socket: Socket
+}
+
+async function attachListeners(socket: Socket, log: FastifyBaseLogger): Promise<void> {
+    const principal = await websocketService.verifyPrincipal(socket)
+    const type = principal.type
+    if (![PrincipalType.USER, PrincipalType.WORKER].includes(type)) {
+        return
+    }
+
+    const castedType = type as keyof typeof listener
+    const projectId = socket.handshake.auth.projectId
+    let projectRole: ReadonlySet<Permission> | undefined
+    switch (type) {
+        case PrincipalType.USER: {
+            projectRole = await validateProjectId({ userId: principal.id, platformId: principal.platform.id, projectId, log })
+            projectRoleBySocket.set(socket, projectRole)
+            log.info({
+                message: 'User connected',
+                user: { id: principal.id },
+                project: { id: projectId },
+            })
+            await socket.join(projectId)
+            await socket.join(principal.id)
+            const recheck = setInterval(() => {
+                revalidateUserSocket({ socket, userId: principal.id, platformId: principal.platform.id, projectId, log }).catch(() => socket.disconnect(true))
+            }, 5000)
+            recheck.unref()
+            socket.once('disconnect', () => clearInterval(recheck))
+            break
+        }
+        case PrincipalType.WORKER: {
+            const workerId = socket.handshake.auth.workerId
+            log.info({
+                message: 'Worker connected',
+                worker: { id: workerId },
+            })
+            await socket.join(workerId)
+            await socket.join(WORKERS_ROOM)
+            break
+        }
+        default: {
+            throw new ActivepiecesError({
+                code: ErrorCode.AUTHENTICATION,
+                params: {
+                    message: 'Invalid principal type',
+                },
+            })
+        }
+    }
+    for (const [event, handler] of Object.entries(listener[castedType])) {
+        // Socket.IO emits the reserved lowercase 'disconnect' per-socket; map our DISCONNECT enum
+        // onto it or the handler never fires (it never did — worker cleanup relied on the 60s sweep).
+        const socketEvent = event === WebsocketServerEvent.DISCONNECT ? 'disconnect' : event
+        socket.on(socketEvent, async (data, callback) => {
+            if (castedType === PrincipalType.USER && socketEvent !== 'disconnect') {
+                try {
+                    const currentPrincipal = await websocketService.verifyPrincipal(socket)
+                    if (currentPrincipal.type !== PrincipalType.USER || currentPrincipal.id !== principal.id) throw new ActivepiecesError({ code: ErrorCode.AUTHORIZATION, params: { message: 'A current user session is required.' } })
+                    projectRole = await validateProjectId({ userId: currentPrincipal.id, platformId: currentPrincipal.platform.id, projectId, log })
+                    projectRoleBySocket.set(socket, projectRole)
+                }
+                catch {
+                    if (typeof callback === 'function') callback({ error: 'UNAUTHORIZED' })
+                    socket.disconnect(true)
+                    return
+                }
+            }
+            // Permissions are a project-role concept, so they only apply to USER principals.
+            const requiredPermission = castedType === PrincipalType.USER
+                ? eventPermissions[event as WebsocketServerEvent]
+                : undefined
+            if (castedType === PrincipalType.USER && !communityProjectAccess.canHandleSocketEvent({ event, permission: requiredPermission, permissions: projectRole })) {
+                log.warn({ event, userId: principal.id, projectId, requiredPermission }, 'Websocket event blocked: missing permission')
+                return
+            }
+            return rejectedPromiseHandler(handler(socket)(data, principal, projectId, callback), log)
+        })
+    }
 }

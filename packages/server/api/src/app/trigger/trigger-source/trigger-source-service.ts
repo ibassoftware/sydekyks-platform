@@ -18,7 +18,7 @@ export const triggerSourceService = (log: FastifyBaseLogger) => {
     return {
         async enable(params: EnableTriggerParams): Promise<TriggerSource> {
             return projectLifecycle.runWhileActive({ projectId: params.projectId, log, operation: async () => {
-                const { flowVersion, projectId, simulate, templateId, isRepublish } = params
+                const { flowVersion, projectId, simulate, templateId, isRepublish, isTriggerUnchanged } = params
                 log.info({
                     flow: { id: flowVersion.flowId },
                     flowVersion: { id: flowVersion.id },
@@ -64,6 +64,8 @@ export const triggerSourceService = (log: FastifyBaseLogger) => {
                         pieceTrigger,
                         simulate,
                         isRepublish,
+                        isTriggerUnchanged,
+                        previousSchedule: existingTriggerSource?.schedule ?? undefined,
                     })
                     return triggerSourceRepo().save({
                         ...triggerSource,
@@ -200,6 +202,8 @@ export const triggerSourceService = (log: FastifyBaseLogger) => {
                     simulate,
                     ignoreError: params.ignoreError,
                     hostedOrigin: params.hostedOrigin,
+                    isRepublish: params.isRepublish,
+                    isTriggerUnchanged: params.isTriggerUnchanged,
                 })
                 log.info('[triggerSourceService#disable] Disabled flow trigger side effect')
             }
@@ -256,6 +260,8 @@ type DisableTriggerParams = {
     simulate: boolean
     ignoreError: boolean
     templateId?: string
+    isRepublish?: boolean
+    isTriggerUnchanged?: boolean
 }
 
 type EnableTriggerParams = {
@@ -264,4 +270,5 @@ type EnableTriggerParams = {
     simulate: boolean
     templateId?: string
     isRepublish?: boolean
+    isTriggerUnchanged?: boolean
 }

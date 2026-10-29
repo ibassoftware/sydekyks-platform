@@ -169,6 +169,15 @@ export const flowRunMutations = {
               closeButton: true,
               dismissible: true,
             });
+          } else if (apError.code === ErrorCode.FLOW_RUN_NOT_RETRYABLE) {
+            toast.error(t('Retry failed'), {
+              description: t(
+                'Only failed runs can be retried from failed step',
+              ),
+              duration: 5000,
+              closeButton: true,
+              dismissible: true,
+            });
           } else if (apError.code === ErrorCode.QUOTA_EXCEEDED) {
             useManagePlanDialogStore.getState().openDialog();
           }

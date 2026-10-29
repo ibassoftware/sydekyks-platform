@@ -86,7 +86,7 @@ describe('explicit Stripe catalog-only migration', () => {
         await (await createHostedStripe({ dataSource: ds })).recover()
         const periods = await ds.getRepository(HostingStripePeriodEntity).findBy({ platformId: client.platformId }), grants = await ds.getRepository(HostingGrantEntity).findBy({ platformId: client.platformId }), ledger = await ds.getRepository(HostingLedgerEntity).findBy({ platformId: client.platformId })
         expect(periods).toHaveLength(1)
-        expect(grants.find(row => row.meter === 'execution' && row.sourceKey.startsWith('stripe:'))?.amount).toBe(10000n)
+        expect(grants.find(row => row.meter === 'execution' && row.sourceKey.startsWith('stripe:'))?.amount).toBe(30000n)
         await ds.getRepository(HostingStripeBindingEntity).update({ id: bindingId }, { catalogHash: 'a'.repeat(64) })
         const p = await preview(); await confirm(p.previewId)
         await (await createHostedStripe({ dataSource: ds })).recover()

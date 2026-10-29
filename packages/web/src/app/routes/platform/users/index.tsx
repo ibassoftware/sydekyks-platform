@@ -47,12 +47,8 @@ export default function UsersPage() {
 }
 function SelfHostedUsersPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
-  const {
-    isOutOfSeats,
-    ensureSeatsAvailable,
-    handleSeatLimitError,
-    seatLimitDialog,
-  } = useSeatLimitGuard();
+  const { isOutOfSeats, handleSeatLimitError, seatLimitDialog } =
+    useSeatLimitGuard();
 
   const {
     data: usersData,
@@ -142,11 +138,7 @@ function SelfHostedUsersPage() {
       >
         <Button
           {...adminControl(AdminControl.USERS_INVITE_OPEN)}
-          onClick={() => {
-            if (ensureSeatsAvailable(1)) {
-              setInviteOpen(true);
-            }
-          }}
+          onClick={() => setInviteOpen(true)}
         >
           {isOutOfSeats ? (
             <Gem className="text-on-accent/90" />

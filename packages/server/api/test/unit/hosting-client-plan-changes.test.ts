@@ -87,7 +87,7 @@ describe('client-owned renewal-only subscription changes', () => {
         await recover(); await recover()
         const after = await funds(), paid = after.grants.filter(grant => grant.sourceKey.startsWith('stripe:') && grant.meter === 'execution')
         expect(after.account).toMatchObject({ planId: 'team', billingHold: false }); expect(after.periods).toHaveLength(2)
-        expect(paid.map(grant => grant.amount).sort()).toEqual([10000n, 100000n])
+        expect(paid.map(grant => grant.amount).sort((a, b) => a < b ? -1 : a > b ? 1 : 0)).toEqual([30000n, 120000n])
         expect(paid.find(grant => grant.validFrom.getTime() === start * 1000)?.consumed).toBe(17n)
         expect(paid.find(grant => grant.validFrom.getTime() === end * 1000)?.consumed).toBe(0n)
     })

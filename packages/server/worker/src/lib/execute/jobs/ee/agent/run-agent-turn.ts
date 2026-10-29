@@ -94,10 +94,15 @@ async function runTieredAgentTurn({ hosted = false, models, fastModel, systemPro
         paidToolsAffordable = isNil(left) || left >= CHAT_CREDITS_PER_TOOL_CALL
         return creditsExhausted
     }
+    const maxTurnTokens = runawayTokenCeiling(models[0].provider)
+    let totalInputTokens = 0
+    let totalOutputTokens = 0
+    const tokenBudgetSpent = (): boolean => !hosted && totalInputTokens + totalOutputTokens >= maxTurnTokens
     const loopStopCondition = [
         ...(Array.isArray(baseStopCondition) ? baseStopCondition : [baseStopCondition]),
         ...(isNil(stepCeiling) ? [] : [isStepCount(stepCeiling)]),
         creditsRanOut,
+        tokenBudgetSpent,
     ]
     const reroutedCallIds = new Set<string>()
     const skillSurface = isNil(skills) ? null : buildSkillSurface({
@@ -114,7 +119,6 @@ async function runTieredAgentTurn({ hosted = false, models, fastModel, systemPro
     })
     const turnSystemPrompt = systemPrompt + (isNil(skills) ? '' : agentToolSkills.renderSkillsNote({ surface: skills.surface })) + (skillSurface?.catalogNote ?? '')
     const guardedTools = withExplicitToolStrictness({ tools: wrapToolsWithFailureGuard({ tools: skillSurface?.tools ?? tools, log }) })
-    const maxTurnTokens = runawayTokenCeiling(models[0].provider)
     const runsATier = models.some((candidate) => !isNil(candidate.key))
     const peers = [...models, ...(isNil(fastModel) ? [] : [fastModel])]
     const ranked = await Promise.all(models.map((turnModel) => withOutputBudget({ turnModel, peers, hosted })))
@@ -139,8 +143,6 @@ async function runTieredAgentTurn({ hosted = false, models, fastModel, systemPro
     let streamRetries = 0
     let truncatedAfterRetries = false
     let usage: LanguageModelUsage | undefined
-    let totalInputTokens = 0
-    let totalOutputTokens = 0
     let lastFinishReason = ''
     let budgetExceeded = false
 
@@ -543,6 +545,7 @@ export function classifyAgentRunError({ error, provider }: { error: unknown, pro
         const rejectedWithReason = USER_FACING_ERROR_CODES.has(apError?.code ?? '')
         return missingUserConfig || rejectedWithReason ? 'user' : 'internal'
     }
+    if (apiError.statusCode === 400 && provider === AIProviderName.CUSTOM) return 'user'
     if (apiError.statusCode === 400 && provider !== AIProviderName.ACTIVEPIECES && MODEL_UNAVAILABLE_PATTERNS.some((pattern) => pattern.test(message))) {
         return 'user'
     }

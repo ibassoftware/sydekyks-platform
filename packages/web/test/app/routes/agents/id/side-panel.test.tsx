@@ -215,3 +215,5 @@ class FakeMediaQueryList extends EventTarget implements MediaQueryList {
     return undefined;
   }
 }
+
+vi.mock('@/features/hosted-billing/service-mode', () => ({ useHostedBillingEnabled: () => false }));

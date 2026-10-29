@@ -1,4 +1,5 @@
 import { ApErrorParams, ErrorCode, isNil } from '@activepieces/core-utils';
+import { EDITOR_SESSION_ID_HEADER } from '@activepieces/shared';
 import axios, {
   AxiosError,
   AxiosRequestConfig,
@@ -10,6 +11,7 @@ import qs from 'qs';
 
 import { authenticationSession } from '@/lib/authentication-session';
 import { chatDebug } from '@/lib/chat-debug-logger';
+import { editorSession } from '@/lib/editor-session';
 let hostedSessionIsolation = false;
 
 function projectPointer() {
@@ -138,6 +140,9 @@ function request<TResponse>(
         isApWebsite,
         originToken,
       ),
+      ...(isApWebsite
+        ? { [EDITOR_SESSION_ID_HEADER]: editorSession.getId() }
+        : {}),
     },
   })
     .then((response) => {

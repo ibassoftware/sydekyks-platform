@@ -17,7 +17,6 @@ const state = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   invalidate: vi.fn(async (_filters: unknown) => undefined),
   saving: Promise.resolve() as Promise<unknown>,
-  upgradeClick: vi.fn(),
 }));
 
 vi.mock('i18next', () => ({
@@ -119,11 +118,6 @@ vi.mock('@/components/custom/color-picker', () => ({
 
 vi.mock('@/app/routes/platform/setup/general/color-preview', () => ({
   ColorPreview: () => null,
-}));
-
-vi.mock('@/features/billing', () => ({
-  TIER_LABELS: { enterprise: 'Enterprise' },
-  useUpgradeClick: () => state.upgradeClick,
 }));
 
 import { AppearanceSection } from '@/app/routes/platform/setup/general/appearance-section';
@@ -456,7 +450,6 @@ describe('AppearanceSection on a plan without branding', () => {
   beforeEach(() => {
     state.update.mockReset();
     state.update.mockResolvedValue(undefined);
-    state.upgradeClick.mockClear();
     state.saving = Promise.resolve();
     state.customAppearanceEnabled = false;
     state.primaryColor = '#6e41e2';
@@ -470,47 +463,41 @@ describe('AppearanceSection on a plan without branding', () => {
     container.remove();
   });
 
-  it('lets the admin try a colour and turns save into upgrade', async () => {
+  it('hides branding controls and keeps the unchanged name unsaved', async () => {
     await render();
-    await type({ selector: 'input[aria-label="colour"]', value: '#123456' });
-    expect(hasText({ text: "Branding preview isn't saved" })).toBe(true);
-    expect(container.querySelector('button[type="submit"]')).toBeNull();
-    expect(buttonNamed({ name: 'Cancel' }).disabled).toBe(false);
+    expect(colourInputs()).toHaveLength(0);
+    expect(container.querySelectorAll('input[type="file"]')).toHaveLength(0);
+    expect(resetButtons()).toHaveLength(0);
+    expect(hasText({ text: 'Colors' })).toBe(false);
+    expect(submitButton().disabled).toBe(true);
+    expect(hasUnsavedNotice()).toBe(false);
+  });
+
+  it('saves only the name and preserves stored branding', async () => {
+    state.primaryColor = 'red';
+    state.themeColors = { status: { warning: '#eab308' } };
+    await render();
+    await type({ selector: '#name', value: 'Contoso' });
+    expect(submitButton().textContent).toBe('Save');
+    expect(hasUnsavedNotice()).toBe(true);
+    await save();
+    expect(sentFields()).toEqual({ name: 'Contoso' });
+    expect(state.toastSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels a name edit without saving or changing branding', async () => {
+    await render();
+    await type({ selector: '#name', value: 'Contoso' });
     await act(async () => {
-      buttonNamed({ name: 'Upgrade to save' }).click();
+      buttonNamed({ name: 'Cancel' }).click();
     });
-    expect(state.upgradeClick).toHaveBeenCalledWith(
-      expect.objectContaining({ feature: 'BRANDING', tier: 'enterprise' }),
+    expect(container.querySelector<HTMLInputElement>('#name')?.value).toBe(
+      'Northwind',
     );
-  });
-
-  it('saves the name even when a previewed status colour is incomplete', async () => {
-    await render();
-    const statusColour = colourInputs()[1];
-    await act(async () => {
-      setInputValue({ input: statusColour, value: '#ff' });
-    });
-    await type({ selector: '#name', value: 'Contoso' });
-    expect(submitButton().disabled).toBe(false);
-    await save();
-    await act(async () => {
-      await state.saving;
-    });
-    const fields = sentFields();
-    expect(fields.name).toBe('Contoso');
-    expect(fields.themeColors).toBeUndefined();
-  });
-
-  it('still saves a name change while branding is only previewed', async () => {
-    await render();
-    await type({ selector: 'input[aria-label="colour"]', value: '#123456' });
-    await type({ selector: '#name', value: 'Contoso' });
-    expect(submitButton().textContent === 'Save name').toBe(true);
-    await save();
-    const fields = sentFields();
-    expect(fields.name).toBe('Contoso');
-    expect(fields.primaryColor).toBeUndefined();
-    expect(fields.themeColors).toBeUndefined();
+    expect(submitButton().disabled).toBe(true);
+    expect(hasUnsavedNotice()).toBe(false);
+    expect(state.update).not.toHaveBeenCalled();
+    expect(colourInputs()).toHaveLength(0);
   });
 });
 
