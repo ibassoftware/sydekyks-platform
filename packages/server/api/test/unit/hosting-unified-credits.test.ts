@@ -121,8 +121,7 @@ describe('large hosted prompt durable admission', () => {
         const admissionId = await value.execution.admit(value.delivery)
         const dispatch = await ds.getRepository(HostingDispatchEntity).findOneByOrFail({ admissionId })
         expect(dispatch.payload).toMatchObject({ userMessage: content })
-        expect((await balance()).consumed).toBe(1n)
-        expect((await balance()).reserved).toBe(0n)
+        expect(await balance()).toMatchObject({ consumed: 0n, reserved: 1n })
     })
 })
 

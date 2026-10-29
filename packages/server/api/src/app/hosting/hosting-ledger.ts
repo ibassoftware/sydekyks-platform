@@ -1,6 +1,7 @@
 import { apId } from '@activepieces/core-utils'
 import { hostingCatalog } from '@activepieces/shared'
 import { DataSource, EntityManager, In, IsNull } from 'typeorm'
+import { HOSTED_WORKSPACE_CONCURRENCY, hostedConcurrencyUsage } from './hosting-concurrency'
 import { HOSTED_ADDITIVE_CREDIT_ACCOUNTING_VERSION, HOSTED_CREDIT_ACCOUNTING_VERSION, HOSTED_LEGACY_MICRO_USD_PER_CREDIT, HOSTED_MAX_ROOT_CREDITS, hostedAiCredits, hostedCreditLiability, hostedCreditRate, hostedUsesCreditAccounting } from './hosting-credit-policy'
 import { HostingDispatchEntity } from './hosting-dispatch-entity'
 import { HostingAccountEntity, HostingDailyBudgetEntity, HostingGrant, HostingGrantEntity, HostingReservation, HostingReservationEntity } from './hosting-entities'
@@ -30,7 +31,7 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             const grant = await activeGrant({ manager, account, platformId: account.id, meter: 'execution', now, planId: account.planId })
             const liability = await hostedCreditLiability(manager, grant.id)
             if (grant.amount - grant.reserved - grant.consumed - liability.reserved - liability.consumed < 1n) hostingFail('HOSTING_CREDITS_EXHAUSTED')
-            if (account.activeExecutions >= hostingCatalog.getPlan({ planId: account.planId }).concurrency) hostingFail('HOSTING_CONCURRENCY_LIMIT')
+            if (await hostedConcurrencyUsage(manager, account) >= HOSTED_WORKSPACE_CONCURRENCY) hostingFail('HOSTING_CONCURRENCY_LIMIT')
             const reservation = manager.getRepository(HostingReservationEntity).create({ id: apId(), platformId: account.id, projectId, identityId: actor.identityId, grantId: grant.id, key, kind: 'execution', payer, state: 'reserved', rootReservationId: null, day: null, amount: 1n, actualAmount: null, dispatchId: null, accountingVersion: HOSTED_CREDIT_ACCOUNTING_VERSION, microUsdPerCredit: hostedCreditRate(), maxRootCredits: HOSTED_MAX_ROOT_CREDITS })
             await manager.getRepository(HostingReservationEntity).save(reservation)
             if (hostedInclusiveCredits(reservation)) await reconcileHostedInclusiveCredits({ manager, root: reservation, key: `base-reserve:${reservation.id}` })
@@ -295,7 +296,7 @@ export function createHostedLedger({ dataSource, manager: existingManager }: { d
             tx.assertGrantActive({ grant, now, account })
             if (reservation.state === 'running') return
             if (reservation.state !== 'paused') hostingFail('HOSTING_INVALID_TRANSITION')
-            if (account.activeExecutions >= hostingCatalog.getPlan({ planId: account.planId }).concurrency) hostingFail('HOSTING_CONCURRENCY_LIMIT')
+            if (await hostedConcurrencyUsage(manager, account) >= HOSTED_WORKSPACE_CONCURRENCY) hostingFail('HOSTING_CONCURRENCY_LIMIT')
             await manager.getRepository(HostingReservationEntity).update({ id: reservation.id }, { state: 'running' })
             await manager.getRepository(HostingAccountEntity).update({ id: account.id }, { activeExecutions: account.activeExecutions + 1 })
             await tx.event({ manager, platformId: account.id, event: 'execution.resumed', payload: { reservationId } })

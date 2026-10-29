@@ -6,6 +6,7 @@ import { UserIdentityEntity } from '../authentication/user-identity/user-identit
 import { PlatformEntity } from '../platform/platform.entity'
 import { HostingAccessMembershipEntity } from './hosting-access-entities'
 import { assertHostingOperator } from './hosting-access-policy'
+import { hostedPlanLimits } from './hosting-concurrency'
 import { HostingAccount, HostingAccountEntity } from './hosting-entities'
 import { HostingManualAccountEntity } from './hosting-manual-accounts-entities'
 import { subscriptionAccountUntil } from './hosting-subscription-policy'
@@ -72,7 +73,7 @@ async function view(manager: EntityManager, account: HostingAccount) {
         owner: { identityId: owner.id, name: `${owner.firstName} ${owner.lastName}`.trim(), email: owner.email },
         planId: account.planId, status: account.status, validUntil: subscriptionAccountUntil(account).toISOString(),
         funding: manual ? 'manual' as const : account.subscription?.bindingValid ? 'stripe' as const : 'unconfirmed' as const,
-        limits: { users: hostingCatalog.getPlan({ planId: account.planId }).users, concurrency: hostingCatalog.getPlan({ planId: account.planId }).concurrency },
+        limits: { users: hostingCatalog.getPlan({ planId: account.planId }).users, concurrency: hostedPlanLimits(account.planId).concurrency },
         credits: await readHostedCredits(manager, account, await tx.now(manager)), partners,
     }
 }

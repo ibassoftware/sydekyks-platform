@@ -18,8 +18,12 @@ async function identity() {
     await ds.getRepository(UserIdentityEntity).insert({ id, email: `${id}@test.invalid`, provider: 'EMAIL', password: 'unused-fixture', verified: true, firstName: 'Client', lastName: 'Fixture', tokenVersion: 'initial' })
     return id
 }
-beforeAll(async () => { ds = await migratedHostedPGlite() })
-afterAll(async () => { if (ds?.isInitialized) await ds.destroy() })
+beforeAll(async () => {
+    ds = await migratedHostedPGlite()
+})
+afterAll(async () => {
+    if (ds?.isInitialized) await ds.destroy()
+})
 afterEach(() => vi.unstubAllEnvs())
 beforeEach(async () => {
     vi.stubEnv('AP_SERVICE_MODE', 'hosted')
@@ -37,7 +41,7 @@ describe('persistent operator client management', () => {
     it('returns client context without secrets and atomically audits profile changes without touching financial rows', async () => {
         const before = await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: owner.platformId })
         const current = await admin().read({ actor: operator, platformId: owner.platformId })
-        expect(current.client).toMatchObject({ name: 'Moonlight Bakery', owner: { identityId: owner.identityId }, limits: { users: 10, concurrency: 2 }, partners: [] })
+        expect(current.client).toMatchObject({ name: 'Moonlight Bakery', owner: { identityId: owner.identityId }, limits: { users: 10, concurrency: 20 }, partners: [] })
         expect(current.client).not.toHaveProperty('password')
         const changed = await admin().rename({ actor: operator, platformId: owner.platformId, input: { name: 'Moonlight Bakery Test', expectedState: current.client.stateHash, reason: 'Correct test company name', confirmed: true } })
         expect(changed.client.name).toBe('Moonlight Bakery Test')

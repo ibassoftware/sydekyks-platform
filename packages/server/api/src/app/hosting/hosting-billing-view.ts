@@ -2,6 +2,7 @@ import { HostedBillingActionReason, HostedBillingOverview, hostingCatalog } from
 import { DataSource, Not } from 'typeorm'
 import { assertHostingOperator } from './hosting-access-policy'
 import { hostingResourceUsage } from './hosting-billing-resources'
+import { hostedConcurrencyUsage, hostedPlanLimits } from './hosting-concurrency'
 import { hostingConfiguration } from './hosting-configuration'
 import { effectiveHostedCredits } from './hosting-credit-allowance'
 import { hostedCreditLiability } from './hosting-credit-policy'
@@ -67,7 +68,7 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
             const ended = account.status !== 'suspended' && subscriptionAccountUntil(account) <= now && bound?.holds.length === 1 && bound.holds[0] === 'subscription_ended'
             const paused = account.status === 'suspended' || (account.billingHold === true && !ended)
             const plans = (['starter', 'team', 'scale'] as const).map(id => {
-                const limits = hostingCatalog.getPlan({ planId: id })
+                const limits = hostedPlanLimits(id)
                 let reason: HostedBillingActionReason | null = platformAdmin || partnerHome ? 'billing_review' : billingMode === 'manual' ? 'manual_billing' : manualFunding ? 'billing_review' : !configured ? 'billing_unavailable' : account.status === 'suspended' ? 'account_paused' : null
                 if (!reason && hostingCatalog.paidPlans[id].salesAssisted) reason = 'sales_assisted'
                 if (!reason && bound?.holds.some(value => value !== 'subscription_ended')) reason = 'billing_review'
@@ -99,7 +100,7 @@ export function createHostedBillingView({ dataSource }: { dataSource: DataSource
                 renewalDueAt: account.subscription?.bindingValid ? account.subscription.policy?.renewalDueAt?.toISOString() ?? null : null,
                 nextCreditAllowanceAt: nextAllowance?.validFrom.toISOString() ?? null,
                 notice: account.status === 'suspended' ? 'account_paused' : account.billingHold && !ended ? 'billing_review' : bound?.lastError ? 'billing_delayed' : null,
-                meters: { execution: meter(unified, now, !paused && subscriptionAccountActive(account, now), account), managedAi: meter(managed, now, !paused && subscriptionAccountActive(account, now), account), previousPeriodHeldMicroUsd: previousHeld.toString() }, usage: { ...usage, activeExecutions: account.activeExecutions }, limits: { ...hostingCatalog.getPlan({ planId: account.planId }), executions: await effectiveHostedCredits(manager, account.id, account.planId), aiCredits: 0, byokEnabled: true }, plans, portal: { enabled: portalReason === null, reason: portalReason, continuing: false },
+                meters: { execution: meter(unified, now, !paused && subscriptionAccountActive(account, now), account), managedAi: meter(managed, now, !paused && subscriptionAccountActive(account, now), account), previousPeriodHeldMicroUsd: previousHeld.toString() }, usage: { ...usage, activeExecutions: await hostedConcurrencyUsage(manager, account) }, limits: { ...hostedPlanLimits(account.planId), executions: await effectiveHostedCredits(manager, account.id, account.planId), aiCredits: 0, byokEnabled: true }, plans, portal: { enabled: portalReason === null, reason: portalReason, continuing: false },
             })
         } })
     } }

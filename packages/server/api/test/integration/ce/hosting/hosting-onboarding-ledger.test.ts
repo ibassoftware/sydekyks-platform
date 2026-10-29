@@ -386,8 +386,8 @@ describe('hosted credit and liability ledger', () => {
     })
     it('enforces concurrency even with abundant execution credits', async () => {
         const value = await tenant()
-        const outcomes = await Promise.allSettled(Array.from({ length: 6 }, (_, i) => ledger.reserveExecution({ actor: value.actor, projectId: value.projectId, key: `slot:${i}`, payer: 'byok' })))
-        expect(outcomes.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+        const outcomes = await Promise.allSettled(Array.from({ length: 21 }, (_, i) => ledger.reserveExecution({ actor: value.actor, projectId: value.projectId, key: `slot:${i}`, payer: 'byok' })))
+        expect(outcomes.filter(result => result.status === 'fulfilled')).toHaveLength(20)
         for (const result of outcomes) if (result.status === 'rejected') expect(String(result.reason)).toContain('HOSTING_CONCURRENCY_LIMIT')
     })
     it('enforces last execution credit with spare concurrency', async () => {
