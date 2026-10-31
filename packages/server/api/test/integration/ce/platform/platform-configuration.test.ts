@@ -1,12 +1,12 @@
-import { AIProviderName } from '@activepieces/core-utils'
-import { AIProviderModelType, ApFlagId, DefaultProjectRole, maxBarrierSignalsBounds } from '@activepieces/shared'
+import { AIProviderName, ErrorCode } from '@activepieces/core-utils'
+import { AIProviderModelType, ApFlagId, PlatformRole, maxBarrierSignalsBounds } from '@activepieces/shared'
 import { FastifyInstance } from 'fastify'
 import { StatusCodes } from 'http-status-codes'
 import { databaseConnection } from '../../../../src/app/database/database-connection'
 import { system } from '../../../../src/app/helper/system/system'
 import { AppSystemProp } from '../../../../src/app/helper/system/system-props'
 import { mockAndSaveAIProvider } from '../../../helpers/mocks'
-import { createMemberContext, createTestContext } from '../../../helpers/test-context'
+import { createWorkspaceUserContext, createTestContext } from '../../../helpers/test-context'
 import { setupTestEnvironment, teardownTestEnvironment } from '../../../helpers/test-setup'
 
 let app: FastifyInstance | null = null
@@ -89,7 +89,8 @@ describe('platform configuration', () => {
     it.each(['isProductTelemetryEnabled', 'isInfraSetupTelemetryEnabled'])('rejects attempts to enable %s while capture is paused', async (field) => {
         const ctx = await createTestContext(app!)
         const refused = await ctx.post('/v1/platform-configurations', { [field]: true })
-        expect(refused?.statusCode).toBe(StatusCodes.BAD_REQUEST)
+        expect(refused?.statusCode).toBe(StatusCodes.CONFLICT)
+        expect(refused!.json()).toEqual({ code: ErrorCode.VALIDATION, params: { message: 'Telemetry collection is disabled until a Sydekyks-owned capture plan is approved.' } })
         const configuration = (await ctx.get('/v1/platform-configurations'))!.json()
         expect(configuration.isProductTelemetryEnabled).toBe(false)
         expect(configuration.isInfraSetupTelemetryEnabled).toBe(false)
@@ -128,9 +129,7 @@ describe('platform configuration', () => {
 
     it('shows specific AI models to builders until an admin hides them, and lets any member read the switch', async () => {
         const ctx = await createTestContext(app!)
-        const memberCtx = await createMemberContext(app!, ctx, {
-            projectRole: DefaultProjectRole.EDITOR,
-        })
+        const memberCtx = await createWorkspaceUserContext({ app: app!, parentCtx: ctx, platformRole: PlatformRole.MEMBER })
 
         expect((await ctx.get('/v1/platform-configurations'))!.json().aiSpecificModelsVisible).toBe(true)
 
@@ -220,9 +219,7 @@ describe('platform configuration', () => {
 
     it('lets any platform member read the configuration, but only an admin write it', async () => {
         const ctx = await createTestContext(app!)
-        const memberCtx = await createMemberContext(app!, ctx, {
-            projectRole: DefaultProjectRole.EDITOR,
-        })
+        const memberCtx = await createWorkspaceUserContext({ app: app!, parentCtx: ctx, platformRole: PlatformRole.MEMBER })
 
         const read = await memberCtx.get('/v1/platform-configurations')
         const write = await memberCtx.post('/v1/platform-configurations', {
