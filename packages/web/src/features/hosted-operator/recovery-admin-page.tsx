@@ -189,9 +189,10 @@ function RecoverySession({
       </form>
       {state && !state.eligible && (
         <p role="status" className="text-sm leading-6">
-          This account is not eligible for web recovery. Global admins, team
-          members, trainers and your own account require the privileged-account
-          recovery procedure. New accounts use an initial setup link.
+          This account is not eligible for an operator-issued recovery link. Use
+          Change any user’s password below for existing password accounts,
+          including admins, team members, trainers and your own account. New
+          accounts use an initial setup link.
         </p>
       )}
       {state?.eligible && (

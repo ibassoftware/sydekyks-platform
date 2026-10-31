@@ -95,6 +95,7 @@ const AgentEditorContent = () => {
   const agentsAvailable = useAgentsAvailable();
   const hosted = useHostedBillingEnabled();
   const [conversationsOpen, setConversationsOpen] = useState(false);
+  const [chatWasOpened, setChatWasOpened] = useState(false);
   const [configureChosen, setConfigureChosen] = useState<boolean | undefined>(
     () =>
       isObject(locationState) && locationState.configure === true
@@ -186,6 +187,10 @@ const AgentEditorContent = () => {
   if (activePanel !== null && activePanel !== renderedPanel) {
     setRenderedPanel(activePanel);
   }
+  useEffect(() => {
+    if (agent && activePanel === null) setChatWasOpened(true);
+  }, [agent, activePanel]);
+
   const panelIsSlidingOut = activePanel === null && renderedPanel !== null;
   useEffect(() => {
     if (!panelIsSlidingOut) {
@@ -249,7 +254,7 @@ const AgentEditorContent = () => {
             type="button"
             variant="ghost"
             className="gap-2 px-2"
-            aria-label={t('Chat')}
+            aria-label={t('Chat with agent')}
             aria-pressed={activePanel === null}
             onClick={() => {
               if (configureOpen) configureRef.current?.requestExit();
@@ -257,7 +262,7 @@ const AgentEditorContent = () => {
             }}
           >
             <MessageSquare className="size-4" />
-            <span className="hidden sm:inline">{t('Chat')}</span>
+            <span className="hidden sm:inline">{t('Chat with agent')}</span>
           </Button>
           <Button
             type="button"
@@ -290,7 +295,7 @@ const AgentEditorContent = () => {
             activePanel !== null ? 'hidden' : 'flex',
           )}
         >
-          {activePanel === null && (
+          {(activePanel === null || chatWasOpened) && (
             <AgentChatView
               key={agent.id}
               agent={agent}
