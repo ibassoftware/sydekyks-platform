@@ -25,8 +25,9 @@ export const flowTriggerSideEffect = (log: FastifyBaseLogger) => {
                 }
             }
             const { flowId, flowVersionId, projectId, simulate, pieceTrigger, isRepublish, isTriggerUnchanged, previousSchedule } = params
+            const everyXMinutes = params.pieceName === '@activepieces/piece-schedule' && pieceTrigger.name === 'every_x_minutes'
             if (pieceTrigger.type === TriggerStrategy.POLLING && isTriggerUnchanged === true && !isNil(previousSchedule)) {
-                return handlePollingTrigger({ flowId, flowVersionId, projectId, scheduleOptions: previousSchedule, log })
+                return handlePollingTrigger({ flowId, flowVersionId, projectId, scheduleOptions: previousSchedule, log, everyXMinutes })
             }
 
             const platformId = await projectService(log).getPlatformId(projectId)
@@ -68,6 +69,7 @@ export const flowTriggerSideEffect = (log: FastifyBaseLogger) => {
                         projectId,
                         scheduleOptions: engineHelperResponse.response.scheduleOptions,
                         log,
+                        everyXMinutes,
                     })
                 }
                 case TriggerStrategy.MANUAL: {
@@ -195,13 +197,25 @@ async function handleWebhookTrigger({ flowId, flowVersionId, projectId, pieceTri
     }
 }
 
-async function handlePollingTrigger({ flowId, flowVersionId, projectId, scheduleOptions: requestedSchedule, log }: HandlePollingTriggerParams): Promise<ActiveTriggerReturn> {
+async function handlePollingTrigger({ flowId, flowVersionId, projectId, scheduleOptions: requestedSchedule, log, everyXMinutes }: HandlePollingTriggerParams): Promise<ActiveTriggerReturn> {
     const pollIntervalMinutes = system.getNumberOrThrow(AppSystemProp.TRIGGER_DEFAULT_POLL_INTERVAL)
     const defaultScheduleOptions: ScheduleOptions = {
         type: TriggerSourceScheduleType.INTERVAL,
         intervalMs: pollIntervalMinutes * 60_000,
     }
     const scheduleOptions = requestedSchedule ?? defaultScheduleOptions
+    if (everyXMinutes) {
+        // Check both fresh worker responses and reused schedules, including old
+        // package versions. Other polling triggers retain their own cadence.
+        const intervalAllowed = scheduleOptions.type === TriggerSourceScheduleType.INTERVAL && Number.isInteger(scheduleOptions.intervalMs) && scheduleOptions.intervalMs >= 15 * 60_000
+        const legacyMinutes = scheduleOptions.type === TriggerSourceScheduleType.CRON_EXPRESSION ? /^\*\/(\d+) \* \* \* \*$/.exec(scheduleOptions.cronExpression)?.[1] : undefined
+        // Legacy */17 has a short gap at the hour boundary. Only evenly divided
+        // legacy cron intervals meet the minimum on every occurrence.
+        const legacyAllowed = legacyMinutes !== undefined && Number(legacyMinutes) >= 15 && 60 % Number(legacyMinutes) === 0
+        if (!intervalAllowed && !legacyAllowed) {
+            throwTriggerUpdateFailed({ flowId, flowVersionId, standardError: 'Every X Minutes requires an interval of at least 15 minutes. Reconfigure the trigger with 15 minutes or more.' })
+        }
+    }
     const platformId = await projectService(log).getPlatformId(projectId)
     await jobQueue(log).add({
         id: flowVersionId,
@@ -273,6 +287,7 @@ type RunDisableHookParams = {
 }
 
 type HandlePollingTriggerParams = {
+    everyXMinutes: boolean
     flowId: FlowId
     flowVersionId: FlowVersionId
     projectId: string

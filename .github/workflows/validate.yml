@@ -103,6 +103,10 @@ jobs:
         run: bun x vitest run --config packages/web/vitest.config.ts packages/web/test/features/authentication/password-reset-secret.test.ts packages/web/test/features/authentication/change-password.test.tsx packages/web/test/lib/route-utils.test.ts --maxWorkers=1
       - name: Check Gmail search scope and unread evidence
         run: bun x vitest run --config packages/pieces/community/gmail/vitest.config.ts packages/pieces/community/gmail/test/search-email.test.ts --maxWorkers=1
+      - name: Check dark mode and schedule minimum
+        run: |
+          bun x vitest run --config packages/web/vitest.config.ts packages/web/test/components/providers/theme-provider.test.tsx --maxWorkers=1
+          bun x vitest run --config packages/pieces/core/schedule/vitest.config.ts packages/pieces/core/schedule/test/every-x-minutes.test.ts --maxWorkers=1
       - name: Check frontend TypeScript
         run: bun x tsc -p packages/web/tsconfig.app.json --pretty false
         env:
