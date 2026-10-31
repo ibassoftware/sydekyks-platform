@@ -94,11 +94,11 @@ describe('cloud-only telemetry events', () => {
         mockIsProductTelemetryEnabled.mockResolvedValue(true)
     })
 
-    it('should send an account event on cloud', async () => {
+    it('does not send an account event while collection is paused', async () => {
         await trackSignedIn(ApEdition.CLOUD)
 
-        expect(mockCapture).toHaveBeenCalledTimes(1)
-        expect(capturedEventNames()).toEqual([TelemetryEventName.SIGNED_IN])
+        expect(mockCapture).toHaveBeenCalledTimes(0)
+        expect(capturedEventNames()).toEqual([])
     })
 
     it.each([ApEdition.COMMUNITY, ApEdition.ENTERPRISE])(
@@ -110,11 +110,11 @@ describe('cloud-only telemetry events', () => {
         },
     )
 
-    it('should send a billing event on cloud attributed to the platform owner', async () => {
+    it('does not send billing analytics while collection is paused', async () => {
         await trackPlanUpgraded(ApEdition.CLOUD)
 
-        expect(capturedEventNames()).toEqual([TelemetryEventName.PLAN_CHANGED])
-        expect(capturedDistinctIds()).toEqual(['owner-1'])
+        expect(capturedEventNames()).toEqual([])
+        expect(capturedDistinctIds()).toEqual([])
     })
 
     it.each(CLOUD_ONLY_BILLING_AND_ONBOARDING_EVENTS)('should treat $name as cloud-only', async (event) => {
@@ -126,12 +126,12 @@ describe('cloud-only telemetry events', () => {
     })
 
     it.each([ApEdition.CLOUD, ApEdition.COMMUNITY, ApEdition.ENTERPRISE])(
-        'should still send a product event on %s',
+        'does not send a product event on %s while paused',
         async (edition) => {
             await trackFlowCreated(edition)
 
-            expect(mockCapture).toHaveBeenCalledTimes(1)
-            expect(capturedEventNames()).toEqual([TelemetryEventName.CREATED_FLOW])
+            expect(mockCapture).toHaveBeenCalledTimes(0)
+            expect(capturedEventNames()).toEqual([])
         },
     )
 
@@ -143,10 +143,10 @@ describe('cloud-only telemetry events', () => {
         expect(mockCapture).not.toHaveBeenCalled()
     })
 
-    it('should stamp every event with the deployment kind', async () => {
+    it('does not attach deployment metadata while collection is paused', async () => {
         await trackFlowCreated(ApEdition.CLOUD)
 
-        expect(mockCapture.mock.calls[0][0].properties.deployment).toBe('cloud')
+        expect(mockCapture).not.toHaveBeenCalled()
     })
 })
 
@@ -157,7 +157,7 @@ describe('identity-level tracking', () => {
         mockIsProductTelemetryEnabled.mockResolvedValue(true)
     })
 
-    it('should send platform-less identity events with the identity id as distinct_id', async () => {
+    it('does not collect platform-less identity events while paused', async () => {
         mockGetEdition.mockReturnValue(ApEdition.CLOUD)
 
         await telemetry(mockLog).trackIdentity({
@@ -166,10 +166,10 @@ describe('identity-level tracking', () => {
             event: { name: TelemetryEventName.EMAIL_CODE_REQUESTED, payload: { isNewIdentity: true } },
         })
 
-        expect(capturedDistinctIds()).toEqual(['identity-1'])
+        expect(capturedDistinctIds()).toEqual([])
     })
 
-    it('should keep the identity id as distinct_id when a platform is known', async () => {
+    it('does not collect identity events when a platform is known', async () => {
         mockGetEdition.mockReturnValue(ApEdition.CLOUD)
 
         await telemetry(mockLog).trackIdentity({
@@ -178,7 +178,7 @@ describe('identity-level tracking', () => {
             event: { name: TelemetryEventName.EMAIL_CODE_VERIFIED, payload: { needsNameStep: false } },
         })
 
-        expect(capturedDistinctIds()).toEqual(['identity-1'])
+        expect(capturedDistinctIds()).toEqual([])
     })
 
     it('should drop platform-less identity events outside cloud', async () => {
@@ -193,12 +193,12 @@ describe('identity-level tracking', () => {
         expect(mockCapture).not.toHaveBeenCalled()
     })
 
-    it('should alias the identity onto the user on cloud', async () => {
+    it('does not alias identities while collection is paused', async () => {
         mockGetEdition.mockReturnValue(ApEdition.CLOUD)
 
         await telemetry(mockLog).aliasIdentity({ identityId: 'identity-1', userId: 'user-1', platformId: 'platform-1' })
 
-        expect(mockAlias).toHaveBeenCalledWith({ distinctId: 'user-1', alias: 'identity-1' })
+        expect(mockAlias).not.toHaveBeenCalled()
     })
 
     it('should not alias outside cloud', async () => {

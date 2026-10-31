@@ -52,10 +52,11 @@ export const adminPageResources = {
     }),
   ],
   aiProviders: [
-    docs({
+    {
+      kind: 'doc',
       label: () => t('AI providers guide'),
-      path: 'admin-guide/guides/setup-ai-providers',
-    }),
+      url: 'https://docs.sydekyks.com/admin-guide/guides/setup-ai-providers/',
+    },
   ],
   aiCapabilities: [
     docs({

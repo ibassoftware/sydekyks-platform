@@ -48,24 +48,14 @@ describe('identifySignUp', () => {
         mockIsProductTelemetryEnabled.mockResolvedValue(true)
     })
 
-    it('should stamp the sign-up method and attribution once on the user', async () => {
+    it('does not collect attribution while telemetry is paused', async () => {
         await identifySignUp({ utm_source: 'google', gclid: 'abc', ap_sid: 'sid-1' })
-
-        expect(mockIdentify).toHaveBeenCalledTimes(1)
-        expect(mockIdentify.mock.calls[0][0]).toEqual({
-            distinctId: 'user-1',
-            properties: {
-                $set_once: { signup_method: 'google', utm_source: 'google', gclid: 'abc', ap_sid: 'sid-1' },
-            },
-        })
+        expect(mockIdentify).not.toHaveBeenCalled()
     })
-
-    it('should stamp only the method when no attribution was sent', async () => {
+    it('does not identify the user when attribution is absent', async () => {
         await identifySignUp(undefined)
-
-        expect(mockIdentify.mock.calls[0][0].properties.$set_once).toEqual({ signup_method: 'google' })
+        expect(mockIdentify).not.toHaveBeenCalled()
     })
-
     it('should stay silent when the platform turned product telemetry off', async () => {
         mockIsProductTelemetryEnabled.mockResolvedValue(false)
 

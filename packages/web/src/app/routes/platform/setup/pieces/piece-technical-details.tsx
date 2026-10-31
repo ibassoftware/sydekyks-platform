@@ -25,8 +25,10 @@ export function PieceTechnicalDetails({ piece }: PieceTechnicalDetailsProps) {
         <div className="mb-3 font-medium">{piece.displayName}</div>
         <dl className="space-y-3 text-sm">
           <div>
-            <dt className="text-gray-11">{t('Package Name')}</dt>
-            <dd className="mt-1 break-all select-text">{piece.name}</dd>
+            <dt className="text-gray-11">{t('Gadget ID')}</dt>
+            <dd className="mt-1 break-all select-text">
+              {piece.name.replace(/^@activepieces\/piece-/, '')}
+            </dd>
           </div>
           <div>
             <dt className="text-gray-11">{t('Version')}</dt>
