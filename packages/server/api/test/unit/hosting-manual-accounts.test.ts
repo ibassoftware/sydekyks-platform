@@ -78,6 +78,50 @@ beforeEach(async () => {
     other = { identityId: otherId, platformId: otherHome.platformId, tokenVersion: otherHome.tokenVersion }
 })
 describe('operator manual accounts and bounded funding', () => {
+    it('creates internal Partner Starter only through an operator with 35 non-overlapping monthly Credits and no training', async () => {
+        const value = input({ kind: 'partner', planId: 'training', partner: { package: 'starter', approve: false } })
+        await expect(manual().create({ actor: other, input: value })).rejects.toThrow('HOSTING_OPERATOR_REQUIRED')
+        const result = await manual().create({ actor, input: value }), account = result.account
+        expect(account).toMatchObject({ kind: 'partner', package: 'starter', planId: 'training', monthlyCredits: 3500, monthlyCreditCap: 3500, seats: 1, enrollmentId: null })
+        expect((await manual().create({ actor, input: value })).replayed).toBe(true)
+        const rows = await ds.getRepository(HostingGrantEntity).find({ where: { platformId: account.platformId, meter: 'execution', sourceKey: Like('manual:%') }, order: { validFrom: 'ASC' } })
+        expect(rows).toHaveLength(3)
+        expect(rows.every(row => row.amount === 3500n)).toBe(true)
+        expect(rows[0].validUntil.getTime()).toBe(rows[1].validFrom.getTime())
+        expect(rows[1].validUntil.getTime()).toBe(rows[2].validFrom.getTime())
+        const learner = await scope(account.identityId, account.platformId)
+        const overview = await createHostedBillingView({ dataSource: ds }).read(learner)
+        expect(overview).toMatchObject({ accountKind: 'partner', trainingPackage: 'starter', manualFunding: true })
+        expect(overview.plans.map(plan => plan.id)).toEqual(['starter', 'team', 'scale'])
+        expect(Object.keys(hostingCatalog.partnerPackages)).toEqual(['core', 'launch'])
+        expect(await ds.getRepository(LmsEnrollmentEntity).count()).toBe(0)
+        // Exhaust this period: a future grant must not fund another execution early.
+        await ds.getRepository(HostingGrantEntity).update({ id: rows[0].id }, { consumed: 3500n })
+        const projectId = (await ds.getRepository(HostingAccountEntity).findOneByOrFail({ id: account.platformId })).initialProjectId!
+        await expect(createHostedLedger({ dataSource: ds }).reserveExecution({ actor: learner, projectId, key: 'starter-exhausted', payer: 'byok' })).rejects.toThrow('HOSTING_CREDITS_EXHAUSTED')
+        expect((await ds.getRepository(HostingGrantEntity).findOneByOrFail({ id: rows[1].id })).reserved).toBe(0n)
+    })
+    it('rejects a Starter creation above 35 Credits and training entitlement injection', () => {
+        expect(() => HostingManualAccountCreate.parse(input({ kind: 'partner', planId: 'training', monthlyCredits: 3501, partner: { package: 'starter', approve: false } }))).toThrow('capped at 35')
+        expect(() => HostingManualAccountCreate.parse(input({ kind: 'partner', planId: 'training', partner: { package: 'starter', courseId: apId(), approve: false } }))).toThrow('does not include a training package')
+    })
+    it('rejects Starter allowance increases and preserves default restoration and monthly renewals', async () => {
+        const account = (await created({ kind: 'partner', planId: 'training', partner: { package: 'starter', approve: false } })).account
+        const allowance = createHostedCreditAllowance({ dataSource: ds })
+        const change = { platformId: account.platformId, expectedRevision: 0, requestKey: apId(), monthlyCredits: 3501, reason: 'Synthetic above-cap request' }
+        await expect(allowance.save({ actor, input: change })).rejects.toThrow('HOSTING_PARTNER_STARTER_CREDIT_CAP')
+        expect(await ds.getRepository(HostingCreditAllowanceChangeEntity).count()).toBe(0)
+        const lower = await allowance.save({ actor, input: { ...change, monthlyCredits: 1000 } })
+        expect(lower).toMatchObject({ effectiveMonthlyCredits: 1000, monthlyCreditCap: 3500 })
+        const restored = await allowance.save({ actor, input: { ...change, requestKey: apId(), expectedRevision: 1, monthlyCredits: null } })
+        expect(restored.effectiveMonthlyCredits).toBe(3500)
+        const start = new Date(Date.parse(account.expiresAt) + 1)
+        vi.spyOn(tx, 'now').mockResolvedValue(start)
+        const renewal = { requestKey: apId(), expectedRevision: 1, expiresAt: new Date(start.getTime() + 40 * 86400_000).toISOString(), reason: 'Synthetic Starter renewal', monthlyCredits: 3501 }
+        await expect(manual().renew({ actor, platformId: account.platformId, input: renewal })).rejects.toThrow('HOSTING_PARTNER_STARTER_CREDIT_CAP')
+        expect((await manual().renew({ actor, platformId: account.platformId, input: { ...renewal, monthlyCredits: undefined } })).account).toMatchObject({ package: 'starter', monthlyCredits: 3500, fundedMonthlyCredits: 3500, monthlyCreditCap: 3500 })
+    })
+
     it('distinguishes the configured operator from tenant admins and reports the actual Partner package, due date and funded refill', async () => {
         vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', actor.identityId)
         const billing = createHostedBillingView({ dataSource: ds })

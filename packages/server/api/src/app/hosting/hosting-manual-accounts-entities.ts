@@ -6,7 +6,7 @@ export type ManualPlan = 'training' | 'starter' | 'team' | 'scale'
 export type HostingManualAccount = Base & {
     identityId: string
     kind: 'partner' | 'client'
-    package: 'core' | 'launch' | null
+    package: 'starter' | 'core' | 'launch' | null
     enrollmentId: string | null
     termId: string
     revision: number

@@ -646,6 +646,7 @@ function Notice({ children }: { children: ReactNode }) {
 }
 function partnerPackageName(info: HostedCustomerBillingOverview) {
   if (info.planId === 'assessment') return t('Partner assessment');
+  if (info.trainingPackage === 'starter') return t('Partner Starter');
   if (info.trainingPackage === 'core') return t('Partner Core');
   if (info.trainingPackage === 'launch') return t('Partner Guided');
   return t('Partner training');

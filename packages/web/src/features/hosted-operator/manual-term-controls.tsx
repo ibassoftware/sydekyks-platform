@@ -68,7 +68,10 @@ export function ManualTermControls({
     queryKey: ['manual-account-courses', session.epoch],
     retry: false,
     gcTime: 0,
-    enabled: term.data?.kind === 'partner' && !term.data.enrollmentId,
+    enabled:
+      term.data?.kind === 'partner' &&
+      term.data.package !== 'starter' &&
+      !term.data.enrollmentId,
     queryFn: () => readManualPartnerCourses(session),
   });
   const until = subscriptionUtcInput(expiry),
@@ -199,58 +202,67 @@ export function ManualTermControls({
           'After the current funded term expires, record a verified manual renewal here. The new term starts now; it does not backfill missed months or reset previous charges and holds.',
         )}
       </p>
-      {account.kind === 'partner' && !account.enrollmentId && (
-        <div className="space-y-3 border-y border-gray-6 py-4">
-          <h3 className="font-medium">{t('Assign Partner training')}</h3>
-          <p className="text-sm text-gray-11">
-            {t(
-              'Attach a published Partner course to this funded workspace. This does not issue another hosting allowance or certify the Partner.',
-            )}
-          </p>
-          <label htmlFor="manual-partner-course" className="block text-sm">
-            {t('Published Partner course')}
-          </label>
-          <select
-            id="manual-partner-course"
-            className="block w-full rounded-md border border-gray-6 bg-gray-1 p-2 text-sm"
-            value={courseId}
-            disabled={busy || expired || courses.isPending}
-            onChange={(event) => setCourseId(event.target.value)}
-          >
-            <option value="">{t('Choose a course')}</option>
-            {courses.data?.map((course) => (
-              <option key={course.id} value={course.id}>
-                {course.content.title}
-              </option>
-            ))}
-          </select>
-          {courses.isError && (
-            <p role="alert" className="text-sm">
-              {t('Partner courses could not load.')}{' '}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void courses.refetch()}
-              >
-                {t('Retry courses')}
-              </Button>
-            </p>
+      {account.package === 'starter' && (
+        <p className="text-sm leading-6 text-gray-11">
+          {t(
+            'Partner Starter · internal only · capped at 35 monthly Credits. No rollover or automatic overages.',
           )}
-          {courses.data?.length === 0 && (
+        </p>
+      )}
+      {account.kind === 'partner' &&
+        account.package !== 'starter' &&
+        !account.enrollmentId && (
+          <div className="space-y-3 border-y border-gray-6 py-4">
+            <h3 className="font-medium">{t('Assign Partner training')}</h3>
             <p className="text-sm text-gray-11">
               {t(
-                'Publish a global Partner course in Learning before assigning it here.',
+                'Attach a published Partner course to this funded workspace. This does not issue another hosting allowance or certify the Partner.',
               )}
             </p>
-          )}
-          <Button
-            disabled={busy || expired || !courseId}
-            onClick={() => void assignCourse()}
-          >
-            {t('Assign Partner course')}
-          </Button>
-        </div>
-      )}
+            <label htmlFor="manual-partner-course" className="block text-sm">
+              {t('Published Partner course')}
+            </label>
+            <select
+              id="manual-partner-course"
+              className="block w-full rounded-md border border-gray-6 bg-gray-1 p-2 text-sm"
+              value={courseId}
+              disabled={busy || expired || courses.isPending}
+              onChange={(event) => setCourseId(event.target.value)}
+            >
+              <option value="">{t('Choose a course')}</option>
+              {courses.data?.map((course) => (
+                <option key={course.id} value={course.id}>
+                  {course.content.title}
+                </option>
+              ))}
+            </select>
+            {courses.isError && (
+              <p role="alert" className="text-sm">
+                {t('Partner courses could not load.')}{' '}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void courses.refetch()}
+                >
+                  {t('Retry courses')}
+                </Button>
+              </p>
+            )}
+            {courses.data?.length === 0 && (
+              <p className="text-sm text-gray-11">
+                {t(
+                  'Publish a global Partner course in Learning before assigning it here.',
+                )}
+              </p>
+            )}
+            <Button
+              disabled={busy || expired || !courseId}
+              onClick={() => void assignCourse()}
+            >
+              {t('Assign Partner course')}
+            </Button>
+          </div>
+        )}
       {!expired && (
         <p className="text-sm text-gray-11">
           {t(
@@ -276,7 +288,11 @@ export function ManualTermControls({
               className="mt-2"
               type="number"
               min={0}
-              max={10_000}
+              max={
+                account.monthlyCreditCap != null
+                  ? account.monthlyCreditCap / 100
+                  : 10_000
+              }
               step={0.01}
               placeholder={creditUnitsInput(account.monthlyCredits)}
               value={monthly}

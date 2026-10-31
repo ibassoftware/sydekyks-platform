@@ -66,6 +66,7 @@ describe('Syd CHAT persistence', () => {
             'SydekyksInclusiveCredits1914000000000',
             'SydekyksDefaultLearning1915000000000',
             'SydekyksClientPlanChanges1916000000000',
+            'SydekyksPartnerStarter1917000000000',
         ])
         for (const table of ['syd_conversation', 'syd_user_memory', 'syd_personalization']) expect(await runner.hasTable(table)).toBe(true)
         expect(await runner.hasColumn('platform_model_tier', 'isFast')).toBe(true)

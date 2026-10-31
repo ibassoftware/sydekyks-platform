@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { apId } from '@activepieces/core-utils'
-import { HostedPlanId, hostingCatalog } from '@activepieces/shared'
+import { HostedPlanId, HOSTED_PARTNER_STARTER_MONTHLY_CREDITS, hostingCatalog } from '@activepieces/shared'
 import { DataSource, EntityManager, IsNull } from 'typeorm'
 import { z } from 'zod'
 import { assertHostingOperator } from './hosting-access-policy'
@@ -9,6 +9,7 @@ import { hostedCreditLiability } from './hosting-credit-policy'
 import { HostingAccount, HostingAccountEntity, HostingGrant, HostingGrantEntity, HostingLedgerEntity } from './hosting-entities'
 import { currentManualTerm, manualGrantPlan } from './hosting-manual-terms'
 import { hasOperatorCreditFunding, HOSTED_OPERATOR_MONTHLY_CREDITS } from './hosting-operator-credits'
+import { assertPartnerStarterAllowance, isPartnerStarter } from './hosting-partner-starter'
 import { hostingGrantMatchesPlan } from './hosting-plan-grants'
 import { HostingStripePeriodEntity } from './hosting-stripe-entities'
 import { subscriptionAccountActive, subscriptionGrantActive, subscriptionGrantUntil } from './hosting-subscription-policy'
@@ -28,7 +29,8 @@ export async function effectiveHostedCredits(manager: EntityManager, platformId:
     if (planId === 'team' && await hasOperatorCreditFunding(manager, platformId)) return HOSTED_OPERATOR_MONTHLY_CREDITS
     if (planId === 'trial' || planId === 'assessment') return hostingCatalog.getPlan({ planId }).executions
     const { change } = await currentPolicy(manager, platformId)
-    return change?.monthlyCredits ?? await fundedDefaultCredits(manager, platformId, planId)
+    const credits = change?.monthlyCredits ?? await fundedDefaultCredits(manager, platformId, planId)
+    return planId === 'training' && await isPartnerStarter(manager, platformId) ? Math.min(credits, HOSTED_PARTNER_STARTER_MONTHLY_CREDITS) : credits
 }
 export function createHostedCreditAllowance({ dataSource, manager: existingManager }: { dataSource: DataSource, manager?: EntityManager }) {
     async function read({ actor, platformId }: { actor: HostingActor, platformId: string }) {
@@ -51,6 +53,7 @@ export function createHostedCreditAllowance({ dataSource, manager: existingManag
                 }
                 if (account.planId === 'trial' || account.planId === 'assessment') hostingFail('HOSTING_CREDIT_ALLOWANCE_FIXED_ENTITLEMENT')
                 if (await hasOperatorCreditFunding(manager, account.id)) hostingFail('HOSTING_CREDIT_ALLOWANCE_FIXED_ENTITLEMENT')
+                await assertPartnerStarterAllowance(manager, account.id, value.monthlyCredits)
                 const now = await tx.now(manager), { binding, change: previous } = await currentPolicy(manager, account.id)
                 if ((binding?.revision ?? 0) !== value.expectedRevision) hostingFail('HOSTING_CREDIT_ALLOWANCE_REVISION_CONFLICT')
                 if ((binding?.revision ?? 0) >= 1000) hostingFail('HOSTING_CREDIT_ALLOWANCE_HISTORY_LIMIT')
@@ -105,13 +108,14 @@ async function currentPolicy(manager: EntityManager, platformId: string) {
 async function view(manager: EntityManager, account: HostingAccount, now: Date) {
     const { binding, change } = await currentPolicy(manager, account.id), fixed = account.planId === 'trial' || account.planId === 'assessment' || await hasOperatorCreditFunding(manager, account.id)
     const defaultMonthlyCredits = await fundedDefaultCredits(manager, account.id, account.planId)
+    const monthlyCreditCap = account.planId === 'training' && await isPartnerStarter(manager, account.id) ? HOSTED_PARTNER_STARTER_MONTHLY_CREDITS : null
     const grants = await manager.getRepository(HostingGrantEntity).find({ where: { platformId: account.id, meter: 'execution', revokedAt: IsNull() }, order: { validFrom: 'DESC', id: 'ASC' }, take: 257 })
     const current = grants.find(grant => hostingGrantMatchesPlan(grant, account.planId) && subscriptionGrantActive(account, grant, now))
     const liability = current ? await hostedCreditLiability(manager, current.id) : { reserved: 0n, consumed: 0n }
     const consumed = (current?.consumed ?? 0n) + liability.consumed, reserved = (current?.reserved ?? 0n) + liability.reserved
     const remaining = current ? current.amount - consumed - reserved : 0n
     return {
-        scopePlatformId: account.id, revision: binding?.revision ?? 0, planId: account.planId, fixed, overrideMonthlyCredits: change?.monthlyCredits ?? null, defaultMonthlyCredits,
+        scopePlatformId: account.id, monthlyCreditCap, revision: binding?.revision ?? 0, planId: account.planId, fixed, overrideMonthlyCredits: change?.monthlyCredits ?? null, defaultMonthlyCredits,
         effectiveMonthlyCredits: fixed ? defaultMonthlyCredits : change?.monthlyCredits ?? defaultMonthlyCredits, appliesToCurrentPeriod: !fixed && !!current && subscriptionAccountActive(account, now),
         period: current ? { validFrom: current.validFrom.toISOString(), validUntil: subscriptionGrantUntil(account, current).toISOString(), amount: current.amount.toString(), consumed: consumed.toString(), reserved: reserved.toString(), available: subscriptionAccountActive(account, now) && remaining > 0n ? remaining.toString() : '0' } : null,
     }

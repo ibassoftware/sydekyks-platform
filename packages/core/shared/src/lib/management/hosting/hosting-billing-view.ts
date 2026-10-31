@@ -12,7 +12,7 @@ export const HostedBillingOverview = z.object({
     billingMode: z.enum(['manual', 'stripe_test']).default('manual'), environment: z.enum(['manual', 'test']), planId: z.enum(['trial', 'training', 'assessment', 'starter', 'team', 'scale']), status: z.enum(['trialing', 'active', 'suspended']),
     entitlementState: z.enum(['trial', 'training', 'assessment', 'paid', 'expired', 'paused']), validUntil: date, trialEndsAt: date, billingHold: z.boolean(),
     accountKind: z.enum(['platform_admin', 'partner', 'client', 'trial']).optional(),
-    trainingPackage: z.enum(['core', 'launch']).nullable().optional(),
+    trainingPackage: z.enum(['starter', 'core', 'launch']).nullable().optional(),
     hostingEndsAt: date.nullable().optional(), renewalDueAt: date.nullable().optional(), nextCreditAllowanceAt: date.nullable().optional(),
     manualFunding: z.boolean().optional(),
     subscriptionStatus: z.string().nullable(), planChangesEnabled: z.boolean(),

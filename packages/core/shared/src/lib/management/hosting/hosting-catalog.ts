@@ -1,3 +1,6 @@
+// Internal manual provisioning only; excluded from public paid/package catalogues.
+export const HOSTED_PARTNER_STARTER_MONTHLY_CREDITS = 3_500
+
 function getPlan({ planId, catalogVersion }: { planId: HostedPlanId, catalogVersion?: string }): HostedPlan {
     const plan = PLANS[planId]
     const legacy = { training: 10_000, starter: 10_000, team: 100_000, scale: 500_000 }

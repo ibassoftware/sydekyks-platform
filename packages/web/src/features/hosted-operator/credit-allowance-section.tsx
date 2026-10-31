@@ -190,7 +190,11 @@ function AllowanceEditor({
     };
   }, []);
   const parsed = parseCreditInput(amount);
-  const valid = basis === 'plan' || (amount.trim() !== '' && parsed !== null);
+  const valid =
+    basis === 'plan' ||
+    (amount.trim() !== '' &&
+      parsed !== null &&
+      (state.monthlyCreditCap == null || parsed <= state.monthlyCreditCap));
   const selected = basis === 'plan' ? state.defaultMonthlyCredits : parsed ?? 0;
   const usedAndHeld = state.period
     ? BigInt(state.period.consumed) + BigInt(state.period.reserved)
@@ -262,6 +266,13 @@ function AllowanceEditor({
         <dt className="font-medium">Revision</dt>
         <dd>{state.revision}</dd>
       </dl>
+      {state.monthlyCreditCap != null && (
+        <p className="text-sm leading-6 text-gray-11">
+          Partner Starter is capped at{' '}
+          {formatCreditUnits(state.monthlyCreditCap)} Credits per month. No
+          rollover or automatic overages.
+        </p>
+      )}
       {trial && (
         <p className="text-sm leading-6 text-gray-11">
           The current trial is a one-off 14-day allowance and does not renew
@@ -343,7 +354,11 @@ function AllowanceEditor({
             inputMode="decimal"
             step={0.01}
             min={0}
-            max={10000}
+            max={
+              state.monthlyCreditCap != null
+                ? state.monthlyCreditCap / 100
+                : 10000
+            }
             value={
               basis === 'plan'
                 ? creditUnitsInput(state.defaultMonthlyCredits)
