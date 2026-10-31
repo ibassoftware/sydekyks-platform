@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { apId } from '@activepieces/core-utils'
-import { HostedPlanId, HOSTED_PARTNER_STARTER_MONTHLY_CREDITS, hostingCatalog } from '@activepieces/shared'
+import { HOSTED_PARTNER_STARTER_MONTHLY_CREDITS, HostedPlanId, hostingCatalog } from '@activepieces/shared'
 import { DataSource, EntityManager, IsNull } from 'typeorm'
 import { z } from 'zod'
 import { assertHostingOperator } from './hosting-access-policy'
