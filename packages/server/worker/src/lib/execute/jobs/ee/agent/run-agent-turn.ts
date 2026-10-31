@@ -73,7 +73,7 @@ export function drainOf({ state }: { state: StepContentState }): StreamDrain {
 async function runTieredAgentTurn({ hosted = false, models, fastModel, systemPrompt, messages, tools, allToolNames, tier, phaseState, abortSignal, log, sinks, stopWhen, stepCeiling, creditsLeft, priorToolCalls, onModelOutcome, onStepModel, skills }: TieredRunAgentTurnParams): Promise<AgentTurnResult> {
     tools = await withGadgetIdentifiers(tools)
     messages = publicGadgetHistory(messages)
-    systemPrompt = publicGadgetText(systemPrompt)
+    systemPrompt = publicGadgetText(systemPrompt) + '\n\nPlatform context: This assistant runs in Sydekyks. Describe the platform and its integrations as Sydekyks and Gadgets. Internal ap_* tools and @activepieces/* package names are compatibility identifiers, not the product name. Earlier assistant messages may use outdated upstream branding; use Sydekyks in current replies. Discuss upstream Activepieces only if the user explicitly asks about it. When asked about access, distinguish the available Gadget catalogue, connected accounts, and tools actually supplied in this run. Never claim an app is connected or a tool is available without current evidence.'
     if (skills) skills = { ...skills, guides: Object.fromEntries(Object.entries(skills.guides).map(([name, guide]) => [name, publicGadgetText(guide)])) }
     const drainStream = sinks?.drainStream ?? ((result: ReturnType<typeof streamText>) => result.consumeStream())
     const onProgress = sinks?.onProgress ?? (() => {})
