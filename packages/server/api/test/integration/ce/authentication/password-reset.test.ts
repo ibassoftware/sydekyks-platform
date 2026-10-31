@@ -1,12 +1,14 @@
-import { OtpType, PrincipalType, UserIdentityProvider } from '@activepieces/shared'
+import { OtpType, PlatformRole, PrincipalType, UserIdentityProvider } from '@activepieces/shared'
 import { FastifyInstance } from 'fastify'
 import { vi } from 'vitest'
+import { authenticationUtils } from '../../../../src/app/authentication/authentication-utils'
 import { accessTokenManager } from '../../../../src/app/authentication/lib/access-token-manager'
 import { passwordHasher } from '../../../../src/app/authentication/lib/password-hasher'
 import { otpService } from '../../../../src/app/authentication/otp/otp-service'
 import { passwordService, replacePassword } from '../../../../src/app/authentication/password-service'
 import { databaseConnection } from '../../../../src/app/database/database-connection'
 import { distributedStore } from '../../../../src/app/database/redis-connections'
+import { setPlatformUserPassword } from '../../../../src/app/user/platform/platform-password-service'
 import { createMockPlatform, createMockUser, createMockUserIdentity } from '../../../helpers/mocks'
 import { setupTestEnvironment } from '../../../helpers/test-setup'
 
@@ -16,12 +18,13 @@ let app: FastifyInstance
 const originalPassword = 'Synthetic-old-password-42!', newPassword = 'Synthetic-new-password-43!'
 async function seed() {
     const identity = createMockUserIdentity({ verified: true, password: originalPassword, tokenVersion: 'initial-session' })
-    const user = createMockUser({ identityId: identity.id })
+    const user = createMockUser({ identityId: identity.id, platformRole: PlatformRole.ADMIN })
     const platform = createMockPlatform({ ownerId: user.id, emailAuthEnabled: true })
-    user.platformId = platform.id
     const db = databaseConnection()
     await db.getRepository('user_identity').save(identity)
+    await db.getRepository('user').save(user)
     await db.getRepository('platform').save(platform)
+    user.platformId = platform.id
     await db.getRepository('user').save(user)
     const token = await accessTokenManager(app.log).generateToken({ type: PrincipalType.USER, id: user.id, platform: { id: platform.id }, tokenVersion: identity.tokenVersion })
     return { identity, user, token }
@@ -75,4 +78,27 @@ it('returns the same empty response for eligible and absent accounts and does no
         expect(response.statusCode).toBe(204); expect(response.body).toBe('')
     }
     vi.unstubAllEnvs()
+})
+
+it('requires a current platform admin and reauthentication to change a local user password', async () => {
+    const { identity, user } = await seed()
+    const params = { dataSource: databaseConnection(), userId: user.id, platformId: user.platformId!, tokenVersion: identity.tokenVersion ?? null, targetUserId: user.id, currentPassword: originalPassword, newPassword }
+    await expect(setPlatformUserPassword({ ...params, currentPassword: 'wrong-password' })).rejects.toThrow()
+    await expect(setPlatformUserPassword({ ...params, tokenVersion: 'stale' })).rejects.toThrow()
+    await databaseConnection().getRepository('user').update(user.id, { platformRole: PlatformRole.MEMBER })
+    await expect(setPlatformUserPassword(params)).rejects.toThrow()
+    await databaseConnection().getRepository('user').update(user.id, { platformRole: PlatformRole.ADMIN })
+    await setPlatformUserPassword(params)
+    const saved = await databaseConnection().getRepository('user_identity').findOneByOrFail({ id: identity.id })
+    expect(await passwordHasher.compare(newPassword, saved.password)).toBe(true)
+})
+it('does not allow a tenant administrator to reset an identity shared with another tenant', async () => {
+    const { identity, user } = await seed(), other = await seed()
+    await databaseConnection().getRepository('user').save(createMockUser({ identityId: identity.id, platformId: other.user.platformId }))
+    await expect(setPlatformUserPassword({ dataSource: databaseConnection(), userId: user.id, platformId: user.platformId!, tokenVersion: identity.tokenVersion ?? null, targetUserId: user.id, currentPassword: originalPassword, newPassword })).rejects.toThrow()
+})
+
+it('refuses to mint a replacement session from a stale password revision', async () => {
+    const { user } = await seed()
+    await expect(authenticationUtils(app.log).getProjectAndToken({ userId: user.id, platformId: user.platformId!, projectId: null, expectedTokenVersion: 'stale-password-revision' })).rejects.toThrow()
 })

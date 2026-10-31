@@ -24,5 +24,6 @@
   "packages/server/api/test/unit/syd/configured-piece.test.ts",
   "packages/server/api/test/unit/syd/copilot-contracts.test.ts",
   "packages/server/api/test/integration/ce/database/sydekyks-upstream-upgrade.test.ts",
-  "packages/server/api/test/integration/ce/flows/flow/flow-draft-push.test.ts"
+  "packages/server/api/test/integration/ce/flows/flow/flow-draft-push.test.ts",
+  "packages/server/api/test/integration/ce/authentication/password-reset.test.ts"
 ]

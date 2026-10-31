@@ -156,6 +156,7 @@ export const authenticationService = (log: FastifyBaseLogger) => ({
             userId: user.id,
             platformId,
             projectId: null,
+            expectedTokenVersion: identity.tokenVersion ?? null,
         })
         return { response, signedUp: false }
     },
