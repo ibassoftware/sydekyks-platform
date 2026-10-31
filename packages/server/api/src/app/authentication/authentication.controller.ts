@@ -143,6 +143,7 @@ export const authenticationController: FastifyPluginAsyncZod = async (
         const user = await userService(request.log).getOneOrFail({ id: request.principal.id })
         return authenticationService(request.log).switchPlatform({
             identityId: user.identityId,
+            tokenVersion: request.principal.type === PrincipalType.USER ? request.principal.tokenVersion ?? null : undefined,
             platformId: request.body.platformId,
         })
     })

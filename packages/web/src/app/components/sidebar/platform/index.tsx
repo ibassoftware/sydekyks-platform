@@ -54,7 +54,7 @@ export function PlatformSidebar() {
   const { checkAccess } = useAuthorization();
   const defaultRoute = determineDefaultRoute({
     checkAccess,
-    chatEnabled: platform.plan.chatEnabled,
+    agentsEnabled: platform.plan.agentsEnabled,
   });
   const chevronRef = useRef<ChevronLeftIconHandle>(null);
 

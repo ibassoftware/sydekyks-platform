@@ -361,6 +361,11 @@ const findExactVersion = async (
     const { name, version, platformId } = params
     const versionToSearch = findNextExcludedVersion(version)
     const currentRelease = apVersionUtil.getCurrentRelease()
+    // The engine already loads the selected bundled implementation regardless
+    // of a saved version pin. Return its actual metadata as well, so old tool
+    // configurations cannot extract inputs using a different action schema.
+    const bundledPiece = (await loadDevPiecesIfEnabled(log)).find(piece => piece.name === name && filterPieceBasedOnType(platformId, piece) && isSupportedRelease(currentRelease, piece))
+    if (bundledPiece) return { name: bundledPiece.name, version: bundledPiece.version, platformId: bundledPiece.platformId }
     const registry = filterRegistry(await loadRegistry(log), { release: currentRelease, platformId })
     const matchingRegistryEntries = registry.filter((entry) => {
         if (entry.name !== name) {

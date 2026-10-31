@@ -20,7 +20,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { userHooks, userMutations } from '@/hooks/user-hooks';
 
-import { ThemeToggle } from './theme-toggle';
+import { PasswordSettings } from './password-settings';
+import { ThemeSetting } from './theme-setting';
 
 export interface AccountSettingsDialogProps {
   open: boolean;
@@ -119,7 +120,11 @@ export function AccountSettingsDialog({
             <Separator />
 
             <div className="max-w-sm">
-              <ThemeToggle />
+              <ThemeSetting />
+            </div>
+            <Separator />
+            <div>
+              <PasswordSettings />
             </div>
           </div>
         </ScrollArea>

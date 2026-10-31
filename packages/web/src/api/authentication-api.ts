@@ -62,10 +62,25 @@ export const authenticationApi = {
     );
   },
   sendOtpEmail(request: CreateOtpRequestBody) {
-    return api.post<void>('/v1/otp', request);
+    return request.type === 'PASSWORD_RESET'
+      ? api.post<void>('/v1/authentication/request-password-reset', {
+          email: request.email,
+        })
+      : api.post<void>('/v1/otp', request);
+  },
+  changePassword(request: { currentPassword: string; newPassword: string }) {
+    return api.post<void>('/v1/authentication/change-password', request);
   },
   resetPassword(request: ResetPasswordRequestBody) {
-    return api.post<void>('/v1/authn/local/reset-password', request);
+    return api.post<void>('/v1/authentication/reset-password', request);
+  },
+  validatePasswordReset(
+    request: Pick<ResetPasswordRequestBody, 'identityId' | 'otp'>,
+  ) {
+    return api.post<{ valid: boolean }>(
+      '/v1/authentication/validate-password-reset',
+      request,
+    );
   },
   verifyEmail(request: VerifyEmailRequestBody) {
     return api.post<UserIdentity>('/v1/authn/local/verify-email', request);

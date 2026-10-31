@@ -6,7 +6,7 @@ import { repoFactory } from '../../core/db/repo-factory'
 import { distributedLock, distributedStore } from '../../database/redis-connections'
 import { encryptUtils } from '../../helper/encryption'
 import { emailService } from '../../sydekyks-community/email'
-import { userIdentityService } from '../user-identity/user-identity-service'
+import { userIdentityRepository, userIdentityService } from '../user-identity/user-identity-service'
 import { otpGenerator } from './lib/otp-generator'
 import { OtpEntity } from './otp-entity'
 
@@ -49,10 +49,10 @@ export const otpService = (log: FastifyBaseLogger) => ({
                     updated: dayjs().toISOString(),
                     type,
                     identityId,
-                    value: await encryptUtils.hmacString(freshCode),
+                    value: await encryptUtils.hmacString(type === OtpType.PASSWORD_RESET ? `${freshCode}:${userIdentity.tokenVersion ?? ''}` : freshCode),
                     state: OtpState.PENDING,
                     attempts: 0,
-                    version: HASHED_OTP_VERSION,
+                    version: type === OtpType.PASSWORD_RESET ? 2 : HASHED_OTP_VERSION,
                 }
                 await repo().upsert(newOtp, ['identityId', 'type'])
                 await cacheCode({ identityId, type, code: freshCode })
@@ -68,49 +68,65 @@ export const otpService = (log: FastifyBaseLogger) => ({
     },
 
     async confirm({ identityId, type, value }: ConfirmParams): Promise<boolean> {
-        return distributedLock(log).runExclusive({
-            key: confirmLockKey({ identityId, type }),
-            timeoutInSeconds: 15,
-            fn: async () => {
-                const spentOnIdentity = await guessesSpentOnIdentity({ identityId, type })
-                if (spentOnIdentity >= MAX_ATTEMPTS_PER_IDENTITY) {
-                    log.warn({ identityId, type }, '[otpService#confirm] identity guess budget exhausted, refusing')
-                    return false
-                }
-                const otp = await repo().findOneBy({ identityId, type })
-                if (isNil(otp)) {
-                    return false
-                }
-                if (otp.attempts >= MAX_ATTEMPTS) {
-                    await discard({ otp, identityId, type, log })
-                    return false
-                }
-                if (otpIsExpired(otp)) {
-                    await discard({ otp, identityId, type, log })
-                    return false
-                }
-                const otpIsPending = otp.state === OtpState.PENDING
-                const otpMatches = encryptUtils.digestsMatch(otp.value, await comparableValue({ otp, value }))
-                if (otpMatches && otpIsPending) {
-                    await repo().delete({ id: otp.id })
-                    await forgetCachedCode({ identityId, type })
-                    await clearIdentityBudget({ identityId, type })
-                    return true
-                }
-                await countAttempt(otp.id)
-                await countGuessOnIdentity({ identityId, type, spent: spentOnIdentity })
-                if (otp.attempts + 1 >= MAX_ATTEMPTS) {
-                    await discard({ otp, identityId, type, log })
-                }
-                return false
-            },
-        })
+        return checkOtp({ identityId, type, value, log, consume: true })
+    },
+
+    // A reset-page preflight must not redeem a valid link. Failed guesses still
+    // spend the same attempt budget as redemption, including across requests.
+    async isPasswordResetValid({ identityId, value }: Omit<ConfirmParams, 'type'>): Promise<boolean> {
+        return checkOtp({ identityId, type: OtpType.PASSWORD_RESET, value, log, consume: false })
     },
 })
 
+async function checkOtp({ identityId, type, value, log, consume }: ConfirmParams & { log: FastifyBaseLogger, consume: boolean }): Promise<boolean> {
+    return distributedLock(log).runExclusive({
+        key: confirmLockKey({ identityId, type }),
+        timeoutInSeconds: 15,
+        fn: async () => {
+            const spentOnIdentity = await guessesSpentOnIdentity({ identityId, type })
+            if (spentOnIdentity >= MAX_ATTEMPTS_PER_IDENTITY) {
+                log.warn({ identityId, type }, '[otpService#confirm] identity guess budget exhausted, refusing')
+                return false
+            }
+            const otp = await repo().findOneBy({ identityId, type })
+            if (isNil(otp)) {
+                return false
+            }
+            if (otp.attempts >= MAX_ATTEMPTS) {
+                await discard({ otp, identityId, type, log })
+                return false
+            }
+            if (otpIsExpired(otp)) {
+                await discard({ otp, identityId, type, log })
+                return false
+            }
+            const otpIsPending = otp.state === OtpState.PENDING
+            const otpMatches = encryptUtils.digestsMatch(otp.value, await comparableValue({ otp, value }))
+            if (otpMatches && otpIsPending) {
+                if (consume) {
+                    await repo().delete({ id: otp.id })
+                    await forgetCachedCode({ identityId, type })
+                    await clearIdentityBudget({ identityId, type })
+                }
+                return true
+            }
+            await countAttempt(otp.id)
+            await countGuessOnIdentity({ identityId, type, spent: spentOnIdentity })
+            if (otp.attempts + 1 >= MAX_ATTEMPTS) {
+                await discard({ otp, identityId, type, log })
+            }
+            return false
+        },
+    })
+}
+
 async function comparableValue({ otp, value }: ComparableValueParams): Promise<string> {
-    const writtenBeforeHashing = otp.version < HASHED_OTP_VERSION
-    return writtenBeforeHashing ? value : encryptUtils.hmacString(value)
+    if (otp.type === OtpType.PASSWORD_RESET) {
+        if (otp.version < 2) return '' // Old codes were not bound to a credential revision.
+        const identity = await userIdentityRepository().findOneByOrFail({ id: otp.identityId })
+        return encryptUtils.hmacString(`${value}:${identity.tokenVersion ?? ''}`)
+    }
+    return otp.version < 1 ? value : encryptUtils.hmacString(value)
 }
 
 async function countAttempt(otpId: string): Promise<void> {

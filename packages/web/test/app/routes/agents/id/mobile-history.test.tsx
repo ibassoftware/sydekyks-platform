@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+/* eslint-disable jest-dom/prefer-in-document, jest-dom/prefer-to-have-attribute, testing-library/no-node-access -- These isolated layout tests use native DOM assertions without a jest-dom runtime. */
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +12,9 @@ vi.mock('@/app/components/locked-feature-guard', () => ({
 }));
 vi.mock('@/features/agents', () => ({ useAgentsAvailable: () => true }));
 vi.mock('@/features/agents/agent-mark', () => ({ AgentMark: () => null }));
+vi.mock('@/features/hosted-billing/service-mode', () => ({
+  useHostedBillingEnabled: () => true,
+}));
 vi.mock('@/lib/authentication-session', () => ({
   authenticationSession: { appendProjectRoutePrefix: (path: string) => path },
 }));
@@ -23,8 +27,12 @@ vi.mock('@/features/agents/hooks/agents-hooks', () => ({
         id: 'agent_1',
         displayName: 'QA Assistant',
         description: 'Answer a question',
-        draft: { tools: [], provider: 'openai', modelName: 'gpt-4o' },
-        published: { tools: [], provider: 'openai', modelName: 'gpt-4o' },
+        draft: { provider: 'openai', modelName: 'fixture-model', tools: [] },
+        published: {
+          provider: 'openai',
+          modelName: 'fixture-model',
+          tools: [],
+        },
       },
     }),
   },
@@ -79,8 +87,10 @@ describe('Agent mobile conversation history', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close history' }));
     expect(screen.queryAllByText('Chat fills the page')).toHaveLength(1);
   });
-  it('preserves expanded conversation history by default on desktop', () => {
+  it('starts folded on desktop and opens only when requested', () => {
     view(1440);
+    expect(screen.queryAllByText('Chat fills the page')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Open history' }));
     expect(screen.queryAllByText('History open')).toHaveLength(1);
   });
 });

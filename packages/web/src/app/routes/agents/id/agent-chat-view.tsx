@@ -1,16 +1,11 @@
-import { Permission } from '@activepieces/core-utils';
 import { Agent } from '@activepieces/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { t } from 'i18next';
-import { useCallback, useRef, useState } from 'react';
 
 import { AIChatBox } from '@/app/routes/chat-with-ai/ai-chat-box';
 import { ConversationsToggle } from '@/app/routes/chat-with-ai/components/conversations-toggle';
 import { ConversationList } from '@/app/routes/chat-with-ai/conversation-list';
-import { Button } from '@/components/ui/button';
 import { AgentChatWelcome } from '@/features/agents/agent-chat-welcome';
-import { useAuthorization } from '@/hooks/authorization-hooks';
-import { authenticationSession } from '@/lib/authentication-session';
 import { cn } from '@/lib/utils';
 
 export const AgentChatView = ({
@@ -24,218 +19,74 @@ export const AgentChatView = ({
   onCollapseConversations,
   onExpandConversations,
   onConversationCreated,
-  onOpenConfigure,
-  onDesignRunStateChange,
-  beforeDesignSend,
 }: AgentChatViewProps) => {
   const queryClient = useQueryClient();
-  const { checkAccess } = useAuthorization(agent.projectId);
-  const mayDesign = checkAccess(Permission.WRITE_AGENT);
-  const storageKey = `syd-agent-builder:${authenticationSession.getCurrentUserId()}:${
-    agent.id
-  }`;
-  const [designMode, setDesignMode] = useState(
-    () => sessionStorage.getItem(`${storageKey}:mode`) === 'design',
-  );
-  const [designConversationId, setDesignConversationId] = useState<
-    string | null
-  >(() => sessionStorage.getItem(storageKey));
-  const designing = designMode && mayDesign;
-  const [designRunning, setDesignRunning] = useState(false);
-  const [designRefreshFailed, setDesignRefreshFailed] = useState(false);
-  const [designBlocked, setDesignBlocked] = useState(false);
-  const generation = useRef(0);
-  const handleDesignRunState = useCallback(
-    (active: boolean) => {
-      const current = ++generation.current;
-      if (active) {
-        setDesignRunning(true);
-        onDesignRunStateChange(true);
-        return;
-      }
-      void queryClient
-        .invalidateQueries(
-          { queryKey: ['agents', 'one', agent.id] },
-          { throwOnError: true },
-        )
-        .then(() => {
-          if (current !== generation.current) return;
-          setDesignRefreshFailed(false);
-          setDesignRunning(false);
-          onDesignRunStateChange(false);
-        })
-        .catch(() => {
-          if (current === generation.current) setDesignRefreshFailed(true);
-        });
-    },
-    [agent.id, onDesignRunStateChange, queryClient],
-  );
-  const changeMode = (design: boolean) => {
-    setDesignMode(design);
-    sessionStorage.setItem(`${storageKey}:mode`, design ? 'design' : 'chat');
-    if (design && window.matchMedia('(min-width: 1280px)').matches)
-      onOpenConfigure();
-  };
-  const beforeSend = () => {
-    if (designRefreshFailed) return false;
-    const allowed = beforeDesignSend();
-    setDesignBlocked(!allowed);
-    if (allowed) handleDesignRunState(true);
-    return allowed;
-  };
-
   return (
     <>
-      {!designing && (
-        <aside
-          className={cn(
-            SLIDING_ASIDE,
-            'border-r bg-panel',
-            conversationsOpen
-              ? 'absolute inset-y-0 left-0 z-20 w-full md:relative md:inset-auto md:z-auto md:w-[220px]'
-              : 'hidden md:block md:w-[46px]',
-          )}
-        >
-          {conversationsOpen ? (
-            <div className="flex h-full min-w-0 w-full flex-col">
-              <ConversationList
-                agentId={agent.id}
-                className="w-full"
-                selectedId={openedConversationId ?? null}
-                onSelect={(id) => {
-                  onSelectConversation(id);
-                  if (window.innerWidth < 768) onCollapseConversations();
-                }}
-                onNewChat={() => {
-                  onNewConversation();
-                  if (window.innerWidth < 768) onCollapseConversations();
-                }}
-                onCollapse={onCollapseConversations}
-              />
-            </div>
-          ) : (
-            <div className="flex h-full w-[46px] shrink-0 flex-col items-center pt-3">
-              <ConversationsToggle
-                open={false}
-                onClick={onExpandConversations}
-              />
-            </div>
-          )}
-        </aside>
-      )}
+      <aside
+        className={cn(
+          'shrink-0 overflow-hidden border-r border-gray-6',
+          conversationsOpen
+            ? 'absolute inset-y-0 left-0 z-20 w-full bg-panel md:relative md:inset-auto md:z-auto md:w-[220px]'
+            : 'hidden md:block md:w-[46px]',
+        )}
+      >
+        {conversationsOpen ? (
+          <ConversationList
+            agentId={agent.id}
+            className="w-full"
+            selectedId={openedConversationId ?? null}
+            onSelect={(id) => {
+              onSelectConversation(id);
+              if (window.innerWidth < 768) onCollapseConversations();
+            }}
+            onNewChat={() => {
+              onNewConversation();
+              if (window.innerWidth < 768) onCollapseConversations();
+            }}
+            onCollapse={onCollapseConversations}
+          />
+        ) : (
+          <div className="flex h-full w-[46px] flex-col items-center pt-3">
+            <ConversationsToggle open={false} onClick={onExpandConversations} />
+          </div>
+        )}
+      </aside>
       <div
         className={cn(
           'min-h-0 min-w-0 flex-1 flex-col',
-          !designing && conversationsOpen ? 'hidden md:flex' : 'flex',
+          conversationsOpen ? 'hidden md:flex' : 'flex',
         )}
       >
-        <div className="flex shrink-0 min-w-0 flex-wrap items-center gap-1 border-b px-2 py-2 sm:px-4">
-          {!designing && (
-            <div className="md:hidden">
-              <ConversationsToggle
-                open={false}
-                onClick={onExpandConversations}
-              />
-            </div>
-          )}
-          <Button
-            size="sm"
-            className="min-w-0 px-2 text-xs sm:text-sm"
-            variant={designing ? 'ghost' : 'secondary'}
-            aria-pressed={!designing}
-            disabled={designRunning}
-            onClick={() => changeMode(false)}
-          >
-            {t('Chat with agent')}
-          </Button>
-          {mayDesign && (
-            <Button
-              size="sm"
-              className="min-w-0 px-2 text-xs sm:text-sm"
-              variant={designing ? 'secondary' : 'ghost'}
-              aria-pressed={designing}
-              disabled={designRunning}
-              onClick={() => changeMode(true)}
-            >
-              {t('Design with Syd')}
-            </Button>
-          )}
+        <div className="shrink-0 border-b px-3 py-2 md:hidden">
+          <ConversationsToggle open={false} onClick={onExpandConversations} />
         </div>
-        {designing && designRefreshFailed && (
-          <div role="alert" className="px-4 py-2 text-sm">
-            {t('Could not refresh this agent. Retry to resume editing.')}{' '}
-            <Button variant="link" onClick={() => handleDesignRunState(false)}>
-              {t('Retry')}
-            </Button>
-          </div>
-        )}
-        {designing && designBlocked && (
-          <p role="alert" className="px-4 py-2 text-sm">
-            {t(
-              'Save or discard your configuration changes before asking Syd to edit this agent.',
-            )}
-          </p>
-        )}
         <AIChatBox
-          key={designing ? `${agent.id}:design` : chatSessionKey}
+          key={chatSessionKey}
           incognito={false}
           agentId={agent.id}
-          builder={designing}
-          conversationId={
-            designing ? designConversationId : openedConversationId ?? null
-          }
-          onConversationCreated={
-            designing
-              ? (id) => {
-                  sessionStorage.setItem(storageKey, id);
-                  setDesignConversationId(id);
-                }
-              : onConversationCreated
-          }
-          onRunStateChange={designing ? handleDesignRunState : undefined}
-          beforeSend={designing ? beforeSend : undefined}
+          conversationId={openedConversationId ?? null}
+          onConversationCreated={onConversationCreated}
           onTurnEnd={() =>
             void queryClient.invalidateQueries({
               queryKey: ['agents', 'one', agent.id],
             })
           }
-          placeholder={
-            designing
-              ? t('Ask Syd to change this agent…')
-              : t('Ask {name}...', { name: agent.displayName })
-          }
-          footerNote={
-            designing
-              ? t('Syd can update this agent’s draft. Publish when ready.')
-              : footerNote
-          }
+          placeholder={t('Ask {name}...', { name: agent.displayName })}
+          footerNote={footerNote}
           emptyState={
-            designing ? (
-              <div className="px-5 py-8">
-                <h2 className="font-semibold">{t('Design with Syd')}</h2>
-                <p className="mt-2 text-sm text-gray-11">
-                  {t(
-                    'Describe a change to this agent’s instructions or tools.',
-                  )}
-                </p>
-              </div>
-            ) : (
-              <AgentChatWelcome
-                displayName={agent.displayName}
-                description={agent.description ?? null}
-                icon={agent.icon}
-                color={agent.color}
-              />
-            )
+            <AgentChatWelcome
+              displayName={agent.displayName}
+              description={agent.description ?? null}
+              icon={agent.icon}
+              color={agent.color}
+            />
           }
         />
       </div>
     </>
   );
 };
-
-const SLIDING_ASIDE =
-  'shrink-0 overflow-hidden border-gray-6 transition-[width] duration-200';
 
 type AgentChatViewProps = {
   agent: Agent;
@@ -248,7 +99,4 @@ type AgentChatViewProps = {
   onCollapseConversations: () => void;
   onExpandConversations: () => void;
   onConversationCreated: (conversationId: string) => void;
-  onOpenConfigure: () => void;
-  onDesignRunStateChange: (running: boolean) => void;
-  beforeDesignSend: () => boolean;
 };

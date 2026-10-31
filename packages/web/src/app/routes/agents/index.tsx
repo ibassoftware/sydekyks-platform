@@ -1,4 +1,3 @@
-import { isObject } from '@activepieces/core-utils';
 import {
   AgentListSort,
   AgentSummary,
@@ -6,7 +5,6 @@ import {
 } from '@activepieces/shared';
 import { t } from 'i18next';
 import {
-  ArrowUp,
   ChevronsUpDown,
   LayoutGrid,
   List,
@@ -15,7 +13,7 @@ import {
   SearchX,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useDebounce } from 'use-debounce';
 
 import { LockedFeatureGuard } from '@/app/components/locked-feature-guard';
@@ -37,7 +35,6 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
 import { AgentCard } from '@/features/agents/agent-card';
 import { AgentTrioMark } from '@/features/agents/agent-mark';
 import { AgentTable } from '@/features/agents/agent-table';
@@ -49,8 +46,6 @@ import {
 import { blankAgentUtils } from '@/features/agents/lib/blank-agent';
 import { NewBlankAgentButton } from '@/features/agents/new-blank-agent-button';
 import { getProjectName, projectCollectionUtils } from '@/features/projects';
-import { platformHooks } from '@/hooks/platform-hooks';
-import { CHAT_ROUTE } from '@/lib/route-utils';
 import { cn } from '@/lib/utils';
 
 import {
@@ -58,35 +53,6 @@ import {
   showsFirstRun,
   showsNoMatchNotice,
 } from './lib/agents-list-state';
-
-const SUGGESTIONS = [
-  'Triage support tickets',
-  'Research a company',
-  'Enrich a lead',
-];
-
-const TEMPLATE_STARTERS: TemplateStarter[] = [
-  {
-    label: 'Research analyst',
-    dot: 'bg-swatch-9-mark',
-    prompt: 'Research a company and send me a cited brief on it',
-  },
-  {
-    label: 'Support triage',
-    dot: 'bg-swatch-6-mark',
-    prompt: 'Read a support ticket, tag its severity, and route it to a team',
-  },
-  {
-    label: 'Lead enrichment',
-    dot: 'bg-swatch-11-mark',
-    prompt: 'Enrich a new lead with company details and write the first email',
-  },
-  {
-    label: 'SEO writer',
-    dot: 'bg-swatch-3-mark',
-    prompt: 'Research keywords for a topic and draft a post that targets them',
-  },
-];
 
 const SORT_LABELS: Record<AgentListSort, string> = {
   [AgentListSort.UPDATED]: 'Recently updated',
@@ -111,23 +77,16 @@ const AgentsPage = () => {
 };
 
 const AgentsPageContent = () => {
-  const { state: locationState } = useLocation();
   const [search, setSearch] = useState('');
   const [layout, setLayout] = useState<'grid' | 'list'>('grid');
   const [sort, setSort] = useState<AgentListSort>(AgentListSort.UPDATED);
-  const [prompt, setPrompt] = useState(() =>
-    isObject(locationState) && typeof locationState.agentTask === 'string'
-      ? locationState.agentTask
-      : '',
-  );
   const [creationProjectId, setCreationProjectId] = useState<string>();
   const [viewProjectId, setViewProjectId] = useState<string>(ALL_PROJECTS);
   const navigate = useNavigate();
   const { project } = projectCollectionUtils.useCurrentProject();
   const { data: allProjects } = projectCollectionUtils.useAll();
-  const { platform } = platformHooks.useCurrentPlatform();
   const agentsAvailable = useAgentsAvailable();
-  const chatEnabled = platform.plan.chatEnabled;
+  const chatEnabled = false;
   const projectFiltered = viewProjectId !== ALL_PROJECTS;
   const targetProjectId =
     creationProjectId ?? (projectFiltered ? viewProjectId : project.id);
@@ -170,22 +129,6 @@ const AgentsPageContent = () => {
     [allProjects],
   );
 
-  const askChat = (text?: string) => {
-    const trimmed = (text ?? prompt).trim();
-    if (trimmed.length === 0) {
-      return;
-    }
-    if (targetProjectId !== project.id) {
-      projectCollectionUtils.setCurrentProject(targetProjectId);
-    }
-    navigate(CHAT_ROUTE, {
-      state: {
-        prompt: t('Build me an agent for this: {task}', { task: trimmed }),
-        agentTask: trimmed,
-      },
-    });
-  };
-
   const createBlankAgent = (projectId: string) => {
     if (createAgent.isPending) {
       return;
@@ -193,7 +136,7 @@ const AgentsPageContent = () => {
     const request = blankAgentUtils.request({ projectId });
     createAgent.mutate({
       ...request,
-      draft: { ...request.draft, instructions: prompt.trim() },
+      draft: { ...request.draft, instructions: '' },
     });
   };
 
@@ -249,9 +192,7 @@ const AgentsPageContent = () => {
                 'text-[32px] font-bold leading-[38px] tracking-[-0.02em]',
             )}
           >
-            {firstRun
-              ? t('Create your first agent')
-              : t('What should your agent do?')}
+            {firstRun ? t('Create your first agent') : t('Create a Sydekyk')}
           </h1>
           <p
             className={cn(
@@ -263,9 +204,7 @@ const AgentsPageContent = () => {
               ? t(
                   'An agent follows instructions you write and does the work using the apps you have connected.',
                 )
-              : t(
-                  "An agent is an assistant with instructions and tools. Describe the job and I'll write both.",
-                )}
+              : t('Set instructions and add the tools your Sydekyk needs.')}
           </p>
           {projectOptions.length > 1 && (
             <div className="mt-3 flex max-w-full items-center gap-2 text-sm">
@@ -289,135 +228,24 @@ const AgentsPageContent = () => {
               role="alert"
               className="mt-3 max-w-lg text-center text-sm text-danger-11"
             >
-              {t(
-                'Could not create your agent. Try again with Create manually. Your instructions can be entered in Configure.',
-              )}
+              {t('Could not create your Sydekyk. Try again.')}
             </p>
           )}
-          {!chatEnabled ? (
-            <NewBlankAgentButton
-              projects={allProjects ?? []}
-              projectId={targetProjectId}
-              pending={createAgent.isPending}
-              onCreate={createBlankAgent}
-              variant="default"
-              className="mt-6 gap-2"
-              icon={<Plus size={16} />}
-              label={t('Create manually')}
-            />
-          ) : (
-            <>
-              <div
-                className={cn(
-                  'mt-4 flex min-h-14 w-full max-w-[680px] flex-col items-stretch gap-3.5 rounded-[28px] border border-gray-6 bg-gray-3 ps-5 pe-2 py-2 transition-colors sm:flex-row sm:items-end',
-                  firstRun &&
-                    'relative mt-6 max-w-[632px] flex-col items-stretch gap-4 rounded-xl bg-gray-1 px-[18px] pb-[14px] pt-[18px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] sm:flex-col sm:items-stretch',
-                )}
-              >
-                <Textarea
-                  aria-label={t('Describe the task for your agent')}
-                  value={prompt}
-                  minRows={1}
-                  maxRows={8}
-                  onChange={(event) => setPrompt(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === 'Enter' &&
-                      !event.shiftKey &&
-                      !event.nativeEvent.isComposing
-                    ) {
-                      event.preventDefault();
-                      askChat();
-                    }
-                  }}
-                  placeholder={
-                    firstRun
-                      ? t(
-                          'Describe a task for your agent… e.g. research our competitors and send me a weekly brief',
-                        )
-                      : t('Draft weekly launch posts and file them in Notion…')
-                  }
-                  className={cn(
-                    'min-h-10 min-w-0 resize-none border-0 bg-transparent px-0 py-2.5 text-base leading-5 shadow-none focus-visible:ring-0 placeholder:text-gray-11',
-                    firstRun && 'min-h-11 px-1 py-1 text-[15px] leading-[22px]',
-                  )}
-                />
-                <div className={cn(firstRun && 'flex justify-end')}>
-                  <Button
-                    onClick={() => askChat()}
-                    disabled={prompt.trim().length === 0}
-                    className="shrink-0 gap-2"
-                  >
-                    {t('Create with AI')}
-                    <ArrowUp size={16} strokeWidth={2.2} />
-                  </Button>
-                </div>
-              </div>
-              <div
-                className={cn(
-                  'mt-[14px] flex flex-wrap items-center justify-center gap-2',
-                  firstRun && 'mt-[22px] flex-col gap-[14px]',
-                )}
-              >
-                <span
-                  className={cn(
-                    'text-[13px] leading-4 text-gray-11',
-                    firstRun && 'font-medium',
-                  )}
-                >
-                  {firstRun ? t('Popular starting points') : t('Try:')}
-                </span>
-                <div className="flex flex-wrap items-center justify-center gap-[10px]">
-                  {firstRun
-                    ? TEMPLATE_STARTERS.map((starter) => (
-                        <button
-                          key={starter.label}
-                          type="button"
-                          onClick={() => askChat(t(starter.prompt))}
-                          className="flex items-center gap-2 rounded-full border border-gray-6 py-[9px] pe-4 ps-[14px] text-sm font-medium leading-4 text-gray-11 transition-colors hover:bg-gray-4"
-                        >
-                          <span
-                            aria-hidden
-                            className={cn(
-                              'size-[11px] shrink-0 rounded-sm',
-                              starter.dot,
-                            )}
-                          />
-                          {t(starter.label)}
-                        </button>
-                      ))
-                    : SUGGESTIONS.map((suggestion) => (
-                        <button
-                          key={suggestion}
-                          type="button"
-                          onClick={() => askChat(t(suggestion))}
-                          className="rounded-full border border-gray-6 px-3 py-[5px] text-[13px] leading-4 transition-colors hover:bg-gray-4"
-                        >
-                          {t(suggestion)}
-                        </button>
-                      ))}
-                </div>
-              </div>
-              <div className="mt-4 flex flex-col items-center gap-2">
-                <NewBlankAgentButton
-                  projects={allProjects ?? []}
-                  projectId={targetProjectId}
-                  pending={createAgent.isPending}
-                  onCreate={createBlankAgent}
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                  icon={<Plus size={15} />}
-                  label={t('Create manually')}
-                />
-                <p className="max-w-md text-center text-sm text-gray-11">
-                  {t(
-                    'Set instructions, choose a model and add tools in Configure. Review and publish before using your agent in a Mission.',
-                  )}
-                </p>
-              </div>
-            </>
-          )}
+          <NewBlankAgentButton
+            projects={allProjects ?? []}
+            projectId={targetProjectId}
+            pending={createAgent.isPending}
+            onCreate={createBlankAgent}
+            variant="default"
+            className="mt-6 gap-2"
+            icon={<Plus size={16} />}
+            label={t('Create agent')}
+          />
+          <p className="mt-3 max-w-md text-center text-sm text-gray-11">
+            {t(
+              'Configure your Sydekyk, then choose Chat with Sydekyk above to try it.',
+            )}
+          </p>
         </section>
       )}
 
@@ -615,11 +443,5 @@ const AgentsEmptyState = ({
     </EmptyHeader>
   </Empty>
 );
-
-type TemplateStarter = {
-  label: string;
-  dot: string;
-  prompt: string;
-};
 
 export { AgentsPage };

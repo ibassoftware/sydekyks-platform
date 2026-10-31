@@ -25,7 +25,9 @@ const CheckEmailNote = ({ email, type }: CreateOtpRequestBody) => {
         <span className="text-left w-fit">
           {type === OtpType.EMAIL_VERIFICATION
             ? t('We sent you a link to complete your registration to')
-            : t('We sent you a link to reset your password to')}
+            : t(
+                'If an eligible account exists, a password reset link will be sent to',
+              )}
           <strong>&nbsp;{email}</strong>.
         </span>
       </div>

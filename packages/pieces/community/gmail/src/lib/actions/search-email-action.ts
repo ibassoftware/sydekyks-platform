@@ -15,7 +15,7 @@ export const gmailSearchMailAction = createAction({
   audience: 'human',
   aiMetadata: {
     description:
-      'Searches the mailbox for emails matching combinable filters (sender, recipient, subject, body text, label, category, date range, attachment presence/name) and returns the matched messages with parsed contents. Use this to locate messages or discover their IDs before reading or replying; with no filters it returns the most recent emails. Bound results with Max Results (1-500, default 10). Idempotent: a read-only search that does not modify the mailbox.',
+      'Searches the mailbox for emails matching combinable filters (sender, recipient, subject, body text, label, category, date range, attachment presence/name) and returns the matched messages with parsed contents. Use this to locate messages or discover their IDs before reading or replying; with no filters it returns the most recent emails. Use Search Query for Gmail operators such as is:unread; preserve the requested scope and do not invent a Primary category filter. Results.count is only the returned page size, never a mailbox total. Follow nextPageToken to read further pages. For exact unread totals, use Get Label with UNREAD (messagesTotal) or INBOX (messagesUnread). Bound results with Max Results (1-500, default 10). Idempotent: a read-only search that does not modify the mailbox.',
     idempotent: true,
   },
   propertyGroups: [
@@ -45,7 +45,7 @@ export const gmailSearchMailAction = createAction({
       display: 'builder',
       label: 'Mailbox',
       icon: 'inbox',
-      props: ['label', 'category', 'include_spam_trash'],
+      props: ['query', 'label', 'category', 'include_spam_trash'],
     },
     {
       key: 'date',
@@ -58,10 +58,22 @@ export const gmailSearchMailAction = createAction({
       key: 'footer',
       display: 'footer',
       icon: 'sliders',
-      props: ['max_results'],
+      props: ['max_results', 'page_token'],
     },
   ],
   props: {
+    query: Property.ShortText({
+      displayName: 'Search Query',
+      description:
+        'Gmail search operators, preserved exactly. Use is:unread for unread mail across the mailbox, or is:unread in:inbox only when the user asks for the inbox. Do not substitute category:primary for in:inbox. Leave other optional filters empty unless requested.',
+      required: false,
+    }),
+    page_token: Property.ShortText({
+      displayName: 'Page Token',
+      description:
+        'Continue the same search using nextPageToken from the previous result. Keep all search filters unchanged.',
+      required: false,
+    }),
     from: { ...GmailProps.from, icon: 'user' },
     to: { ...GmailProps.to, icon: 'send' },
     subject: { ...GmailProps.subject, icon: 'type' },
@@ -125,6 +137,8 @@ export const gmailSearchMailAction = createAction({
     const gmail = googleGmail({ version: 'v1', auth: authClient });
 
     const queryParts: string[] = [];
+    if (context.propsValue.query?.trim())
+      queryParts.push(context.propsValue.query.trim());
 
     if (context.propsValue.from?.trim()) {
       queryParts.push(`from:(${context.propsValue.from.trim()})`);
@@ -148,10 +162,9 @@ export const gmailSearchMailAction = createAction({
       );
     }
 
-    if (context.propsValue.label) {
-      const label = context.propsValue.label;
-      queryParts.push(`label:${label.name}`);
-    }
+    const labelIds = context.propsValue.label?.id
+      ? [context.propsValue.label.id]
+      : undefined;
     if (context.propsValue.category?.trim()) {
       queryParts.push(`category:${context.propsValue.category.trim()}`);
     }
@@ -186,7 +199,19 @@ export const gmailSearchMailAction = createAction({
         ...(searchQuery.trim() ? { q: searchQuery } : {}),
         maxResults: maxResults,
         includeSpamTrash: context.propsValue.include_spam_trash,
+        ...(labelIds ? { labelIds } : {}),
+        ...(context.propsValue.page_token?.trim()
+          ? { pageToken: context.propsValue.page_token.trim() }
+          : {}),
       });
+      const page = {
+        query: searchQuery,
+        labelIds: labelIds ?? [],
+        countScope: 'returned_page',
+        resultSizeEstimate: searchResponse.data.resultSizeEstimate,
+        nextPageToken: searchResponse.data.nextPageToken ?? null,
+        hasMore: !!searchResponse.data.nextPageToken,
+      };
 
       const messages = searchResponse.data.messages || [];
 
@@ -194,6 +219,7 @@ export const gmailSearchMailAction = createAction({
         return {
           found: false,
           results: {
+            ...page,
             messages: [],
             count: 0,
           },
@@ -217,8 +243,13 @@ export const gmailSearchMailAction = createAction({
             );
 
             return {
-              id: message.id,
               ...parsedMailResponse,
+              id: message.id,
+              threadId: rawMailResponse.data.threadId ?? message.threadId,
+              labelIds: rawMailResponse.data.labelIds ?? null,
+              isUnread: Array.isArray(rawMailResponse.data.labelIds)
+                ? rawMailResponse.data.labelIds.includes('UNREAD')
+                : null,
               attachments: await convertAttachment(
                 parsedMailResponse.attachments,
                 context.files
@@ -241,6 +272,7 @@ export const gmailSearchMailAction = createAction({
       return {
         found: true,
         results: {
+          ...page,
           messages: detailedMessages,
           count: detailedMessages.length,
         },

@@ -68,9 +68,20 @@ jobs:
       - run: bun x vitest run test/automation/piece-requests.test.ts
         working-directory: packages/core/shared
       - run: bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/integration/ce/sydekyks-free/free-access.test.ts packages/server/api/test/unit/app/pieces/piece-release-compatibility.test.ts
-      - run: bun x turbo run build --concurrency=2 --filter=web --filter=@activepieces/engine --filter=api --filter=worker
+      - run: bun x turbo run build --concurrency=2 --filter=web --filter=@activepieces/engine --filter=api --filter=worker --filter=@activepieces/piece-gmail --filter=@activepieces/piece-schedule
         env:
           NODE_OPTIONS: --max-old-space-size=4096
+      - name: Check password security and recovery
+        run: bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/password-reset-email.test.ts packages/server/api/test/unit/password-reset-preflight.test.ts packages/server/api/test/integration/ce/authentication/password-reset.test.ts --maxWorkers=1 --no-file-parallelism
+      - name: Check recovery URL privacy
+        run: bun x vitest run --config packages/web/vitest.config.ts packages/web/test/features/authentication/password-reset-secret.test.ts packages/web/test/features/authentication/change-password.test.tsx packages/web/test/lib/route-utils.test.ts --maxWorkers=1
+      - name: Check Gmail search scope and unread evidence
+        run: bun x vitest run --config packages/pieces/community/gmail/vitest.config.ts packages/pieces/community/gmail/test --maxWorkers=1
+      - name: Check dark mode and schedule minimum
+        run: |
+          bun x vitest run --config packages/web/vitest.config.ts packages/web/test/components/providers/theme-provider.test.tsx --maxWorkers=1
+          bun x vitest run --config packages/pieces/core/schedule/vitest.config.ts packages/pieces/core/schedule/test/every-x-minutes.test.ts --maxWorkers=1
+          bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/app/flows/trigger/flow-trigger-side-effect.test.ts --maxWorkers=1
       - name: Check frontend TypeScript
         run: bun x tsc -p packages/web/tsconfig.app.json --pretty false
         env:
