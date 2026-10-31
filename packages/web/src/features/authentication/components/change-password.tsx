@@ -23,12 +23,17 @@ import {
 } from '@/components/ui/popover';
 import { PasswordRequirementsList } from '@/features/authentication/components/password-validator';
 import { passwordValidation } from '@/features/authentication/utils/password-validation-utils';
+import { authenticationSession } from '@/lib/authentication-session';
+import {
+  getPasswordResetSecret,
+  forgetPasswordResetSecret,
+} from '@/lib/password-reset-secret';
 
 import { authMutations } from '../hooks/auth-hooks';
 
 const ChangePasswordForm = () => {
   const navigate = useNavigate();
-  const queryParams = new URLSearchParams(window.location.search);
+  const [resetSecret] = useState(getPasswordResetSecret);
   const [serverError, setServerError] = useState('');
   const [isPasswordFocused, setPasswordFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -38,8 +43,8 @@ const ChangePasswordForm = () => {
     newPassword: string;
   }>({
     defaultValues: {
-      otp: queryParams.get('otpcode') || '',
-      identityId: queryParams.get('identityId') || '',
+      otp: resetSecret?.otp ?? '',
+      identityId: resetSecret?.identityId ?? '',
       newPassword: '',
     },
   });
@@ -49,13 +54,15 @@ const ChangePasswordForm = () => {
       toast.success(t('Your password was changed successfully'), {
         duration: 3000,
       });
+      forgetPasswordResetSecret();
+      authenticationSession.clearSession();
       navigate('/sign-in');
     },
     onError: (error) => {
       setServerError(
         t('Your password reset request has expired, please request a new one'),
       );
-      console.error(error);
+      void error;
     },
   });
 
@@ -64,14 +71,14 @@ const ChangePasswordForm = () => {
   };
 
   return (
-    <Card className="w-md rounded-md drop-shadow-xl">
+    <Card className="w-full max-w-md rounded-md">
       <CardHeader>
         <CardTitle className="text-2xl">{t('Reset Password')}</CardTitle>
         <CardDescription>{t('Enter your new password')}</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
-          <form className="grid gap-2">
+          <form className="grid gap-2" onSubmit={form.handleSubmit(onSubmit)}>
             <FormField
               control={form.control}
               name="newPassword"
@@ -93,6 +100,8 @@ const ChangePasswordForm = () => {
                         required
                         id="newPassword"
                         type="password"
+                        autoComplete="new-password"
+                        maxLength={64}
                         placeholder={'********'}
                         ref={inputRef}
                         onBlur={() => setPasswordFocused(false)}
@@ -111,11 +120,7 @@ const ChangePasswordForm = () => {
               )}
             />
             {serverError && <FormMessage>{serverError}</FormMessage>}
-            <Button
-              className="w-full mt-2"
-              loading={isPending}
-              onClick={(e) => form.handleSubmit(onSubmit)(e)}
-            >
+            <Button className="w-full mt-2" loading={isPending} type="submit">
               {t('Confirm')}
             </Button>
           </form>

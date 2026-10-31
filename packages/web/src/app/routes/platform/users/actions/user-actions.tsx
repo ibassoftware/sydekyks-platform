@@ -2,6 +2,7 @@ import { PlatformRole, UserStatus } from '@activepieces/shared';
 import { t } from 'i18next';
 import {
   CircleMinus,
+  KeyRound,
   MoreVertical,
   Pencil,
   RotateCcw,
@@ -21,6 +22,7 @@ import { AdminControl, adminControl } from '@/lib/admin-control';
 
 import { UserRowData } from '../index';
 
+import { ChangeUserPasswordDialog } from './change-user-password-dialog';
 import { UpdateUserDialog } from './update-user-dialog';
 
 type UserActionsProps = {
@@ -39,12 +41,21 @@ export const UserActions = ({
   onUpdate,
 }: UserActionsProps) => {
   const [open, setOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const isInvitation = row.type === 'invitation';
   const isAdmin = !isInvitation && row.data.platformRole === PlatformRole.ADMIN;
   const isActive = !isInvitation && row.data.status === UserStatus.ACTIVE;
 
   return (
     <div className="flex justify-end">
+      {!isInvitation && (
+        <ChangeUserPasswordDialog
+          userId={row.data.id}
+          email={row.data.email}
+          open={passwordOpen}
+          onClose={() => setPasswordOpen(false)}
+        />
+      )}
       <DropdownMenu modal={true} open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon-sm">
@@ -67,6 +78,17 @@ export const UserActions = ({
                 {t('Edit')}
               </DropdownMenuItem>
             </UpdateUserDialog>
+          )}
+          {!isInvitation && (
+            <DropdownMenuItem
+              onSelect={() => {
+                setOpen(false);
+                setPasswordOpen(true);
+              }}
+            >
+              <KeyRound className="h-4 w-4" />
+              {t('Change password')}
+            </DropdownMenuItem>
           )}
           {!isInvitation && (
             <DropdownMenuItem

@@ -71,6 +71,8 @@ jobs:
       - run: bun x turbo run build --concurrency=2 --filter=web --filter=@activepieces/engine --filter=api --filter=worker
         env:
           NODE_OPTIONS: --max-old-space-size=4096
+      - name: Check password security and recovery
+        run: bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/integration/ce/authentication/password-reset.test.ts --maxWorkers=1 --no-file-parallelism
       - name: Check frontend TypeScript
         run: bun x tsc -p packages/web/tsconfig.app.json --pretty false
         env:
