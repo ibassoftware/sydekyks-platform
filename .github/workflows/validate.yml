@@ -82,6 +82,10 @@ jobs:
           bun x vitest run --config packages/web/vitest.config.ts packages/web/test/components/providers/theme-provider.test.tsx --maxWorkers=1
           bun x vitest run --config packages/pieces/core/schedule/vitest.config.ts packages/pieces/core/schedule/test/every-x-minutes.test.ts --maxWorkers=1
           bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/app/flows/trigger/flow-trigger-side-effect.test.ts --maxWorkers=1
+      - name: Check telemetry collection remains disabled
+        run: |
+          bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/app/helper/telemetry-disabled.test.ts packages/server/api/test/unit/app/helper/telemetry-identify-sign-up.test.ts packages/server/api/test/unit/app/helper/telemetry-cloud-only-events.test.ts packages/server/api/test/unit/app/authentication/passwordless-auth-telemetry.test.ts --maxWorkers=1
+          bun x vitest run --config packages/web/vitest.config.ts packages/web/test/components/providers/telemetry-disabled.test.tsx packages/web/test/app/platform/admin-telemetry.test.tsx packages/web/test/lib/checkout-intent-session.test.ts --maxWorkers=1
       - name: Check frontend TypeScript
         run: bun x tsc -p packages/web/tsconfig.app.json --pretty false
         env:

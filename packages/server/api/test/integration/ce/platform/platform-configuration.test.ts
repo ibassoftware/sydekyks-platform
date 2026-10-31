@@ -1,12 +1,12 @@
-import { AIProviderName } from '@activepieces/core-utils'
-import { AIProviderModelType, ApFlagId, DefaultProjectRole, maxBarrierSignalsBounds } from '@activepieces/shared'
+import { AIProviderName, ErrorCode } from '@activepieces/core-utils'
+import { AIProviderModelType, ApFlagId, PlatformRole, maxBarrierSignalsBounds } from '@activepieces/shared'
 import { FastifyInstance } from 'fastify'
 import { StatusCodes } from 'http-status-codes'
 import { databaseConnection } from '../../../../src/app/database/database-connection'
 import { system } from '../../../../src/app/helper/system/system'
 import { AppSystemProp } from '../../../../src/app/helper/system/system-props'
 import { mockAndSaveAIProvider } from '../../../helpers/mocks'
-import { createMemberContext, createTestContext } from '../../../helpers/test-context'
+import { createWorkspaceUserContext, createTestContext } from '../../../helpers/test-context'
 import { setupTestEnvironment, teardownTestEnvironment } from '../../../helpers/test-setup'
 
 let app: FastifyInstance | null = null
@@ -20,7 +20,7 @@ afterAll(async () => {
 })
 
 describe('platform configuration', () => {
-    it('creates the row on first read, taking its default from AP_TELEMETRY_ENABLED so an opted-out operator stays opted out', async () => {
+    it('creates new configuration with product telemetry disabled', async () => {
         const envDefault = system.getBoolean(AppSystemProp.TELEMETRY_ENABLED) ?? true
         expect(envDefault).toBe(false)
 
@@ -34,12 +34,12 @@ describe('platform configuration', () => {
         expect(configuration.isProductTelemetryEnabled).toBe(envDefault)
     })
 
-    it('defaults infra setup telemetry on, independently of AP_TELEMETRY_ENABLED', async () => {
+    it('defaults deployment telemetry off while capture is deferred', async () => {
         const ctx = await createTestContext(app!)
 
         const configuration = (await ctx.get('/v1/platform-configurations'))!.json()
 
-        expect(configuration.isInfraSetupTelemetryEnabled).toBe(true)
+        expect(configuration.isInfraSetupTelemetryEnabled).toBe(false)
     })
 
     it('creates the barrier signal cap from AP_MAX_BARRIER_SIGNALS', async () => {
@@ -57,7 +57,7 @@ describe('platform configuration', () => {
 
         const configuration = (await ctx.get('/v1/platform-configurations'))!.json()
         expect(configuration.maxBarrierSignals).toBe(5)
-        expect(configuration.isInfraSetupTelemetryEnabled).toBe(true)
+        expect(configuration.isInfraSetupTelemetryEnabled).toBe(false)
     })
 
     it('refuses a barrier signal cap below one', async () => {
@@ -86,58 +86,31 @@ describe('platform configuration', () => {
         expect((await ctx.get('/v1/platform-configurations'))!.json().maxBarrierSignals).toBe(maxBarrierSignalsBounds.max)
     })
 
-    it('switches each setting without disturbing the other', async () => {
+    it.each(['isProductTelemetryEnabled', 'isInfraSetupTelemetryEnabled'])('rejects attempts to enable %s while capture is paused', async (field) => {
         const ctx = await createTestContext(app!)
-
-        await ctx.post('/v1/platform-configurations', { isInfraSetupTelemetryEnabled: false })
-
-        const afterInfraOff = (await ctx.get('/v1/platform-configurations'))!.json()
-        expect(afterInfraOff.isInfraSetupTelemetryEnabled).toBe(false)
-        expect(afterInfraOff.isProductTelemetryEnabled).toBe(false)
-
-        await ctx.post('/v1/platform-configurations', { isProductTelemetryEnabled: true })
-
-        const afterProductOn = (await ctx.get('/v1/platform-configurations'))!.json()
-        expect(afterProductOn.isProductTelemetryEnabled).toBe(true)
-        expect(afterProductOn.isInfraSetupTelemetryEnabled).toBe(false)
+        const refused = await ctx.post('/v1/platform-configurations', { [field]: true })
+        expect(refused?.statusCode).toBe(StatusCodes.CONFLICT)
+        expect(refused!.json()).toEqual({ code: ErrorCode.VALIDATION, params: { message: 'Telemetry collection is disabled until a Sydekyks-owned capture plan is approved.' } })
+        const configuration = (await ctx.get('/v1/platform-configurations'))!.json()
+        expect(configuration.isProductTelemetryEnabled).toBe(false)
+        expect(configuration.isInfraSetupTelemetryEnabled).toBe(false)
     })
 
-    it('persists a switch in both directions', async () => {
+    it('accepts explicit disabling and an empty update without changing unrelated settings', async () => {
         const ctx = await createTestContext(app!)
-
-        const turnedOn = await ctx.post('/v1/platform-configurations', {
-            isProductTelemetryEnabled: true,
-        })
-        expect(turnedOn?.statusCode).toBe(StatusCodes.OK)
-        expect(turnedOn!.json().isProductTelemetryEnabled).toBe(true)
-        expect((await ctx.get('/v1/platform-configurations'))!.json().isProductTelemetryEnabled).toBe(true)
-
-        await ctx.post('/v1/platform-configurations', { isProductTelemetryEnabled: false })
-        expect((await ctx.get('/v1/platform-configurations'))!.json().isProductTelemetryEnabled).toBe(false)
-    })
-
-    it('treats an update that carries no fields as a no-op instead of failing', async () => {
-        const ctx = await createTestContext(app!)
-        await ctx.post('/v1/platform-configurations', { isProductTelemetryEnabled: true })
-
+        const off = await ctx.post('/v1/platform-configurations', { isProductTelemetryEnabled: false, isInfraSetupTelemetryEnabled: false })
+        expect(off?.statusCode).toBe(StatusCodes.OK)
         const response = await ctx.post('/v1/platform-configurations', {})
-
         expect(response?.statusCode).toBe(StatusCodes.OK)
-        expect(response!.json().isProductTelemetryEnabled).toBe(true)
-        expect(response!.json().isInfraSetupTelemetryEnabled).toBe(true)
+        expect(response!.json()).toMatchObject({ isProductTelemetryEnabled: false, isInfraSetupTelemetryEnabled: false })
     })
 
-    it('keeps the row scoped to its own platform', async () => {
-        const first = await createTestContext(app!)
-        const second = await createTestContext(app!)
-
-        await first.post('/v1/platform-configurations', { isProductTelemetryEnabled: true })
-
-        const firstConfiguration = await first.get('/v1/platform-configurations')
-        const secondConfiguration = await second.get('/v1/platform-configurations')
-
-        expect(firstConfiguration!.json().isProductTelemetryEnabled).toBe(true)
-        expect(secondConfiguration!.json().isProductTelemetryEnabled).toBe(false)
+    it('keeps unrelated configuration changes scoped to their own platform', async () => {
+        const first = await createTestContext(app!), second = await createTestContext(app!)
+        await first.post('/v1/platform-configurations', { maxBarrierSignals: 5 })
+        await second.post('/v1/platform-configurations', { maxBarrierSignals: 10 })
+        expect((await first.get('/v1/platform-configurations'))!.json().maxBarrierSignals).toBe(5)
+        expect((await second.get('/v1/platform-configurations'))!.json().maxBarrierSignals).toBe(10)
     })
 
     it('stops serving TELEMETRY_ENABLED as a flag, since the browser now reads the configuration', async () => {
@@ -156,9 +129,7 @@ describe('platform configuration', () => {
 
     it('shows specific AI models to builders until an admin hides them, and lets any member read the switch', async () => {
         const ctx = await createTestContext(app!)
-        const memberCtx = await createMemberContext(app!, ctx, {
-            projectRole: DefaultProjectRole.EDITOR,
-        })
+        const memberCtx = await createWorkspaceUserContext({ app: app!, parentCtx: ctx, platformRole: PlatformRole.MEMBER })
 
         expect((await ctx.get('/v1/platform-configurations'))!.json().aiSpecificModelsVisible).toBe(true)
 
@@ -172,7 +143,7 @@ describe('platform configuration', () => {
         const hidden = await ctx.post('/v1/platform-configurations', { aiSpecificModelsVisible: false })
         expect(hidden?.statusCode).toBe(StatusCodes.OK)
         expect(hidden!.json().aiSpecificModelsVisible).toBe(false)
-        expect(hidden!.json().isInfraSetupTelemetryEnabled).toBe(true)
+        expect(hidden!.json().isInfraSetupTelemetryEnabled).toBe(false)
 
         const memberRead = await memberCtx.get('/v1/platform-configurations')
         expect(memberRead?.statusCode).toBe(StatusCodes.OK)
@@ -248,9 +219,7 @@ describe('platform configuration', () => {
 
     it('lets any platform member read the configuration, but only an admin write it', async () => {
         const ctx = await createTestContext(app!)
-        const memberCtx = await createMemberContext(app!, ctx, {
-            projectRole: DefaultProjectRole.EDITOR,
-        })
+        const memberCtx = await createWorkspaceUserContext({ app: app!, parentCtx: ctx, platformRole: PlatformRole.MEMBER })
 
         const read = await memberCtx.get('/v1/platform-configurations')
         const write = await memberCtx.post('/v1/platform-configurations', {

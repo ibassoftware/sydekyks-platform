@@ -4,7 +4,6 @@ import { apLogger, evlogFastify, useWideEventLogger, wideEvent } from '@activepi
 import { ApEnvironment, maxSocketHttpBufferSizeBytes } from '@activepieces/shared'
 import cors from '@fastify/cors'
 import formBody from '@fastify/formbody'
-import fastifyHttpProxy from '@fastify/http-proxy'
 import fastifyMultipart from '@fastify/multipart'
 import fastifyStatic from '@fastify/static'
 import fastify, { FastifyInstance } from 'fastify'
@@ -66,38 +65,7 @@ export const setupServer = async (): Promise<FastifyInstance> => {
         app.io.on('connection', (socket: Socket) => rejectedPromiseHandler(websocketService.init(socket, app!.log), app!.log))
     }
 
-    if (system.isApp()) {
-        const posthogIngestionHost = 'https://us.i.posthog.com'
-        const posthogAssetsHost = 'https://us-assets.i.posthog.com'
-        await app.register(async (ingestScope) => {
-            ingestScope.removeAllContentTypeParsers()
-            ingestScope.addContentTypeParser('*', (_request, payload, done) => {
-                done(null, payload)
-            })
-            await ingestScope.register(fastifyHttpProxy, {
-                upstream: '',
-                prefix: '/ingest',
-                rewritePrefix: '',
-                replyOptions: {
-                    getUpstream: (originalReq) => {
-                        const url = originalReq.url ?? ''
-                        const isAsset = url.includes('/static') || url.includes('/array')
-                        return isAsset ? posthogAssetsHost : posthogIngestionHost
-                    },
-                    rewriteRequestHeaders: (originalReq, headers) => {
-                        const forwardedFor = originalReq.headers['x-forwarded-for']
-                        if (forwardedFor === undefined) {
-                            return headers
-                        }
-                        return {
-                            ...headers,
-                            'x-forwarded-for': Array.isArray(forwardedFor) ? forwardedFor.join(', ') : forwardedFor,
-                        }
-                    },
-                },
-            })
-        })
-    }
+
 
     const environment = system.get(AppSystemProp.ENVIRONMENT)
     if (system.isApp() && environment !== ApEnvironment.DEVELOPMENT) {

@@ -1,135 +1,23 @@
-import { AIProviderName, isNil, ProjectId, spreadIfDefined, UserId } from '@activepieces/core-utils'
-import { apVersionUtil } from '@activepieces/server-utils'
-import { ApEdition, ApEnvironment, AppInstance, AttributionParams, attributionUtils, DeploymentConfig, DeploymentKind, FlowRunStatus, GetDiagnosticsResponse, GetSystemHealthChecksResponse, isCloudOnlyTelemetryEvent, MachineInformation, pickTelemetryPii, RunEnvironment, SignUpMethod, TelemetryEvent, User, UserIdentity } from '@activepieces/shared'
+import { AIProviderName, ProjectId, UserId } from '@activepieces/core-utils'
+import { ApEdition, AppInstance, AttributionParams, DeploymentConfig, FlowRunStatus, GetDiagnosticsResponse, GetSystemHealthChecksResponse, MachineInformation, RunEnvironment, SignUpMethod, TelemetryEvent, User, UserIdentity } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
-import { PostHog } from 'posthog-node'
-import { platformConfigurationService } from '../platform/platform-configuration.service'
-import { platformService } from '../platform/platform.service'
-import { projectService } from '../project/project-service'
-import { system } from './system/system'
-import { AppSystemProp } from './system/system-props'
 
-let posthogInstance: PostHog | null = null
-function getPostHog(): PostHog {
-    if (!posthogInstance) {
-        posthogInstance = new PostHog('phc_7F92HoXJPeGnTKmYv0eOw62FurPMRW9Aqr0TPrDzvHh', {
-            host: 'https://us.i.posthog.com',
-            maxQueueSize: POSTHOG_MAX_QUEUE_SIZE,
-        })
-    }
-    return posthogInstance
-}
-
+// Product and deployment telemetry are paused until a Sydekyks-owned capture
+// plan is approved. Retain these APIs for callers; no collector or SDK is loaded.
 export const LICENSE_KEY_EVENTS_FLUSH_BATCH_SIZE = 5_000
-const POSTHOG_MAX_QUEUE_SIZE = 20_000
-
-export const telemetry = (log: FastifyBaseLogger) => ({
-    async identify({ identity, platformId, user, projectId }: IdentifyParams): Promise<void> {
-        if (!await platformConfigurationService(log).isProductTelemetryEnabled({ platformId })) {
-            return
-        }
-        getPostHog().identify({
-            distinctId: user?.id ?? identity.id,
-            properties: {
-                ...pickTelemetryPii({
-                    edition: system.getEdition(),
-                    email: identity.email,
-                    firstName: identity.firstName,
-                    lastName: identity.lastName,
-                }),
-                projectId,
-                firstSeenAt: user?.created ?? identity.created,
-                ...(await getMetadata()),
-            },
-        })
-    },
-    async identifySignUp({ userId, platformId, method, attribution }: IdentifySignUpParams): Promise<void> {
-        if (!await platformConfigurationService(log).isProductTelemetryEnabled({ platformId })) {
-            return
-        }
-        getPostHog().identify({
-            distinctId: userId,
-            properties: {
-                $set_once: {
-                    signup_method: method,
-                    ...(attributionUtils.isEmptyAttribution({ attribution }) ? {} : attribution),
-                },
-            },
-        })
-    },
-    async aliasIdentity({ identityId, userId, platformId }: AliasIdentityParams): Promise<void> {
-        if (system.getEdition() !== ApEdition.CLOUD) {
-            return
-        }
-        if (!await platformConfigurationService(log).isProductTelemetryEnabled({ platformId })) {
-            return
-        }
-        getPostHog().alias({ distinctId: userId, alias: identityId })
-    },
-    async identifyPlatformGroup({ platformId, properties }: IdentifyPlatformGroupParams): Promise<void> {
-        if (!await platformConfigurationService(log).isProductTelemetryEnabled({ platformId })) {
-            return
-        }
-        getPostHog().groupIdentify({
-            groupType: PLATFORM_GROUP_TYPE,
-            groupKey: platformId,
-            properties: {
-                ...pickPlatformGroupPii(properties),
-                plan: properties.plan,
-                createdAt: properties.createdAt,
-                deployment: getDeploymentKind(),
-            },
-        })
-    },
-    async trackPlatform({ platformId, event }: TrackPlatformParams): Promise<void> {
-        if (!await platformConfigurationService(log).isProductTelemetryEnabled({ platformId })) {
-            return
-        }
-        const platform = await platformService(log).getOneOrThrow(platformId)
-        await captureUserEvent({ userId: platform.ownerId, platformId, event, log })
-    },
-    async trackProject({ projectId, event }: TrackProjectParams): Promise<void> {
-        const project = await projectService(log).getOne(projectId)
-        if (isNil(project)) {
-            return
-        }
-        return this.trackUser({ userId: project.ownerId, platformId: project.platformId, event })
-    },
-    async trackIdentity({ identityId, platformId, event }: TrackIdentityParams): Promise<void> {
-        if (!isNil(platformId)) {
-            return this.trackUser({ userId: identityId, platformId, event })
-        }
-        if (system.getEdition() !== ApEdition.CLOUD) {
-            return
-        }
-        await captureUserEvent({ userId: identityId, platformId, event, log })
-    },
-    async trackUser({ userId, platformId, event }: TrackUserParams): Promise<void> {
-        if (!await platformConfigurationService(log).isProductTelemetryEnabled({ platformId })) {
-            return
-        }
-        await captureUserEvent({ userId, platformId, event, log })
-    },
+export const telemetry = (_log: FastifyBaseLogger) => ({
+    identify: async (_params: IdentifyParams): Promise<void> => {},
+    identifySignUp: async (_params: IdentifySignUpParams): Promise<void> => {},
+    aliasIdentity: async (_params: AliasIdentityParams): Promise<void> => {},
+    identifyPlatformGroup: async (_params: IdentifyPlatformGroupParams): Promise<void> => {},
+    trackPlatform: async (_params: TrackPlatformParams): Promise<void> => {},
+    trackProject: async (_params: TrackProjectParams): Promise<void> => {},
+    trackIdentity: async (_params: TrackIdentityParams): Promise<void> => {},
+    trackUser: async (_params: TrackUserParams): Promise<void> => {},
 })
-
-export function captureLicenseKeyEvent({ licenseKey, event, properties }: CaptureLicenseKeyEventParams): void {
-    getPostHog().capture({
-        distinctId: licenseKey,
-        event,
-        properties,
-    })
-}
-export async function flushLicenseKeyPostHogEvents(): Promise<void> {
-    if (posthogInstance !== null) {
-        await posthogInstance.flush()
-    }
-}
-
-export async function shutdownTelemetry(): Promise<void> {
-    if (posthogInstance) {
-        await posthogInstance.shutdown()
-    }
-}
+export function captureLicenseKeyEvent(_params: CaptureLicenseKeyEventParams): void {}
+export async function flushLicenseKeyPostHogEvents(): Promise<void> {}
+export async function shutdownTelemetry(): Promise<void> {}
 
 const DEDUPE_MAX_ENTRIES = 50_000
 const dailyEventDedupe = new Map<string, string>()
@@ -147,55 +35,6 @@ function onceToday(key: string): boolean {
 }
 
 export const telemetryDedupe = { onceToday }
-
-async function captureUserEvent({ userId, platformId, event, log }: CaptureUserEventParams): Promise<void> {
-    if (isCloudOnlyTelemetryEvent(event.name) && system.getEdition() !== ApEdition.CLOUD) {
-        return
-    }
-    const payloadEvent = {
-        distinctId: userId,
-        event: event.name,
-        properties: {
-            ...event.payload,
-            ...(await getMetadata()),
-            datetime: new Date().toISOString(),
-        },
-        ...spreadIfDefined('groups', isNil(platformId) ? null : { platform: platformId }),
-    }
-    log.info(payloadEvent, '[Telemetry#captureUserEvent] sending event')
-    getPostHog().capture(payloadEvent)
-}
-
-async function getMetadata() {
-    const currentVersion = apVersionUtil.getCurrentRelease()
-    const edition = system.getEdition()
-    return {
-        activepiecesVersion: currentVersion,
-        activepiecesEnvironment: system.get(AppSystemProp.ENVIRONMENT),
-        activepiecesEdition: edition,
-        deployment: getDeploymentKind(),
-        source_site: 'product',
-    }
-}
-
-function pickPlatformGroupPii(properties: PlatformGroupProperties): { name?: string } {
-    if (system.getEdition() !== ApEdition.CLOUD) {
-        return {}
-    }
-    return { name: properties.name }
-}
-
-function getDeploymentKind(): DeploymentKind {
-    if (system.getEdition() === ApEdition.CLOUD) {
-        return DeploymentKind.CLOUD
-    }
-    if (system.get(AppSystemProp.ENVIRONMENT) === ApEnvironment.DEVELOPMENT) {
-        return DeploymentKind.DEV
-    }
-    return DeploymentKind.SELF_HOSTED
-}
-
-const PLATFORM_GROUP_TYPE = 'platform'
 
 export enum LicenseKeyPostHogEvents {
     AI_USAGE_PER_RUN = 'ai_usage_per_run',
@@ -323,11 +162,4 @@ type TrackUserParams = {
     userId: UserId
     platformId: string
     event: TelemetryEvent
-}
-
-type CaptureUserEventParams = {
-    userId: UserId
-    platformId: string | null
-    event: TelemetryEvent
-    log: FastifyBaseLogger
 }

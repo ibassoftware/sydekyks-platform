@@ -25,5 +25,6 @@
   "packages/server/api/test/integration/ce/database/sydekyks-upstream-upgrade.test.ts",
   "packages/server/api/test/integration/ce/flows/flow/flow-draft-push.test.ts",
   "packages/server/api/test/integration/ce/authentication/password-reset.test.ts",
-  "packages/server/api/test/integration/ce/pieces/dev-piece-translation.test.ts"
+  "packages/server/api/test/integration/ce/pieces/dev-piece-translation.test.ts",
+  "packages/server/api/test/integration/ce/platform/platform-configuration.test.ts"
 ]
