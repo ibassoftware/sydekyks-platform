@@ -169,12 +169,12 @@ describe('operator manual accounts and bounded funding', () => {
     })
     it.each([['starter', 10], ['team', 30], ['scale', 100]] as const)('enforces %s seat capacity including pending invite reservations at the real server boundary', async (planId, seats) => {
         const account = (await created({ planId })).account, learner = await scope(account.identityId, account.platformId)
-        const pending = Array.from({ length: seats - 2 }, () => ({ id: apId(), platformId: account.platformId, subject: apId().padEnd(64, 'a'), tokenDigest: apId().padEnd(64, 'b'), role: PlatformRole.MEMBER, status: 'pending' as const, projectUnits: 1, expiresAt: new Date(Date.now() + 86400_000), acceptedIdentityId: null }))
+        const pending = Array.from({ length: seats - 2 }, () => ({ id: apId(), platformId: account.platformId, subject: apId().padEnd(64, 'a'), tokenDigest: apId().padEnd(64, 'b'), role: PlatformRole.MEMBER, status: 'pending' as const, projectUnits: 0, expiresAt: new Date(Date.now() + 86400_000), acceptedIdentityId: null }))
         await ds.getRepository(HostingInvitationEntity).insert(pending)
         const onboarding = createHostedOnboarding({ dataSource: ds, subjectSecret: secret })
         await expect(onboarding.invite({ actor: learner, email: `last-${planId}@test.invalid`, role: PlatformRole.MEMBER })).resolves.toMatchObject({ id: expect.any(String) })
         await expect(onboarding.invite({ actor: learner, email: `over-${planId}@test.invalid`, role: PlatformRole.MEMBER })).rejects.toThrow('HOSTING_RESOURCE_LIMIT')
-        expect(await ds.getRepository(HostingInvitationEntity).countBy({ platformId: account.platformId, status: 'pending' })).toBe(seats - 1)
+        expect(await ds.getRepository(HostingInvitationEntity).countBy({ platformId: account.platformId, status: 'pending', projectUnits: 0 })).toBe(seats - 1)
     })
     it('creates Partner training with one seat and an optional real course, independent assessment and explicit approval only', async () => {
         const courseId = await partnerCourse(), result = await created({ kind: 'partner', planId: 'training', partner: { package: 'core', courseId, approve: false } })
