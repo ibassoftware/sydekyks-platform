@@ -7,9 +7,10 @@ import { UserIdentityEntity } from '../../src/app/authentication/user-identity/u
 import { FlagEntity } from '../../src/app/flags/flag.entity'
 import { HostingAccessRoleEntity } from '../../src/app/hosting/hosting-access-entities'
 import { createHostedRecovery } from '../../src/app/hosting/hosting-account-recovery'
-import { HostingGrantEntity } from '../../src/app/hosting/hosting-entities'
+import { HostingGrantEntity, HostingOutboxEntity } from '../../src/app/hosting/hosting-entities'
 import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-installation'
 import { createHostedOnboarding } from '../../src/app/hosting/hosting-onboarding'
+import { setHostedUserPassword } from '../../src/app/hosting/hosting-password'
 import { HostingRecoveryTokenEntity } from '../../src/app/hosting/hosting-recovery-entities'
 import { HostingTrainerRoleEntity } from '../../src/app/hosting/hosting-trainer-entities'
 import { HostingActor } from '../../src/app/hosting/hosting-transactions'
@@ -96,4 +97,29 @@ it('commits one completion when the same copied link is redeemed twice', async (
     const link = await issue(), outcomes = await Promise.allSettled([service().redeem({ token: link.token, password }), service().redeem({ token: link.token, password })])
     expect(outcomes.filter(value => value.status === 'fulfilled')).toHaveLength(1)
     expect(outcomes.filter(value => value.status === 'rejected')).toHaveLength(1)
+})
+
+it('lets only a reauthenticated current operator change ordinary and privileged account passwords, recording an audit event', async () => {
+    const recipient = await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: target })
+    const input = { email: recipient.email, currentPassword: 'Synthetic-old-password-71!', newPassword: password, reason: 'Founder authorized account password correction' }
+    await expect(setHostedUserPassword({ dataSource: ds, actor: operator, input: { ...input, currentPassword: 'wrong-password' } })).rejects.toThrow()
+    await expect(setHostedUserPassword({ dataSource: ds, actor: { ...operator, tokenVersion: 'stale' }, input })).rejects.toThrow()
+    vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', target)
+    await expect(setHostedUserPassword({ dataSource: ds, actor: operator, input })).rejects.toThrow()
+    vi.stubEnv('AP_HOSTED_OPERATOR_IDENTITY_IDS', [operator.identityId, target].join(','))
+    await setHostedUserPassword({ dataSource: ds, actor: operator, input })
+    const changed = await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: target })
+    expect(await passwordHasher.compare(password, changed.password)).toBe(true)
+    expect(changed.tokenVersion).not.toBe(recipient.tokenVersion)
+    const events = await ds.getRepository(HostingOutboxEntity).findBy({ event: 'identity.password.admin_changed' })
+    expect(events).toHaveLength(1)
+    expect(events[0].payload).toMatchObject({ actorIdentityId: operator.identityId, identityId: target, reason: input.reason })
+    expect(JSON.stringify(events)).not.toContain(password)
+    expect(JSON.stringify(events)).not.toContain(input.currentPassword)
+})
+it('allows the platform operator to change their own password and invalidates their previous operator session', async () => {
+    const identity = await ds.getRepository(UserIdentityEntity).findOneByOrFail({ id: operator.identityId })
+    const input = { email: identity.email, currentPassword: 'Synthetic-old-password-71!', newPassword: password, reason: 'Operator requested password rotation' }
+    await setHostedUserPassword({ dataSource: ds, actor: operator, input })
+    await expect(service().status({ actor: operator, email: identity.email })).rejects.toThrow()
 })

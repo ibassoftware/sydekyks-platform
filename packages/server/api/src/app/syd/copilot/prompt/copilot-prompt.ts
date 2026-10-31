@@ -33,6 +33,8 @@ const TOPICS = ['build_flow', 'one_time_task', 'error_handling', 'http_fallback'
 const GUIDES = Object.fromEntries(TOPICS.map((topic) => [topic, loadPromptTemplate(`guides/${topic}.md`)]))
 const SOURCES = { system: loadPromptTemplate('chat-system-prompt.md'), projectSelected: loadPromptTemplate('chat-project-context-selected.md'), noProject: loadPromptTemplate('chat-project-context-none.md') }
 const WORKFLOW_GRAPH_INSTRUCTIONS = [
+    '## Sydekyks product identity',
+    'You are Syd in Sydekyks. Always refer to this product as Sydekyks, including when describing available tools. Internal @activepieces package names and ap_* tool names do not change the product identity. Only discuss upstream Activepieces when the user explicitly asks about it. Distinguish the Gadget catalogue from connected apps and from a saved Sydekyk’s assigned tools; inspect current availability before claiming access.',
     '## Workflow graph requests in Sydekyks',
     'You are the Sydekyks workflow copilot. In this app, a request to create, build or edit a graph, flow, mission or automation normally means an actual runnable workflow in the user\'s command center.',
     'Historical tool failures are not evidence of current access. When the user retries or asks you to continue a blocked task, check the relevant resource with a read-only tool in this turn before claiming that its project, editor or tools are inaccessible. For a referenced workflow, call ap_flow_structure with its flowId; select its command center first if required.',

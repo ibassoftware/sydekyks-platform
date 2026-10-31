@@ -23,7 +23,7 @@ import { CheckEmailNote } from '@/features/authentication/components/check-email
 import { HttpError } from '@/lib/api';
 
 const FormSchema = z.object({
-  email: z.string().min(1, t('Please enter your email')),
+  email: z.email(t('Please enter a valid email')),
   type: CreateOtpRequestBody.shape.type,
 });
 
@@ -38,7 +38,7 @@ const ResetPasswordForm = () => {
     },
   });
 
-  const { mutate, isPending } = useMutation<
+  const { mutate, isPending, isError } = useMutation<
     void,
     HttpError,
     CreateOtpRequestBody
@@ -52,7 +52,7 @@ const ResetPasswordForm = () => {
   };
 
   return (
-    <Card className="w-md rounded-md drop-shadow-xl">
+    <Card className="w-full max-w-md rounded-md">
       <CardHeader>
         <CardTitle className="text-2xl">
           {isSent ? t('Check Your Inbox') : t('Reset Password')}
@@ -75,7 +75,7 @@ const ResetPasswordForm = () => {
       <CardContent>
         {!isSent && (
           <Form {...form}>
-            <form className="grid ">
+            <form className="grid" onSubmit={form.handleSubmit(onSubmit)}>
               <FormField
                 control={form.control}
                 name="email"
@@ -84,18 +84,23 @@ const ResetPasswordForm = () => {
                     <Label htmlFor="email">{t('Email')}</Label>
                     <Input
                       {...field}
-                      type="text"
+                      id="email"
+                      type="email"
+                      autoComplete="email"
                       placeholder={'email@example.com'}
                     />
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <Button
-                className="w-full mt-4"
-                loading={isPending}
-                onClick={(e) => form.handleSubmit(onSubmit)(e)}
-              >
+              {isError && (
+                <p role="alert" className="mt-3 text-sm text-danger-11">
+                  {t(
+                    'Could not request a reset link. Try again shortly or contact your administrator.',
+                  )}
+                </p>
+              )}
+              <Button className="w-full mt-4" loading={isPending} type="submit">
                 {t('Send Password Reset Link')}
               </Button>
             </form>

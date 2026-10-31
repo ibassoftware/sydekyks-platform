@@ -1,8 +1,6 @@
 import { ErrorCode, isNil } from '@activepieces/core-utils';
 import {
   OtpType,
-  ApEdition,
-  ApFlagId,
   AuthenticationResponse,
   SignInRequest,
   TelemetryEventName,
@@ -22,7 +20,6 @@ import { Button } from '@/components/ui/button';
 import { Form, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { flagsHooks } from '@/hooks/flags-hooks';
 import { acquisitionUtils } from '@/lib/acquisition-utils';
 import { HttpError, api } from '@/lib/api';
 import { authenticationSession } from '@/lib/authentication-session';
@@ -53,8 +50,6 @@ const SignInForm = ({ onForgotPassword }: SignInFormProps) => {
     },
     mode: 'onChange',
   });
-
-  const { data: edition } = flagsHooks.useFlag(ApFlagId.EDITION);
 
   const redirectAfterLogin = useRedirectAfterLogin();
   const [searchParams] = useSearchParams();
@@ -186,10 +181,10 @@ const SignInForm = ({ onForgotPassword }: SignInFormProps) => {
               <FormItem className="grid space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password">{t('Password')}</Label>
-                  {edition !== ApEdition.COMMUNITY &&
+                  {
                     // Inside the auth card the reset flow is another step, not
                     // another page — the caller hands us a handler for it.
-                    (onForgotPassword ? (
+                    onForgotPassword ? (
                       <button
                         type="button"
                         onClick={onForgotPassword}
@@ -204,7 +199,8 @@ const SignInForm = ({ onForgotPassword }: SignInFormProps) => {
                       >
                         {t('Forgot your password?')}
                       </Link>
-                    ))}
+                    )
+                  }
                 </div>
                 <div className="relative">
                   <Input

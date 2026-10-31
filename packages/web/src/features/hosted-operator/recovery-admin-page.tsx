@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { assertAuthSession } from '@/features/hosted-onboarding/auth-session';
 import { api } from '@/lib/api';
 
+import { AdminPasswordForm } from './admin-password-form';
 import { useHostedOperatorAccess } from './operator-api';
 const State = z.object({
   platformId: z.string(),
@@ -304,6 +305,7 @@ function RecoverySession({
           />
         </section>
       )}
+      <AdminPasswordForm access={access} />
       {notice && (
         <p role="status" className="text-sm leading-6">
           {notice}

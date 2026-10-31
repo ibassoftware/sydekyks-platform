@@ -57,6 +57,7 @@ function isPartnerSetupPage(): boolean {
     '/tenant-join',
     '/trainer-setup',
     '/account-recovery',
+    '/reset-password',
   ].includes(window.location.pathname.replace(/\/+$/, '').toLowerCase());
 }
 
@@ -68,6 +69,7 @@ function redactSetupUrl(value: string): string {
       '/tenant-join',
       '/trainer-setup',
       '/account-recovery',
+      '/reset-password',
     ].includes(url.pathname.replace(/\/+$/, '').toLowerCase())
       ? `${url.origin}${url.pathname}`
       : value;

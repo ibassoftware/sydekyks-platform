@@ -1,4 +1,4 @@
-import { PrincipalType } from '@activepieces/shared'
+import { PasswordType, PrincipalType } from '@activepieces/shared'
 import { FastifyRequest } from 'fastify'
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
@@ -10,6 +10,7 @@ import { AppSystemProp } from '../helper/system/system-props'
 import { UserEntity } from '../user/user-entity'
 import { assertHostingOperator } from './hosting-access-policy'
 import { createHostedRecovery, RecoveryCommand, RecoveryRedeem, RecoverySecret } from './hosting-account-recovery'
+import { setHostedUserPassword } from './hosting-password'
 import { HostingActor, HostingError, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 function assertRateLimited(): void {
@@ -39,6 +40,10 @@ export const hostingRecoveryController: FastifyPluginAsyncZod = async app => {
     app.setErrorHandler((error, _request, reply) => {
         if (error instanceof HostingError) return reply.code(/CONFLICT/.test(error.message) ? 409 : 403).send({ code: error.message })
         return reply.code(rateLimited(error) ? 429 : 400).send({ code: 'HOSTING_RECOVERY_REQUEST_INVALID' })
+    })
+    app.post('/set-password', { config, logLevel: 'silent', bodyLimit: 4096, schema: { body: z.strictObject({ email: z.email().max(254), currentPassword: z.string().min(1).max(64), newPassword: PasswordType, reason: z.string().trim().min(10).max(1000) }) } }, async (request, reply) => {
+        await setHostedUserPassword({ dataSource, actor: await actorOf(request), input: request.body })
+        return reply.code(204).send()
     })
     app.get('/', { config, schema: { querystring: z.strictObject({ email: z.email().max(254) }) } }, async request => service.status({ actor: await actorOf(request), email: request.query.email }))
     // The one-time link is deliberately returned only by this explicit mutation,

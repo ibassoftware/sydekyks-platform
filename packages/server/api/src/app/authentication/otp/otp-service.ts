@@ -6,7 +6,7 @@ import { repoFactory } from '../../core/db/repo-factory'
 import { distributedLock, distributedStore } from '../../database/redis-connections'
 import { encryptUtils } from '../../helper/encryption'
 import { emailService } from '../../sydekyks-community/email'
-import { userIdentityService } from '../user-identity/user-identity-service'
+import { userIdentityRepository, userIdentityService } from '../user-identity/user-identity-service'
 import { otpGenerator } from './lib/otp-generator'
 import { OtpEntity } from './otp-entity'
 
@@ -49,10 +49,10 @@ export const otpService = (log: FastifyBaseLogger) => ({
                     updated: dayjs().toISOString(),
                     type,
                     identityId,
-                    value: await encryptUtils.hmacString(freshCode),
+                    value: await encryptUtils.hmacString(type === OtpType.PASSWORD_RESET ? `${freshCode}:${userIdentity.tokenVersion ?? ''}` : freshCode),
                     state: OtpState.PENDING,
                     attempts: 0,
-                    version: HASHED_OTP_VERSION,
+                    version: type === OtpType.PASSWORD_RESET ? 2 : HASHED_OTP_VERSION,
                 }
                 await repo().upsert(newOtp, ['identityId', 'type'])
                 await cacheCode({ identityId, type, code: freshCode })
@@ -109,8 +109,12 @@ export const otpService = (log: FastifyBaseLogger) => ({
 })
 
 async function comparableValue({ otp, value }: ComparableValueParams): Promise<string> {
-    const writtenBeforeHashing = otp.version < HASHED_OTP_VERSION
-    return writtenBeforeHashing ? value : encryptUtils.hmacString(value)
+    if (otp.type === OtpType.PASSWORD_RESET) {
+        if (otp.version < 2) return '' // Old codes were not bound to a credential revision.
+        const identity = await userIdentityRepository().findOneByOrFail({ id: otp.identityId })
+        return encryptUtils.hmacString(`${value}:${identity.tokenVersion ?? ''}`)
+    }
+    return otp.version < 1 ? value : encryptUtils.hmacString(value)
 }
 
 async function countAttempt(otpId: string): Promise<void> {

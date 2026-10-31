@@ -1,3 +1,4 @@
+import './lib/password-reset-secret';
 import './features/hosted-billing/checkout-intent-bootstrap';
 import './lib/partner-setup-secret';
 import './polyfills';

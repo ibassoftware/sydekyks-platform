@@ -1,15 +1,32 @@
 import { ApId, assertNotNullOrUndefined, SeekPage } from '@activepieces/core-utils'
-import { ApEdition, ListUsersRequestBody, PrincipalType, SERVICE_KEY_SECURITY_OPENAPI, UpdateUserRequestBody, UserWithMetaInformation } from '@activepieces/shared'
+import { ApEdition, ListUsersRequestBody, PasswordType, PrincipalType, SERVICE_KEY_SECURITY_OPENAPI, UpdateUserRequestBody, UserWithMetaInformation } from '@activepieces/shared'
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { StatusCodes } from 'http-status-codes'
 import { z } from 'zod'
 import { securityAccess } from '../../core/security/authorization/fastify-security'
+import { authnRateLimit } from '../../core/security/rate-limit'
+import { databaseConnection } from '../../database/database-connection'
 import { system } from '../../helper/system/system'
+import { hostingConfiguration } from '../../hosting/hosting-configuration'
+import { hostingFail } from '../../hosting/hosting-transactions'
 import { userService } from '../user-service'
+import { setPlatformUserPassword } from './platform-password-service'
 
 export const platformUserController: FastifyPluginAsyncZod = async (app) => {
 
-    app.get('/', ListUsersRequest, async (req) => {
+    app.post('/:id/password', {
+        config: { security: securityAccess.platformAdminOnly([PrincipalType.USER]), rateLimit: authnRateLimit },
+        logLevel: 'silent', bodyLimit: 4096,
+        schema: { params: z.object({ id: ApId }), body: z.strictObject({ currentPassword: z.string().min(1).max(64), newPassword: PasswordType }) },
+    }, async (req, reply) => {
+        if (hostingConfiguration.getServiceMode() === 'hosted') hostingFail('HOSTING_OPERATOR_REQUIRED')
+        if (req.principal.type !== PrincipalType.USER) return reply.code(403).send()
+        await setPlatformUserPassword({ dataSource: databaseConnection(), userId: req.principal.id, platformId: req.principal.platform.id, tokenVersion: req.principal.tokenVersion ?? null, targetUserId: req.params.id, ...req.body })
+        req.log.info({ actorUserId: req.principal.id, targetUserId: req.params.id, platformId: req.principal.platform.id }, 'Administrator changed account password')
+        return reply.code(204).send()
+    })
+
+    app.get('/',  ListUsersRequest, async (req) => {
         const platformId = req.principal.platform.id
         assertNotNullOrUndefined(platformId, 'platformId')
 
