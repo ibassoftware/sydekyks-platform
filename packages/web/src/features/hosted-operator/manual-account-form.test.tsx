@@ -75,6 +75,52 @@ function setup() {
   }) as HTMLButtonElement;
 }
 describe('manual creation funding and retry controls', () => {
+  it('submits internal Starter with 35 Credits and prevents an above-cap submission', async () => {
+    const submit = setup();
+    fireEvent.change(screen.getByLabelText('Partner package'), {
+      target: { value: 'starter' },
+    });
+    const credits = screen.getByLabelText(
+      'Monthly Credits',
+    ) as HTMLInputElement;
+    expect(credits.value).toBe('35');
+    expect(credits.max).toBe('35');
+    expect(
+      (screen.getByLabelText('Partner course') as HTMLSelectElement).disabled,
+    ).toBe(true);
+    fireEvent.click(
+      screen.getByLabelText(/I verified the manual payment or authorization/),
+    );
+    fireEvent.change(credits, { target: { value: '35.01' } });
+    fireEvent.submit(submit.closest('form')!);
+    expect(mocks.create).not.toHaveBeenCalled();
+    fireEvent.change(credits, { target: { value: '35' } });
+    mocks.create.mockResolvedValueOnce({
+      account: { ...account, package: 'starter', monthlyCredits: 3500 },
+    });
+    fireEvent.click(submit);
+    await screen.findByText(/Account created:/);
+    expect(mocks.create.mock.calls[0][1]).toMatchObject({
+      kind: 'partner',
+      planId: 'training',
+      monthlyCredits: 3500,
+      partner: { package: 'starter', approve: false },
+    });
+    expect(mocks.create.mock.calls[0][1].partner.courseId).toBeUndefined();
+  });
+  it('restores the Core allowance when switching away from Starter', () => {
+    setup();
+    const packages = screen.getByLabelText('Partner package');
+    fireEvent.change(packages, { target: { value: 'starter' } });
+    fireEvent.change(packages, { target: { value: 'core' } });
+    expect(
+      (screen.getByLabelText('Monthly Credits') as HTMLInputElement).value,
+    ).toBe('300');
+    expect(
+      (screen.getByLabelText('Partner course') as HTMLSelectElement).disabled,
+    ).toBe(false);
+  });
+
   it('requires deliberate funding confirmation and leaves Partner operational approval unchecked', () => {
     const submit = setup();
     expect(submit.disabled).toBe(true);

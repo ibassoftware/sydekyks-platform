@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto'
 import { apId } from '@activepieces/core-utils'
-import { hostingCatalog, UserIdentityProvider } from '@activepieces/shared'
+import { HOSTED_PARTNER_STARTER_MONTHLY_CREDITS, hostingCatalog, UserIdentityProvider } from '@activepieces/shared'
 import { DataSource, EntityManager, IsNull } from 'typeorm'
 import { passwordHasher } from '../authentication/lib/password-hasher'
 import { signupNames } from '../authentication/lib/signup-names'
@@ -19,10 +19,12 @@ import { HostingManualAccountCreate, HostingManualEnrollmentCreate, HostingManua
 import { currentManualTerm, manualTermPeriods, manualTermSource } from './hosting-manual-terms'
 import { createHostedOnboarding } from './hosting-onboarding'
 import { HostingPartnerPurchaseEntity } from './hosting-partner-billing-entities'
+import { assertPartnerStarterAllowance } from './hosting-partner-starter'
 import { HostingStripeBindingEntity } from './hosting-stripe-entities'
 import { HostingSubscriptionCommandEntity, HostingSubscriptionEntity } from './hosting-subscription-entities'
 import { lastFundedSubscriptionPeriod, loadSubscriptionContext, subscriptionAccountActive, subscriptionAccountUntil } from './hosting-subscription-policy'
 import { HostingTrainingEntity } from './hosting-training-entity'
+import { hostingMonthAnniversary } from './hosting-training-periods'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
 export function createHostedManualAccounts({ dataSource, subjectSecret }: { dataSource: DataSource, subjectSecret: string }) {
@@ -60,9 +62,9 @@ export function createHostedManualAccounts({ dataSource, subjectSecret }: { data
                 await manager.getRepository(UserIdentityEntity).save({ id: identityId, email: value.email, ...names, password, provider: UserIdentityProvider.EMAIL, verified: true, tokenVersion: apId(), trackEvents: false, newsLetter: false })
                 const workspace = await createHostedOnboarding({ dataSource, subjectSecret }).provision({ identityId, name: value.companyName, operator: actor, manager })
                 const account = await tx.account({ manager, platformId: workspace.platformId }), startsAt = await tx.now(manager)
-                const term = await issueTerm(manager, { platformId: account.id, identityId, planId: value.planId, revision: 1, startsAt, expiresAt: new Date(value.expiresAt), monthlyCredits: value.monthlyCredits ?? hostingCatalog.getPlan({ planId: value.planId }).executions, operatorIdentityId: actor.identityId, reason: value.reason })
+                const term = await issueTerm(manager, { platformId: account.id, identityId, planId: value.planId, revision: 1, startsAt, expiresAt: new Date(value.expiresAt), monthlyCredits: value.monthlyCredits ?? (value.kind === 'partner' && value.partner.package === 'starter' ? HOSTED_PARTNER_STARTER_MONTHLY_CREDITS : hostingCatalog.getPlan({ planId: value.planId }).executions), operatorIdentityId: actor.identityId, reason: value.reason })
                 let enrollmentId: string | null = null
-                if (value.kind === 'partner' && value.partner.courseId) {
+                if (value.kind === 'partner' && value.partner.package !== 'starter' && value.partner.courseId) {
                     const course = await manager.getRepository(LmsCourseEntity).findOneBy({ id: value.partner.courseId, status: 'published', ownerPlatformId: IsNull(), audience: 'partner', certificationMode: 'partner' })
                     if (!course) hostingFail('HOSTING_MANUAL_PARTNER_COURSE_REQUIRED')
                     const enrollment = await manager.getRepository(LmsEnrollmentEntity).save({ id: apId(), identityId, courseId: course.id, grantPlatformId: null, accessType: 'partner_training', package: value.partner.package, paymentReference: `manual-term:${term.id}`, workspacePlatformId: account.id, startsAt, accessUntil: term.expiresAt, assessmentUntil: new Date(Math.min(term.expiresAt.getTime(), startsAt.getTime() + 90 * 86400_000)), status: 'active', completedLessons: [], assignment: null, practicalReviews: [], enrolledBy: actor.identityId })
@@ -103,6 +105,10 @@ export function createHostedManualAccounts({ dataSource, subjectSecret }: { data
             if (prior.expiresAt > startsAt) hostingFail('HOSTING_MANUAL_ACTIVE_TERM_REQUIRES_REVIEW')
             if (account.status === 'suspended' || account.billingHold || await manager.getRepository(HostingStripeBindingEntity).existsBy({ platformId }) || await manager.getRepository(HostingPartnerPurchaseEntity).existsBy({ platformId }) || await manager.getRepository(HostingTrainingEntity).existsBy({ platformId })) hostingFail('HOSTING_MANUAL_FUNDING_REQUIRES_REVIEW')
             if (bound.enrollmentId && (!enrollment || enrollment.status !== 'active' || enrollment.identityId !== account.ownerIdentityId || enrollment.workspacePlatformId !== platformId)) hostingFail('HOSTING_MANUAL_ENROLLMENT_REQUIRES_REVIEW')
+            await assertPartnerStarterAllowance(manager, platformId, value.monthlyCredits)
+            // A short funded term must not reset Starter's monthly cap early.
+            const nextCreditMonth = hostingMonthAnniversary(prior.startsAt, manualTermPeriods(prior).length)
+            if (bound.package === 'starter' && startsAt < nextCreditMonth) hostingFail('HOSTING_PARTNER_STARTER_MONTHLY_PERIOD_ACTIVE')
             const revision = bound.revision + 1
             const term = await issueTerm(manager, { platformId, identityId: account.ownerIdentityId, planId: prior.planId, revision, startsAt, expiresAt: new Date(value.expiresAt), monthlyCredits: value.monthlyCredits ?? await effectiveHostedCredits(manager, platformId, prior.planId), operatorIdentityId: actor.identityId, reason: value.reason })
             await manager.getRepository(HostingManualAccountEntity).update({ id: platformId }, { termId: term.id, revision })
@@ -150,7 +156,7 @@ export function createHostedManualAccounts({ dataSource, subjectSecret }: { data
             }
             const term = await currentManualTerm(manager, account), now = await tx.now(manager)
             if (bound.revision !== value.expectedRevision) hostingFail('HOSTING_MANUAL_REVISION_CONFLICT')
-            if (bound.kind !== 'partner' || !bound.package || !term || term.planId !== 'training') hostingFail('HOSTING_MANUAL_PARTNER_ACCOUNT_REQUIRED')
+            if (bound.kind !== 'partner' || !bound.package || bound.package === 'starter' || !term || term.planId !== 'training') hostingFail('HOSTING_MANUAL_PARTNER_ACCOUNT_REQUIRED')
             if (existing) {
                 if (existing.courseId !== value.courseId || existing.status !== 'active' || existing.identityId !== bound.identityId || existing.workspacePlatformId !== platformId) hostingFail('HOSTING_MANUAL_ENROLLMENT_CONFLICT')
                 return { platformId: actor.platformId, userId: user.id, account: await view(manager, account), replayed: true }
@@ -190,7 +196,7 @@ async function view(manager: EntityManager, account: HostingAccount) {
     const identity = await manager.getRepository(UserIdentityEntity).findOneByOrFail({ id: bound.identityId })
     const platform = await manager.getRepository(PlatformEntity).findOneByOrFail({ id: account.id })
     const context = await loadSubscriptionContext(manager, account)
-    return { identityId: bound.identityId, platformId: account.id, name: platform.name, email: identity.email, fullName: `${identity.firstName} ${identity.lastName}`.trim(), planId: term.planId, kind: bound.kind, package: bound.package, termId: term.id, revision: bound.revision, startsAt: term.startsAt.toISOString(), expiresAt: term.expiresAt.toISOString(), graceEndsAt: subscriptionAccountUntil({ ...account, subscription: context }).toISOString(), monthlyCredits: await effectiveHostedCredits(manager, account.id, term.planId), fundedMonthlyCredits: term.monthlyCredits, seats: hostingCatalog.getPlan({ planId: term.planId }).users, enrollmentId: bound.enrollmentId, method: 'operator' as const, emailOwnershipVerified: false as const }
+    return { identityId: bound.identityId, platformId: account.id, name: platform.name, email: identity.email, fullName: `${identity.firstName} ${identity.lastName}`.trim(), planId: term.planId, kind: bound.kind, package: bound.package, termId: term.id, revision: bound.revision, startsAt: term.startsAt.toISOString(), expiresAt: term.expiresAt.toISOString(), graceEndsAt: subscriptionAccountUntil({ ...account, subscription: context }).toISOString(), monthlyCreditCap: bound.kind === 'partner' && bound.package === 'starter' ? HOSTED_PARTNER_STARTER_MONTHLY_CREDITS : null, monthlyCredits: await effectiveHostedCredits(manager, account.id, term.planId), fundedMonthlyCredits: term.monthlyCredits, seats: hostingCatalog.getPlan({ planId: term.planId }).users, enrollmentId: bound.enrollmentId, method: 'operator' as const, emailOwnershipVerified: false as const }
 }
 function canonical(value: unknown): string {
     if (value === null || typeof value !== 'object') return JSON.stringify(value)

@@ -1,4 +1,7 @@
-import { MAX_FULL_NAME_LENGTH } from '@activepieces/shared';
+import {
+  HOSTED_PARTNER_STARTER_MONTHLY_CREDITS,
+  MAX_FULL_NAME_LENGTH,
+} from '@activepieces/shared';
 import { useQuery } from '@tanstack/react-query';
 import { t } from 'i18next';
 import { FormEvent, useEffect, useRef, useState } from 'react';
@@ -64,6 +67,11 @@ export function ManualAccountForm({
   const [plan, setPlan] = useState<'training' | 'starter' | 'team' | 'scale'>(
     kind === 'partner' ? 'training' : 'starter',
   );
+  const [partnerPackage, setPartnerPackage] = useState<
+    'starter' | 'core' | 'launch'
+  >('core');
+  const partnerStarter = kind === 'partner' && partnerPackage === 'starter';
+  const starterCredits = HOSTED_PARTNER_STARTER_MONTHLY_CREDITS / 100;
   const [monthly, setMonthly] = useState(300),
     [expiry, setExpiry] = useState(''),
     [confirmed, setConfirmed] = useState(false),
@@ -96,7 +104,8 @@ export function ManualAccountForm({
       locked.current ||
       !confirmed ||
       !expiresAt ||
-      parseCreditInput(String(monthly)) === null
+      parseCreditInput(String(monthly)) === null ||
+      (partnerStarter && monthly > starterCredits)
     )
       return;
     const form = event.currentTarget,
@@ -119,11 +128,8 @@ export function ManualAccountForm({
             kind: 'partner' as const,
             planId: 'training' as const,
             partner: {
-              package:
-                values.get('package') === 'launch'
-                  ? ('launch' as const)
-                  : ('core' as const),
-              ...(values.get('courseId')
+              package: partnerPackage,
+              ...(!partnerStarter && values.get('courseId')
                 ? { courseId: String(values.get('courseId')) }
                 : {}),
               approve: approved,
@@ -151,6 +157,8 @@ export function ManualAccountForm({
       attempt.current = null;
       setConfirmed(false);
       setApproved(false);
+      setPartnerPackage('core');
+      setMonthly(kind === 'partner' ? 300 : credits[plan]);
       setShowPassword(false);
       setExpiry('');
       setCreated(result.account);
@@ -278,19 +286,35 @@ export function ManualAccountForm({
                 {t('Partner workspace · 1 user · clients subscribe separately')}
               </p>
               <label className="block text-sm">
-                {t('Training package')}
+                {t('Partner package')}
                 <select
                   name="package"
                   className={selectStyle}
-                  defaultValue="core"
+                  value={partnerPackage}
+                  onChange={(event) => {
+                    const value = event.target.value as
+                      | 'starter'
+                      | 'core'
+                      | 'launch';
+                    setPartnerPackage(value);
+                    setMonthly(value === 'starter' ? starterCredits : 300);
+                  }}
                 >
+                  <option value="starter">
+                    {t('Starter · internal only · 35 monthly Credits')}
+                  </option>
                   <option value="core">{t('Core')}</option>
                   <option value="launch">{t('Guided')}</option>
                 </select>
               </label>
               <label className="block text-sm">
                 {t('Partner course')}
-                <select name="courseId" className={selectStyle} defaultValue="">
+                <select
+                  name="courseId"
+                  className={selectStyle}
+                  defaultValue=""
+                  disabled={partnerStarter}
+                >
                   <option value="">{t('Assign a course later')}</option>
                   {courses.data?.map((course) => (
                     <option key={course.id} value={course.id}>
@@ -299,7 +323,14 @@ export function ManualAccountForm({
                   ))}
                 </select>
               </label>
-              {courses.isError && (
+              {partnerStarter && (
+                <p className="text-sm leading-6 text-gray-11">
+                  {t(
+                    'Partner Starter is assigned internally by platform admins. It has a 35-Credit monthly cap, with no rollover or automatic overages. Training is not included.',
+                  )}
+                </p>
+              )}
+              {!partnerStarter && courses.isError && (
                 <p role="alert" className="text-sm">
                   {t(
                     'Courses could not load. You can create the account without a course and enroll it later.',
@@ -314,7 +345,7 @@ export function ManualAccountForm({
                   </Button>
                 </p>
               )}
-              {courses.data?.length === 0 && (
+              {!partnerStarter && courses.data?.length === 0 && (
                 <p className="text-sm text-gray-11">
                   {t('No published Partner courses yet.')}{' '}
                   <Link
@@ -344,7 +375,7 @@ export function ManualAccountForm({
                 className="mt-2"
                 type="number"
                 min={0}
-                max={10_000}
+                max={partnerStarter ? starterCredits : 10_000}
                 step={0.01}
                 required
                 value={monthly}

@@ -68,6 +68,45 @@ beforeEach(() => {
   mocks.request.mockReset();
 });
 describe('manual account response and session boundaries', () => {
+  it('confirms Starter package and cap instead of accepting a different Partner offer', async () => {
+    const input: ManualAccountInput = {
+      ...body,
+      kind: 'partner',
+      planId: 'training',
+      monthlyCredits: 3500,
+      partner: { package: 'starter', approve: false },
+    };
+    const valid = {
+      ...response(),
+      account: {
+        ...response().account,
+        kind: 'partner',
+        planId: 'training',
+        package: 'starter',
+        monthlyCredits: 3500,
+        monthlyCreditCap: 3500,
+        seats: 1,
+      },
+    };
+    mocks.request.mockResolvedValue(valid);
+    await expect(createManualAccount(session, input)).resolves.toMatchObject({
+      account: { package: 'starter', monthlyCredits: 3500 },
+    });
+    for (const changed of [
+      { package: 'core' },
+      { monthlyCreditCap: null },
+      { monthlyCredits: 3501 },
+    ]) {
+      mocks.request.mockResolvedValue({
+        ...valid,
+        account: { ...valid.account, ...changed },
+      });
+      await expect(createManualAccount(session, input)).rejects.toMatchObject({
+        code: 'UNCONFIRMED',
+      });
+    }
+  });
+
   it('requires the saved result to match the requested recipient and plan', async () => {
     mocks.request.mockResolvedValue({
       ...response(),

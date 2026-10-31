@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      saas_candidate:
+        description: 'Build a private hosted candidate artifact after validation (SaaS branch only; no deployment)'
+        required: false
+        default: false
+        type: boolean
   workflow_call:
 
 permissions:
@@ -83,6 +89,10 @@ jobs:
           bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/hosting-pricing-revalidation.test.ts --maxWorkers=2
           bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/hosting-learning-workspace.test.ts packages/server/api/test/unit/hosting-customer-credits.test.ts packages/server/api/test/unit/hosting-partner-admin.test.ts packages/server/api/test/unit/hosting-partner-setup.test.ts packages/server/api/test/unit/hosting-tenant-members.test.ts packages/server/api/test/unit/lms-course-access.test.ts packages/server/api/test/unit/authorization-not-found.test.ts --maxWorkers=2
           bun x vitest run --config packages/server/worker/vitest.config.ts packages/server/worker/test/lib/worker-service-mode.test.ts --maxWorkers=2
+      - name: Check internal Partner Starter provisioning and caps
+        run: |
+          bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/hosting-manual-accounts.test.ts --maxWorkers=2
+          bun x vitest run --config packages/web/vitest.config.ts packages/web/src/features/hosted-operator/manual-account-form.test.tsx packages/web/src/features/hosted-operator/manual-accounts-api.test.ts packages/web/src/features/hosted-operator/credit-allowance-section.test.tsx packages/web/src/features/hosted-billing/billing-view.test.tsx --maxWorkers=2
       - name: Check Syd worker and supporting agent regressions
         run: >-
           bun x vitest run --config packages/server/worker/vitest.config.ts
@@ -119,3 +129,46 @@ jobs:
         run: |
           node tools/prepare-release-test-db.cjs
           node tools/run-release-api-regressions.cjs
+
+  build-saas-candidate:
+    if: github.event_name == 'workflow_dispatch' && inputs.saas_candidate && github.ref == 'refs/heads/codex/partner-starter-release'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Free runner disk for hosted runtime build
+        run: sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - name: Build hosted candidate without publishing
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: sydekyks:saas-candidate-${{ github.sha }}
+          build-args: |
+            SYDEKYKS_RELEASE_VERSION=1.1.0
+            SYDEKYKS_SOURCE_REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=saas-amd64
+          cache-to: type=gha,mode=max,scope=saas-amd64
+      - name: Verify and export hosted candidate
+        env:
+          SOURCE_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          image="sydekyks:saas-candidate-$SOURCE_REVISION"
+          docker run --rm --entrypoint node "$image" -e "const s=require('@activepieces/shared'); if(s.HOSTED_PARTNER_STARTER_MONTHLY_CREDITS!==3500 || Object.keys(s.hostingCatalog.partnerPackages).join(',')!=='core,launch') process.exit(1)"
+          mkdir -p saas-candidate
+          docker image inspect "$image" --format '{{json .}}' > saas-candidate/image.json
+          docker save "$image" | gzip -1 > saas-candidate/image.tar.gz
+          (cd saas-candidate && sha256sum image.tar.gz > image.tar.gz.sha256)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: saas-candidate-${{ github.sha }}
+          path: saas-candidate/
+          retention-days: 3
+          compression-level: 0

@@ -19,6 +19,7 @@ const Allowance = z.object({
   revision: z.number().int().nonnegative(),
   planId: z.string(),
   overrideMonthlyCredits: creditAmount.nullable(),
+  monthlyCreditCap: creditAmount.nullable().optional(),
   defaultMonthlyCredits: creditAmount,
   effectiveMonthlyCredits: creditAmount,
   appliesToCurrentPeriod: z.boolean(),

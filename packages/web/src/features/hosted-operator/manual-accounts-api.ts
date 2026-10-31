@@ -15,6 +15,8 @@ export const ManualAccount = z.object({
   email: z.string(),
   planId: z.enum(['training', 'starter', 'team', 'scale']),
   kind: z.enum(['partner', 'client']),
+  package: z.enum(['starter', 'core', 'launch']).nullable().optional(),
+  monthlyCreditCap: z.number().int().nonnegative().nullable().optional(),
   termId: id,
   revision: z.number().int().positive(),
   startsAt: z.string(),
@@ -39,7 +41,7 @@ export type ManualAccountInput = {
       kind: 'partner';
       planId: 'training';
       partner: {
-        package: 'core' | 'launch';
+        package: 'starter' | 'core' | 'launch';
         courseId?: string;
         approve: boolean;
       };
@@ -100,7 +102,12 @@ export async function createManualAccount(
   if (
     result.account.email.toLowerCase() !== input.email.trim().toLowerCase() ||
     result.account.kind !== input.kind ||
-    result.account.planId !== input.planId
+    result.account.planId !== input.planId ||
+    (input.kind === 'partner' &&
+      input.partner.package === 'starter' &&
+      (result.account.package !== 'starter' ||
+        result.account.monthlyCreditCap !== 3500 ||
+        result.account.monthlyCredits > 3500))
   )
     throw new ManualAccountError('UNCONFIRMED');
   return result;
