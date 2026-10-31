@@ -6,17 +6,17 @@ import { t } from 'i18next';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 import { ReactNode, useState } from 'react';
 
-import {
-  CheckoutIntentReview,
-  useCheckoutIntent,
-} from './checkout-intent-review';
-import { PartnerPurchaseSection } from './partner-purchase-section';
-
 import { CenteredPage } from '@/components/custom/centered-page';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { formatCreditUnits } from '@/lib/hosted-credit-units';
+
+import {
+  CheckoutIntentReview,
+  useCheckoutIntent,
+} from './checkout-intent-review';
+import { PartnerPurchaseSection } from './partner-purchase-section';
 
 type Props = {
   overview: HostedCustomerBillingOverview;

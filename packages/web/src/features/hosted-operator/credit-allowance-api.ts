@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
 
-import { AiSettingsError } from './ai-settings-api';
-
 import {
   assertAuthSession,
   useHostedAuthSession,
 } from '@/features/hosted-onboarding/auth-session';
 import { api } from '@/lib/api';
+
+import { AiSettingsError } from './ai-settings-api';
 
 type Session = ReturnType<typeof useHostedAuthSession>;
 const creditAmount = z.number().int().min(0).max(1_000_000);

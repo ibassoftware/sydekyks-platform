@@ -2,6 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { t } from 'i18next';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { useHostedAuthSession } from '@/features/hosted-onboarding/auth-session';
+import { creditUnitsInput, parseCreditInput } from '@/lib/hosted-credit-units';
+
 import {
   ManualAccountError,
   readManualAccount,
@@ -14,11 +19,6 @@ import {
   subscriptionUtcInput,
   subscriptionUtcLabel,
 } from './subscription-dates';
-
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { useHostedAuthSession } from '@/features/hosted-onboarding/auth-session';
-import { creditUnitsInput, parseCreditInput } from '@/lib/hosted-credit-units';
 
 type Session = ReturnType<typeof useHostedAuthSession>;
 export function ManualTermControls({
