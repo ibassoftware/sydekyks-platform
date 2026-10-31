@@ -79,8 +79,7 @@ describe('Sydekyk configuration and chat', () => {
     expect(sidePanel().className).toContain('w-full');
     click('Chat with agent');
     expect(screen.getByTestId('chat')).toBeTruthy();
-    expect(screen.getByTestId('chat')).toHaveAttribute(
-      'data-conversations',
+    expect(screen.getByTestId('chat').getAttribute('data-conversations')).toBe(
       'false',
     );
   });
@@ -101,9 +100,8 @@ describe('Sydekyk configuration and chat', () => {
       screen.getByRole('textbox', {
         name: 'Draft message',
       }) as HTMLInputElement,
-    ).toHaveValue('Unsent draft');
-    expect(screen.getByTestId('chat')).toHaveAttribute(
-      'data-conversations',
+    ).toMatchObject({ value: 'Unsent draft' });
+    expect(screen.getByTestId('chat').getAttribute('data-conversations')).toBe(
       'true',
     );
     await waitFor(() =>
@@ -143,8 +141,7 @@ describe('Sydekyk configuration and chat', () => {
     expect(sidePanel().className).toContain('w-0');
     expect(screen.getByTestId('runs-panel')).toBeTruthy();
     await waitFor(() => expect(screen.queryByTestId('runs-panel')).toBeNull());
-    expect(screen.getByTestId('chat')).toHaveAttribute(
-      'data-conversations',
+    expect(screen.getByTestId('chat').getAttribute('data-conversations')).toBe(
       'false',
     );
   });
