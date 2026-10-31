@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import '@testing-library/jest-dom/vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -82,8 +83,10 @@ describe('Agent mobile conversation history', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close history' }));
     expect(screen.queryAllByText('Chat fills the page')).toHaveLength(1);
   });
-  it('preserves expanded conversation history by default on desktop', () => {
+  it('starts folded on desktop and opens only when requested', () => {
     view(1440);
+    expect(screen.queryAllByText('Chat fills the page')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Open history' }));
     expect(screen.queryAllByText('History open')).toHaveLength(1);
   });
 });

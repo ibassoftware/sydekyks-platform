@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
+import '@testing-library/jest-dom/vitest';
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -9,14 +9,7 @@ import {
 } from '@testing-library/react';
 import { forwardRef, useImperativeHandle } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('i18next', () => ({ t: (key: string) => key }));
 vi.mock('@/app/components/locked-feature-guard', () => ({
@@ -48,11 +41,17 @@ vi.mock('@/app/routes/agents/id/agent-chat-view', () => ({
   AgentChatView: ({
     conversationsOpen,
     onCollapseConversations,
+    onExpandConversations,
   }: {
     conversationsOpen: boolean;
     onCollapseConversations: () => void;
+    onExpandConversations: () => void;
   }) => (
     <div data-testid="chat" data-conversations={String(conversationsOpen)}>
+      <input aria-label="Draft message" />
+      <button type="button" onClick={onExpandConversations}>
+        expand-list
+      </button>
       <button type="button" onClick={onCollapseConversations}>
         collapse-list
       </button>
@@ -74,96 +73,95 @@ vi.mock('@/app/routes/agents/id/configure-panel', () => ({
 
 import { AgentEditorPage } from '@/app/routes/agents/id';
 
-const mediaLists = new Set<FakeMediaQueryList>();
-let windowIsWide = true;
-
-beforeEach(() => {
-  setWindowWide(true);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
 });
-afterEach(cleanup);
 
-describe('agent side panel', () => {
-  it('keeps the runs panel content while it slides closed, then removes it', async () => {
-    renderPage({ path: '/agents/agent_1' });
-    click('Run history');
-    expect(await screen.findByTestId('runs-panel')).toBeTruthy();
-
-    click('Run history');
-    await waitFor(() => expect(sidePanel().className).toContain('w-0'));
-    expect(screen.getByTestId('runs-panel')).toBeTruthy();
-
-    await waitFor(() => expect(screen.queryByTestId('runs-panel')).toBeNull());
-  });
-
-  it('swaps runs for configure without resizing the panel', async () => {
-    renderPage({ path: '/agents/agent_1/runs' });
-    expect(await screen.findByTestId('runs-panel')).toBeTruthy();
-
-    click('Configure');
-    expect(screen.getByTestId('configure-panel')).toBeTruthy();
-    expect(screen.queryByTestId('runs-panel')).toBeNull();
-    expect(sidePanel().className).toContain('w-[452px]');
-  });
-
-  it('folds the conversations list when a panel opens on a narrow screen', async () => {
-    setWindowWide(false);
-    renderPage({ path: '/agents/agent_1' });
-    expect(conversationsShown()).toBe('true');
-
-    click('Run history');
-    await waitFor(() => expect(conversationsShown()).toBe('false'));
-
-    click('Run history');
-    await waitFor(() => expect(sidePanel().className).toContain('w-0'));
-    expect(conversationsShown()).toBe('false');
-    await waitFor(() => expect(conversationsShown()).toBe('true'));
-  });
-
-  it('folds the list when the window narrows while a panel is open', async () => {
-    renderPage({ path: '/agents/agent_1' });
-    click('Run history');
-    await screen.findByTestId('runs-panel');
-    expect(conversationsShown()).toBe('true');
-
-    act(() => setWindowWide(false));
-    expect(conversationsShown()).toBe('false');
-  });
-
-  it('leaves a list the user collapsed collapsed after the panel closes', async () => {
-    setWindowWide(false);
-    renderPage({ path: '/agents/agent_1' });
-    click('collapse-list');
-    expect(conversationsShown()).toBe('false');
-
-    click('Run history');
-    await screen.findByTestId('runs-panel');
-    click('Run history');
-    await waitFor(() => expect(sidePanel().className).toContain('w-0'));
-    await waitFor(() =>
-      expect(screen.queryByTestId('runs-panel')).toBeNull(),
+describe('Sydekyk configuration and chat', () => {
+  it('opens a new Sydekyk in Configure without mounting a competing chat', () => {
+    renderPage('/agents/agent_1', true);
+    expect(screen.getByTestId('configure-panel')).toBeInTheDocument();
+    expect(screen.queryByTestId('chat')).not.toBeInTheDocument();
+    expect(sidePanel().className).toContain('w-full');
+    click('Chat with agent');
+    expect(screen.getByTestId('chat')).toBeInTheDocument();
+    expect(screen.getByTestId('chat')).toHaveAttribute(
+      'data-conversations',
+      'false',
     );
-    expect(conversationsShown()).toBe('false');
   });
 
-  it('keeps the conversations list beside a panel on a wide screen', () => {
-    renderPage({ path: '/agents/agent_1' });
+  it('keeps a chat draft and the user’s history selection when Configure opens and closes', async () => {
+    renderPage('/agents/agent_1');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Draft message' }), {
+      target: { value: 'Unsent draft' },
+    });
+    click('expand-list');
     click('Configure');
-    expect(conversationsShown()).toBe('true');
+    expect(screen.getByTestId('chat').parentElement?.className).toContain(
+      'hidden',
+    );
+    expect(sidePanel().className).toContain('w-full');
+    click('Chat with agent');
+    expect(
+      screen.getByRole('textbox', {
+        name: 'Draft message',
+      }) as HTMLInputElement,
+    ).toHaveValue('Unsent draft');
+    expect(screen.getByTestId('chat')).toHaveAttribute(
+      'data-conversations',
+      'true',
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId('configure-panel')).not.toBeInTheDocument(),
+    );
   });
 
-  it('closes configure from its header button through the panel exit', () => {
-    renderPage({ path: '/agents/agent_1' });
-    click('Configure');
-    expect(sidePanel().className).toContain('w-[452px]');
+  it.each([390, 1440])(
+    'gives configuration the full available width at %s pixels',
+    (width) => {
+      vi.stubGlobal('innerWidth', width);
+      renderPage('/agents/agent_1');
+      click('Configure');
+      expect(sidePanel().className).toContain('w-full');
+      expect(screen.getByTestId('chat').parentElement?.className).toContain(
+        'hidden',
+      );
+      click('Configure');
+      expect(sidePanel().className).toContain('w-0');
+    },
+  );
 
+  it('swaps full-width Run history for Configure', async () => {
+    renderPage('/agents/agent_1/runs');
+    expect(await screen.findByTestId('runs-panel')).toBeInTheDocument();
     click('Configure');
+    expect(screen.getByTestId('configure-panel')).toBeInTheDocument();
+    expect(screen.queryByTestId('runs-panel')).not.toBeInTheDocument();
+    expect(sidePanel().className).toContain('w-full');
+  });
+
+  it('retains history during its closing transition, then returns to chat', async () => {
+    renderPage('/agents/agent_1');
+    click('Run history');
+    expect(await screen.findByTestId('runs-panel')).toBeInTheDocument();
+    click('Run history');
     expect(sidePanel().className).toContain('w-0');
+    expect(screen.getByTestId('runs-panel')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByTestId('runs-panel')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByTestId('chat')).toHaveAttribute(
+      'data-conversations',
+      'false',
+    );
   });
 });
 
-function renderPage({ path }: { path: string }) {
+function renderPage(path: string, configure = false) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter initialEntries={[{ pathname: path, state: { configure } }]}>
       <Routes>
         <Route path="/agents/:agentId" element={<AgentEditorPage />} />
         <Route path="/agents/:agentId/runs" element={<AgentEditorPage />} />
@@ -171,49 +169,14 @@ function renderPage({ path }: { path: string }) {
     </MemoryRouter>,
   );
 }
-
-function setWindowWide(wide: boolean) {
-  windowIsWide = wide;
-  window.matchMedia = (query: string) => {
-    const list = new FakeMediaQueryList(query);
-    mediaLists.add(list);
-    return list;
-  };
-  mediaLists.forEach((list) => list.dispatchEvent(new Event('change')));
-}
-
-function conversationsShown(): string | null {
-  return screen.getByTestId('chat').getAttribute('data-conversations');
-}
-
 function click(name: string) {
   fireEvent.click(screen.getByRole('button', { name }));
 }
-
 function sidePanel(): HTMLElement {
   const panel = document.querySelector('aside');
-  if (panel === null) throw new Error('side panel not rendered');
+  if (!panel) throw new Error('Configuration panel not rendered');
   return panel;
 }
-
-
-
-class FakeMediaQueryList extends EventTarget implements MediaQueryList {
-  readonly media: string;
-  onchange = null;
-  constructor(media: string) {
-    super();
-    this.media = media;
-  }
-  get matches(): boolean {
-    return windowIsWide;
-  }
-  addListener(): void {
-    return undefined;
-  }
-  removeListener(): void {
-    return undefined;
-  }
-}
-
-vi.mock('@/features/hosted-billing/service-mode', () => ({ useHostedBillingEnabled: () => false }));
+vi.mock('@/features/hosted-billing/service-mode', () => ({
+  useHostedBillingEnabled: () => false,
+}));
