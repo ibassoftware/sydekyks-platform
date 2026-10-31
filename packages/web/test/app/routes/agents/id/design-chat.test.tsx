@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import '@testing-library/jest-dom/vitest';
+/* eslint-disable jest-dom/prefer-in-document, jest-dom/prefer-to-have-attribute, testing-library/no-node-access -- These isolated layout tests use native DOM assertions without a jest-dom runtime. */
 import {
   Agent,
   AgentIcon,
@@ -92,10 +92,8 @@ describe('configured Sydekyk chat', () => {
     expect(control.chat.builder).not.toBe(true);
     expect(
       screen.queryByRole('button', { name: 'Design with Syd' }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText('Behavior conversations'),
-    ).not.toBeInTheDocument();
+    ).toBeNull();
+    expect(screen.queryByText('Behavior conversations')).toBeNull();
   });
 });
 

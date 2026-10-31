@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import '@testing-library/jest-dom/vitest';
+/* eslint-disable jest-dom/prefer-in-document, jest-dom/prefer-to-have-attribute, testing-library/no-node-access -- These isolated layout tests use native DOM assertions without a jest-dom runtime. */
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -27,8 +27,12 @@ vi.mock('@/features/agents/hooks/agents-hooks', () => ({
         id: 'agent_1',
         displayName: 'QA Assistant',
         description: 'Answer a question',
-        draft: { tools: [] },
-        published: { tools: [] },
+        draft: { provider: 'openai', modelName: 'fixture-model', tools: [] },
+        published: {
+          provider: 'openai',
+          modelName: 'fixture-model',
+          tools: [],
+        },
       },
     }),
   },
