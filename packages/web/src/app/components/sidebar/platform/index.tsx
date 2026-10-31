@@ -44,6 +44,7 @@ import { useOperationalWorkspaces } from '@/features/hosted-operator/workspaces-
 import { useAuthorization } from '@/hooks/authorization-hooks';
 import { flagsHooks } from '@/hooks/flags-hooks';
 import { platformHooks } from '@/hooks/platform-hooks';
+import { canShowPlatformNavigation } from '@/lib/platform-navigation-visibility';
 import { releaseAvailability } from '@/lib/release-availability';
 import { determineDefaultRoute } from '@/lib/route-utils';
 import { cn } from '@/lib/utils';
@@ -56,8 +57,11 @@ export function PlatformSidebar() {
   const { platform } = platformHooks.useCurrentPlatform();
   const { data: edition } = flagsHooks.useFlag<ApEdition>(ApFlagId.EDITION);
   const hostedBilling = useHostedBillingEnabled();
-  const { reachesMcp } = mcpHooks.useMcpReach({ enabled: hostedBilling });
   const operator = useHostedOperatorAccess();
+  const showMcpNavigation = !hostedBilling || operator.allowed;
+  const { reachesMcp } = mcpHooks.useMcpReach({
+    enabled: hostedBilling && showMcpNavigation,
+  });
   const workspaces = useOperationalWorkspaces();
   const { checkAccess } = useAuthorization();
   const defaultRoute = determineDefaultRoute({
@@ -250,7 +254,10 @@ export function PlatformSidebar() {
           ],
         },
         {
-          to: '/platform/health',
+          to:
+            hostedBilling && !operator.allowed
+              ? '/platform/health/runs'
+              : '/platform/health',
           label: t('Health'),
           icon: FileHeartIcon,
           subItems: [
@@ -361,19 +368,31 @@ export function PlatformSidebar() {
               item.to.startsWith('/platform/billing')
             ),
         )
-        .filter((item) =>
-          releaseAvailability.isRouteAvailable({
-            pathname: item.to,
-            hostedBilling,
-          }),
+        .filter(
+          (item) =>
+            canShowPlatformNavigation({
+              pathname: item.to,
+              hosted: hostedBilling,
+              operatorAllowed: operator.allowed,
+            }) &&
+            releaseAvailability.isRouteAvailable({
+              pathname: item.to,
+              hostedBilling,
+            }),
         )
         .map((item) => ({
           ...item,
-          subItems: item.subItems?.filter((subItem) =>
-            releaseAvailability.isRouteAvailable({
-              pathname: subItem.to,
-              hostedBilling,
-            }),
+          subItems: item.subItems?.filter(
+            (subItem) =>
+              canShowPlatformNavigation({
+                pathname: subItem.to,
+                hosted: hostedBilling,
+                operatorAllowed: operator.allowed,
+              }) &&
+              releaseAvailability.isRouteAvailable({
+                pathname: subItem.to,
+                hostedBilling,
+              }),
           ),
         })),
     }))

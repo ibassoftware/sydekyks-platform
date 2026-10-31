@@ -101,6 +101,12 @@ jobs:
         run: bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/password-reset-email.test.ts packages/server/api/test/unit/password-reset-preflight.test.ts packages/server/api/test/integration/ce/authentication/password-reset.test.ts packages/server/api/test/unit/hosting-account-recovery.test.ts --maxWorkers=1 --no-file-parallelism
       - name: Check recovery URL privacy
         run: bun x vitest run --config packages/web/vitest.config.ts packages/web/test/features/authentication/password-reset-secret.test.ts packages/web/test/features/authentication/change-password.test.tsx packages/web/test/lib/route-utils.test.ts --maxWorkers=1
+      - name: Check telemetry collection remains disabled
+        run: |
+          bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/app/helper/telemetry-disabled.test.ts packages/server/api/test/unit/app/helper/telemetry-identify-sign-up.test.ts packages/server/api/test/unit/app/helper/telemetry-cloud-only-events.test.ts packages/server/api/test/unit/app/authentication/passwordless-auth-telemetry.test.ts --maxWorkers=1
+          bun x vitest run --config packages/web/vitest.config.ts packages/web/test/components/providers/telemetry-disabled.test.tsx packages/web/test/app/platform/admin-telemetry.test.tsx packages/web/test/lib/checkout-intent-session.test.ts --maxWorkers=1
+      - name: Check hosted web search capability visibility
+        run: bun x vitest run --config packages/web/vitest.config.ts packages/web/src/app/routes/platform/setup/ai/capabilities-tab/hosted-web-search-capability.test.tsx packages/web/test/app/routes/platform/setup/ai-capabilities/catalog.test.ts --maxWorkers=1
       - name: Check Gmail search scope and unread evidence
         run: bun x vitest run --config packages/pieces/community/gmail/vitest.config.ts packages/pieces/community/gmail/test --maxWorkers=1
       - name: Check dark mode and schedule minimum
@@ -139,6 +145,9 @@ jobs:
           packages/web/src/features/agents/agent-appearance-picker.test.tsx
           packages/web/src/app/builder/builder-copilot-panel.test.tsx
           packages/web/test/app/components/sidebar/platform/index.test.tsx
+          packages/web/test/app/components/platform-layout-mobile.test.tsx
+          packages/web/test/app/components/global-search/infrastructure-access.test.tsx
+          packages/web/test/lib/platform-infrastructure-access.test.ts
           --maxWorkers=2
       - name: Check Syd API and MCP authorization regressions
         env:

@@ -2,6 +2,7 @@ import { GetDiagnosticsResponse, GetSystemHealthChecksResponse, PlatformMetricsH
 import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { StatusCodes } from 'http-status-codes'
 import { securityAccess } from '../core/security/authorization/fastify-security'
+import { requireHostedInfrastructureOperator } from '../hosting/hosting-infrastructure-access'
 import { healthMetricsService } from './health-metrics.service'
 import { healthStatusService } from './health.service'
 
@@ -53,6 +54,7 @@ const healthController: FastifyPluginAsyncZod = async (app) => {
 }
 
 const GetSystemHealthChecks = {
+    preHandler: requireHostedInfrastructureOperator,
     config: {
         security: securityAccess.platformAdminOnly([PrincipalType.USER, PrincipalType.SERVICE]),
     },
@@ -103,6 +105,7 @@ const GetHealthHistoryRequest = {
 }
 
 const GetDiagnosticsRequest = {
+    preHandler: requireHostedInfrastructureOperator,
     config: {
         security: securityAccess.platformAdminOnly([PrincipalType.USER, PrincipalType.SERVICE]),
     },

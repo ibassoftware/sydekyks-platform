@@ -5,10 +5,12 @@ import { t } from 'i18next';
 import { useEmbedding } from '@/components/providers/embed-provider';
 import { flowsApi } from '@/features/flows';
 import { foldersApi } from '@/features/folders';
+import { useHostedOperatorAccess } from '@/features/hosted-operator/operator-api';
 import { projectCollectionUtils, getProjectName } from '@/features/projects';
 import { tablesApi } from '@/features/tables';
 import { useIsPlatformAdmin } from '@/hooks/authorization-hooks';
 import { authenticationSession } from '@/lib/authentication-session';
+import { canShowPlatformNavigation } from '@/lib/platform-navigation-visibility';
 
 import { getAccessHistory } from './access-history';
 import { STATIC_PAGES, type StaticPage } from './static-pages';
@@ -39,6 +41,13 @@ function getTimePeriod(
 export function useGlobalSearchResults(query: string, open: boolean) {
   const projectId = authenticationSession.getProjectId() ?? '';
   const isPlatformAdmin = useIsPlatformAdmin();
+  const operator = useHostedOperatorAccess();
+  const navigationAllowed = (pathname: string) =>
+    canShowPlatformNavigation({
+      pathname,
+      hosted: operator.hosted,
+      operatorAllowed: operator.allowed,
+    });
   const { embedState } = useEmbedding();
   const hideTables = embedState.hideTables;
   const { data: allProjects = [] } = projectCollectionUtils.useAll();
@@ -48,9 +57,10 @@ export function useGlobalSearchResults(query: string, open: boolean) {
     : null;
   const hasQuery = query.length > 0;
 
-  const accessHistory = hideTables
-    ? getAccessHistory().filter((h) => h.type !== 'table')
-    : getAccessHistory();
+  const accessHistory = getAccessHistory().filter(
+    (entry) =>
+      (!hideTables || entry.type !== 'table') && navigationAllowed(entry.href),
+  );
   const hasHistory = accessHistory.length > 0;
   const needsSupplement =
     !hasQuery && accessHistory.length < SUPPLEMENT_THRESHOLD;
@@ -104,6 +114,7 @@ export function useGlobalSearchResults(query: string, open: boolean) {
   }))
     .filter(
       (p) =>
+        navigationAllowed(p.href) &&
         (!p.requiresPlatformAdmin || isPlatformAdmin) &&
         (!hasQuery || p.label.toLowerCase().includes(query.toLowerCase())),
     )

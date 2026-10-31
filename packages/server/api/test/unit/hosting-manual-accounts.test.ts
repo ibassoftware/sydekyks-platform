@@ -16,7 +16,7 @@ import { INSTALLATION_MODE_FLAG_ID } from '../../src/app/hosting/hosting-install
 import { createHostedLedger } from '../../src/app/hosting/hosting-ledger'
 import { createHostedManualAccounts } from '../../src/app/hosting/hosting-manual-accounts'
 import { HostingManualAccountEntity, HostingManualCommandEntity, HostingManualTermEntity } from '../../src/app/hosting/hosting-manual-accounts-entities'
-import { HostingManualAccountCreate } from '../../src/app/hosting/hosting-manual-accounts-schema'
+import { HostingManualAccountCreate, HostingManualTermCreate } from '../../src/app/hosting/hosting-manual-accounts-schema'
 import { manualEnrollmentDelivery, manualTermPeriods } from '../../src/app/hosting/hosting-manual-terms'
 import { createHostedOnboarding } from '../../src/app/hosting/hosting-onboarding'
 import { createHostedPartnerAdmin } from '../../src/app/hosting/hosting-partner-admin'
@@ -79,6 +79,28 @@ beforeEach(async () => {
     other = { identityId: otherId, platformId: otherHome.platformId, tokenVersion: otherHome.tokenVersion }
 })
 describe('operator manual accounts and bounded funding', () => {
+    it.each([
+        ['starter', '2026-10-31T12:34:56.789Z', '2027-10-31T12:34:56.789Z'],
+        ['core', '2028-02-29T12:34:56.789Z', '2029-02-28T12:34:56.789Z'],
+        ['launch', '2027-02-28T12:34:56.789Z', '2028-02-28T12:34:56.789Z'],
+    ])('defaults new %s partners to a year from creation and preserves it on replay', async (partnerPackage, startsAt, expiresAt) => {
+        const clock = vi.spyOn(tx, 'now').mockResolvedValue(new Date(startsAt))
+        const value = input({ kind: 'partner', planId: 'training', expiresAt: undefined, partner: { package: partnerPackage, approve: false } })
+        const first = await manual().create({ actor, input: value })
+        expect(first.account).toMatchObject({ startsAt, expiresAt })
+        const grants = await ds.getRepository(HostingGrantEntity).find({ where: { platformId: first.account.platformId, meter: 'execution', sourceKey: Like('manual:%') }, order: { validFrom: 'ASC' } })
+        expect(grants).toHaveLength(12)
+        expect(grants.at(-1)!.validUntil.toISOString()).toBe(expiresAt)
+        clock.mockResolvedValue(new Date(Date.parse(startsAt) + 86400_000))
+        const replay = await manual().create({ actor, input: value })
+        expect(replay).toMatchObject({ replayed: true, account: { platformId: first.account.platformId, startsAt, expiresAt } })
+        expect(await ds.getRepository(HostingGrantEntity).find({ where: { platformId: first.account.platformId, meter: 'execution', sourceKey: Like('manual:%') }, order: { validFrom: 'ASC' } })).toEqual(grants)
+    })
+    it('still requires explicit expiration for clients and renewed terms', () => {
+        expect(() => HostingManualAccountCreate.parse(input({ expiresAt: undefined }))).toThrow()
+        expect(() => HostingManualTermCreate.parse({ requestKey: apId(), expectedRevision: 1, reason: 'Synthetic authorized renewal' })).toThrow()
+    })
+
     it('creates internal Partner Starter only through an operator with 35 non-overlapping monthly Credits and no training', async () => {
         const value = input({ kind: 'partner', planId: 'training', partner: { package: 'starter', approve: false } })
         await expect(manual().create({ actor: other, input: value })).rejects.toThrow('HOSTING_OPERATOR_REQUIRED')

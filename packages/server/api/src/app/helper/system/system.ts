@@ -55,7 +55,7 @@ const systemPropDefaultValues: Partial<Record<SystemProp, string>> = {
     [AppSystemProp.EVENT_DESTINATION_TIMEOUT_SECONDS]: '10',
     [AppSystemProp.REDIS_FAILED_JOB_RETENTION_DAYS]: '30',
     [AppSystemProp.REDIS_FAILED_JOB_RETENTION_MAX_COUNT]: '100000',
-    [AppSystemProp.TELEMETRY_ENABLED]: 'true',
+    [AppSystemProp.TELEMETRY_ENABLED]: 'false',
     [AppSystemProp.REDIS_TYPE]: RedisType.STANDALONE,
     [AppSystemProp.TRIGGER_DEFAULT_POLL_INTERVAL]: '5',
     [AppSystemProp.DEFAULT_CONCURRENT_JOBS_LIMIT]: '5',

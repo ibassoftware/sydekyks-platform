@@ -34,6 +34,18 @@ const credits = {
   team: 1200,
   scale: 4000,
 };
+function initialExpiry(kind: 'partner' | 'client') {
+  if (kind === 'client') return '';
+  const now = new Date(),
+    expiry = new Date(now);
+  expiry.setUTCDate(1);
+  expiry.setUTCFullYear(now.getUTCFullYear() + 1);
+  const lastDay = new Date(
+    Date.UTC(expiry.getUTCFullYear(), expiry.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  expiry.setUTCDate(Math.min(now.getUTCDate(), lastDay));
+  return expiry.toISOString().slice(0, 16);
+}
 function message(error: unknown) {
   if (error instanceof ManualAccountError) {
     if (/EMAIL|IDENTITY|EXISTS|ACCOUNT_UNAVAILABLE/.test(error.code))
@@ -73,7 +85,8 @@ export function ManualAccountForm({
   const partnerStarter = kind === 'partner' && partnerPackage === 'starter';
   const starterCredits = HOSTED_PARTNER_STARTER_MONTHLY_CREDITS / 100;
   const [monthly, setMonthly] = useState(300),
-    [expiry, setExpiry] = useState(''),
+    [expiry, setExpiry] = useState(() => initialExpiry(kind)),
+    [expiryChanged, setExpiryChanged] = useState(false),
     [confirmed, setConfirmed] = useState(false),
     [approved, setApproved] = useState(false);
   const [busy, setBusy] = useState(false),
@@ -117,7 +130,7 @@ export function ManualAccountForm({
         .trim()
         .toLowerCase(),
       password: String(values.get('password') ?? ''),
-      expiresAt,
+      ...(kind === 'partner' && !expiryChanged ? {} : { expiresAt }),
       monthlyCredits: parseCreditInput(String(monthly))!,
       reason: String(values.get('reason') ?? '').trim(),
     };
@@ -160,7 +173,8 @@ export function ManualAccountForm({
       setPartnerPackage('core');
       setMonthly(kind === 'partner' ? 300 : credits[plan]);
       setShowPassword(false);
-      setExpiry('');
+      setExpiry(initialExpiry(kind));
+      setExpiryChanged(false);
       setCreated(result.account);
       onCreated?.(result.account);
     } catch (cause) {
@@ -366,7 +380,11 @@ export function ManualAccountForm({
                 type="datetime-local"
                 required
                 value={expiry}
-                onChange={(event) => setExpiry(event.target.value)}
+                onChange={(event) => {
+                  setExpiry(event.target.value);
+                  setExpiryChanged(true);
+                }}
+                aria-describedby={`manual-${kind}-expiry-help`}
               />
             </label>
             <label className="block text-sm">
@@ -383,7 +401,17 @@ export function ManualAccountForm({
               />
             </label>
           </div>
-          <p className="text-sm leading-6 text-gray-11">
+          <p
+            id={`manual-${kind}-expiry-help`}
+            className="text-sm leading-6 text-gray-11"
+          >
+            {kind === 'partner' && (
+              <>
+                {t(
+                  'Defaults to one year from creation. You can choose a different expiration date.',
+                )}{' '}
+              </>
+            )}
             {t(
               'Monthly allowances stop at the expiration date. Remaining Credits can be used during the 15-day grace period; runtime is then suspended. New allowances do not accumulate for missed months.',
             )}

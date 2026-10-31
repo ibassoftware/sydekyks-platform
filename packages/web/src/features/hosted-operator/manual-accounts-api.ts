@@ -33,12 +33,12 @@ export type ManualAccountInput = {
   fullName: string;
   email: string;
   password: string;
-  expiresAt: string;
   monthlyCredits?: number;
   reason: string;
 } & (
   | {
       kind: 'partner';
+      expiresAt?: string;
       planId: 'training';
       partner: {
         package: 'starter' | 'core' | 'launch';
@@ -46,7 +46,7 @@ export type ManualAccountInput = {
         approve: boolean;
       };
     }
-  | { kind: 'client'; planId: 'starter' | 'team' | 'scale' }
+  | { kind: 'client'; expiresAt: string; planId: 'starter' | 'team' | 'scale' }
 );
 const Response = z.object({
   platformId: id,

@@ -1,99 +1,16 @@
-import { PlatformConfigurationSettings } from '@activepieces/shared';
 import { t } from 'i18next';
-import { Activity, Server } from 'lucide-react';
-import { Control } from 'react-hook-form';
 
-import { FormField, FormItem, FormMessage } from '@/components/ui/form';
-import {
-  Item,
-  ItemMedia,
-  ItemContent,
-  ItemTitle,
-  ItemDescription,
-  ItemActions,
-} from '@/components/ui/item';
-import { Switch } from '@/components/ui/switch';
+import { SettingsPanel } from '@/app/components/admin';
 
-import { TrackedEventsDialog } from './tracked-events-dialog';
-
-export const TelemetrySection = ({
-  control,
-  disabled,
-}: TelemetrySectionProps) => {
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-base font-semibold">{t('Telemetry')}</h2>
-        <p className="text-sm text-gray-11">
-          {t(
-            'Optional telemetry sends usage events to the upstream Activepieces analytics service. Leave it disabled to avoid sharing usage data.',
-          )}
-        </p>
-      </div>
-      <Item variant="outline">
-        <ItemMedia variant="icon">
-          <Activity />
-        </ItemMedia>
-        <ItemContent>
-          <ItemTitle>{t('Product analytics')}</ItemTitle>
-          <ItemDescription className="line-clamp-none">
-            {t(
-              'Shares usage events so we can see which features are used and fix what breaks.',
-            )}
-          </ItemDescription>
-          <TrackedEventsDialog />
-        </ItemContent>
-        <ItemActions>
-          <FormField
-            control={control}
-            name="isProductTelemetryEnabled"
-            render={({ field }) => (
-              <FormItem>
-                <Switch
-                  checked={field.value}
-                  onCheckedChange={field.onChange}
-                  disabled={disabled}
-                />
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </ItemActions>
-      </Item>
-      <Item variant="outline">
-        <ItemMedia variant="icon">
-          <Server />
-        </ItemMedia>
-        <ItemContent>
-          <ItemTitle>{t('Deployment setup')}</ItemTitle>
-          <ItemDescription className="line-clamp-none">
-            {t(
-              'Sends a snapshot of your Workers and Health pages, without IPs or hostnames, so we can answer your support questions faster.',
-            )}
-          </ItemDescription>
-        </ItemContent>
-        <ItemActions>
-          <FormField
-            control={control}
-            name="isInfraSetupTelemetryEnabled"
-            render={({ field }) => (
-              <FormItem>
-                <Switch
-                  checked={field.value}
-                  onCheckedChange={field.onChange}
-                  disabled={disabled}
-                />
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </ItemActions>
-      </Item>
-    </div>
-  );
-};
-
-type TelemetrySectionProps = {
-  control: Control<PlatformConfigurationSettings>;
-  disabled: boolean;
-};
+export const TelemetrySection = () => (
+  <SettingsPanel
+    title={t('Telemetry')}
+    description={t('Product and deployment telemetry are disabled for now.')}
+  >
+    <p className="text-sm leading-6 text-gray-11" role="status">
+      {t(
+        'Collection will stay off until a Sydekyks-owned capture plan is approved. Routine operational server logs continue to support reliability and troubleshooting.',
+      )}
+    </p>
+  </SettingsPanel>
+);

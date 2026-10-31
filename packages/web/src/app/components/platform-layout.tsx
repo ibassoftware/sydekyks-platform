@@ -3,6 +3,7 @@ import { t } from 'i18next';
 import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
+import { RouteLoadingBar } from '@/components/custom/route-loading-bar';
 import {
   SidebarInset,
   SidebarProvider,
@@ -11,9 +12,11 @@ import {
 } from '@/components/ui/sidebar-shadcn';
 import { ManagePlanDialog } from '@/features/billing';
 import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
+import { useHostedOperatorAccess } from '@/features/hosted-operator/operator-api';
 import { useOperationalWorkspaces } from '@/features/hosted-operator/workspaces-api';
 import { useIsPlatformAdmin } from '@/hooks/authorization-hooks';
 import { flagsHooks } from '@/hooks/flags-hooks';
+import { canAccessPlatformInfrastructure } from '@/lib/platform-infrastructure-access';
 import { releaseAvailability } from '@/lib/release-availability';
 
 import { AllowOnlyLoggedInUserOnlyGuard } from './allow-logged-in-user-only-guard';
@@ -26,6 +29,12 @@ export function PlatformLayout({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
   const showPlatformAdminDashboard = useIsPlatformAdmin();
   const workspaces = useOperationalWorkspaces();
+  const operator = useHostedOperatorAccess();
+  const infrastructureAllowed = canAccessPlatformInfrastructure({
+    pathname,
+    hosted: hostedBilling,
+    operatorAllowed: operator.allowed,
+  });
   const workspacePicker =
     pathname === '/partners/workspaces' && workspaces.allowed;
 
@@ -47,7 +56,13 @@ export function PlatformLayout({ children }: { children: React.ReactNode }) {
                       pathname,
                       hostedBilling,
                     }) ? (
-                      children
+                      infrastructureAllowed ? (
+                        children
+                      ) : operator.isPending ? (
+                        <RouteLoadingBar />
+                      ) : (
+                        <Navigate to="/platform/health/runs" replace />
+                      )
                     ) : (
                       <Navigate to="/platform/projects" replace />
                     )}

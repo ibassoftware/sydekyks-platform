@@ -13,6 +13,8 @@ const state = vi.hoisted(() => ({
   plan: { aiProvidersEnabled: false, chatEnabled: true },
   edition: 'ce',
   unavailable: [] as string[],
+  hosted: false,
+  operator: false,
 }));
 vi.mock('i18next', () => ({ t: (key: string) => key }));
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }));
@@ -22,7 +24,10 @@ vi.mock('@/app/components/project-settings/mcp-server/utils/mcp-hooks', () => ({
   mcpHooks: { useMcpReach: () => ({ reachesMcp: false }) },
 }));
 vi.mock('@/features/hosted-operator/operator-api', () => ({
-  useHostedOperatorAccess: () => ({ allowed: false }),
+  useHostedOperatorAccess: () => ({ allowed: state.operator }),
+}));
+vi.mock('@/features/hosted-billing/service-mode', () => ({
+  useHostedBillingEnabled: () => state.hosted,
 }));
 vi.mock('@/features/hosted-operator/trainers-api', () => ({
   usePlatformTrainerAccess: () => ({ allowed: false }),
@@ -77,9 +82,9 @@ vi.mock('@/features/billing', () => ({
   ),
   TIER_LABELS: { enterprise: 'Enterprise' },
 }));
-function renderSidebar() {
+function renderSidebar(path = '/platform/ai') {
   render(
-    <MemoryRouter initialEntries={['/platform/ai']}>
+    <MemoryRouter initialEntries={[path]}>
       <SidebarProvider open>
         <PlatformSidebar />
       </SidebarProvider>
@@ -90,8 +95,36 @@ beforeEach(() => {
   state.plan.aiProvidersEnabled = false;
   state.edition = ApEdition.COMMUNITY;
   state.unavailable = [];
+  state.hosted = false;
+  state.operator = false;
 });
 describe('current self-hosted PlatformSidebar', () => {
+  it('hides shared infrastructure for hosted tenant admins while retaining scoped health links', () => {
+    state.hosted = true;
+    renderSidebar('/platform/health/runs');
+    expect(screen.queryByRole('link', { name: 'Workers' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'MCP Server' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Configurations' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'System Health' })).toBeNull();
+    expect(
+      screen.getByRole('link', { name: 'Health' }).getAttribute('href'),
+    ).toBe('/platform/health/runs');
+    expect(screen.getByRole('link', { name: 'Runs Health' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Queue Health' })).toBeTruthy();
+  });
+  it.each([false, true])(
+    'retains infrastructure for self-hosted admins and authorized hosted operators (hosted %s)',
+    (hosted) => {
+      state.hosted = hosted;
+      state.operator = hosted;
+      renderSidebar('/platform/health');
+      expect(screen.getByRole('link', { name: 'Workers' })).toBeTruthy();
+      expect(screen.getByRole('link', { name: 'MCP Server' })).toBeTruthy();
+      expect(screen.getByRole('link', { name: 'Configurations' })).toBeTruthy();
+      expect(screen.getByRole('link', { name: 'System Health' })).toBeTruthy();
+    },
+  );
+
   it('leaves AI navigation unmarked when the existing capability is enabled', () => {
     state.plan.aiProvidersEnabled = true;
     renderSidebar();

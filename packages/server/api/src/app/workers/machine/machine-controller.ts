@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { securityAccess } from '../../core/security/authorization/fastify-security'
 import { websocketService } from '../../core/websockets.service'
 import { system } from '../../helper/system/system'
+import { requireHostedInfrastructureOperator } from '../../hosting/hosting-infrastructure-access'
 import { hostingWorkerGate } from '../../hosting/hosting-worker-gate'
 import { parseWorkerGroupValue, QueueName } from '../job'
 import { jobBroker } from '../job-queue/job-broker'
@@ -73,12 +74,14 @@ export const workerMachineController: FastifyPluginAsyncZod = async (app) => {
 
 
 const ListWorkersParams = {
+    preHandler: requireHostedInfrastructureOperator,
     config: {
         security: securityAccess.platformAdminOnly([PrincipalType.USER, PrincipalType.SERVICE]),
     },
 }
 
 const QueueMetricsParams = {
+    preHandler: requireHostedInfrastructureOperator,
     config: {
         security: securityAccess.platformAdminOnly([PrincipalType.USER, PrincipalType.SERVICE]),
     },
@@ -97,6 +100,7 @@ const QueueMetricsParams = {
 }
 
 const PrometheusQueueMetricsParams = {
+    preHandler: requireHostedInfrastructureOperator,
     config: {
         security: securityAccess.platformAdminOnly([PrincipalType.USER, PrincipalType.SERVICE]),
     },

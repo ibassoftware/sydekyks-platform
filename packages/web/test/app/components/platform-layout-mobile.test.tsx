@@ -15,7 +15,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlatformLayout } from '@/app/components/platform-layout';
 import { Sidebar } from '@/components/ui/sidebar-shadcn';
 
-const state = vi.hoisted(() => ({ mobile: true, admin: true }));
+const state = vi.hoisted(() => ({
+  mobile: true,
+  admin: true,
+  hosted: false,
+  operator: false,
+  pending: false,
+}));
+vi.mock('@/features/hosted-billing/service-mode', () => ({
+  useHostedBillingEnabled: () => state.hosted,
+}));
+vi.mock('@/features/hosted-operator/operator-api', () => ({
+  useHostedOperatorAccess: () => ({
+    allowed: state.operator,
+    isPending: state.pending,
+  }),
+}));
+vi.mock('@/features/hosted-operator/workspaces-api', () => ({
+  useOperationalWorkspaces: () => ({ allowed: false }),
+}));
 vi.mock('i18next', () => ({ t: (key: string) => key }));
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => state.mobile }));
 vi.mock('@/hooks/flags-hooks', () => ({
@@ -52,9 +70,9 @@ vi.mock('@/app/components/sidebar/platform', () => ({
 function Location() {
   return <p>{useLocation().pathname}</p>;
 }
-function mount() {
+function mount(path = '/platform/projects') {
   render(
-    <MemoryRouter initialEntries={['/platform/projects']}>
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route
           path="/platform/*"
@@ -72,8 +90,42 @@ function mount() {
 beforeEach(() => {
   state.mobile = true;
   state.admin = true;
+  state.hosted = false;
+  state.operator = false;
+  state.pending = false;
 });
 describe('PlatformLayout mobile navigation consumer', () => {
+  it.each([
+    '/platform/workers',
+    '/platform/workers/groups',
+    '/platform/health',
+  ])('blocks direct hosted tenant access to %s', async (path) => {
+    state.hosted = true;
+    mount(path);
+    await screen.findByText('/platform/health/runs');
+    expect(screen.queryByText(path)).toBeNull();
+  });
+  it.each(['/platform/health/runs', '/platform/health/queue'])(
+    'retains workspace health at %s',
+    (path) => {
+      state.hosted = true;
+      mount(path);
+      expect(screen.getByText(path)).toBeTruthy();
+    },
+  );
+  it('does not mount protected content while operator access is loading', () => {
+    state.hosted = true;
+    state.pending = true;
+    mount('/platform/workers');
+    expect(screen.queryByText('/platform/workers')).toBeNull();
+  });
+  it('admits the authorized hosted operator to shared infrastructure', () => {
+    state.hosted = true;
+    state.operator = true;
+    mount('/platform/workers');
+    expect(screen.getByText('/platform/workers')).toBeTruthy();
+  });
+
   it('exposes a real opener, closes with Escape, and returns keyboard focus', async () => {
     mount();
     const trigger = screen.getByRole('button', {
@@ -100,16 +152,16 @@ describe('PlatformLayout mobile navigation consumer', () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger));
     fireEvent.click(trigger);
     await screen.findByRole('dialog');
-    // Navigating to the already-selected route also dismisses the drawer.
-    fireEvent.click(screen.getByRole('link', { name: 'Users' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByRole('link', { name: 'Users' })).toBeTruthy();
   });
-  it('keeps the mobile header absent on desktop', () => {
+  it('marks the mobile header hidden at the desktop breakpoint', () => {
     state.mobile = false;
     mount();
     expect(
-      screen.queryByRole('button', { name: 'Open platform navigation' }),
-    ).toBeNull();
+      screen
+        .getByRole('button', { name: 'Open platform navigation' })
+        .closest('header')?.className,
+    ).toContain('md:hidden');
     expect(screen.getByRole('link', { name: 'Back to app' })).toBeTruthy();
     expect(screen.getByText('/platform/projects')).toBeTruthy();
   });

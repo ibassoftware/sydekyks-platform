@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ create: vi.fn(), onCreated: vi.fn() }));
 vi.mock('@tanstack/react-query', () => ({
@@ -41,7 +41,8 @@ beforeEach(() => {
   mocks.create.mockReset();
   mocks.onCreated.mockReset();
 });
-function setup() {
+afterEach(() => vi.useRealTimers());
+function setup({ editExpiry = true } = {}) {
   render(
     <MemoryRouter>
       <ManualAccountForm
@@ -63,9 +64,10 @@ function setup() {
   fireEvent.change(screen.getByLabelText('Initial password'), {
     target: { value: 'Synthetic-only-initial-password' },
   });
-  fireEvent.change(screen.getByLabelText('Expiration / renewal due (UTC)'), {
-    target: { value: '2027-01-01T00:00' },
-  });
+  if (editExpiry)
+    fireEvent.change(screen.getByLabelText('Expiration / renewal due (UTC)'), {
+      target: { value: '2027-01-01T00:00' },
+    });
   fireEvent.change(
     screen.getByLabelText('Manual payment reference / authorization reason'),
     { target: { value: 'Fictional test funding authorization' } },
@@ -75,6 +77,53 @@ function setup() {
   }) as HTMLButtonElement;
 }
 describe('manual creation funding and retry controls', () => {
+  it.each([
+    ['2026-10-31T12:34:56Z', '2027-10-31T12:34'],
+    ['2028-02-29T12:34:56Z', '2029-02-28T12:34'],
+  ])(
+    'prefills a calendar year from %s, including leap-day clamping',
+    (now, expected) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(now));
+      setup({ editExpiry: false });
+      expect(
+        screen.getByLabelText('Expiration / renewal due (UTC)'),
+      ).toMatchObject({ value: expected });
+    },
+  );
+  it('lets the server anchor automatic expiration to creation and keeps retries identical across dates', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-31T12:34:56Z'));
+    const submit = setup({ editExpiry: false });
+    fireEvent.click(
+      screen.getByLabelText(/I verified the manual payment or authorization/),
+    );
+    mocks.create
+      .mockRejectedValueOnce(new Error('Unknown network result'))
+      .mockResolvedValueOnce({ account });
+    fireEvent.click(submit);
+    await screen.findByRole('alert');
+    const first = mocks.create.mock.calls[0][1];
+    expect(first.expiresAt).toBeUndefined();
+    vi.setSystemTime(new Date('2026-11-01T12:34:56Z'));
+    fireEvent.click(submit);
+    await screen.findByText(/Account created:/);
+    expect(mocks.create.mock.calls[1][1]).toEqual(first);
+    expect(
+      screen.getByLabelText('Expiration / renewal due (UTC)'),
+    ).toMatchObject({ value: '2027-11-01T12:34' });
+  });
+  it('keeps client expiration as an explicit choice', () => {
+    render(
+      <MemoryRouter>
+        <ManualAccountForm session={session} kind="client" />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByLabelText('Expiration / renewal due (UTC)'),
+    ).toMatchObject({ value: '' });
+  });
+
   it('submits internal Starter with 35 Credits and prevents an above-cap submission', async () => {
     const submit = setup();
     fireEvent.change(screen.getByLabelText('Partner package'), {

@@ -1,7 +1,7 @@
-import { ActivepiecesError, AIProviderName, apId, chunk, ErrorCode, isEmpty, isNil, spreadIfNotUndefined, tryCatch } from '@activepieces/core-utils'
-import { ApEdition, maxBarrierSignalsBounds, ModelChoice, PlatformConfiguration, UpdatePlatformConfigurationRequestBody } from '@activepieces/shared'
+import { ActivepiecesError, AIProviderName, apId, ErrorCode, isEmpty, isNil, spreadIfNotUndefined, tryCatch } from '@activepieces/core-utils'
+import { maxBarrierSignalsBounds, ModelChoice, PlatformConfiguration, UpdatePlatformConfigurationRequestBody } from '@activepieces/shared'
 import { FastifyBaseLogger } from 'fastify'
-import { EntityManager, In } from 'typeorm'
+import { EntityManager } from 'typeorm'
 import { aiModelOptionsService, aiModelOptionsUtils } from '../ai/ai-model-options-service'
 import { AIProviderEntity } from '../ai/ai-provider-entity'
 import { aiProviderService } from '../ai/ai-provider-service'
@@ -16,7 +16,6 @@ import { PlatformConfigurationEntity } from './platform-configuration.entity'
 const platformConfigurationRepo = repoFactory(PlatformConfigurationEntity)
 
 const CREATE_LOCK_TIMEOUT_SECONDS = 60
-const CONFIGURATION_FILTER_BATCH_SIZE = 1_000
 const DEFAULT_CHAT_MODEL_UNAVAILABLE = 'This model is not available for chat on this platform'
 
 export const platformConfigurationService = (log: FastifyBaseLogger) => ({
@@ -39,12 +38,8 @@ export const platformConfigurationService = (log: FastifyBaseLogger) => ({
         })
     },
 
-    async isProductTelemetryEnabled({ platformId }: GetOrCreateParams): Promise<boolean> {
-        if (system.getEdition() === ApEdition.CLOUD) {
-            return true
-        }
-        const configuration = await this.getOrCreateForPlatform({ platformId })
-        return configuration.isProductTelemetryEnabled
+    async isProductTelemetryEnabled(_params: GetOrCreateParams): Promise<boolean> {
+        return false
     },
 
     async maxBarrierSignals({ platformId }: GetOrCreateParams): Promise<number> {
@@ -55,49 +50,18 @@ export const platformConfigurationService = (log: FastifyBaseLogger) => ({
         return configuration.maxBarrierSignals
     },
 
-    async filterProjectsWithProductTelemetryEnabled({ projectIds }: FilterProjectsParams): Promise<string[]> {
-        if (projectIds.length === 0) {
-            return []
-        }
-        if (system.getEdition() === ApEdition.CLOUD) {
-            return projectIds
-        }
-        const fallback = system.getBoolean(AppSystemProp.TELEMETRY_ENABLED) ?? true
-        const enabled: string[] = []
-        for (const batch of chunk(projectIds, CONFIGURATION_FILTER_BATCH_SIZE)) {
-            const rows: { id: string }[] = await platformConfigurationRepo().manager
-                .createQueryBuilder()
-                .select('project.id', 'id')
-                .from('project', 'project')
-                .leftJoin('platform_configuration', 'configuration', 'configuration."platformId" = project."platformId"')
-                .where('project.id IN (:...projectIds)', { projectIds: batch })
-                .andWhere('COALESCE(configuration."isProductTelemetryEnabled", :fallback) = true', { fallback })
-                .getRawMany()
-            enabled.push(...rows.map((row) => row.id))
-        }
-        return enabled
+    async filterProjectsWithProductTelemetryEnabled(_params: FilterProjectsParams): Promise<string[]> {
+        return []
     },
 
-    async filterPlatformsWithInfraSetupTelemetryEnabled({ platformIds }: FilterPlatformsParams): Promise<string[]> {
-        if (platformIds.length === 0) {
-            return []
-        }
-        if (system.getEdition() === ApEdition.CLOUD) {
-            return platformIds
-        }
-        const optedOut: string[] = []
-        for (const batch of chunk(platformIds, CONFIGURATION_FILTER_BATCH_SIZE)) {
-            const rows = await platformConfigurationRepo().find({
-                where: { platformId: In(batch), isInfraSetupTelemetryEnabled: false },
-                select: ['platformId'],
-            })
-            optedOut.push(...rows.map((row) => row.platformId))
-        }
-        const optedOutIds = new Set(optedOut)
-        return platformIds.filter((platformId) => !optedOutIds.has(platformId))
+    async filterPlatformsWithInfraSetupTelemetryEnabled(_params: FilterPlatformsParams): Promise<string[]> {
+        return []
     },
 
     async update({ platformId, isProductTelemetryEnabled, isInfraSetupTelemetryEnabled, maxBarrierSignals, aiSpecificModelsVisible, defaultChatModel }: UpdateParams): Promise<PlatformConfiguration> {
+        if (isProductTelemetryEnabled === true || isInfraSetupTelemetryEnabled === true) {
+            throw new ActivepiecesError({ code: ErrorCode.VALIDATION, params: { message: 'Telemetry collection is disabled until a Sydekyks-owned capture plan is approved.' } })
+        }
         await this.getOrCreateForPlatform({ platformId })
         const chatModel = isNil(defaultChatModel) ? defaultChatModel : await offeredChatModelOrThrow({ platformId, choice: defaultChatModel, log })
         const patch = {
@@ -152,12 +116,13 @@ function chatModelUnavailableError(): ActivepiecesError {
 }
 
 async function createInitialConfiguration({ platformId }: GetOrCreateParams): Promise<PlatformConfiguration> {
-    const isProductTelemetryEnabled = system.getBoolean(AppSystemProp.TELEMETRY_ENABLED)
+    const isProductTelemetryEnabled = false
     const configuredMaxBarrierSignals = system.getNumber(AppSystemProp.MAX_BARRIER_SIGNALS)
     const maxBarrierSignals = isNil(configuredMaxBarrierSignals) ? undefined : clampBarrierSignalCap(configuredMaxBarrierSignals)
     return platformConfigurationRepo().save({
         id: apId(),
         platformId,
+        isInfraSetupTelemetryEnabled: false,
         ...spreadIfNotUndefined('isProductTelemetryEnabled', isProductTelemetryEnabled),
         ...spreadIfNotUndefined('maxBarrierSignals', maxBarrierSignals),
     })

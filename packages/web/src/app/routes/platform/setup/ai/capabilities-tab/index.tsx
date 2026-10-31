@@ -26,6 +26,7 @@ import { DataFetchErrorState } from '@/components/custom/data-fetch-error-state'
 import { ConfirmationDeleteDialog } from '@/components/custom/delete-dialog';
 import { TextWithTooltip } from '@/components/custom/text-with-tooltip';
 import { Button } from '@/components/ui/button';
+import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import {
   aiProviderQueries,
   aiToolConfigMutations,
@@ -41,7 +42,10 @@ import {
   AiToolCapabilityInfo,
 } from '../../ai-capabilities/catalog';
 
+import { HostedWebSearchCapability } from './hosted-web-search-capability';
+
 export function CapabilitiesTab() {
+  const hosted = useHostedBillingEnabled();
   const {
     data: configs,
     isError: configsFailed,
@@ -73,16 +77,31 @@ export function CapabilitiesTab() {
             {AI_TOOL_CATALOG.length}
           </span>
         }
-        description={t(
-          'Search and images use your AI provider. Scraping needs a service of its own. Connect a service to use it in place of your provider.',
-        )}
+        description={
+          hosted
+            ? t(
+                'Web search is built into hosted Sydekyks. Other capabilities use the providers and services configured below.',
+              )
+            : t(
+                'Search and images use your AI provider. Scraping needs a service of its own. Connect a service to use it in place of your provider.',
+              )
+        }
         resources={adminPageResources.aiCapabilities}
       />
       {isError ? (
         <DataFetchErrorState entity={t('AI tools')} onRetry={refetch} />
-      ) : (
+      ) : null}
+      {(!isError || hosted) && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {AI_TOOL_CATALOG.map((capabilityInfo) => {
+            if (
+              hosted &&
+              capabilityInfo.capability === AiToolCapability.WEB_SEARCH
+            )
+              return (
+                <HostedWebSearchCapability key={capabilityInfo.capability} />
+              );
+            if (isError) return null;
             const config = configs?.find(
               (c) => c.capability === capabilityInfo.capability,
             );
