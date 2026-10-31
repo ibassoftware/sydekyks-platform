@@ -83,16 +83,14 @@ describe('manual creation funding and retry controls', () => {
     const credits = screen.getByLabelText(
       'Monthly Credits',
     ) as HTMLInputElement;
-    expect(credits.value).toBe('35');
-    expect(credits.max).toBe('35');
-    expect(
-      (screen.getByLabelText('Partner course') as HTMLSelectElement).disabled,
-    ).toBe(true);
+    expect(credits).toHaveValue(35);
+    expect(credits).toHaveAttribute('max', '35');
+    expect(screen.getByLabelText('Partner course')).toBeDisabled();
     fireEvent.click(
       screen.getByLabelText(/I verified the manual payment or authorization/),
     );
     fireEvent.change(credits, { target: { value: '35.01' } });
-    fireEvent.submit(submit.closest('form')!);
+    fireEvent.click(submit);
     expect(mocks.create).not.toHaveBeenCalled();
     fireEvent.change(credits, { target: { value: '35' } });
     mocks.create.mockResolvedValueOnce({
@@ -113,12 +111,8 @@ describe('manual creation funding and retry controls', () => {
     const packages = screen.getByLabelText('Partner package');
     fireEvent.change(packages, { target: { value: 'starter' } });
     fireEvent.change(packages, { target: { value: 'core' } });
-    expect(
-      (screen.getByLabelText('Monthly Credits') as HTMLInputElement).value,
-    ).toBe('300');
-    expect(
-      (screen.getByLabelText('Partner course') as HTMLSelectElement).disabled,
-    ).toBe(false);
+    expect(screen.getByLabelText('Monthly Credits')).toHaveValue(300);
+    expect(screen.getByLabelText('Partner course')).toBeEnabled();
   });
 
   it('requires deliberate funding confirmation and leaves Partner operational approval unchecked', () => {
