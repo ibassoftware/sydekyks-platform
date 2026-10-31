@@ -77,6 +77,7 @@ it('returns the same empty response for eligible and absent accounts and does no
         const response = await app.inject({ method: 'POST', url: '/api/v1/authentication/request-password-reset', body: { email } })
         expect(response.statusCode).toBe(204); expect(response.body).toBe('')
     }
+    await vi.waitFor(() => expect(delivery.send).toHaveBeenCalled())
     vi.unstubAllEnvs()
 })
 
