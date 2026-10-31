@@ -1,4 +1,5 @@
 import { Agent } from '@activepieces/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import { t } from 'i18next';
 
 import { AIChatBox } from '@/app/routes/chat-with-ai/ai-chat-box';
@@ -18,66 +19,74 @@ export const AgentChatView = ({
   onCollapseConversations,
   onExpandConversations,
   onConversationCreated,
-}: AgentChatViewProps) => (
-  <>
-    <aside
-      className={cn(
-        'shrink-0 overflow-hidden border-r border-gray-6',
-        conversationsOpen
-          ? 'absolute inset-y-0 left-0 z-20 w-full bg-panel md:relative md:inset-auto md:z-auto md:w-[220px]'
-          : 'hidden md:block md:w-[46px]',
-      )}
-    >
-      {conversationsOpen ? (
-        <ConversationList
-          agentId={agent.id}
-          className="w-full"
-          selectedId={openedConversationId ?? null}
-          onSelect={(id) => {
-            onSelectConversation(id);
-            if (window.innerWidth < 768) onCollapseConversations();
-          }}
-          onNewChat={() => {
-            onNewConversation();
-            if (window.innerWidth < 768) onCollapseConversations();
-          }}
-          onCollapse={onCollapseConversations}
-        />
-      ) : (
-        <div className="flex h-full w-[46px] flex-col items-center pt-3">
+}: AgentChatViewProps) => {
+  const queryClient = useQueryClient();
+  return (
+    <>
+      <aside
+        className={cn(
+          'shrink-0 overflow-hidden border-r border-gray-6',
+          conversationsOpen
+            ? 'absolute inset-y-0 left-0 z-20 w-full bg-panel md:relative md:inset-auto md:z-auto md:w-[220px]'
+            : 'hidden md:block md:w-[46px]',
+        )}
+      >
+        {conversationsOpen ? (
+          <ConversationList
+            agentId={agent.id}
+            className="w-full"
+            selectedId={openedConversationId ?? null}
+            onSelect={(id) => {
+              onSelectConversation(id);
+              if (window.innerWidth < 768) onCollapseConversations();
+            }}
+            onNewChat={() => {
+              onNewConversation();
+              if (window.innerWidth < 768) onCollapseConversations();
+            }}
+            onCollapse={onCollapseConversations}
+          />
+        ) : (
+          <div className="flex h-full w-[46px] flex-col items-center pt-3">
+            <ConversationsToggle open={false} onClick={onExpandConversations} />
+          </div>
+        )}
+      </aside>
+      <div
+        className={cn(
+          'min-h-0 min-w-0 flex-1 flex-col',
+          conversationsOpen ? 'hidden md:flex' : 'flex',
+        )}
+      >
+        <div className="shrink-0 border-b px-3 py-2 md:hidden">
           <ConversationsToggle open={false} onClick={onExpandConversations} />
         </div>
-      )}
-    </aside>
-    <div
-      className={cn(
-        'min-h-0 min-w-0 flex-1 flex-col',
-        conversationsOpen ? 'hidden md:flex' : 'flex',
-      )}
-    >
-      <div className="shrink-0 border-b px-3 py-2 md:hidden">
-        <ConversationsToggle open={false} onClick={onExpandConversations} />
+        <AIChatBox
+          key={chatSessionKey}
+          incognito={false}
+          agentId={agent.id}
+          conversationId={openedConversationId ?? null}
+          onConversationCreated={onConversationCreated}
+          onTurnEnd={() =>
+            void queryClient.invalidateQueries({
+              queryKey: ['agents', 'one', agent.id],
+            })
+          }
+          placeholder={t('Ask {name}...', { name: agent.displayName })}
+          footerNote={footerNote}
+          emptyState={
+            <AgentChatWelcome
+              displayName={agent.displayName}
+              description={agent.description ?? null}
+              icon={agent.icon}
+              color={agent.color}
+            />
+          }
+        />
       </div>
-      <AIChatBox
-        key={chatSessionKey}
-        incognito={false}
-        agentId={agent.id}
-        conversationId={openedConversationId ?? null}
-        onConversationCreated={onConversationCreated}
-        placeholder={t('Ask {name}...', { name: agent.displayName })}
-        footerNote={footerNote}
-        emptyState={
-          <AgentChatWelcome
-            displayName={agent.displayName}
-            description={agent.description ?? null}
-            icon={agent.icon}
-            color={agent.color}
-          />
-        }
-      />
-    </div>
-  </>
-);
+    </>
+  );
+};
 
 type AgentChatViewProps = {
   agent: Agent;

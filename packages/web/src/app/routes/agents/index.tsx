@@ -242,7 +242,9 @@ const AgentsPageContent = () => {
             label={t('Create agent')}
           />
           <p className="mt-3 max-w-md text-center text-sm text-gray-11">
-            {t('Configure your Sydekyk, then use Chat above to try it.')}
+            {t(
+              'Configure your Sydekyk, then choose Chat with Sydekyk above to try it.',
+            )}
           </p>
         </section>
       )}
