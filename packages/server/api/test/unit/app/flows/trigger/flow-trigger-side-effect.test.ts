@@ -117,6 +117,34 @@ describe('flowTriggerSideEffect', () => {
         mockGetPlatformId.mockResolvedValue('platform-1')
     })
 
+    describe('Every X Minutes minimum', () => {
+        const params = () => ({ ...BASE_PARAMS, pieceName: '@activepieces/piece-schedule', pieceTrigger: { ...makePollingTrigger(), name: 'every_x_minutes' } })
+        it('refuses a fresh worker schedule shorter than 15 minutes before queue registration', async () => {
+            mockSubmitAndWaitForResponse.mockResolvedValue({ ...okEngineResponse(), response: { scheduleOptions: { type: TriggerSourceScheduleType.INTERVAL, intervalMs: 14 * 60_000 } } })
+            await expect(flowTriggerSideEffect(mockLog).enable(params())).rejects.toThrow('at least 15 minutes')
+            expect(mockAddJob).not.toHaveBeenCalled()
+        })
+        it('refuses a reused sub-15-minute schedule without rerunning the worker', async () => {
+            await expect(flowTriggerSideEffect(mockLog).enable({ ...params(), isRepublish: true, isTriggerUnchanged: true, previousSchedule: { type: TriggerSourceScheduleType.INTERVAL, intervalMs: 60_000 } })).rejects.toThrow('at least 15 minutes')
+            expect(mockSubmitAndWaitForResponse).not.toHaveBeenCalled()
+            expect(mockAddJob).not.toHaveBeenCalled()
+        })
+        it('registers a 15-minute interval', async () => {
+            const scheduleOptions = { type: TriggerSourceScheduleType.INTERVAL as const, intervalMs: 15 * 60_000 }
+            mockSubmitAndWaitForResponse.mockResolvedValue({ ...okEngineResponse(), response: { scheduleOptions } })
+            expect((await flowTriggerSideEffect(mockLog).enable(params())).scheduleOptions).toEqual(scheduleOptions)
+            expect(mockAddJob).toHaveBeenCalledWith(expect.objectContaining({ scheduleOptions }))
+        })
+        it.each([5, 17, 59])('rejects legacy */%s cron schedules with a short gap', async minutes => {
+            await expect(flowTriggerSideEffect(mockLog).enable({ ...params(), isTriggerUnchanged: true, previousSchedule: { type: TriggerSourceScheduleType.CRON_EXPRESSION, cronExpression: `*/${minutes} * * * *`, timezone: 'UTC' } })).rejects.toThrow('at least 15 minutes')
+            expect(mockAddJob).not.toHaveBeenCalled()
+        })
+        it.each([15, 20, 30])('preserves a valid legacy */%s schedule', async minutes => {
+            const previousSchedule = { type: TriggerSourceScheduleType.CRON_EXPRESSION as const, cronExpression: `*/${minutes} * * * *`, timezone: 'UTC' }
+            expect((await flowTriggerSideEffect(mockLog).enable({ ...params(), isTriggerUnchanged: true, previousSchedule })).scheduleOptions).toEqual(previousSchedule)
+        })
+    })
+
     describe('enable', () => {
         it('should default polling schedule to a rolling interval', async () => {
             mockSubmitAndWaitForResponse.mockResolvedValue(okEngineResponse())

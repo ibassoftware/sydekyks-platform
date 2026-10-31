@@ -11,32 +11,34 @@ export const everyXMinutesTrigger = createTrigger({
   description: 'Triggers the current flow every X minutes',
   aiMetadata: {
     description:
-      'Fires repeatedly on a fixed minute interval (a whole number of minutes, 1-59), so each event simply represents "the interval elapsed" rather than any external change. Pick this for sub-hourly recurrence; use Every Hour / Every Day / Every Week / Every Month for coarser fixed schedules, or Cron Expression when the cadence needs specific minutes, weekdays or a timezone. Runs on a plain interval with no timezone or weekday awareness, so it also fires on weekends and overnight.',
+      'Fires repeatedly on a fixed minute interval (a whole number of minutes, 15-59), so each event simply represents "the interval elapsed" rather than any external change. Pick this for sub-hourly recurrence; use Every Hour / Every Day / Every Week / Every Month for coarser fixed schedules, or Cron Expression when the cadence needs specific minutes, weekdays or a timezone. Runs on a plain interval with no timezone or weekday awareness, so it also fires on weekends and overnight.',
   },
   type: TriggerStrategy.POLLING,
   sampleData: {},
   props: {
     minutes: Property.StaticDropdown({
       displayName: 'Minutes',
-      description: 'Valid value between 1 to 59.',
+      description: 'Choose a whole number from 15 to 59 minutes.',
       required: true,
-      defaultValue: 1,
+      defaultValue: 15,
       options: {
         disabled: false,
-        options: Array.from({ length: 59 }, (_, index) => ({
-          label: `${index + 1} minute${index !== 0 ? 's' : ''}`,
-          value: index + 1,
+        options: Array.from({ length: 45 }, (_, index) => ({
+          label: `${index + 15} minutes`,
+          value: index + 15,
         })),
       },
     }),
   },
   onEnable: async (ctx) => {
+    const minutes = validateMinutes(ctx.propsValue.minutes);
     ctx.setSchedule({
-      intervalMs: ctx.propsValue.minutes * 60_000,
+      intervalMs: minutes * 60_000,
     });
   },
   run(ctx) {
-    const cronExpression = `*/${ctx.propsValue.minutes} * * * *`;
+    const minutes = validateMinutes(ctx.propsValue.minutes);
+    const cronExpression = `*/${minutes} * * * *`;
     return Promise.resolve([
       {
         cron_expression: cronExpression,
@@ -48,3 +50,10 @@ export const everyXMinutesTrigger = createTrigger({
     console.log('onDisable');
   },
 });
+
+function validateMinutes(minutes: number): number {
+  if (!Number.isInteger(minutes) || minutes < 15 || minutes > 59) {
+    throw new Error('Minutes must be a whole number from 15 to 59.');
+  }
+  return minutes;
+}

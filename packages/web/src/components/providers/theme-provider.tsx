@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect } from 'react';
 import * as RippleHook from 'use-ripple-hook';
 
 import { flagsHooks } from '@/hooks/flags-hooks';
@@ -9,37 +9,22 @@ const ThemeProviderContext = createContext<ThemeProviderState | undefined>(
   undefined,
 );
 
-const systemThemeQuery = '(prefers-color-scheme: dark)';
-
 export function ThemeProvider({
   children,
-  defaultPreference = 'light',
   storageKey = 'ap-ui-theme',
   ...props
 }: ThemeProviderProps) {
-  const [preference, setPreference] = useState<ThemePreference>(
-    () =>
-      parsePreference({ value: localStorage.getItem(storageKey) }) ??
-      defaultPreference,
-  );
-  const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(getSystemTheme);
   const branding = flagsHooks.useWebsiteBranding();
 
-  const resolvedTheme: ResolvedTheme =
-    preference === 'system' ? systemTheme : preference;
-
   useEffect(() => {
-    const mediaQuery = window.matchMedia(systemThemeQuery);
-    const handleChange = (event: MediaQueryListEvent) => {
-      setSystemTheme(event.matches ? 'dark' : 'light');
-    };
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', resolvedTheme);
-  }, [resolvedTheme]);
+    document.documentElement.setAttribute('data-theme', 'dark');
+    document.documentElement.style.colorScheme = 'dark';
+    try {
+      localStorage.setItem(storageKey, 'dark');
+    } catch {
+      // Storage may be unavailable; the app still stays dark.
+    }
+  }, [storageKey]);
 
   useEffect(() => {
     if (!branding) {
@@ -74,15 +59,7 @@ export function ThemeProvider({
     }
   }, [branding]);
 
-  const value = {
-    preference,
-    resolvedTheme,
-    setPreference: (next: ThemePreference) => {
-      localStorage.setItem(storageKey, next);
-      setPreference(next);
-    },
-    setPreferenceWithoutPersisting: setPreference,
-  };
+  const value: ThemeProviderState = { resolvedTheme: 'dark' };
 
   return (
     <ThemeProviderContext.Provider {...props} value={value}>
@@ -119,32 +96,13 @@ const setFavicon = (url: string) => {
   document.head.appendChild(link);
 };
 
-const getSystemTheme = (): ResolvedTheme =>
-  window.matchMedia(systemThemeQuery).matches ? 'dark' : 'light';
-
-function parsePreference({
-  value,
-}: {
-  value: string | null;
-}): ThemePreference | null {
-  return THEME_PREFERENCES.find((preference) => preference === value) ?? null;
-}
-
-const THEME_PREFERENCES: ThemePreference[] = ['dark', 'light', 'system'];
-
-export type ThemePreference = 'dark' | 'light' | 'system';
-
 export type ResolvedTheme = 'dark' | 'light';
 
 type ThemeProviderProps = {
   children: React.ReactNode;
-  defaultPreference?: ThemePreference;
   storageKey?: string;
 };
 
 type ThemeProviderState = {
-  preference: ThemePreference;
   resolvedTheme: ResolvedTheme;
-  setPreference: (preference: ThemePreference) => void;
-  setPreferenceWithoutPersisting: (preference: ThemePreference) => void;
 };

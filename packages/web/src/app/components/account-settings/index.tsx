@@ -21,7 +21,7 @@ import { Separator } from '@/components/ui/separator';
 import { userHooks, userMutations } from '@/hooks/user-hooks';
 
 import { PasswordSettings } from './password-settings';
-import { ThemeToggle } from './theme-toggle';
+import { ThemeSetting } from './theme-setting';
 
 export interface AccountSettingsDialogProps {
   open: boolean;
@@ -120,7 +120,7 @@ export function AccountSettingsDialog({
             <Separator />
 
             <div className="max-w-sm">
-              <ThemeToggle />
+              <ThemeSetting />
             </div>
             <Separator />
             <div>
