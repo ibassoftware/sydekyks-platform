@@ -49,7 +49,7 @@ export function HostedOperatorEntry({
             <>
               <p className="mt-3 text-sm leading-6 text-gray-11">
                 {t(
-                  'Manage Partners, client workspaces and training as a Sydekyks administrator.',
+                  'Manage Partners and client workspaces as a Sydekyks administrator.',
                 )}
               </p>
               <nav
@@ -58,9 +58,6 @@ export function HostedOperatorEntry({
               >
                 <Button asChild>
                   <Link to="/platform/partners">{t('Manage Partners')}</Link>
-                </Button>
-                <Button variant="outline" asChild>
-                  <Link to="/learn">{t('Manage training')}</Link>
                 </Button>
                 <Button variant="outline" asChild>
                   <Link to="/platform/managed-ai">

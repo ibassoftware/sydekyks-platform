@@ -84,7 +84,7 @@ const TrialActivationScreen = ({
 
   const homeRoute = determineDefaultRoute({
     checkAccess,
-    chatEnabled: platform.plan.chatEnabled,
+    agentsEnabled: platform.plan.agentsEnabled,
   });
 
   const returnToApp = useCallback(() => {

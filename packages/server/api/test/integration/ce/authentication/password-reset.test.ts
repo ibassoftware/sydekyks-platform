@@ -103,3 +103,38 @@ it('refuses to mint a replacement session from a stale password revision', async
     const { user } = await seed()
     await expect(authenticationUtils(app.log).getProjectAndToken({ userId: user.id, platformId: user.platformId!, projectId: null, expectedTokenVersion: 'stale-password-revision' })).rejects.toThrow()
 })
+
+it('checks reset links without consuming valid codes or changing credentials', async () => {
+    const { identity, token } = await seed(), otp = await issue(identity)
+    const check = () => app.inject({ method: 'POST', url: '/api/v1/authentication/validate-password-reset', body: { identityId: identity.id, otp } })
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const response = await check()
+        expect(response.statusCode).toBe(200)
+        expect(response.json()).toEqual({ valid: true })
+        expect(response.headers['cache-control']).toBe('no-store')
+    }
+    const saved = await databaseConnection().getRepository('user_identity').findOneByOrFail({ id: identity.id })
+    expect(saved.password).toBe(identity.password)
+    expect(saved.tokenVersion).toBe(identity.tokenVersion)
+    await expect(accessTokenManager(app.log).verifyPrincipal(token)).resolves.toBeDefined()
+    expect((await app.inject({ method: 'POST', url: '/api/v1/authentication/reset-password', body: { identityId: identity.id, otp, newPassword } })).statusCode).toBe(204)
+    expect((await check()).json()).toEqual({ valid: false })
+})
+it('shares failed-guess limits between reset-link checks and redemption', async () => {
+    const { identity } = await seed(), otp = await issue(identity)
+    for (let attempt = 0; attempt < 5; attempt++) {
+        const response = await app.inject({ method: 'POST', url: '/api/v1/authentication/validate-password-reset', body: { identityId: identity.id, otp: 'wrong-code' } })
+        expect(response.json()).toEqual({ valid: false })
+    }
+    await expect(passwordService(app.log).reset({ identityId: identity.id, otp, newPassword })).rejects.toThrow()
+})
+it('reports expired and credential-revoked reset links as unavailable', async () => {
+    for (const reason of ['expired', 'revoked']) {
+        const { identity } = await seed(), otp = await issue(identity)
+        if (reason === 'expired') await databaseConnection().getRepository('otp').query('UPDATE otp SET updated = $1 WHERE "identityId" = $2', [new Date(Date.now() - 11 * 60_000).toISOString(), identity.id])
+        else await databaseConnection().getRepository('user_identity').update(identity.id, { tokenVersion: 'changed-credential-revision' })
+        const response = await app.inject({ method: 'POST', url: '/api/v1/authentication/validate-password-reset', body: { identityId: identity.id, otp } })
+        expect(response.statusCode).toBe(200)
+        expect(response.json()).toEqual({ valid: false })
+    }
+})

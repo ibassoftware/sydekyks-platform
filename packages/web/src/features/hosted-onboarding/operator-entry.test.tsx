@@ -92,6 +92,7 @@ describe('role-appropriate signed-in entry', () => {
     ).not.toBeNull();
     expect(pageText()).not.toContain('Trial');
     expect(pageText()).not.toContain('Your workspace');
+    expect(element.querySelector('a[href="/learn"]')).toBeNull();
   });
   it('does not infer global operator authority from an ordinary signed-in tenant admin', async () => {
     mocks.allowed = false;

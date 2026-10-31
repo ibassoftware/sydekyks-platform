@@ -21,17 +21,17 @@ export const routesThatRequireProjectId = {
   approvals: '/approvals',
 };
 
-export const CHAT_ROUTE = '/chat';
+export const AGENTS_ROUTE = '/agents';
 
 export const determineDefaultRoute = ({
   checkAccess,
-  chatEnabled,
+  agentsEnabled,
 }: {
   checkAccess: (permission: Permission) => boolean;
-  chatEnabled?: boolean;
+  agentsEnabled?: boolean;
 }) => {
-  if (chatEnabled) {
-    return CHAT_ROUTE;
+  if (agentsEnabled && checkAccess(Permission.READ_AGENT)) {
+    return AGENTS_ROUTE;
   }
   if (checkAccess(Permission.READ_FLOW) || checkAccess(Permission.READ_TABLE)) {
     return authenticationSession.appendProjectRoutePrefix('/automations');

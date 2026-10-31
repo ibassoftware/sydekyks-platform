@@ -13,7 +13,7 @@ export const gmailGetLabelAction = createAction({
   audience: 'ai',
   aiMetadata: {
     description:
-      'Fetches a single label by its label ID, returning its name, type, visibility, color, and message/thread counts. Use this to inspect a label or read how many messages carry it; obtain the label ID from List Labels. Idempotent: a read-only lookup that does not modify the mailbox.',
+      'Fetches a single label by its label ID, returning its name, type, visibility, color, and message/thread counts. Use label ID UNREAD and messagesTotal for the exact unread mailbox count, or label ID INBOX and messagesUnread for the exact unread inbox count. Use this to inspect a label or read how many messages carry it; obtain the label ID from List Labels. Idempotent: a read-only lookup that does not modify the mailbox.',
     idempotent: true,
   },
   props: {

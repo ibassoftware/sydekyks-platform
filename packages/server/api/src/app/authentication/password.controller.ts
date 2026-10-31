@@ -41,6 +41,14 @@ export const passwordController: FastifyPluginAsyncZod = async app => {
         })(), request.log)
         return reply.code(204).send()
     })
+    app.post('/validate-password-reset', {
+        config: { security: securityAccess.public(), rateLimit: authnRateLimit },
+        logLevel: 'silent', bodyLimit: 4096,
+        schema: { body: ResetPasswordRequestBody.pick({ identityId: true, otp: true }).extend({ otp: z.string().min(1).max(128) }).strict() },
+    }, async (request, reply) => {
+        const valid = await passwordService(request.log).isResetValid(request.body)
+        return reply.header('Cache-Control', 'no-store').send({ valid })
+    })
     app.post('/reset-password', {
         config: { security: securityAccess.public(), rateLimit: authnRateLimit },
         logLevel: 'silent', bodyLimit: 4096,

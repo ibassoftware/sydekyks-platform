@@ -98,9 +98,11 @@ jobs:
           bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/hosting-manual-accounts.test.ts --maxWorkers=2
           bun x vitest run --config packages/web/vitest.config.ts packages/web/src/features/hosted-operator/manual-account-form.test.tsx packages/web/src/features/hosted-operator/manual-accounts-api.test.ts packages/web/src/features/hosted-operator/credit-allowance-section.test.tsx packages/web/src/features/hosted-billing/billing-view.test.tsx --maxWorkers=2
       - name: Check password security and recovery
-        run: bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/password-reset-email.test.ts packages/server/api/test/integration/ce/authentication/password-reset.test.ts packages/server/api/test/unit/hosting-account-recovery.test.ts --maxWorkers=1 --no-file-parallelism
+        run: bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/unit/password-reset-email.test.ts packages/server/api/test/unit/password-reset-preflight.test.ts packages/server/api/test/integration/ce/authentication/password-reset.test.ts packages/server/api/test/unit/hosting-account-recovery.test.ts --maxWorkers=1 --no-file-parallelism
       - name: Check recovery URL privacy
-        run: bun x vitest run --config packages/web/vitest.config.ts packages/web/test/features/authentication/password-reset-secret.test.ts --maxWorkers=1
+        run: bun x vitest run --config packages/web/vitest.config.ts packages/web/test/features/authentication/password-reset-secret.test.ts packages/web/test/features/authentication/change-password.test.tsx packages/web/test/lib/route-utils.test.ts --maxWorkers=1
+      - name: Check Gmail search scope and unread evidence
+        run: bun x vitest run --config packages/pieces/community/gmail/vitest.config.ts packages/pieces/community/gmail/test/search-email.test.ts --maxWorkers=1
       - name: Check frontend TypeScript
         run: bun x tsc -p packages/web/tsconfig.app.json --pretty false
         env:

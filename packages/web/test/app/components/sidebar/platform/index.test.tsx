@@ -132,6 +132,9 @@ describe('current self-hosted PlatformSidebar', () => {
       screen.getByRole('link', { name: 'Back to app' }).getAttribute('href'),
     ).toBe('/chat');
     expect(screen.getByRole('link', { name: 'Configurations' })).toBeTruthy();
+    expect(
+      screen.queryByRole('link', { name: 'Learning & certification' }),
+    ).toBeNull();
   });
   it('does not add the self-hosted configuration entry to cloud edition', () => {
     state.edition = ApEdition.CLOUD;

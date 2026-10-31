@@ -11,13 +11,10 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { t } from 'i18next';
 import {
-  Bot,
   BriefcaseBusiness,
   ChartLine,
   ChevronsUpDown,
   Compass,
-  GraduationCap,
-  MessageCircle,
   Radar,
   LogOut,
   PanelLeftClose,
@@ -57,10 +54,8 @@ import {
 } from '@/components/ui/tooltip';
 import { useAgentsNavVisible } from '@/features/agents';
 import { SidebarUsageLimits } from '@/features/billing';
-import { chatUtils } from '@/features/chat/lib/chat-utils';
 import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import { useHostedOperatorAccess } from '@/features/hosted-operator/operator-api';
-import { usePlatformTrainerAccess } from '@/features/hosted-operator/trainers-api';
 import { useOperationalWorkspaces } from '@/features/hosted-operator/workspaces-api';
 import {
   CreateProjectButton,
@@ -90,7 +85,6 @@ import { useGlobalSearch } from '../global-search/global-search-context';
 import { mcpHooks } from '../project-settings/mcp-server/utils/mcp-hooks';
 
 export function PrimaryRail() {
-  const branding = flagsHooks.useWebsiteBranding();
   const { embedState } = useEmbedding();
   const { platform } = platformHooks.useCurrentPlatform();
   const { data: currentUser } = userHooks.useCurrentUser();
@@ -156,31 +150,6 @@ export function PrimaryRail() {
               collapsed && 'items-center',
             )}
           >
-            {platform.plan.chatEnabled && (
-              <RailNavButton
-                collapsed={collapsed}
-                to="/chat"
-                icon={
-                  branding.logos.fullLogoUrl === sydekyksBrand.logos.fullLogoUrl
-                    ? SydNavIcon
-                    : MessageCircle
-                }
-                label={t('Chat')}
-                isActive={({ pathname }) => pathname.startsWith('/chat')}
-                onClick={() =>
-                  window.dispatchEvent(new Event(chatUtils.newChatEvent))
-                }
-              />
-            )}
-            {hostedBilling && (
-              <RailNavButton
-                collapsed={collapsed}
-                to="/learn"
-                icon={GraduationCap}
-                label={t('Learning')}
-                isActive={({ pathname }) => pathname.startsWith('/learn')}
-              />
-            )}
             {operationalWorkspaces.allowed && (
               <RailNavButton
                 collapsed={collapsed}
@@ -205,7 +174,7 @@ export function PrimaryRail() {
               <RailNavButton
                 collapsed={collapsed}
                 to="/agents"
-                icon={Bot}
+                icon={SydNavIcon}
                 label={t('Agents')}
                 isActive={({ pathname }) => pathname.startsWith('/agents')}
               />
@@ -801,7 +770,6 @@ function RailAccountRow({ collapsed }: { collapsed: boolean }) {
   const { reachesMcp } = mcpHooks.useMcpReach({
     enabled: hosted && !!user && !showPlatformAdmin,
   });
-  const trainer = usePlatformTrainerAccess();
   const workspaces = useOperationalWorkspaces();
   const navigate = useNavigate();
 
@@ -889,20 +857,6 @@ function RailAccountRow({ collapsed }: { collapsed: boolean }) {
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
-            <DropdownMenuItem asChild>
-              <Link to="/learn">
-                <GraduationCap className="w-4 h-4 mr-2" />
-                {t('Learning & certification')}
-              </Link>
-            </DropdownMenuItem>
-            {trainer.allowed && (
-              <DropdownMenuItem asChild>
-                <Link to="/trainer">
-                  <GraduationCap className="w-4 h-4 mr-2" />
-                  {t('Trainer workspace')}
-                </Link>
-              </DropdownMenuItem>
-            )}
             {workspaces.allowed && (
               <DropdownMenuItem asChild>
                 <Link to="/partners/workspaces">

@@ -1,6 +1,5 @@
 import { ApEdition, ApFlagId } from '@activepieces/shared';
 import { t } from 'i18next';
-import { GraduationCap } from 'lucide-react';
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -41,7 +40,6 @@ import {
 import { PLATFORM_FEATURES } from '@/features/billing';
 import { useHostedBillingEnabled } from '@/features/hosted-billing/service-mode';
 import { useHostedOperatorAccess } from '@/features/hosted-operator/operator-api';
-import { usePlatformTrainerAccess } from '@/features/hosted-operator/trainers-api';
 import { useOperationalWorkspaces } from '@/features/hosted-operator/workspaces-api';
 import { useAuthorization } from '@/hooks/authorization-hooks';
 import { flagsHooks } from '@/hooks/flags-hooks';
@@ -61,11 +59,10 @@ export function PlatformSidebar() {
   const { reachesMcp } = mcpHooks.useMcpReach({ enabled: hostedBilling });
   const operator = useHostedOperatorAccess();
   const workspaces = useOperationalWorkspaces();
-  const trainer = usePlatformTrainerAccess();
   const { checkAccess } = useAuthorization();
   const defaultRoute = determineDefaultRoute({
     checkAccess,
-    chatEnabled: platform.plan.chatEnabled,
+    agentsEnabled: platform.plan.agentsEnabled,
   });
   const chevronRef = useRef<ChevronLeftIconHandle>(null);
 
@@ -73,20 +70,6 @@ export function PlatformSidebar() {
     {
       label: t('Platform'),
       items: [
-        {
-          to: '/learn',
-          label: t('Learning & certification'),
-          icon: GraduationCap,
-        },
-        ...(trainer.allowed
-          ? [
-              {
-                to: '/trainer',
-                label: t('Trainer workspace'),
-                icon: GraduationCap,
-              },
-            ]
-          : []),
         ...(workspaces.allowed
           ? [
               {
@@ -329,11 +312,6 @@ export function PlatformSidebar() {
                 to: '/platform/account-recovery',
                 label: t('Account recovery'),
                 icon: UsersIcon,
-              },
-              {
-                to: '/platform/trainers',
-                label: t('Platform Trainers'),
-                icon: GraduationCap,
               },
               {
                 to: '/platform/partners',
