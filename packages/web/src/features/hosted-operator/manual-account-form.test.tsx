@@ -83,9 +83,10 @@ describe('manual creation funding and retry controls', () => {
     const credits = screen.getByLabelText(
       'Monthly Credits',
     ) as HTMLInputElement;
-    expect(credits).toHaveValue(35);
-    expect(credits).toHaveAttribute('max', '35');
-    expect(screen.getByLabelText('Partner course')).toBeDisabled();
+    expect(credits).toMatchObject({ value: '35', max: '35' });
+    expect(screen.getByLabelText('Partner course')).toMatchObject({
+      disabled: true,
+    });
     fireEvent.click(
       screen.getByLabelText(/I verified the manual payment or authorization/),
     );
@@ -111,8 +112,12 @@ describe('manual creation funding and retry controls', () => {
     const packages = screen.getByLabelText('Partner package');
     fireEvent.change(packages, { target: { value: 'starter' } });
     fireEvent.change(packages, { target: { value: 'core' } });
-    expect(screen.getByLabelText('Monthly Credits')).toHaveValue(300);
-    expect(screen.getByLabelText('Partner course')).toBeEnabled();
+    expect(screen.getByLabelText('Monthly Credits')).toMatchObject({
+      value: '300',
+    });
+    expect(screen.getByLabelText('Partner course')).toMatchObject({
+      disabled: false,
+    });
   });
 
   it('requires deliberate funding confirmation and leaves Partner operational approval unchecked', () => {
