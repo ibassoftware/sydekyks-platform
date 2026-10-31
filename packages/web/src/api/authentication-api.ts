@@ -74,6 +74,14 @@ export const authenticationApi = {
   resetPassword(request: ResetPasswordRequestBody) {
     return api.post<void>('/v1/authentication/reset-password', request);
   },
+  validatePasswordReset(
+    request: Pick<ResetPasswordRequestBody, 'identityId' | 'otp'>,
+  ) {
+    return api.post<{ valid: boolean }>(
+      '/v1/authentication/validate-password-reset',
+      request,
+    );
+  },
   verifyEmail(request: VerifyEmailRequestBody) {
     return api.post<UserIdentity>('/v1/authn/local/verify-email', request);
   },

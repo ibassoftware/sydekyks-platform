@@ -11,11 +11,9 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { t } from 'i18next';
 import {
-  Bot,
   ChartLine,
   ChevronsUpDown,
   Compass,
-  MessageCircle,
   Radar,
   LogOut,
   PanelLeftClose,
@@ -51,7 +49,6 @@ import {
 } from '@/components/ui/tooltip';
 import { useAgentsNavVisible } from '@/features/agents';
 import { SidebarUsageLimits } from '@/features/billing';
-import { chatUtils } from '@/features/chat/lib/chat-utils';
 import {
   CreateProjectButton,
   getProjectName,
@@ -80,7 +77,6 @@ import { useGlobalSearch } from '../global-search/global-search-context';
 import { mcpHooks } from '../project-settings/mcp-server/utils/mcp-hooks';
 
 export function PrimaryRail() {
-  const branding = flagsHooks.useWebsiteBranding();
   const { embedState } = useEmbedding();
   const { platform } = platformHooks.useCurrentPlatform();
   const { data: currentUser } = userHooks.useCurrentUser();
@@ -142,22 +138,6 @@ export function PrimaryRail() {
               collapsed && 'items-center',
             )}
           >
-            {platform.plan.chatEnabled && (
-              <RailNavButton
-                collapsed={collapsed}
-                to="/chat"
-                icon={
-                  branding.logos.fullLogoUrl === sydekyksBrand.logos.fullLogoUrl
-                    ? SydNavIcon
-                    : MessageCircle
-                }
-                label={t('Chat')}
-                isActive={({ pathname }) => pathname.startsWith('/chat')}
-                onClick={() =>
-                  window.dispatchEvent(new Event(chatUtils.newChatEvent))
-                }
-              />
-            )}
             {reachesMcp && (
               <RailNavButton
                 collapsed={collapsed}
@@ -171,7 +151,7 @@ export function PrimaryRail() {
               <RailNavButton
                 collapsed={collapsed}
                 to="/agents"
-                icon={Bot}
+                icon={SydNavIcon}
                 label={t('Agents')}
                 isActive={({ pathname }) => pathname.startsWith('/agents')}
               />

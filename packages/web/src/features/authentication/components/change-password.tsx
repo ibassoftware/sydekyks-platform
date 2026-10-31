@@ -1,10 +1,12 @@
 import { ResetPasswordRequestBody } from '@activepieces/shared';
+import { useQuery } from '@tanstack/react-query';
 import { t } from 'i18next';
 import { useRef, useState } from 'react';
 import { SubmitHandler, useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { authenticationApi } from '@/api/authentication-api';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -32,8 +34,92 @@ import {
 import { authMutations } from '../hooks/auth-hooks';
 
 const ChangePasswordForm = () => {
-  const navigate = useNavigate();
   const [resetSecret] = useState(getPasswordResetSecret);
+  const [rejected, setRejected] = useState(false);
+  const hasSecret =
+    !!resetSecret &&
+    ResetPasswordRequestBody.shape.identityId.safeParse(resetSecret.identityId)
+      .success &&
+    resetSecret.otp.length > 0 &&
+    resetSecret.otp.length <= 128;
+  const validation = useQuery({
+    // Credentials stay in memory, never in a URL or query-cache key.
+    queryKey: ['password-reset-validity'],
+    queryFn: () => authenticationApi.validatePasswordReset(resetSecret!),
+    enabled: hasSecret && !rejected,
+    retry: false,
+    gcTime: 0,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  if (
+    resetSecret &&
+    hasSecret &&
+    !rejected &&
+    validation.isSuccess &&
+    validation.data.valid &&
+    !validation.isFetching
+  ) {
+    return (
+      <VerifiedPasswordResetForm
+        secret={resetSecret}
+        onInvalid={() => {
+          forgetPasswordResetSecret();
+          setRejected(true);
+        }}
+      />
+    );
+  }
+  const unavailable =
+    !hasSecret || rejected || validation.data?.valid === false;
+  return (
+    <Card className="w-full max-w-md rounded-md">
+      <CardHeader>
+        <CardTitle className="text-2xl">
+          {unavailable
+            ? t('Reset link unavailable')
+            : validation.isError
+            ? t('Could not check reset link')
+            : t('Checking reset link')}
+        </CardTitle>
+        <CardDescription
+          role={unavailable || validation.isError ? 'alert' : 'status'}
+        >
+          {unavailable
+            ? t(
+                'This password reset link is missing, invalid or has expired. Request a new reset email to continue.',
+              )
+            : validation.isError
+            ? t(
+                'We could not check this link. Check your connection and try again.',
+              )
+            : t('Please wait while we check your password reset link.')}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        {validation.isError && !unavailable && (
+          <Button variant="outline" onClick={() => void validation.refetch()}>
+            {t('Try again')}
+          </Button>
+        )}
+        <Button asChild>
+          <Link to="/forget-password">{t('Request a new reset email')}</Link>
+        </Button>
+      </CardContent>
+    </Card>
+  );
+};
+
+const VerifiedPasswordResetForm = ({
+  secret,
+  onInvalid,
+}: {
+  secret: { identityId: string; otp: string };
+  onInvalid: () => void;
+}) => {
+  const navigate = useNavigate();
   const [serverError, setServerError] = useState('');
   const [isPasswordFocused, setPasswordFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -43,8 +129,8 @@ const ChangePasswordForm = () => {
     newPassword: string;
   }>({
     defaultValues: {
-      otp: resetSecret?.otp ?? '',
-      identityId: resetSecret?.identityId ?? '',
+      otp: secret.otp,
+      identityId: secret.identityId,
       newPassword: '',
     },
   });
@@ -59,10 +145,11 @@ const ChangePasswordForm = () => {
       navigate('/sign-in');
     },
     onError: (error) => {
-      setServerError(
-        t('Your password reset request has expired, please request a new one'),
-      );
-      void error;
+      if (error.response?.status === 401) {
+        onInvalid();
+        return;
+      }
+      setServerError(t('Could not reset your password. Try again shortly.'));
     },
   });
 

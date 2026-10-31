@@ -16,6 +16,10 @@ function refused(): never {
 }
 
 export const passwordService = (log: FastifyBaseLogger) => ({
+    async isResetValid({ identityId, otp }: { identityId: string, otp: string }): Promise<boolean> {
+        const identity = await databaseConnection().getRepository(UserIdentityEntity).findOneBy({ id: identityId })
+        return !!identity?.verified && identity.provider === UserIdentityProvider.EMAIL && await otpService(log).isPasswordResetValid({ identityId, value: otp })
+    },
     async change({ identityId, currentPassword, newPassword, tokenVersion }: { identityId: string, currentPassword: string, newPassword: string, tokenVersion: string | null }): Promise<void> {
         const identity = await userIdentityService(log).getOneOrFail({ id: identityId })
         if (!identity.verified || identity.provider !== UserIdentityProvider.EMAIL || (identity.tokenVersion ?? null) !== tokenVersion || !await passwordHasher.compare(currentPassword, identity.password)) refused()

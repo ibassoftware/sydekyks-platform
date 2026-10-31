@@ -248,9 +248,28 @@ export const gmailSearchMailActionOutputSchema: OutputSchema = {
     },
     {
       key: 'count',
-      label: 'Count',
+      label: 'Messages in This Page',
       value: 'results.count',
       format: 'number',
+    },
+    { key: 'query', label: 'Applied Search Query', value: 'results.query' },
+    { key: 'countScope', label: 'Count Scope', value: 'results.countScope' },
+    {
+      key: 'resultSizeEstimate',
+      label: 'Estimated Matches (Not an Exact Total)',
+      value: 'results.resultSizeEstimate',
+      format: 'number',
+    },
+    {
+      key: 'nextPageToken',
+      label: 'Next Page Token',
+      value: 'results.nextPageToken',
+    },
+    {
+      key: 'hasMore',
+      label: 'More Pages Available',
+      value: 'results.hasMore',
+      format: 'boolean',
     },
     {
       key: 'messages',
@@ -258,6 +277,14 @@ export const gmailSearchMailActionOutputSchema: OutputSchema = {
       value: 'results.messages',
       labelKey: 'subject',
       listItems: [
+        { key: 'threadId', label: 'Thread ID', value: 'threadId' },
+        { key: 'labelIds', label: 'Label IDs', value: 'labelIds' },
+        {
+          key: 'isUnread',
+          label: 'Unread (Null When Unknown)',
+          value: 'isUnread',
+          format: 'boolean',
+        },
         {
           key: 'subject',
           label: 'Subject',

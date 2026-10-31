@@ -37,6 +37,7 @@ const disallowedRoutes = [
   '/v1/authn/local/reset-password',
   '/v1/authentication/request-password-reset',
   '/v1/authentication/reset-password',
+  '/v1/authentication/validate-password-reset',
   '/v1/user-invitations/accept',
   '/v1/webhooks',
 ];

@@ -51,7 +51,7 @@ const AuthenticatedDefaultRoute = () => {
       to={{
         pathname: determineDefaultRoute({
           checkAccess,
-          chatEnabled: platform.plan.chatEnabled,
+          agentsEnabled: platform.plan.agentsEnabled,
         }),
         search: isNil(trialKey)
           ? ''

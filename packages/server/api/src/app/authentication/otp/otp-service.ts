@@ -68,45 +68,57 @@ export const otpService = (log: FastifyBaseLogger) => ({
     },
 
     async confirm({ identityId, type, value }: ConfirmParams): Promise<boolean> {
-        return distributedLock(log).runExclusive({
-            key: confirmLockKey({ identityId, type }),
-            timeoutInSeconds: 15,
-            fn: async () => {
-                const spentOnIdentity = await guessesSpentOnIdentity({ identityId, type })
-                if (spentOnIdentity >= MAX_ATTEMPTS_PER_IDENTITY) {
-                    log.warn({ identityId, type }, '[otpService#confirm] identity guess budget exhausted, refusing')
-                    return false
-                }
-                const otp = await repo().findOneBy({ identityId, type })
-                if (isNil(otp)) {
-                    return false
-                }
-                if (otp.attempts >= MAX_ATTEMPTS) {
-                    await discard({ otp, identityId, type, log })
-                    return false
-                }
-                if (otpIsExpired(otp)) {
-                    await discard({ otp, identityId, type, log })
-                    return false
-                }
-                const otpIsPending = otp.state === OtpState.PENDING
-                const otpMatches = encryptUtils.digestsMatch(otp.value, await comparableValue({ otp, value }))
-                if (otpMatches && otpIsPending) {
+        return checkOtp({ identityId, type, value, log, consume: true })
+    },
+
+    // A reset-page preflight must not redeem a valid link. Failed guesses still
+    // spend the same attempt budget as redemption, including across requests.
+    async isPasswordResetValid({ identityId, value }: Omit<ConfirmParams, 'type'>): Promise<boolean> {
+        return checkOtp({ identityId, type: OtpType.PASSWORD_RESET, value, log, consume: false })
+    },
+})
+
+async function checkOtp({ identityId, type, value, log, consume }: ConfirmParams & { log: FastifyBaseLogger, consume: boolean }): Promise<boolean> {
+    return distributedLock(log).runExclusive({
+        key: confirmLockKey({ identityId, type }),
+        timeoutInSeconds: 15,
+        fn: async () => {
+            const spentOnIdentity = await guessesSpentOnIdentity({ identityId, type })
+            if (spentOnIdentity >= MAX_ATTEMPTS_PER_IDENTITY) {
+                log.warn({ identityId, type }, '[otpService#confirm] identity guess budget exhausted, refusing')
+                return false
+            }
+            const otp = await repo().findOneBy({ identityId, type })
+            if (isNil(otp)) {
+                return false
+            }
+            if (otp.attempts >= MAX_ATTEMPTS) {
+                await discard({ otp, identityId, type, log })
+                return false
+            }
+            if (otpIsExpired(otp)) {
+                await discard({ otp, identityId, type, log })
+                return false
+            }
+            const otpIsPending = otp.state === OtpState.PENDING
+            const otpMatches = encryptUtils.digestsMatch(otp.value, await comparableValue({ otp, value }))
+            if (otpMatches && otpIsPending) {
+                if (consume) {
                     await repo().delete({ id: otp.id })
                     await forgetCachedCode({ identityId, type })
                     await clearIdentityBudget({ identityId, type })
-                    return true
                 }
-                await countAttempt(otp.id)
-                await countGuessOnIdentity({ identityId, type, spent: spentOnIdentity })
-                if (otp.attempts + 1 >= MAX_ATTEMPTS) {
-                    await discard({ otp, identityId, type, log })
-                }
-                return false
-            },
-        })
-    },
-})
+                return true
+            }
+            await countAttempt(otp.id)
+            await countGuessOnIdentity({ identityId, type, spent: spentOnIdentity })
+            if (otp.attempts + 1 >= MAX_ATTEMPTS) {
+                await discard({ otp, identityId, type, log })
+            }
+            return false
+        },
+    })
+}
 
 async function comparableValue({ otp, value }: ComparableValueParams): Promise<string> {
     if (otp.type === OtpType.PASSWORD_RESET) {
