@@ -99,7 +99,7 @@ export const authenticationService = (log: FastifyBaseLogger) => ({
             // platform here, on the first sign-in after the verification email.
             // `signedUp` carries that moment out so the controller can stamp it.
             log.info({ email: params.email }, 'User signed in without an active platform on cloud')
-            return authenticationUtils(log).provisionOrOnboard({ identityId: identity.id })
+            return authenticationUtils(log).provisionOrOnboard({ identityId: identity.id, expectedTokenVersion: identity.tokenVersion ?? null })
         }
 
         await authenticationUtils(log).assertEmailAuthIsEnabled({
@@ -127,6 +127,7 @@ export const authenticationService = (log: FastifyBaseLogger) => ({
             userId: user.id,
             platformId,
             projectId: null,
+            expectedTokenVersion: identity.tokenVersion ?? null,
         })
         return { response, signedUp: false }
     },
@@ -205,6 +206,7 @@ export const authenticationService = (log: FastifyBaseLogger) => ({
             userId: user.id,
             platformId: platform.id,
             projectId: null,
+            expectedTokenVersion: params.tokenVersion,
         })
     },
 })
@@ -327,6 +329,7 @@ type SignInWithPasswordParams = {
 }
 
 type SwitchPlatformParams = {
+    tokenVersion?: string | null
     identityId: string
     platformId: string
 }

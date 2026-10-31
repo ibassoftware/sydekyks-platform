@@ -43,6 +43,7 @@ export const authenticationUtils = (log: FastifyBaseLogger) => ({
             ? findPersonalProject(projects, params.userId) ?? projects?.[0]
             : projects.find((project) => project.id === params.projectId)
         const identity = await userIdentityService(log).getOneOrFail({ id: user.identityId })
+        if (params.expectedTokenVersion !== undefined && (identity.tokenVersion ?? null) !== params.expectedTokenVersion) throw new ActivepiecesError({ code: ErrorCode.SESSION_EXPIRED, params: {} })
         if (!identity.verified) {
             throw new ActivepiecesError({
                 code: ErrorCode.EMAIL_IS_NOT_VERIFIED,
@@ -80,8 +81,9 @@ export const authenticationUtils = (log: FastifyBaseLogger) => ({
         }
     },
 
-    async getOnboardingResponse({ identityId }: GetOnboardingResponseParams): Promise<AuthenticationResponse> {
+    async getOnboardingResponse({ identityId, expectedTokenVersion }: GetOnboardingResponseParams): Promise<AuthenticationResponse> {
         const identity = await userIdentityService(log).getOneOrFail({ id: identityId })
+        if (expectedTokenVersion !== undefined && (identity.tokenVersion ?? null) !== expectedTokenVersion) throw new ActivepiecesError({ code: ErrorCode.SESSION_EXPIRED, params: {} })
         if (!identity.verified) {
             throw new ActivepiecesError({
                 code: ErrorCode.EMAIL_IS_NOT_VERIFIED,
@@ -113,10 +115,11 @@ export const authenticationUtils = (log: FastifyBaseLogger) => ({
         }
     },
 
-    async provisionOrOnboard({ identityId }: ProvisionOrOnboardParams): Promise<AuthenticationResult> {
+    async provisionOrOnboard({ identityId, expectedTokenVersion }: ProvisionOrOnboardParams): Promise<AuthenticationResult> {
         const identity = await userIdentityService(log).getOneOrFail({ id: identityId })
+        if (expectedTokenVersion !== undefined && (identity.tokenVersion ?? null) !== expectedTokenVersion) throw new ActivepiecesError({ code: ErrorCode.SESSION_EXPIRED, params: {} })
         if (!identity.verified || signupNames.isPlaceholderName(identity)) {
-            return { response: await this.getOnboardingResponse({ identityId }), signedUp: false }
+            return { response: await this.getOnboardingResponse({ identityId, expectedTokenVersion }), signedUp: false }
         }
         const { response, provisioned } = await platformService(log).createPlatformWithProject({
             identityId,
@@ -125,6 +128,8 @@ export const authenticationUtils = (log: FastifyBaseLogger) => ({
             isFirstPlatform: true,
             callerTokenVersion: undefined,
         })
+        const current = await userIdentityService(log).getOneOrFail({ id: identityId })
+        if (expectedTokenVersion !== undefined && (current.tokenVersion ?? null) !== expectedTokenVersion) throw new ActivepiecesError({ code: ErrorCode.SESSION_EXPIRED, params: {} })
         return { response, signedUp: provisioned }
     },
 
@@ -300,6 +305,7 @@ type AssertUserIsInvitedToPlatformOrProjectParams = {
 }
 
 type ProvisionOrOnboardParams = {
+    expectedTokenVersion?: string | null
     identityId: string
 }
 
@@ -309,10 +315,12 @@ export type AuthenticationResult = {
 }
 
 type GetOnboardingResponseParams = {
+    expectedTokenVersion?: string | null
     identityId: string
 }
 
 type GetProjectAndTokenParams = {
+    expectedTokenVersion?: string | null
     userId: string
     platformId: string
     projectId: string | null
