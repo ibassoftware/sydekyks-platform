@@ -5,12 +5,12 @@ import { platformConfigurationService } from '../../../../src/app/platform/platf
 import { templateTelemetryService } from '../../../../src/app/template/template-telemetry/template-telemetry.service'
 
 vi.mock('../../../../src/app/core/db/repo-factory', () => ({ repoFactory: () => () => {
-    throw new Error('Telemetry must not write a configuration or read accounts while paused') 
+    throw new Error('Telemetry must not write a configuration or read accounts while paused')
 } }))
 const logSpy = { info: vi.fn(), error: vi.fn(), debug: vi.fn() }
 const log = logSpy as never
 afterEach(() => {
-    vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.clearAllMocks() 
+    vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.clearAllMocks()
 })
 describe('telemetry collection paused', () => {
     it.each([ApEdition.COMMUNITY, ApEdition.CLOUD, ApEdition.ENTERPRISE])('does not collect even when old configuration would enable it on %s', async edition => {
