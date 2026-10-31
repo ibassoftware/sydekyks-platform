@@ -23,6 +23,7 @@ import { HostingPartnerPurchaseEntity } from './hosting-partner-billing-entities
 import { HostingStripeBindingEntity } from './hosting-stripe-entities'
 import { HostingSubscriptionCommandEntity, HostingSubscriptionEntity } from './hosting-subscription-entities'
 import { lastFundedSubscriptionPeriod, loadSubscriptionContext, subscriptionAccountActive, subscriptionAccountUntil } from './hosting-subscription-policy'
+import { hostingMonthAnniversary } from './hosting-training-periods'
 import { HostingTrainingEntity } from './hosting-training-entity'
 import { HostingActor, hostingFail, hostingTransactions as tx } from './hosting-transactions'
 
@@ -105,6 +106,9 @@ export function createHostedManualAccounts({ dataSource, subjectSecret }: { data
             if (account.status === 'suspended' || account.billingHold || await manager.getRepository(HostingStripeBindingEntity).existsBy({ platformId }) || await manager.getRepository(HostingPartnerPurchaseEntity).existsBy({ platformId }) || await manager.getRepository(HostingTrainingEntity).existsBy({ platformId })) hostingFail('HOSTING_MANUAL_FUNDING_REQUIRES_REVIEW')
             if (bound.enrollmentId && (!enrollment || enrollment.status !== 'active' || enrollment.identityId !== account.ownerIdentityId || enrollment.workspacePlatformId !== platformId)) hostingFail('HOSTING_MANUAL_ENROLLMENT_REQUIRES_REVIEW')
             await assertPartnerStarterAllowance(manager, platformId, value.monthlyCredits)
+            // A short funded term must not reset Starter's monthly cap early.
+            const nextCreditMonth = hostingMonthAnniversary(prior.startsAt, manualTermPeriods(prior).length)
+            if (bound.package === 'starter' && startsAt < nextCreditMonth) hostingFail('HOSTING_PARTNER_STARTER_MONTHLY_PERIOD_ACTIVE')
             const revision = bound.revision + 1
             const term = await issueTerm(manager, { platformId, identityId: account.ownerIdentityId, planId: prior.planId, revision, startsAt, expiresAt: new Date(value.expiresAt), monthlyCredits: value.monthlyCredits ?? await effectiveHostedCredits(manager, platformId, prior.planId), operatorIdentityId: actor.identityId, reason: value.reason })
             await manager.getRepository(HostingManualAccountEntity).update({ id: platformId }, { termId: term.id, revision })

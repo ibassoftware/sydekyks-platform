@@ -26,6 +26,7 @@ import { HostingPartnerPurchaseEntity } from '../../src/app/hosting/hosting-part
 import { createHostedStripe } from '../../src/app/hosting/hosting-stripe'
 import { HostingStripeBindingEntity, HostingStripePeriodEntity } from '../../src/app/hosting/hosting-stripe-entities'
 import { createHostedSubscriptions } from '../../src/app/hosting/hosting-subscriptions'
+import { hostingMonthAnniversary } from '../../src/app/hosting/hosting-training-periods'
 import { HostingTrainingEntity } from '../../src/app/hosting/hosting-training-entity'
 import { HostingActor, hostingTransactions as tx } from '../../src/app/hosting/hosting-transactions'
 import { foundingCourseDraft } from '../../src/app/lms/lms-content'
@@ -119,6 +120,8 @@ describe('operator manual accounts and bounded funding', () => {
         vi.spyOn(tx, 'now').mockResolvedValue(start)
         const renewal = { requestKey: apId(), expectedRevision: 1, expiresAt: new Date(start.getTime() + 40 * 86400_000).toISOString(), reason: 'Synthetic Starter renewal', monthlyCredits: 3501 }
         await expect(manual().renew({ actor, platformId: account.platformId, input: renewal })).rejects.toThrow('HOSTING_PARTNER_STARTER_CREDIT_CAP')
+        await expect(manual().renew({ actor, platformId: account.platformId, input: { ...renewal, monthlyCredits: undefined } })).rejects.toThrow('HOSTING_PARTNER_STARTER_MONTHLY_PERIOD_ACTIVE')
+        vi.spyOn(tx, 'now').mockResolvedValue(hostingMonthAnniversary(new Date(account.startsAt), 3))
         expect((await manual().renew({ actor, platformId: account.platformId, input: { ...renewal, monthlyCredits: undefined } })).account).toMatchObject({ package: 'starter', monthlyCredits: 3500, fundedMonthlyCredits: 3500, monthlyCreditCap: 3500 })
     })
 

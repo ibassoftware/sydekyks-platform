@@ -140,7 +140,7 @@ export function ManualTermControls({
       if (mounted.current)
         setError(
           t(
-            'Renewal was not confirmed. Refresh the funding state before retrying. A changed term, active term or Stripe billing needs review.',
+            'Renewal was not confirmed. Refresh the funding state before retrying. A changed term, active term or Stripe billing needs review. Partner Starter cannot refill before its next monthly Credit boundary.',
           ),
         );
     } finally {
