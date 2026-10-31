@@ -1,6 +1,6 @@
 # Local follow-up — 31 October 2026
 
-These changes are local only. The founder requires a new explicit instruction before any push, merge, package publication, or hosted deployment. Existing hosted source 50602655996 remains the live baseline; prior CI receipts validate that baseline only.
+The founder authorized updating main and the live app on 31 October 2026 after the local review. Release validation and deployment are now in progress; only completed private receipts establish live status. Existing hosted source 50602655996 remains the live baseline; prior CI receipts validate that baseline only.
 
 ## Changes
 
@@ -12,9 +12,9 @@ These changes are local only. The founder requires a new explicit instruction be
 
 49 targeted local tests cover reset UI/privacy, landing permissions, hosted navigation, non-consuming OTP preflight and shared failed-guess budgets, plus Gmail scope/read-status/pagination and configured Gadget regression contracts. Scoped lint and syntax checks are recorded privately; no full local build or production supplier call is used. Full PostgreSQL/Redis integration, type checks and full CI remain release gates before publication. The new tests are wired into the validation workflow.
 
-Gmail source changes have not been packaged or published. A later approved release must version and publish the changed Gmail package, verify its served metadata, and explicitly review the two configured Gmail tools' pinned versions before claiming the existing hosted Sydekyk uses the new properties. Do not silently rewrite saved tools or rerun the old conversation.
+During the local phase Gmail source was not packaged or published. The authorized release now bundles the versioned Gmail and Schedule packages and verifies their served metadata against the saved tool pins as described below. Do not silently rewrite saved tools or rerun the old conversation.
 
-Shared changes are prepared on the existing local main candidate branch; hosted-only navigation changes remain in the SaaS checkout. No remote PR or branch is updated by this local work.
+Shared changes are on the existing main candidate branch; hosted-only navigation changes remain in the SaaS checkout. The authorized publication updates PR #19 and the SaaS branch after source checks.
 
 ## Dark mode and schedule minimum follow-up
 
@@ -25,3 +25,7 @@ Every X Minutes offers integer values 15–59 and defaults to 15. Its enable/run
 45 targeted tests passed in the SaaS checkout (4 appearance, 10 schedule, 31 API trigger regressions). The main port additionally passed 10 schedule and 30 API trigger tests. Its identical UI test/source files were verified against the tested SaaS files; direct main UI execution cannot resolve its existing React workspace dependency layout. No dependencies were installed; temporary owned links were removed. Full CI and type checks remain future release gates.
 
 No live schedule, account preference, queue, package or image was changed. Before a later approved publication, version/publish the changed Schedule package and verify served metadata; audit existing Every X Minutes schedules below 15 minutes and explicitly plan their transition. Do not silently rewrite stored Missions or alter recurring jobs in this local-only task.
+
+## Authorized publication
+
+The reviewed image bundles Gmail 0.18.4 and Schedule 0.1.23, selected through the existing explicit bundled-piece loader. Metadata resolution now follows the same selected implementation as the engine, including saved pins; other catalogue packages continue normal version selection. This avoids rewriting saved tools or publishing a separate public npm package. The read-only live audit found no active Every X Minutes schedule and three Gmail tools in both drafts and published configurations, all saved at 0.18.3. Deployment will preserve those records and verify the actual new metadata/code used.

@@ -74,7 +74,7 @@ jobs:
       - run: bun x vitest run test/automation/piece-requests.test.ts
         working-directory: packages/core/shared
       - run: bun x vitest run --config packages/server/api/vitest.config.ts packages/server/api/test/integration/ce/sydekyks-free/free-access.test.ts packages/server/api/test/unit/app/pieces/piece-release-compatibility.test.ts
-      - run: bun x turbo run build --concurrency=2 --filter=web --filter=@activepieces/engine --filter=api --filter=worker
+      - run: bun x turbo run build --concurrency=2 --filter=web --filter=@activepieces/engine --filter=api --filter=worker --filter=@activepieces/piece-gmail --filter=@activepieces/piece-schedule
         env:
           NODE_OPTIONS: --max-old-space-size=4096
       - name: Check hosted foundations without live services
@@ -102,7 +102,7 @@ jobs:
       - name: Check recovery URL privacy
         run: bun x vitest run --config packages/web/vitest.config.ts packages/web/test/features/authentication/password-reset-secret.test.ts packages/web/test/features/authentication/change-password.test.tsx packages/web/test/lib/route-utils.test.ts --maxWorkers=1
       - name: Check Gmail search scope and unread evidence
-        run: bun x vitest run --config packages/pieces/community/gmail/vitest.config.ts packages/pieces/community/gmail/test/search-email.test.ts --maxWorkers=1
+        run: bun x vitest run --config packages/pieces/community/gmail/vitest.config.ts packages/pieces/community/gmail/test --maxWorkers=1
       - name: Check dark mode and schedule minimum
         run: |
           bun x vitest run --config packages/web/vitest.config.ts packages/web/test/components/providers/theme-provider.test.tsx --maxWorkers=1

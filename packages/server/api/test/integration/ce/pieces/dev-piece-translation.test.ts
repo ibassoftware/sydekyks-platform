@@ -4,6 +4,7 @@ import { FastifyBaseLogger, FastifyInstance } from 'fastify'
 import { StatusCodes } from 'http-status-codes'
 import { pieceCache } from '../../../../src/app/pieces/metadata/piece-cache'
 import { PieceMetadataSchema } from '../../../../src/app/pieces/metadata/piece-metadata-entity'
+import { getPiecePackageWithoutArchive, pieceMetadataService } from '../../../../src/app/pieces/metadata/piece-metadata-service'
 import { generateMockToken } from '../../../helpers/auth'
 import { createMockPieceMetadata } from '../../../helpers/mocks'
 import { setupTestEnvironment, teardownTestEnvironment } from '../../../helpers/test-setup'
@@ -55,6 +56,13 @@ afterAll(async () => {
 })
 
 describe('dev pieces carrying their own translations', () => {
+    it('uses the actual bundled metadata and package when a saved pin requests an older version', async () => {
+        const metadata = await pieceMetadataService(mockLog).getOrThrow({ name: devPiece.name, version: '0.0.1', platformId: undefined })
+        expect(metadata.version).toBe(devPiece.version)
+        const pkg = await getPiecePackageWithoutArchive(mockLog, undefined, { pieceName: devPiece.name, pieceVersion: '0.0.1' })
+        expect(pkg.pieceVersion).toBe(devPiece.version)
+    })
+
     it('are translated in the list and the single-piece route without leaking i18n', async () => {
         const testToken = await generateMockToken({
             type: PrincipalType.UNKNOWN,

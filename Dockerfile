@@ -11,7 +11,7 @@ COPY . .
 RUN test ! -e packages/ee && test ! -e packages/server/api/src/app/ee
 RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile
 RUN npm run check:distribution:build
-RUN NODE_OPTIONS=--max-old-space-size=4096 bun x turbo run build --concurrency=2 --filter=web --filter=@activepieces/engine --filter=api --filter=worker --filter=@activepieces/piece-manual-trigger --filter=@activepieces/piece-ai --filter=@activepieces/piece-mcp-client
+RUN NODE_OPTIONS=--max-old-space-size=4096 bun x turbo run build --concurrency=2 --filter=web --filter=@activepieces/engine --filter=api --filter=worker --filter=@activepieces/piece-manual-trigger --filter=@activepieces/piece-ai --filter=@activepieces/piece-mcp-client --filter=@activepieces/piece-gmail --filter=@activepieces/piece-schedule
 RUN node scripts/stage-sydekyks-runtime.mjs && cd runtime && bun install --lockfile-only --ignore-scripts && cd .. && node scripts/check-runtime-resolution.mjs && node scripts/audit-distribution-boundaries.mjs runtime --artifact
 FROM base AS run
 WORKDIR /usr/src/app
