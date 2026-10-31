@@ -33,8 +33,8 @@ export const passwordService = (log: FastifyBaseLogger) => ({
 export async function replacePassword(identity: { id: string, password: string, tokenVersion?: string | null }, newPassword: string): Promise<void> {
     const password = await passwordHasher.hash(newPassword)
     await databaseConnection().transaction(async manager => {
-        const changed = await manager.getRepository(UserIdentityEntity).update({ id: identity.id, password: identity.password, tokenVersion: identity.tokenVersion ?? IsNull() }, { password, tokenVersion: apId() })
-        if (changed.affected !== 1) refused()
+        const changed = await manager.getRepository(UserIdentityEntity).createQueryBuilder().update().set({ password, tokenVersion: apId() }).where({ id: identity.id, password: identity.password, tokenVersion: identity.tokenVersion ?? IsNull() }).returning(['id']).execute()
+        if (!Array.isArray(changed.raw) || changed.raw.length !== 1) refused()
         await revokePasswordSessions(manager, identity.id)
     })
 }

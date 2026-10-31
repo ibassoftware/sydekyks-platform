@@ -5,7 +5,7 @@ import { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { securityAccess } from '../core/security/authorization/fastify-security'
 import { authnRateLimit, emailCodeRateLimit } from '../core/security/rate-limit'
-import { distributedLock, distributedStore } from '../database/redis-connections'
+import { distributedStore } from '../database/redis-connections'
 import { rejectedPromiseHandler } from '../helper/promise-handler'
 import { system } from '../helper/system/system'
 import { AppSystemProp } from '../helper/system/system-props'
@@ -27,11 +27,7 @@ export const passwordController: FastifyPluginAsyncZod = async app => {
         }
         const email = request.body.email.trim().toLowerCase()
         const key = 'password-reset-request:' + createHash('sha256').update(email).digest('hex')
-        const maySend = await distributedLock(request.log).runExclusive({ key, timeoutInSeconds: 10, fn: async () => {
-            if (await distributedStore.get(key)) return false
-            await distributedStore.put(key, true, 60)
-            return true
-        } })
+        const maySend = await distributedStore.putIfAbsent(key, true, 60)
         // Delivery runs outside the response path for both existing and absent
         // accounts. SMTP failures and account eligibility never change the reply.
         if (maySend) rejectedPromiseHandler((async () => {
