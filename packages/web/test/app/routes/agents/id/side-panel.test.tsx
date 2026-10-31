@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
-import '@testing-library/jest-dom/vitest';
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+/* eslint-disable jest-dom/prefer-in-document, jest-dom/prefer-to-have-attribute, testing-library/no-node-access -- These isolated layout tests use native DOM assertions without a jest-dom runtime. */
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { forwardRef, useImperativeHandle } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -65,7 +59,7 @@ vi.mock('@/app/routes/agents/id/configure-panel', () => ({
   AgentConfigurePanel: forwardRef<
     { requestExit: () => void },
     { onExit: () => void }
-  >(({ onExit }, ref) => {
+  >(function ConfigurePanelMock({ onExit }, ref) {
     useImperativeHandle(ref, () => ({ requestExit: onExit }));
     return <div data-testid="configure-panel" />;
   }),
@@ -74,18 +68,17 @@ vi.mock('@/app/routes/agents/id/configure-panel', () => ({
 import { AgentEditorPage } from '@/app/routes/agents/id';
 
 afterEach(() => {
-  cleanup();
   vi.unstubAllGlobals();
 });
 
 describe('Sydekyk configuration and chat', () => {
   it('opens a new Sydekyk in Configure without mounting a competing chat', () => {
     renderPage('/agents/agent_1', true);
-    expect(screen.getByTestId('configure-panel')).toBeInTheDocument();
-    expect(screen.queryByTestId('chat')).not.toBeInTheDocument();
+    expect(screen.getByTestId('configure-panel')).toBeTruthy();
+    expect(screen.queryByTestId('chat')).toBeNull();
     expect(sidePanel().className).toContain('w-full');
     click('Chat with agent');
-    expect(screen.getByTestId('chat')).toBeInTheDocument();
+    expect(screen.getByTestId('chat')).toBeTruthy();
     expect(screen.getByTestId('chat')).toHaveAttribute(
       'data-conversations',
       'false',
@@ -114,7 +107,7 @@ describe('Sydekyk configuration and chat', () => {
       'true',
     );
     await waitFor(() =>
-      expect(screen.queryByTestId('configure-panel')).not.toBeInTheDocument(),
+      expect(screen.queryByTestId('configure-panel')).toBeNull(),
     );
   });
 
@@ -135,23 +128,21 @@ describe('Sydekyk configuration and chat', () => {
 
   it('swaps full-width Run history for Configure', async () => {
     renderPage('/agents/agent_1/runs');
-    expect(await screen.findByTestId('runs-panel')).toBeInTheDocument();
+    expect(await screen.findByTestId('runs-panel')).toBeTruthy();
     click('Configure');
-    expect(screen.getByTestId('configure-panel')).toBeInTheDocument();
-    expect(screen.queryByTestId('runs-panel')).not.toBeInTheDocument();
+    expect(screen.getByTestId('configure-panel')).toBeTruthy();
+    expect(screen.queryByTestId('runs-panel')).toBeNull();
     expect(sidePanel().className).toContain('w-full');
   });
 
   it('retains history during its closing transition, then returns to chat', async () => {
     renderPage('/agents/agent_1');
     click('Run history');
-    expect(await screen.findByTestId('runs-panel')).toBeInTheDocument();
+    expect(await screen.findByTestId('runs-panel')).toBeTruthy();
     click('Run history');
     expect(sidePanel().className).toContain('w-0');
-    expect(screen.getByTestId('runs-panel')).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.queryByTestId('runs-panel')).not.toBeInTheDocument(),
-    );
+    expect(screen.getByTestId('runs-panel')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByTestId('runs-panel')).toBeNull());
     expect(screen.getByTestId('chat')).toHaveAttribute(
       'data-conversations',
       'false',
